@@ -4,6 +4,8 @@ import { ITreinamento, IHistorico, ICertificado } from '../models/Treinamento';
 import { IModuloTreinamento } from '../models/Modulo';
 import { IDocumento } from '../models/Documento';
 import { IColaborador } from '../models/Usuario';
+import { IAvaliacao, IEnvioAvaliacao, IEstadoTentativasAvaliacao, IResultadoAvaliacao } from '../models/Avaliacao';
+import AvaliacaoPage from '../pages/Avaliacao/AvaliacaoPage';
 import InicioPage from '../pages/Inicio/InicioPage';
 import MeusTreinamentosPage from '../pages/Treinamentos/MeusTreinamentosPage';
 import ExecutarTreinamentoPage from '../pages/Treinamentos/ExecutarTreinamentoPage';
@@ -43,6 +45,14 @@ export interface IPortalRouterProps {
   iniciarModulo: (modulo: IModuloTreinamento) => void;
   concluirModulo: (modulo: IModuloTreinamento) => void;
   iniciarAvaliacao: () => void;
+  avaliacao?: IAvaliacao;
+  carregandoAvaliacao: boolean;
+  erroAvaliacao: string;
+  tentativasAvaliacao: IEstadoTentativasAvaliacao;
+  envioAvaliacaoPreparado?: IEnvioAvaliacao;
+  resultadoAvaliacao?: IResultadoAvaliacao;
+  processandoAvaliacao: boolean;
+  enviarAvaliacao: (respostas: Record<string, string[]>) => void;
 }
 
 const PortalRouter: React.FC<IPortalRouterProps> = props => {
@@ -125,16 +135,34 @@ const PortalRouter: React.FC<IPortalRouterProps> = props => {
 
     case 'avaliacao':
       return (
-        <section>
-          <button type="button" onClick={() => props.navegar('executarTreinamento')}>
-            ← Voltar
-          </button>
-          <h1>Avaliação</h1>
-          <p>A página de execução da avaliação será conectada ao Dataverse na próxima etapa.</p>
-        </section>
+        <AvaliacaoPage
+          avaliacao={props.avaliacao}
+          carregando={props.carregandoAvaliacao}
+          erro={props.erroAvaliacao}
+          tentativas={props.tentativasAvaliacao}
+          envioPreparado={props.envioAvaliacaoPreparado}
+          resultado={props.resultadoAvaliacao}
+          processando={props.processandoAvaliacao}
+          onVoltar={() => props.navegar('executarTreinamento')}
+          onEnviar={props.enviarAvaliacao}
+        />
       );
 
     case 'inicio':
+      return (
+        <InicioPage
+          primeiroNome={props.primeiroNome}
+          treinamentos={props.treinamentos}
+          documentos={props.documentos}
+          carregando={props.carregandoDataverse}
+          erro={props.erroDataverse}
+          quantidadeTrilhas={props.quantidadeTrilhas}
+          onAbrirTreinamento={props.abrirTreinamento}
+          onVerTreinamentos={() => props.navegar('treinamentos')}
+          onVerDocumentos={() => props.navegar('documentos')}
+        />
+      );
+
     default:
       return (
         <InicioPage

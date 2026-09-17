@@ -203,7 +203,7 @@ export const useModulos = (service: DataverseService): IUseModulosResult => {
       : 0;
 
   const avaliacaoLiberada =
-    obrigatorios.length === 0 ||
+    obrigatorios.length > 0 &&
     concluidos === obrigatorios.length;
 
   return {
@@ -220,4 +220,3 @@ export const useModulos = (service: DataverseService): IUseModulosResult => {
 };
 
 export default useModulos;
-

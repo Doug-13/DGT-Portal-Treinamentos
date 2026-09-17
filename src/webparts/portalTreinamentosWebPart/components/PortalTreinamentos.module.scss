@@ -1,3487 +1,402 @@
+
+:global {
+  .CanvasZone,
+  .CanvasZone > div,
+  .CanvasSection,
+  .ControlZone,
+  [data-automation-id="CanvasZone"],
+  [data-automation-id="CanvasSection"],
+  [data-automation-id="ControlZone"] {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .ControlZone,
+  [data-automation-id="CanvasZone"],
+  [data-automation-id="CanvasSection"],
+  [data-automation-id="ControlZone"] {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+}
+
+
 .portal {
-  --navy: #052f4f;
-  --navyDark: #031f36;
-  --cyan: #16d7de;
-  --blue: #006eb7;
-  --background: #f4f7fa;
+  --navy: #063654;
+  --navy2: #052b47;
+  --blue: #0878d1;
+  --cyan: #11c9df;
+  --bg: #f5f8fb;
   --text: #102a43;
-  --muted: #66798b;
-
+  --muted: #5e7185;
   width: 100%;
-  max-width: none;
-  min-width: 0;
   min-height: 100vh;
-
   display: flex;
-
-  margin: 0;
-  padding: 0;
-
-  background: var(--background);
+  background: var(--bg);
   color: var(--text);
-
   font-family: "Segoe UI", Arial, sans-serif;
 
-  overflow-x: hidden;
-
-  box-sizing: border-box;
-
-  * {
-    box-sizing: border-box;
-  }
-
-  button,
-  input {
-    font-family: inherit;
-  }
+  * { box-sizing: border-box; }
+  button, input { font-family: inherit; }
 }
-
-/* MENU */
 
 .sidebar {
-  width: 220px;
-  min-width: 220px;
-
-  background:
-    linear-gradient(180deg,
-      #073757 0%,
-      #052b47 45%,
-      #031f35 100%);
-
-  color: #fff;
-
+  width: 184px;
+  min-width: 184px;
   min-height: 100vh;
+  position: relative;
+  color: #fff;
+  background:
+    radial-gradient(circle at 40% 100%, rgba(0, 133, 197, .25), transparent 25%),
+    linear-gradient(180deg, #073b5e 0%, #052e4b 52%, #032744 100%);
 }
 
-.menu {
-  width: 100%;
+.sidebarLogo {
+  height: 80px;
+  padding: 18px 28px;
+  display: flex;
+  align-items: center;
 }
 
-.menuItem {
+.sidebarLogo img {
+  width: 82px;
+  height: 42px;
+  object-fit: contain;
+}
+
+.intranetMenu { padding-top: 2px; }
+
+.intranetMenuItem,
+.intranetMenuActive {
   width: 100%;
-  height: 62px;
-
-  padding: 0 28px;
-
+  height: 48px;
   border: 0;
   border-left: 4px solid transparent;
-
+  padding: 0 24px;
   display: flex;
   align-items: center;
-
-  gap: 16px;
-
-  color: #fff;
-
+  gap: 14px;
+  color: #edf6fb;
   background: transparent;
-
   cursor: pointer;
-
+  text-align: left;
   font-size: 13px;
-
-  white-space: nowrap;
-
-  &:hover {
-    background:
-      rgba(255, 255, 255, 0.06);
-  }
 }
 
-.menuActive {
-  border-left-color: var(--cyan);
+.intranetMenuItem:hover { background: rgba(255,255,255,.06); }
 
-  background:
-    rgba(37, 139, 196, 0.23);
+.intranetMenuActive {
+  border-left-color: #12c6ff;
+  background: linear-gradient(90deg, #0875bd, #075b96);
+  font-weight: 600;
 }
 
-.menuIcon {
-  width: 22px;
-
-  flex-shrink: 0;
-
+.intranetIcon {
+  width: 20px;
   text-align: center;
-
-  font-size: 20px;
+  font-size: 17px;
 }
 
-.sidePhrase {
-  padding: 52px 28px 20px;
-
-  color: #abc0d0;
-
-  >div {
-    width: 50px;
-    height: 3px;
-
-    margin-bottom: 22px;
-
-    background: var(--cyan);
-  }
-
-  p {
-    margin: 0;
-
-    font-size: 17px;
-    line-height: 1.5;
-  }
-}
-
-/* ÁREA PRINCIPAL */
-
-.mainArea {
-  flex: 1;
-
-  min-width: 0;
-
-  overflow: hidden;
-}
-
-/* HEADER */
-
-.topbar {
-  width: 100%;
-  height: 78px;
-
-  display: grid;
-
-  grid-template-columns:
-    360px minmax(280px, 1fr) auto;
-
-  align-items: center;
-
-  gap: 30px;
-
-  padding: 0 32px;
-
-  color: #fff;
-
-  background:
-    linear-gradient(90deg,
-      #073653,
-      #03223a);
-}
-
-.brand {
-  min-width: 0;
-
-  display: flex;
-  align-items: center;
-
-  gap: 18px;
-}
-
-.brandLogo {
-  width: 105px;
-  height: 54px;
-
-  flex-shrink: 0;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  padding-right: 18px;
-
-  border-right:
-    1px solid rgba(255, 255, 255, 0.34);
-
-  overflow: hidden;
-
-  img {
-    width: 100%;
-    height: 100%;
-
-    display: block;
-
-    object-fit: contain;
-  }
-}
-
-.brandText {
-  min-width: 0;
-
+.sidebarWords {
+  position: absolute;
+  left: 28px;
+  bottom: 38px;
   display: flex;
   flex-direction: column;
-
-  span {
-    color: #fff;
-
-    font-size: 16px;
-    font-weight: 600;
-
-    white-space: nowrap;
-  }
-
-  small {
-    margin-top: 3px;
-
-    color: #fff;
-
-    font-size: 8px;
-
-    opacity: 0.65;
-
-    white-space: nowrap;
-  }
+  gap: 5px;
+  font-size: 13px;
+  letter-spacing: .3px;
 }
 
-.search {
-  width: 100%;
-
-  max-width: 620px;
-
-  justify-self: center;
-
-  height: 40px;
-
-  display: flex;
-  align-items: center;
-
-  gap: 10px;
-
-  padding: 0 14px;
-
-  border-radius: 4px;
-
-  color: #547086;
-
-  background: #fff;
-
-  input {
-    width: 100%;
-
-    min-width: 0;
-
-    border: 0;
-    outline: 0;
-
-    background: transparent;
-
-    color: #4c6174;
-
-    font-size: 12px;
-  }
+.workspace {
+  flex: 1;
+  min-width: 0;
+  width: calc(100% - 184px);
 }
 
-.userArea {
+.globalHeader {
+  height: 66px;
+  padding: 0 28px;
   display: flex;
   align-items: center;
-
-  gap: 11px;
-
+  justify-content: space-between;
+  gap: 28px;
   color: #fff;
+  background: linear-gradient(90deg, #073a5d 0%, #052d4b 100%);
 }
 
-.notification {
-  position: relative;
+.globalSearch {
+  width: min(510px, 45vw);
+  height: 39px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 7px;
+  color: #5d7085;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+}
 
-  margin-right: 8px;
+.globalSearch input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  font-size: 12px;
+}
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connection {
+  font-size: 9px;
+  color: #c9f7f5;
+  white-space: nowrap;
+}
+
+.headerIcon {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
   font-size: 20px;
+}
 
-  span {
-    position: absolute;
-
-    top: -7px;
-    right: -8px;
-
-    width: 17px;
-    height: 17px;
-
-    display: grid;
-    place-items: center;
-
-    border-radius: 50%;
-
-    background: #eb3b3b;
-
-    font-size: 9px;
-    font-weight: 700;
-  }
+.userBox {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 150px;
 }
 
 .avatar {
   width: 38px;
   height: 38px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  flex-shrink: 0;
-
-  overflow: hidden;
-
   border-radius: 50%;
-
-  background: #e8f2f8;
-
-  color: #063c63;
-
-  font-size: 14px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #073b5e;
   font-weight: 700;
+}
 
-  img {
-    width: 100%;
-    height: 100%;
-
-    display: block;
-
-    object-fit: cover;
-
-    border-radius: 50%;
-  }
-
-  span {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    width: 100%;
-    height: 100%;
-  }
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .userText {
-  min-width: 90px;
-
   display: flex;
   flex-direction: column;
-
-  strong {
-    font-size: 12px;
-  }
-
-  span {
-    margin-top: 2px;
-
-    font-size: 10px;
-
-    opacity: 0.8;
-  }
 }
 
-.chevron {
-  margin-left: 4px;
-}
+.userText strong { font-size: 12px; }
+.userText span { font-size: 10px; opacity: .8; }
+.chevron { margin-left: 4px; }
 
-/* HERO */
-
-.hero {
+.page {
   width: 100%;
-  min-height: 275px;
+  padding: 12px 16px 34px;
+}
 
+.trainingHero {
+  width: 100%;
+  min-height: 138px;
+  padding: 22px 32px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-
-  gap: 40px;
-
-  padding: 28px 52px;
-
-  color: #fff;
-
+  gap: 24px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  color: #092e50;
   background:
-    linear-gradient(90deg,
-      rgba(5, 45, 75, 0.99) 0%,
-      rgba(5, 45, 75, 0.91) 38%,
-      rgba(5, 45, 75, 0.54) 70%,
-      rgba(5, 45, 75, 0.90) 100%),
-    url("https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&w=1800&q=85"
-    ) center 45% / cover no-repeat;
+    linear-gradient(90deg, rgba(207,231,249,.98) 0%, rgba(216,234,248,.88) 48%, rgba(6,47,78,.12) 70%),
+    url("https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1800&q=80") right center/52% 100% no-repeat,
+    #dcecf8;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.8);
 }
 
-.heroContent {
-  width: 70%;
-  max-width: 780px;
-
-  h1 {
-    margin: 0;
-
-    font-size: 44px;
-    line-height: 0.98;
-
-    font-weight: 800;
-
-    span {
-      color: var(--cyan);
-    }
-  }
-
-  >p {
-    max-width: 690px;
-
-    margin: 17px 0 0;
-
-    font-size: 15px;
-    line-height: 1.5;
-  }
+.heroIcon {
+  font-size: 54px;
+  line-height: 1;
 }
 
-.benefits {
-  margin-top: 27px;
-
-  display: grid;
-
-  grid-template-columns:
-    repeat(4, minmax(105px, 1fr));
-
-  gap: 25px;
-
-  div {
-    display: flex;
-    align-items: center;
-
-    gap: 9px;
-  }
-
-  strong {
-    font-size: 26px;
-  }
-
-  span {
-    font-size: 10px;
-    line-height: 1.25;
-  }
+.heroText h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1;
 }
 
-.heroWords {
-  min-width: 150px;
+.heroText h2 {
+  margin: 7px 0 3px;
+  font-size: 18px;
+  font-weight: 500;
+}
 
-  display: flex;
-  flex-direction: column;
-
-  padding-left: 15px;
-
-  border-left: 6px solid var(--cyan);
-
-  color: #c9d5df;
-
+.heroText p {
+  margin: 0;
   font-size: 13px;
-  line-height: 1.45;
-
-  strong {
-    margin-top: 35px;
-
-    color: #fff;
-
-    font-size: 38px;
-  }
 }
 
-/* CONTEÚDO */
+.heroQuote {
+  margin-left: auto;
+  width: 220px;
+  min-height: 94px;
+  padding: 18px 20px;
+  border-radius: 10px;
+  color: #fff;
+  background: rgba(4, 43, 72, .88);
+  box-shadow: 0 5px 18px rgba(0,0,0,.12);
+}
+
+.heroQuote p {
+  margin: 0 0 10px;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.heroQuote strong {
+  display: block;
+  text-align: right;
+  font-style: italic;
+}
+
+.trainingTabs {
+  height: 50px;
+  margin-top: 4px;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid #dbe4ec;
+  background: #fff;
+  border-radius: 10px 10px 0 0;
+}
+
+.trainingTab,
+.trainingTabActive {
+  min-width: max-content;
+  padding: 0 20px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #15344f;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.trainingTab:hover { background: #f4f8fc; }
+
+.trainingTabActive {
+  color: #0874ce;
+  border-bottom-color: #168cff;
+  background: #eef7ff;
+}
 
 .content {
   width: 100%;
-
-  display: grid;
-
-  grid-template-columns:
-    minmax(0, 1fr) 360px;
-
-  gap: 18px;
-
-  padding: 14px;
-
-  background: var(--background);
+  padding: 18px 8px 0;
 }
 
-.leftColumn {
-  min-width: 0;
-
-  display: flex;
-  flex-direction: column;
-
-  gap: 14px;
-}
-
-.panel {
-  min-width: 0;
-
-  padding: 17px;
-
-  border-radius: 8px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 12px rgba(14, 48, 74, 0.07);
-}
-
-/* CABEÇALHOS */
-
-.sectionHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-
-  gap: 20px;
-
-  margin-bottom: 13px;
-
-  h2 {
-    margin: 0;
-
-    color: #102d49;
-
-    font-size: 19px;
-  }
-
-  p {
-    margin: 3px 0 0;
-
-    color: var(--muted);
-
-    font-size: 10px;
-  }
-
-  button {
-    flex-shrink: 0;
-
-    border: 0;
-
-    background: transparent;
-
-    color: var(--blue);
-
-    cursor: pointer;
-
-    font-size: 10px;
-    font-weight: 600;
-  }
-}
-
-/* TREINAMENTOS */
-
-.trainingGrid {
+.content > section {
   width: 100%;
-
-  display: grid;
-
-  grid-template-columns:
-    repeat(4, minmax(0, 1fr));
-
-  gap: 15px;
+  max-width: none;
+  margin: 0;
 }
 
-.trainingCard {
-  min-width: 0;
+.content h1 {
+  color: #102b47;
+  font-size: 25px;
+}
 
-  overflow: hidden;
+.content h2 {
+  color: #102b47;
+  font-size: 16px;
+}
 
-  border: 1px solid #e8edf1;
+.content p {
+  color: var(--muted);
+}
+
+.content button {
+  border: 0;
   border-radius: 7px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 10px rgba(15, 45, 70, 0.07);
-}
-
-.trainingImage {
-  width: 100%;
-  height: 105px;
-
-  background-position: center;
-  background-size: cover;
-}
-
-.trainingBody {
-  min-width: 0;
-
-  padding: 12px 13px 13px;
-
-  display: flex;
-  flex-direction: column;
-
-  >strong {
-    color: #102d49;
-
-    font-size: 13px;
-  }
-}
-
-.category {
-  min-height: 28px;
-
-  margin-top: 4px;
-
-  color: #62778a;
-
-  font-size: 10px;
-  line-height: 1.25;
-}
-
-.statusBadge {
-  width: fit-content;
-
-  margin-top: 10px;
-
-  padding: 5px 9px;
-
-  border-radius: 10px;
-
-  font-size: 9px;
-  font-weight: 600;
-}
-
-.statusConcluido {
-  color: #187b39;
-  background: #d0f1d6;
-}
-
-.statusAndamento {
-  color: #0574aa;
-  background: #c9eaff;
-}
-
-.statusDisponivel {
-  color: #635000;
-  background: #ffe59b;
-}
-
-.statusBloqueado {
-  color: #586776;
-  background: #dce2e7;
-}
-
-.progressRow {
-  margin-top: 10px;
-
-  display: flex;
-  align-items: center;
-
-  gap: 7px;
-
-  strong {
-    flex-shrink: 0;
-
-    font-size: 9px;
-  }
-}
-
-.progressTrack {
-  flex: 1;
-
-  height: 7px;
-
-  overflow: hidden;
-
-  border-radius: 20px;
-
-  background: #dfe5e9;
-}
-
-.progressFill {
-  height: 100%;
-
-  border-radius: 20px;
-
-  background: #12b1c8;
-}
-
-.courseInfo {
-  margin-top: 10px;
-
-  color: #66798b;
-
-  font-size: 9px;
-}
-
-/* DOCUMENTOS */
-
-.tableWrapper {
-  width: 100%;
-
-  overflow-x: auto;
-
-  table {
-    width: 100%;
-
-    min-width: 650px;
-
-    border-collapse: collapse;
-  }
-
-  th {
-    padding: 8px 12px;
-
-    background: #e9f0f5;
-
-    color: #20374c;
-
-    font-size: 9px;
-    font-weight: 600;
-
-    text-align: left;
-  }
-
-  td {
-    padding: 9px 12px;
-
-    border-bottom:
-      1px solid #e6ebef;
-
-    color: #41586d;
-
-    font-size: 9px;
-  }
-}
-
-.documentActive,
-.documentReview {
-  padding: 4px 7px;
-
-  border-radius: 10px;
-
-  font-size: 8px;
-  font-weight: 600;
-}
-
-.documentActive {
-  background: #ccefd2;
-  color: #17743a;
-}
-
-.documentReview {
-  background: #ffe3a0;
-  color: #675100;
-}
-
-.actionButton {
-  border: 0;
-
-  background: transparent;
-
-  color: var(--blue);
-
-  cursor: pointer;
-
-  font-size: 15px;
-}
-
-/* COLUNA DIREITA */
-
-.rightColumn {
-  min-width: 0;
-
-  display: flex;
-  flex-direction: column;
-
-  gap: 12px;
-}
-
-.progressCard,
-.expirationCard,
-.helpCard {
-  padding: 18px;
-
-  border-radius: 8px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 12px rgba(14, 48, 74, 0.07);
-
-  h3 {
-    margin: 0;
-
-    color: #102d49;
-
-    font-size: 13px;
-  }
-}
-
-.progressContent {
-  margin-top: 10px;
-
-  display: grid;
-
-  grid-template-columns:
-    135px 1fr;
-
-  align-items: center;
-
-  gap: 12px;
-}
-
-.progressCircle {
-  width: 110px;
-  height: 110px;
-
-  display: grid;
-  place-items: center;
-
-  margin: 0 auto;
-
-  border-radius: 50%;
-
-  background:
-    conic-gradient(#0fa6c2 0 60%,
-      #dce4e9 60% 100%);
-
-  >div {
-    width: 80px;
-    height: 80px;
-
-    display: grid;
-    place-items: center;
-
-    border-radius: 50%;
-
-    background: #fff;
-  }
-
-  strong {
-    font-size: 22px;
-  }
-}
-
-.progressDescription {
-  display: flex;
-  flex-direction: column;
-
-  strong {
-    color: #102d49;
-
-    font-size: 11px;
-  }
-
-  span {
-    margin-top: 2px;
-
-    color: #435a6e;
-
-    font-size: 10px;
-  }
-
-  button {
-    width: fit-content;
-
-    margin-top: 18px;
-
-    padding: 0;
-
-    border: 0;
-
-    background: transparent;
-
-    color: var(--blue);
-
-    cursor: pointer;
-
-    font-size: 9px;
-  }
-}
-
-/* VENCIMENTOS */
-
-.expirationCard {
-  background: #edf5f9;
-}
-
-.expirationCard h3 {
-  margin-bottom: 13px;
-}
-
-.expirationItem {
-  padding: 9px 10px;
-
-  display: flex;
-  justify-content: space-between;
-
-  gap: 10px;
-
-  border-bottom:
-    1px solid #e1e8ec;
-
-  background: #fff;
-
-  span,
-  strong {
-    font-size: 9px;
-  }
-
-  strong {
-    flex-shrink: 0;
-  }
-}
-
-.viewAll {
-  margin-top: 10px;
-
-  float: right;
-
-  border: 0;
-
-  background: transparent;
-
-  color: var(--blue);
-
-  cursor: pointer;
-
-  font-size: 9px;
-}
-
-/* AJUDA */
-
-.helpCard {
-  display: grid;
-
-  grid-template-columns:
-    40px 1fr;
-
-  gap: 10px;
-
-  align-items: start;
-
-  p {
-    margin: 5px 0 0;
-
-    color: #597084;
-
-    font-size: 9px;
-    line-height: 1.35;
-  }
-
-  >button {
-    grid-column: 1 / -1;
-
-    padding: 10px 14px;
-
-    border: 0;
-    border-radius: 4px;
-
-    background: #063456;
-
-    color: #fff;
-
-    cursor: pointer;
-
-    font-size: 10px;
-    font-weight: 600;
-  }
-}
-
-.helpIcon {
-  font-size: 26px;
-}
-
-/* RESPONSIVO */
-
-@media screen and (max-width: 1350px) {
-
-  .content {
-    grid-template-columns:
-      minmax(0, 1fr) 310px;
-  }
-
-  .trainingGrid {
-    grid-template-columns:
-      repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media screen and (max-width: 1050px) {
-
-  .content {
-    grid-template-columns: 1fr;
-  }
-
-  .rightColumn {
-    display: grid;
-
-    grid-template-columns:
-      repeat(3, minmax(0, 1fr));
-  }
-
-  .heroWords {
-    display: none;
-  }
-
-  .heroContent {
-    width: 100%;
-  }
-}
-
-@media screen and (max-width: 800px) {
-
-  .sidebar {
-    width: 68px;
-    min-width: 68px;
-  }
-
-  .menuItem {
-    justify-content: center;
-
-    padding: 0;
-
-    span:last-child {
-      display: none;
-    }
-  }
-
-  .sidePhrase {
-    display: none;
-  }
-
-  .topbar {
-    grid-template-columns:
-      auto 1fr auto;
-  }
-
-  .brandText {
-    display: none;
-  }
-
-  .brandLogo {
-    width: 70px;
-    height: 42px;
-
-    padding-right: 0;
-
-    border-right: 0;
-  }
-
-  .userText {
-    display: none;
-  }
-
-  .hero {
-    padding: 25px;
-  }
-
-  .heroContent h1 {
-    font-size: 34px;
-  }
-
-  .benefits {
-    grid-template-columns:
-      repeat(2, 1fr);
-  }
-
-  .rightColumn {
-    grid-template-columns: 1fr;
-  }
-}
-
-
-
-/* =========================================================
-   PÁGINAS INTERNAS
-========================================================= */
-
-.pageContent {
-  width: 100%;
-  min-height: calc(100vh - 78px);
-
-  padding: 28px;
-
-  background: #f4f7fa;
-}
-
-.pageHeader {
-  margin-bottom: 22px;
-
-  h1 {
-    margin: 0;
-
-    color: #102d49;
-
-    font-size: 28px;
-    font-weight: 700;
-  }
-
-  p {
-    margin: 6px 0 0;
-
-    color: #66798b;
-
-    font-size: 13px;
-  }
-}
-
-/* FILTROS */
-
-.filtersBar {
-  display: flex;
-  align-items: center;
-
-  gap: 12px;
-
-  margin-bottom: 22px;
-
-  padding: 15px;
-
-  border-radius: 8px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 12px rgba(15, 46, 72, 0.06);
-
-  input,
-  select {
-    height: 38px;
-
-    padding: 0 12px;
-
-    border: 1px solid #dce3e9;
-    border-radius: 5px;
-
-    background: #fff;
-
-    color: #3c5267;
-
-    font-size: 12px;
-
-    outline: none;
-  }
-
-  input {
-    min-width: 280px;
-  }
-}
-
-/* PÁGINA DE TREINAMENTOS */
-
-.trainingPageGrid {
-  display: grid;
-
-  grid-template-columns:
-    repeat(auto-fit,
-      minmax(260px, 1fr));
-
-  gap: 20px;
-}
-
-.trainingLargeCard {
-  overflow: hidden;
-
-  border: 1px solid #e5ebef;
-  border-radius: 9px;
-
-  background: #fff;
-
-  box-shadow:
-    0 4px 15px rgba(15, 46, 72, 0.08);
-}
-
-.trainingLargeImage {
-  width: 100%;
-  height: 150px;
-
-  background-position: center;
-  background-size: cover;
-}
-
-.trainingLargeBody {
-  padding: 18px;
-
-  >div:first-child {
-    display: flex;
-    flex-direction: column;
-
-    strong {
-      color: #102d49;
-
-      font-size: 17px;
-    }
-
-    span {
-      margin-top: 5px;
-
-      color: #687b8d;
-
-      font-size: 12px;
-    }
-  }
-}
-
-.trainingFooter {
-  margin-top: 17px;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  gap: 10px;
-
-  color: #66798b;
-
-  font-size: 11px;
-
-  button {
-    padding: 8px 12px;
-
-    border: 0;
-    border-radius: 5px;
-
-    background: #063c63;
-
-    color: #fff;
-
-    cursor: pointer;
-
-    font-size: 11px;
-    font-weight: 600;
-  }
-}
-
-/* PAINEL */
-
-.pagePanel {
-  overflow-x: auto;
-
-  padding: 18px;
-
-  border-radius: 8px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 12px rgba(15, 46, 72, 0.06);
-}
-
-/* TABELAS */
-
-.fullTable {
-  width: 100%;
-  min-width: 800px;
-
-  border-collapse: collapse;
-
-  th {
-    padding: 13px 15px;
-
-    background: #eaf0f4;
-
-    color: #20374c;
-
-    text-align: left;
-
-    font-size: 11px;
-  }
-
-  td {
-    padding: 14px 15px;
-
-    border-bottom:
-      1px solid #e5eaee;
-
-    color: #41586d;
-
-    font-size: 11px;
-  }
-
-  tbody tr:hover {
-    background: #f7f9fb;
-  }
-}
-
-.tableAction {
-  margin-right: 5px;
-
-  padding: 6px 9px;
-
-  border: 1px solid #d7e0e7;
-  border-radius: 4px;
-
-  background: #fff;
-
-  color: #0765a8;
-
-  cursor: pointer;
-
-  font-size: 10px;
-
-  &:hover {
-    background: #edf6fc;
-  }
-}
-
-/* HISTÓRICO */
-
-.historyIndicators {
-  display: grid;
-
-  grid-template-columns:
-    repeat(4, 1fr);
-
-  gap: 15px;
-
-  margin-bottom: 22px;
-
-  >div {
-    min-height: 100px;
-
-    padding: 18px;
-
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-
-    border-radius: 8px;
-
-    background: #fff;
-
-    box-shadow:
-      0 3px 12px rgba(15, 46, 72, 0.06);
-
-    strong {
-      color: #063c63;
-
-      font-size: 28px;
-    }
-
-    span {
-      margin-top: 5px;
-
-      color: #687b8d;
-
-      font-size: 11px;
-    }
-  }
-}
-
-/* RESPONSIVO DAS PÁGINAS INTERNAS */
-
-@media screen and (max-width: 1000px) {
-
-  .historyIndicators {
-    grid-template-columns:
-      repeat(2, 1fr);
-  }
-
-  .filtersBar {
-    flex-wrap: wrap;
-
-    input {
-      width: 100%;
-      min-width: 0;
-    }
-  }
-}
-
-@media screen and (max-width: 600px) {
-
-  .pageContent {
-    padding: 16px;
-  }
-
-  .trainingPageGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .historyIndicators {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* =========================================================
-   DIVISOR - ÁREA DO GESTOR
-========================================================= */
-
-.menuDivider {
-  margin: 24px 25px 8px;
-
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-
-  padding-top: 15px;
-
-  span {
-    color: #7fa0b8;
-
-    font-size: 9px;
-    font-weight: 700;
-
-    letter-spacing: 1.4px;
-  }
-}
-
-/* =========================================================
-   CERTIFICADOS
-========================================================= */
-
-.certificateSummary {
-  display: grid;
-
-  grid-template-columns:
-    repeat(3, minmax(0, 1fr));
-
-  gap: 16px;
-
-  margin-bottom: 22px;
-
-  >div {
-    min-height: 100px;
-
-    display: flex;
-    align-items: center;
-
-    gap: 16px;
-
-    padding: 18px;
-
-    border-radius: 9px;
-
-    background: #fff;
-
-    box-shadow:
-      0 3px 12px rgba(15, 46, 72, 0.06);
-
-    >span {
-      width: 46px;
-      height: 46px;
-
-      display: grid;
-      place-items: center;
-
-      flex-shrink: 0;
-
-      border-radius: 50%;
-
-      background: #e8f5fb;
-
-      color: #076baa;
-
-      font-size: 23px;
-    }
-
-    div {
-      display: flex;
-      flex-direction: column;
-    }
-
-    strong {
-      color: #063c63;
-
-      font-size: 23px;
-    }
-
-    small {
-      margin-top: 3px;
-
-      color: #6b7d8e;
-
-      font-size: 10px;
-    }
-  }
-}
-
-.certificateGrid {
-  display: grid;
-
-  grid-template-columns:
-    repeat(auto-fit,
-      minmax(320px, 1fr));
-
-  gap: 18px;
-}
-
-.certificateCard {
-  display: grid;
-
-  grid-template-columns:
-    90px minmax(0, 1fr);
-
-  overflow: hidden;
-
-  min-height: 260px;
-
-  border-radius: 9px;
-
-  background: #fff;
-
-  box-shadow:
-    0 4px 15px rgba(15, 46, 72, 0.08);
-}
-
-.certificateIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  padding: 16px;
-
-  background:
-    linear-gradient(180deg,
-      #073b61,
-      #052b48);
-
-  img {
-    width: 100%;
-    max-width: 70px;
-    height: auto;
-
-    display: block;
-
-    object-fit: contain;
-  }
-}
-
-.certificateBody {
-  padding: 21px;
-
-  >span {
-    color: #6c8293;
-
-    font-size: 9px;
-
-    text-transform: uppercase;
-
-    letter-spacing: 1px;
-  }
-
-  h3 {
-    margin: 6px 0 17px;
-
-    color: #102d49;
-
-    font-size: 20px;
-  }
-
-  dl {
-    margin: 0;
-
-    display: grid;
-
-    grid-template-columns:
-      repeat(2, 1fr);
-
-    gap: 13px;
-
-    div {
-      display: flex;
-      flex-direction: column;
-    }
-
-    dt {
-      color: #7a8c9b;
-
-      font-size: 9px;
-    }
-
-    dd {
-      margin: 3px 0 0;
-
-      color: #314b61;
-
-      font-size: 11px;
-      font-weight: 600;
-    }
-  }
-}
-
-.certificateActions {
-  margin-top: 22px;
-
-  display: flex;
-
-  gap: 8px;
-
-  button {
-    padding: 8px 12px;
-
-    border: 1px solid #d7e1e8;
-    border-radius: 5px;
-
-    background: #fff;
-
-    color: #0768a8;
-
-    cursor: pointer;
-
-    font-size: 10px;
-    font-weight: 600;
-
-    &:last-child {
-      border-color: #063c63;
-
-      background: #063c63;
-
-      color: #fff;
-    }
-  }
-}
-
-/* =========================================================
-   SUPORTE
-========================================================= */
-
-.supportGrid {
-  display: grid;
-
-  grid-template-columns:
-    repeat(3, minmax(0, 1fr));
-
-  gap: 18px;
-
-  margin-bottom: 22px;
-}
-
-.supportCard {
-  min-height: 220px;
-
-  padding: 22px;
-
-  border-radius: 9px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 12px rgba(15, 46, 72, 0.06);
-
-  h3 {
-    margin: 15px 0 7px;
-
-    color: #102d49;
-
-    font-size: 16px;
-  }
-
-  p {
-    min-height: 55px;
-
-    margin: 0;
-
-    color: #62788b;
-
-    font-size: 11px;
-    line-height: 1.5;
-  }
-
-  button {
-    margin-top: 17px;
-
-    padding: 0;
-
-    border: 0;
-
-    background: transparent;
-
-    color: #0769aa;
-
-    cursor: pointer;
-
-    font-size: 11px;
-    font-weight: 600;
-  }
-}
-
-.supportIcon {
-  width: 48px;
-  height: 48px;
-
-  display: grid;
-  place-items: center;
-
-  border-radius: 8px;
-
-  background: #e7f4fb;
-
-  color: #066cae;
-
-  font-size: 24px;
-}
-
-.supportForm {
-  padding: 22px;
-
-  border-radius: 9px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 12px rgba(15, 46, 72, 0.06);
-
-  h2 {
-    margin: 0;
-
-    color: #102d49;
-
-    font-size: 19px;
-  }
-
-  >div:first-child p {
-    margin: 5px 0 20px;
-
-    color: #687c8e;
-
-    font-size: 11px;
-  }
-}
-
-/* =========================================================
-   FORMULÁRIOS
-========================================================= */
-
-.formGrid {
-  display: grid;
-
-  grid-template-columns:
-    repeat(2, minmax(0, 1fr));
-
-  gap: 16px;
-
-  label {
-    display: flex;
-    flex-direction: column;
-
-    gap: 6px;
-
-    color: #344d62;
-
-    font-size: 10px;
-    font-weight: 600;
-  }
-
-  input,
-  select,
-  textarea {
-    width: 100%;
-
-    padding: 10px 11px;
-
-    border: 1px solid #d8e1e8;
-    border-radius: 5px;
-
-    outline: none;
-
-    background: #fff;
-
-    color: #344d62;
-
-    font-family: inherit;
-
-    font-size: 11px;
-
-    &:focus {
-      border-color: #1686c1;
-
-      box-shadow:
-        0 0 0 2px rgba(22, 134, 193, 0.1);
-    }
-  }
-
-  textarea {
-    resize: vertical;
-  }
-}
-
-.fullField {
-  grid-column: 1 / -1;
-}
-
-.primaryButton {
-  padding: 10px 17px;
-
-  border: 0;
-  border-radius: 5px;
-
-  background: #063c63;
-
+  padding: 9px 15px;
   color: #fff;
-
+  background: #0877c9;
   cursor: pointer;
-
   font-size: 11px;
   font-weight: 600;
 }
 
-.secondaryButton {
-  padding: 10px 17px;
-
-  border: 1px solid #d3dfe7;
-  border-radius: 5px;
-
-  background: #fff;
-
-  color: #456076;
-
-  cursor: pointer;
-
-  font-size: 11px;
-  font-weight: 600;
-}
-
-/* =========================================================
-   GESTÃO DE TREINAMENTOS
-========================================================= */
-
-.managerHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  gap: 25px;
-
-  margin-bottom: 22px;
-
-  h1 {
-    margin: 7px 0 3px;
-
-    color: #102d49;
-
-    font-size: 28px;
-  }
-
-  p {
-    margin: 0;
-
-    color: #657a8c;
-
-    font-size: 12px;
-  }
-}
-
-.managerBadge {
-  display: inline-block;
-
-  padding: 5px 9px;
-
-  border-radius: 4px;
-
-  background: #dff1fa;
-
-  color: #076aa9;
-
-  font-size: 9px;
-  font-weight: 700;
-
-  text-transform: uppercase;
-
-  letter-spacing: 0.8px;
-}
-
-.newTrainingButton {
-  min-width: 160px;
-
-  padding: 11px 17px;
-
-  border: 0;
-  border-radius: 5px;
-
-  background: #063c63;
-
-  color: #fff;
-
-  cursor: pointer;
-
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.managerIndicators {
-  display: grid;
-
-  grid-template-columns:
-    repeat(4, minmax(0, 1fr));
-
-  gap: 15px;
-
-  margin-bottom: 18px;
-
-  article {
-    min-height: 120px;
-
-    padding: 19px;
-
-    display: flex;
-    flex-direction: column;
-
-    border-radius: 8px;
-
-    background: #fff;
-
-    box-shadow:
-      0 3px 12px rgba(15, 46, 72, 0.06);
-
-    >span {
-      color: #657a8d;
-
-      font-size: 10px;
-    }
-
-    strong {
-      margin-top: 7px;
-
-      color: #063c63;
-
-      font-size: 29px;
-    }
-
-    small {
-      margin-top: auto;
-
-      color: #8494a2;
-
-      font-size: 9px;
-    }
-  }
-}
-
-.managerActions {
-  display: grid;
-
-  grid-template-columns:
-    repeat(3, minmax(0, 1fr));
-
-  gap: 15px;
-
-  margin-bottom: 18px;
-
-  >button {
-    min-height: 95px;
-
-    padding: 17px;
-
-    display: flex;
-    align-items: center;
-
-    gap: 14px;
-
-    border: 1px solid #e1e8ed;
-    border-radius: 8px;
-
-    background: #fff;
-
-    cursor: pointer;
-
-    text-align: left;
-
-    transition:
-      transform 0.15s ease,
-      box-shadow 0.15s ease;
-
-    &:hover {
-      transform: translateY(-2px);
-
-      box-shadow:
-        0 5px 15px rgba(15, 46, 72, 0.08);
-    }
-
-    >span {
-      width: 42px;
-      height: 42px;
-
-      display: grid;
-      place-items: center;
-
-      flex-shrink: 0;
-
-      border-radius: 8px;
-
-      background: #e9f5fb;
-
-      color: #086ba9;
-
-      font-size: 20px;
-    }
-
-    div {
-      display: flex;
-      flex-direction: column;
-
-      strong {
-        color: #17334c;
-
-        font-size: 12px;
-      }
-
-      small {
-        margin-top: 4px;
-
-        color: #708395;
-
-        font-size: 9px;
-      }
-    }
-  }
-}
-
-/* NOVO TREINAMENTO */
-
-.newTrainingPanel {
-  margin-bottom: 18px;
-
-  padding: 22px;
-
-  border-radius: 9px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 12px rgba(15, 46, 72, 0.07);
-}
-
-.newTrainingTitle {
-  margin-bottom: 20px;
-
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-
-  h2 {
-    margin: 0;
-
-    color: #102d49;
-
-    font-size: 19px;
-  }
-
-  p {
-    margin: 4px 0 0;
-
-    color: #687c8e;
-
-    font-size: 10px;
-  }
-
-  >button {
-    width: 30px;
-    height: 30px;
-
-    border: 0;
-    border-radius: 50%;
-
-    background: #eef3f6;
-
-    color: #516a7e;
-
-    cursor: pointer;
-
-    font-size: 18px;
-  }
-}
-
-.formActions {
-  margin-top: 20px;
-
-  display: flex;
-  justify-content: flex-end;
-
-  gap: 8px;
-}
-
-.tableTitle {
-  margin-bottom: 15px;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  gap: 15px;
-
-  h2 {
-    margin: 0;
-
-    color: #102d49;
-
-    font-size: 17px;
-  }
-
-  p {
-    margin: 3px 0 0;
-
-    color: #718494;
-
-    font-size: 9px;
-  }
-
-  input {
-    width: 230px;
-    height: 34px;
-
-    padding: 0 10px;
-
-    border: 1px solid #d9e2e8;
-    border-radius: 4px;
-
-    outline: none;
-
-    font-size: 10px;
-  }
-}
-
-/* =========================================================
-   RESPONSIVO DAS NOVAS TELAS
-========================================================= */
-
-@media screen and (max-width: 1100px) {
-
-  .certificateSummary,
-  .supportGrid,
-  .managerActions {
-    grid-template-columns:
-      repeat(2, minmax(0, 1fr));
-  }
-
-  .managerIndicators {
-    grid-template-columns:
-      repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media screen and (max-width: 700px) {
-
-  .certificateSummary,
-  .supportGrid,
-  .managerIndicators,
-  .managerActions {
-    grid-template-columns: 1fr;
-  }
-
-  .formGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .fullField {
-    grid-column: auto;
-  }
-
-  .managerHeader {
-    align-items: stretch;
-
-    flex-direction: column;
-  }
-
-  .newTrainingButton {
-    width: 100%;
-  }
-
-  .certificateCard {
-    grid-template-columns: 65px minmax(0, 1fr);
-  }
-
-  .tableTitle {
-    align-items: stretch;
-
-    flex-direction: column;
-
-    input {
-      width: 100%;
-    }
-  }
-}
-
-/* =========================================================
-   CABEÇALHOS DAS PÁGINAS
-========================================================= */
-
-.pageHeaderWithAction {
-  margin-bottom: 22px;
-
-  h1 {
-    margin: 7px 0 4px;
-
-    color: #102d49;
-
-    font-size: 28px;
-  }
-
-  p {
-    margin: 0;
-
-    color: #687c8d;
-
-    font-size: 12px;
-  }
-}
-
-.backButton {
-  padding: 0;
-
-  border: 0;
-
-  background: transparent;
-
-  color: #0872b5;
-
-  cursor: pointer;
-
-  font-size: 10px;
-  font-weight: 600;
-}
-
-/* =========================================================
-   DOCUMENTOS - HOME
-========================================================= */
-
-.homeDocuments {
-  display: flex;
-  flex-direction: column;
-
-  gap: 8px;
-}
-
-.homeDocumentItem {
-  width: 100%;
-
-  display: grid;
-
-  grid-template-columns:
-    42px minmax(0, 1fr) auto;
-
-  align-items: center;
-
-  gap: 12px;
-
-  padding: 11px 13px;
-
-  border: 1px solid #e4eaee;
-  border-radius: 6px;
-
-  background: #fff;
-
-  cursor: pointer;
-
-  text-align: left;
-
-  transition:
-    background 0.15s ease,
-    transform 0.15s ease;
-
-  &:hover {
-    background: #f6f9fb;
-
-    transform: translateX(2px);
-  }
-}
-
-.documentIcon {
-  width: 38px;
-  height: 38px;
-
-  display: grid;
-  place-items: center;
-
-  border-radius: 5px;
-
-  background: #e8f2f8;
-
-  color: #0767a3;
-
-  font-size: 9px;
-  font-weight: 700;
-}
-
-.homeDocumentInfo {
-  min-width: 0;
-
-  display: flex;
-  flex-direction: column;
-
-  strong {
-    overflow: hidden;
-
-    color: #203b53;
-
-    font-size: 11px;
-
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  span {
-    margin-top: 3px;
-
-    color: #81909d;
-
-    font-size: 9px;
-  }
-}
-
-.homeDocumentStatus {
-  display: flex;
-  align-items: center;
-
-  gap: 10px;
-
-  span {
-    padding: 4px 7px;
-
-    border-radius: 10px;
-
-    background: #e4f4e8;
-
-    color: #248047;
-
-    font-size: 8px;
-    font-weight: 600;
-  }
-
-  strong {
-    color: #7a8d9c;
-
-    font-size: 18px;
-  }
-}
-
-/* =========================================================
-   FORMULÁRIOS GRANDES
-========================================================= */
-
-.largeFormCard {
-  padding: 24px;
-
-  border-radius: 9px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 12px rgba(15, 46, 72, 0.06);
-
-  h2 {
-    margin: 0 0 22px;
-
-    color: #102d49;
-
-    font-size: 18px;
-  }
-}
-
-/* =========================================================
-   ATRIBUIÇÃO
-========================================================= */
-
-.assignmentOptions {
-  display: flex;
-  flex-wrap: wrap;
-
-  gap: 9px;
-
-  margin-bottom: 25px;
-
-  button {
-    padding: 10px 16px;
-
-    border: 1px solid #d7e1e8;
-    border-radius: 5px;
-
-    background: #fff;
-
-    color: #4a6377;
-
-    cursor: pointer;
-
-    font-size: 10px;
-    font-weight: 600;
-  }
-
-  .assignmentActive {
-    border-color: #0869a7;
-
-    background: #e9f4fb;
-
-    color: #0869a7;
-  }
-}
-
-/* =========================================================
-   TRILHAS
-========================================================= */
-
-.trailGrid {
-  display: grid;
-
-  grid-template-columns:
-    repeat(auto-fit,
-      minmax(300px, 1fr));
-
-  gap: 18px;
-}
-
-.trailCard {
-  padding: 20px;
-
-  border-radius: 9px;
-
-  background: #fff;
-
-  box-shadow:
-    0 3px 12px rgba(15, 46, 72, 0.07);
-
-  ol {
-    margin: 20px 0 0;
-
-    padding: 0;
-
-    list-style: none;
-
-    li {
-      min-height: 43px;
-
-      display: flex;
-      align-items: center;
-
-      gap: 10px;
-
-      border-bottom: 1px solid #edf0f3;
-
-      color: #405a6f;
-
-      font-size: 10px;
-
-      span {
-        width: 24px;
-        height: 24px;
-
-        display: grid;
-        place-items: center;
-
-        border-radius: 50%;
-
-        background: #e9f4fa;
-
-        color: #0870ae;
-
-        font-size: 9px;
-        font-weight: 700;
-      }
-    }
-  }
-}
-
-.trailHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-
-  gap: 15px;
-
-  span {
-    color: #1380bb;
-
-    font-size: 8px;
-    font-weight: 700;
-
-    letter-spacing: 1px;
-  }
-
-  h3 {
-    margin: 5px 0 0;
-
-    color: #16344c;
-
-    font-size: 16px;
-  }
-
-  >strong {
-    padding: 5px 7px;
-
-    border-radius: 4px;
-
-    background: #edf4f7;
-
-    color: #617b8f;
-
-    font-size: 9px;
-  }
-}
-
-.trailActions {
-  margin-top: 17px;
-
-  button {
-    width: 100%;
-
-    padding: 8px;
-
-    border: 1px solid #d7e2e9;
-    border-radius: 5px;
-
-    background: #fff;
-
-    color: #0769a9;
-
-    cursor: pointer;
-
-    font-size: 10px;
-    font-weight: 600;
-  }
-}
-
-.newTrailCard {
-  min-height: 300px;
-
-  border: 2px dashed #cfdce5;
-  border-radius: 9px;
-
-  background: rgba(255, 255, 255, 0.45);
-
-  >button {
-    width: 100%;
-    height: 100%;
-
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-
-    border: 0;
-
-    background: transparent;
-
-    cursor: pointer;
-
-    color: #607b90;
-
-    >span {
-      width: 48px;
-      height: 48px;
-
-      display: grid;
-      place-items: center;
-
-      margin-bottom: 10px;
-
-      border-radius: 50%;
-
-      background: #e5f2f8;
-
-      color: #0871ad;
-
-      font-size: 24px;
-    }
-
-    strong {
-      color: #27475f;
-
-      font-size: 13px;
-    }
-
-    small {
-      margin-top: 5px;
-
-      color: #8595a1;
-
-      font-size: 9px;
-    }
-  }
-}
-
-/* =========================================================
-   BOTÕES DESABILITADOS
-========================================================= */
-
-.trainingFooter button:disabled {
-  opacity: 0.45;
-
+.content button:disabled {
+  color: #748493;
+  background: #dce4ea;
   cursor: not-allowed;
 }
 
-/* =========================================================
-   RESPONSIVO
-========================================================= */
-
-@media screen and (max-width: 700px) {
-
-  .homeDocumentItem {
-    grid-template-columns:
-      40px minmax(0, 1fr);
-  }
-
-  .homeDocumentStatus {
-    display: none;
-  }
-
-  .assignmentOptions {
-    display: grid;
-
-    grid-template-columns:
-      repeat(2, 1fr);
-
-    button {
-      width: 100%;
-    }
-  }
+.content article {
+  background: #fff !important;
+  border: 1px solid #e1e9ef !important;
+  border-radius: 11px !important;
+  box-shadow: 0 3px 12px rgba(15, 52, 79, .06);
 }
 
-/* =========================================================
-   LARGURA FINAL DO PORTAL
-========================================================= */
-
-/*
- * O portal ocupa toda a largura que o Web Part disponibilizar.
- */
-.portal {
+.content table {
   width: 100%;
-  max-width: none;
-  min-width: 0;
-
-  display: flex;
-
-  margin: 0;
-  padding: 0;
-
-  box-sizing: border-box;
-}
-
-/*
- * IMPORTANTE:
- * Não usar width: 100% aqui.
- *
- * A sidebar já possui largura própria.
- * A mainArea deve ocupar apenas TODO O RESTANTE.
- */
-.mainArea {
-  flex: 1 1 0;
-
-  width: auto;
-  min-width: 0;
-  max-width: none;
-
-  margin: 0;
-  padding: 0;
-
+  background: #fff;
+  border-collapse: collapse;
+  border-radius: 10px;
   overflow: hidden;
-
-  box-sizing: border-box;
+  box-shadow: 0 2px 10px rgba(15,52,79,.05);
 }
 
-.topbar,
-.hero,
-.content,
-.pageContent {
-  width: 100%;
-  max-width: none;
-  min-width: 0;
-
-  box-sizing: border-box;
-}
-
-.leftColumn {
-  min-width: 0;
-  max-width: none;
-}
-
-.rightColumn {
-  min-width: 280px;
-  max-width: none;
-}
-
-.panel,
-.pagePanel,
-.largeFormCard,
-.supportForm,
-.newTrainingPanel {
-  width: 100%;
-  max-width: none;
-
-  box-sizing: border-box;
-}
-
-.fullTable {
-  width: 100%;
-}
-
-
-/* =========================================================
-   LARGURA DO HOST SHAREPOINT
-========================================================= */
-
-/*
- * O SharePoint Modern coloca o Web Part dentro de containers
- * próprios. Estas regras tentam remover a limitação horizontal
- * desses containers na página do portal.
- *
- * IMPORTANTE:
- * São seletores do DOM do SharePoint. Servem para nosso portal,
- * mas a solução definitiva continuará sendo Full Page.
- */
-
-:global {
-
-  [data-automation-id="Canvas"] {
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  [data-automation-id="CanvasSection"] {
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  [data-automation-id="CanvasZone"] {
-    width: 100% !important;
-    max-width: none !important;
-
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-  }
-
-  [data-automation-id="CanvasZone-SectionContainer"] {
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  [data-automation-id="ControlZone"] {
-    width: 100% !important;
-    max-width: none !important;
-
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-  }
-
-  .CanvasComponent {
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  .CanvasZone {
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  .CanvasSection {
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  .ControlZone {
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  .SPCanvas {
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  .SPCanvas-canvas {
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  .SPCanvas-canvasContent {
-    width: 100% !important;
-    max-width: none !important;
-  }
-}
-
-
-/* =========================================================
-   MONITORES GRANDES
-========================================================= */
-
-@media screen and (min-width: 1400px) {
-
-  .content {
-    /*
-     * A coluna da direita fica um pouco maior,
-     * e todo o espaço restante vai para os treinamentos.
-     */
-    grid-template-columns:
-      minmax(0, 1fr) 350px;
-
-    gap: 20px;
-
-    padding: 18px;
-  }
-
-  .trainingGrid {
-    grid-template-columns:
-      repeat(4, minmax(0, 1fr));
-
-    gap: 18px;
-  }
-
-  .trainingPageGrid {
-    grid-template-columns:
-      repeat(4, minmax(0, 1fr));
-  }
-
-  .certificateGrid {
-    grid-template-columns:
-      repeat(3, minmax(0, 1fr));
-  }
-
-  .managerIndicators {
-    grid-template-columns:
-      repeat(4, minmax(0, 1fr));
-  }
-
-  .managerActions {
-    grid-template-columns:
-      repeat(3, minmax(0, 1fr));
-  }
-}
-
-
-/* =========================================================
-   MONITORES MUITO GRANDES
-========================================================= */
-
-@media screen and (min-width: 1700px) {
-
-  .content {
-    grid-template-columns:
-      minmax(0, 1fr) 380px;
-
-    padding: 20px;
-  }
-
-  .pageContent {
-    padding: 32px;
-  }
-
-  .hero {
-    padding-left: 60px;
-    padding-right: 60px;
-  }
-
-  .topbar {
-    padding-left: 38px;
-    padding-right: 38px;
-  }
-}
-
-/* =========================================================
-   NOVA EXPERIÊNCIA - MÓDULO DE TREINAMENTOS / INTRANET DGT
-========================================================= */
-
-.trainingHero {
-  min-height: 190px;
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 270px;
-  align-items: center;
-  gap: 28px;
-  padding: 24px 34px;
-  color: #0b2f50;
-  background:
-    linear-gradient(90deg, rgba(228, 242, 255, 0.97) 0%, rgba(230, 242, 252, 0.90) 50%, rgba(230, 242, 252, 0.40) 72%, rgba(5, 47, 79, 0.10) 100%),
-    url("https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=1800&q=85") center 48% / cover no-repeat;
-}
-
-.trainingHeroIcon {
-  width: 76px;
-  height: 76px;
-  display: grid;
-  place-items: center;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 8px 20px rgba(7, 48, 80, 0.12);
-  font-size: 42px;
-}
-
-.trainingHeroContent {
-  min-width: 0;
-
-  h1 {
-    margin: 0;
-    font-size: 36px;
-    line-height: 1;
-    color: #0b2f50;
-  }
-
-  h2 {
-    margin: 10px 0 0;
-    font-size: 18px;
-    font-weight: 500;
-    color: #113d64;
-  }
-
-  p {
-    margin: 8px 0 0;
-    font-size: 12px;
-    color: #496981;
-  }
-}
-
-.trainingHeroQuote {
-  justify-self: end;
-  width: 100%;
-  max-width: 255px;
-  padding: 18px 20px;
-  border-radius: 10px;
-  background: rgba(5, 47, 79, 0.90);
-  color: #fff;
-
-  p {
-    margin: 0;
-    font-size: 12px;
-    line-height: 1.55;
-  }
-
-  strong {
-    display: block;
-    margin-top: 12px;
-    text-align: right;
-    font-size: 15px;
-  }
-}
-
-.trainingSubnav {
-  min-height: 54px;
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 0 18px;
-  border-bottom: 1px solid #e1e8ee;
-  background: #fff;
-  overflow-x: auto;
-
-  button {
-    min-width: fit-content;
-    padding: 0 18px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: 0;
-    border-bottom: 3px solid transparent;
-    background: transparent;
-    color: #173b5c;
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
-
-    &:hover {
-      color: #0872b5;
-      background: #f7fbfe;
-    }
-  }
-}
-
-.trainingSubnavActive {
-  border-bottom-color: #168fea !important;
-  color: #0872b5 !important;
-  background: #edf7ff !important;
-}
-
-.trainingOverview {
-  width: 100%;
-  padding: 18px;
-  background: #f4f7fa;
-}
-
-.trainingOverviewHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-  margin-bottom: 14px;
-
-  h2 {
-    margin: 0;
-    color: #102d49;
-    font-size: 24px;
-  }
-
-  p {
-    margin: 4px 0 0;
-    color: #66798b;
-    font-size: 11px;
-  }
-
-  >span {
-    margin-top: 7px;
-    color: #8191a0;
-    font-size: 9px;
-    text-align: right;
-  }
-}
-
-.trainingKpis {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 14px;
-
-  article {
-    min-height: 92px;
-    display: flex;
-    align-items: center;
-    gap: 13px;
-    padding: 15px;
-    border-radius: 9px;
-    box-shadow: 0 3px 10px rgba(15, 46, 72, 0.04);
-
-    >div:last-child {
-      display: flex;
-      flex-direction: column;
-    }
-
-    strong {
-      color: #0d3152;
-      font-size: 24px;
-      line-height: 1;
-    }
-
-    span {
-      margin-top: 5px;
-      color: #284a65;
-      font-size: 10px;
-      font-weight: 600;
-    }
-
-    small {
-      margin-top: 2px;
-      color: #738697;
-      font-size: 8px;
-    }
-  }
-}
-
-.kpiIcon {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.58);
-  font-size: 23px;
-}
-
-.kpiSuccess { background: #e7f7f1; }
-.kpiProgress { background: #fff3e4; }
-.kpiPending { background: #fff0f2; }
-.kpiExpired { background: #edf6ff; }
-.kpiTrails { background: #f1efff; }
-
-.trainingDashboardGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 14px;
-}
-
-.trainingDashboardMain,
-.trainingDashboardSide {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.overviewCard {
-  min-width: 0;
-  padding: 14px;
-  border-radius: 9px;
-  background: #fff;
-  box-shadow: 0 3px 12px rgba(15, 46, 72, 0.06);
-}
-
-.overviewCardHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 15px;
-  margin-bottom: 12px;
-
-  h3 {
-    margin: 0;
-    color: #102d49;
-    font-size: 14px;
-  }
-
-  p {
-    margin: 3px 0 0;
-    color: #778a9a;
-    font-size: 9px;
-  }
-
-  button {
-    border: 0;
-    background: transparent;
-    color: #0872b5;
-    cursor: pointer;
-    font-size: 9px;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-}
-
-.continueTraining {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr) 130px;
-  align-items: center;
-  gap: 15px;
-}
-
-.continueTrainingImage {
-  height: 102px;
-  border-radius: 7px;
-  background-position: center;
-  background-size: cover;
-}
-
-.continueTrainingContent {
-  min-width: 0;
-
-  h3 {
-    margin: 7px 0 0;
-    color: #0f2e4a;
-    font-size: 17px;
-  }
-
-  p {
-    margin: 4px 0 0;
-    color: #506a7f;
-    font-size: 10px;
-  }
-
-  small {
-    display: block;
-    margin-top: 4px;
-    color: #81909d;
-    font-size: 9px;
-  }
-}
-
-.continueProgressRow {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  strong {
-    color: #183d5c;
-    font-size: 11px;
-  }
-}
-
-.continueButton {
-  padding: 10px 15px;
-  border: 0;
-  border-radius: 6px;
-  background: #073b61;
-  color: #fff;
-  cursor: pointer;
+.content th {
+  padding: 10px 12px;
+  text-align: left;
   font-size: 10px;
-  font-weight: 600;
+  background: #edf4f8;
 }
 
-.trainingOverviewCards {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+.content td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e8eef3;
+  font-size: 10px;
 }
 
-.trainingOverviewCard {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid #e7edf2;
-  border-radius: 8px;
-  background: #fff;
+@media (max-width: 1000px) {
+  .sidebar { width: 160px; min-width: 160px; }
+  .workspace { width: calc(100% - 160px); }
+  .connection { display: none; }
+  .heroQuote { display: none; }
 }
 
-.trainingOverviewImage {
-  height: 82px;
-  background-position: center;
-  background-size: cover;
-}
-
-.trainingOverviewBody {
-  min-width: 0;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-
-  >strong {
-    margin-top: 8px;
-    overflow: hidden;
-    color: #173750;
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  >small {
-    margin-top: 4px;
-    color: #7a8d9c;
-    font-size: 8px;
-  }
-
-  >button {
-    margin-top: 10px;
-    min-height: 31px;
-    border: 0;
-    border-radius: 5px;
-    background: #edf6fc;
-    color: #075e99;
-    cursor: pointer;
-    font-size: 9px;
-    font-weight: 600;
-
-    &:disabled {
-      background: #eef1f3;
-      color: #7a8995;
-      cursor: not-allowed;
-    }
-  }
-}
-
-.miniProgress {
-  margin-top: 9px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-
-  span {
-    color: #4d6578;
-    font-size: 8px;
-    font-weight: 700;
-  }
-}
-
-.recommendedTrails {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-
-  button {
-    min-width: 0;
-    padding: 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    border: 1px solid #e7edf1;
-    border-radius: 7px;
-    background: #fbfcfd;
-    cursor: pointer;
-    text-align: left;
-
-    >span {
-      width: 32px;
-      height: 32px;
-      display: grid;
-      place-items: center;
-      flex-shrink: 0;
-      border-radius: 7px;
-      background: #eaf4fb;
-      color: #0872b5;
-      font-size: 16px;
-    }
-
-    div {
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-    }
-
-    strong {
-      overflow: hidden;
-      color: #294861;
-      font-size: 9px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    small {
-      margin-top: 3px;
-      color: #7a8d9d;
-      font-size: 8px;
-    }
-  }
-}
-
-.upcomingList {
-  display: flex;
-  flex-direction: column;
-
-  >button {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 54px minmax(0, 1fr);
-    align-items: center;
-    gap: 11px;
-    padding: 10px 0;
-    border: 0;
-    border-bottom: 1px solid #e9eef2;
-    background: transparent;
-    cursor: pointer;
-    text-align: left;
-
-    >div:last-child {
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-
-      strong {
-        color: #1b3c58;
-        font-size: 10px;
-      }
-
-      span {
-        margin-top: 4px;
-        color: #748899;
-        font-size: 8px;
-      }
-    }
-  }
-}
-
-.upcomingDate {
-  width: 50px;
-  height: 50px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  background: #edf6f4;
-
-  strong {
-    color: #133b5b;
-    font-size: 16px;
-    line-height: 1;
-  }
-
-  span {
-    margin-top: 3px;
-    color: #607a8e;
-    font-size: 8px;
-    font-weight: 700;
-  }
-}
-
-.trailProgressList {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-
-  >div {
-    >span {
-      color: #294861;
-      font-size: 9px;
-      font-weight: 600;
-    }
-
-    >div {
-      margin-top: 7px;
-      display: flex;
-      align-items: center;
-      gap: 9px;
-
-      strong {
-        width: 32px;
-        color: #304e66;
-        font-size: 9px;
-        text-align: right;
-      }
-    }
-  }
-}
-
-.trainingQuickLinks {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-
-  button {
-    min-height: 78px;
-    padding: 9px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    border: 0;
-    border-radius: 7px;
-    background: #f5f8fb;
-    color: #294861;
-    cursor: pointer;
-    font-size: 8px;
-    font-weight: 600;
-    text-align: center;
-
-    span {
-      font-size: 18px;
-      color: #0872b5;
-    }
-  }
-}
-
-@media screen and (max-width: 1350px) {
-  .trainingKpis {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .trainingOverviewCards,
-  .recommendedTrails {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media screen and (max-width: 1080px) {
-  .trainingDashboardGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .trainingDashboardSide {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .trainingHero {
-    grid-template-columns: 72px minmax(0, 1fr);
-  }
-
-  .trainingHeroQuote {
-    display: none;
-  }
-}
-
-@media screen and (max-width: 800px) {
-  .trainingHero {
-    grid-template-columns: 1fr;
-    padding: 22px;
-  }
-
-  .trainingHeroIcon {
-    width: 58px;
-    height: 58px;
-    font-size: 30px;
-  }
-
-  .trainingHeroContent h1 {
-    font-size: 30px;
-  }
-
-  .trainingKpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .continueTraining {
-    grid-template-columns: 1fr;
-  }
-
-  .continueTrainingImage {
-    height: 160px;
-  }
-
-  .continueButton {
-    width: 100%;
-  }
-
-  .trainingDashboardSide {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media screen and (max-width: 560px) {
-  .trainingOverview {
-    padding: 12px;
-  }
-
-  .trainingOverviewHeader {
-    flex-direction: column;
-  }
-
-  .trainingOverviewHeader > span {
-    text-align: left;
-  }
-
-  .trainingKpis,
-  .trainingOverviewCards,
-  .recommendedTrails {
-    grid-template-columns: 1fr;
-  }
-
-  .trainingQuickLinks {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+@media (max-width: 760px) {
+  .portal { display: block; }
+  .sidebar { width: 100%; min-width: 100%; min-height: auto; }
+  .sidebarLogo, .sidebarWords { display: none; }
+  .intranetMenu { display: flex; overflow-x: auto; }
+  .intranetMenuItem, .intranetMenuActive { min-width: max-content; padding: 0 14px; }
+  .workspace { width: 100%; }
+  .globalHeader { padding: 0 14px; }
+  .globalSearch { width: 100%; }
+  .headerIcon, .userText, .chevron { display: none; }
+  .page { padding: 10px; }
+  .trainingHero { padding: 20px; }
+  .heroIcon { font-size: 38px; }
+  .heroText h1 { font-size: 28px; }
 }

@@ -15,3 +15,4 @@ export class TreinamentoService {
     return this.dataverse.iniciarUsuarioTreinamento(usuarioTreinamentoId);
   }
 }
+
