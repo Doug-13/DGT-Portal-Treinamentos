@@ -11,42 +11,51 @@ import {
 export interface IGestaoPageProps {
 
   treinamentos:
-    ITreinamentoAdmin[];
+  ITreinamentoAdmin[];
 
   carregando:
-    boolean;
+  boolean;
 
   erro:
-    string;
+  string;
 
   processandoId:
-    string;
+  string;
 
   onNovoTreinamento:
-    () => void;
+  () => void;
 
   onAtribuirTreinamento:
-    () => void;
+  () => void;
 
   onTrilhas:
-    () => void;
+  () => void;
 
   onEquipe:
-    () => void;
+  () => void;
 
   onEditarTreinamento:
-    (
-      dados:
-        IEditarTreinamento
-    ) => Promise<void>;
+  (
+    dados:
+      IEditarTreinamento
+  ) => Promise<void>;
 
   onDefinirAtivo:
-    (
-      treinamentoId:
-        string,
-      ativo:
-        boolean
-    ) => Promise<void>;
+  (
+    treinamentoId:
+      string,
+    ativo:
+      boolean
+  ) => Promise<void>;
+
+  onModulos: () => void;
+
+  onAvaliacoes: () => void;
+
+
+  onDocumentos:
+  () => void;
+
 }
 
 // ============================================================
@@ -454,7 +463,7 @@ const GestaoPage:
             cargaNumero
           ) ||
           cargaNumero <=
-            0
+          0
         ) {
 
           setErroEdicao(
@@ -469,9 +478,9 @@ const GestaoPage:
             notaNumero
           ) ||
           notaNumero <
-            0 ||
+          0 ||
           notaNumero >
-            100
+          100
         ) {
 
           setErroEdicao(
@@ -598,6 +607,50 @@ const GestaoPage:
             icone="♟"
             onClick={
               props.onEquipe
+            }
+          />
+
+          <Acao
+            titulo="Gerenciar módulos"
+            descricao="Organize o conteúdo dos treinamentos."
+            icone="▤"
+            onClick={
+              props.onModulos
+            }
+          />
+
+          <Acao
+            titulo="Avaliações e questões"
+            descricao="Configure provas, banco de questões e alternativas."
+            icone="✓"
+            onClick={
+              props.onAvaliacoes
+            }
+          />
+          <Acao
+            titulo="Módulos"
+            descricao="Gerencie os módulos dos treinamentos."
+            icone="▦"
+            onClick={
+              props.onModulos
+            }
+          />
+
+          <Acao
+            titulo="Avaliações"
+            descricao="Gerencie avaliações, questões e alternativas."
+            icone="✓"
+            onClick={
+              props.onAvaliacoes
+            }
+          />
+
+          <Acao
+            titulo="Documentos"
+            descricao="Gerencie documentos, revisões e retreinamentos."
+            icone="▤"
+            onClick={
+              props.onDocumentos
             }
           />
 
@@ -889,7 +942,7 @@ const GestaoPage:
                             {
                               treinamento
                                 .validadeMeses >
-                              0
+                                0
                                 ? `${treinamento.validadeMeses} meses`
                                 : 'Sem validade'
                             }

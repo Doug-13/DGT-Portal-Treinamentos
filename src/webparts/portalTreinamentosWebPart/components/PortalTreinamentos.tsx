@@ -77,7 +77,29 @@ import {
   useGestaoTrilhas
 } from '../hooks/useGestaoTrilhas';
 
+import {
+  useGestaoModulos
+} from '../hooks/useGestaoModulos';
 
+import {
+  useGestaoAvaliacoes
+} from '../hooks/useGestaoAvaliacoes';
+
+import {
+  useGestaoAtribuicoes
+} from '../hooks/useGestaoAtribuicoes';
+
+import {
+  useRevisaoDocumento
+} from '../hooks/useRevisaoDocumento';
+
+import {
+  useAutorizacao
+} from '../hooks/useAutorizacao';
+
+import {
+  useGestaoDocumentos
+} from '../hooks/useGestaoDocumentos';
 
 type DataverseRecord =
   IDataverseRecord;
@@ -430,6 +452,7 @@ const PortalTreinamentos:
     ] =
       React.useState('');
 
+
     // ==========================================================
     // SERVICES
     // ==========================================================
@@ -511,6 +534,40 @@ const PortalTreinamentos:
       useGestaoTrilhas(
         dataverseService
       );
+
+
+    const gestaoModulos =
+      useGestaoModulos(
+        dataverseService
+      );
+
+    const gestaoAvaliacoes =
+      useGestaoAvaliacoes(
+        dataverseService
+      );
+
+    const gestaoAtribuicoes =
+      useGestaoAtribuicoes(
+        dataverseService
+      );
+
+    const gestaoDocumentos =
+      useGestaoDocumentos(
+        dataverseService
+      );
+
+    const revisaoDocumento =
+      useRevisaoDocumento(
+        dataverseService
+      );
+
+    const autorizacao =
+      useAutorizacao(
+        dataverseService,
+        userEmail
+      );
+
+
     // ==========================================================
     // CARREGAR PORTAL
     // ==========================================================
@@ -2312,6 +2369,227 @@ const PortalTreinamentos:
 
                 removerTreinamentoTrilha={
                   gestaoTrilhas.removerTreinamento
+                }
+
+
+                modulosAdministrativos={
+                  gestaoModulos.modulos
+                }
+
+                treinamentoModuloSelecionadoId={
+                  gestaoModulos.treinamentoId
+                }
+
+                carregandoGestaoModulos={
+                  gestaoModulos.carregando
+                }
+
+                processandoGestaoModulos={
+                  gestaoModulos.processando
+                }
+
+                erroGestaoModulos={
+                  gestaoModulos.erro
+                }
+
+                selecionarTreinamentoModulo={
+                  gestaoModulos.selecionarTreinamento
+                }
+
+                criarModuloAdministrativo={
+                  gestaoModulos.criar
+                }
+
+                editarModuloAdministrativo={
+                  gestaoModulos.editar
+                }
+
+                definirModuloAtivo={
+                  gestaoModulos.definirAtivo
+                }
+
+                avaliacoesAdministrativas={
+                  gestaoAvaliacoes.avaliacoes
+                }
+
+                questoesAdministrativas={
+                  gestaoAvaliacoes.questoes
+                }
+
+                alternativasAdministrativas={
+                  gestaoAvaliacoes.alternativas
+                }
+
+                treinamentoAvaliacaoSelecionadoId={
+                  gestaoAvaliacoes.treinamentoId
+                }
+
+                avaliacaoAdministrativaSelecionada={
+                  gestaoAvaliacoes.avaliacaoSelecionada
+                }
+
+                questaoAdministrativaSelecionada={
+                  gestaoAvaliacoes.questaoSelecionada
+                }
+
+                carregandoGestaoAvaliacoes={
+                  gestaoAvaliacoes.carregando
+                }
+
+                processandoGestaoAvaliacoes={
+                  gestaoAvaliacoes.processando
+                }
+
+                erroGestaoAvaliacoes={
+                  gestaoAvaliacoes.erro
+                }
+
+                selecionarTreinamentoAvaliacao={
+                  gestaoAvaliacoes.selecionarTreinamento
+                }
+
+                selecionarAvaliacaoAdministrativa={
+                  gestaoAvaliacoes.selecionarAvaliacao
+                }
+
+                selecionarQuestaoAdministrativa={
+                  gestaoAvaliacoes.selecionarQuestao
+                }
+
+                criarAvaliacaoAdministrativa={
+                  gestaoAvaliacoes.criarAvaliacao
+                }
+
+                editarAvaliacaoAdministrativa={
+                  gestaoAvaliacoes.editarAvaliacao
+                }
+
+                definirAvaliacaoAtiva={
+                  gestaoAvaliacoes.definirAvaliacaoAtiva
+                }
+
+                criarQuestaoAdministrativa={
+                  gestaoAvaliacoes.criarQuestao
+                }
+
+                editarQuestaoAdministrativa={
+                  gestaoAvaliacoes.editarQuestao
+                }
+
+                definirQuestaoAtiva={
+                  gestaoAvaliacoes.definirQuestaoAtiva
+                }
+
+                criarAlternativaAdministrativa={
+                  gestaoAvaliacoes.criarAlternativa
+                }
+
+                editarAlternativaAdministrativa={
+                  gestaoAvaliacoes.editarAlternativa
+                }
+
+                definirAlternativaAtiva={
+                  gestaoAvaliacoes.definirAlternativaAtiva
+                }
+
+                usuariosAtribuicao={
+                  gestaoAtribuicoes.usuarios
+                }
+
+                trilhasAtribuicao={
+                  gestaoAtribuicoes.trilhas
+                }
+
+                carregandoAtribuicoes={
+                  gestaoAtribuicoes.carregando
+                }
+
+                processandoAtribuicao={
+                  gestaoAtribuicoes.processando
+                }
+
+                erroAtribuicao={
+                  gestaoAtribuicoes.erro
+                }
+
+                resultadoAtribuicao={
+                  gestaoAtribuicoes.resultado
+                }
+
+                processarAtribuicao={
+                  gestaoAtribuicoes.atribuir
+                }
+
+                limparResultadoAtribuicao={
+                  gestaoAtribuicoes.limparResultado
+                }
+
+                contextoAcesso={
+                  autorizacao.contexto
+                }
+
+                carregandoAutorizacao={
+                  autorizacao.carregando
+                }
+
+                erroAutorizacao={
+                  autorizacao.erro
+                }
+
+                documentosAdministrativos={
+                  gestaoDocumentos.documentos
+                }
+
+                documentoAdministrativoSelecionado={
+                  gestaoDocumentos.documentoSelecionado
+                }
+
+                revisoesAdministrativas={
+                  gestaoDocumentos.revisoes
+                }
+
+                carregandoGestaoDocumentos={
+                  gestaoDocumentos.carregando
+                }
+
+                processandoGestaoDocumentos={
+                  gestaoDocumentos.processando
+                }
+
+                erroGestaoDocumentos={
+                  gestaoDocumentos.erro
+                }
+
+                selecionarDocumentoAdministrativo={
+                  gestaoDocumentos.selecionarDocumento
+                }
+
+                criarRevisaoAdministrativa={
+                  gestaoDocumentos.criarRevisao
+                }
+
+                limparDocumentoAdministrativo={
+                  gestaoDocumentos.limparSelecao
+                }
+
+                processandoPublicacao={
+                  revisaoDocumento.processando
+                }
+
+                erroPublicacao={
+                  revisaoDocumento.erro
+                }
+
+                resultadoPublicacao={
+                  revisaoDocumento.resultado
+                }
+
+                publicarRevisao={
+                  revisaoDocumento.publicar
+                }
+
+                limparResultadoPublicacao={
+                  revisaoDocumento.limparResultado
                 }
               />
 

@@ -94,11 +94,129 @@ import AtribuirTreinamentoPage from
 import EquipePage from
   '../pages/Gestao/EquipePage';
 
+import GestaoModulosPage from
+  '../pages/Gestao/GestaoModulosPage';
+
+import {
+  IEditarModulo,
+  IModuloAdmin,
+  INovoModulo
+} from '../services/ModuloAdminService';
+
+import GestaoAvaliacoesPage from
+  '../pages/Gestao/GestaoAvaliacoesPage';
+
+import GestaoDocumentosPage from
+  '../pages/Gestao/GestaoDocumentosPage';
+
+import {
+  IDocumentoAdmin,
+  INovaRevisaoDocumento,
+  IRevisaoAdmin
+} from '../services/DocumentoAdminService';
+
+import {
+  IPublicarRevisao,
+  IResultadoPublicacaoRevisao
+} from '../services/RevisaoDocumentoAdminService';
+
+import {
+  IAlternativaAdmin,
+  IAvaliacaoAdmin,
+  IEditarAlternativa,
+  IEditarAvaliacao,
+  IEditarQuestao,
+  INovaAlternativa,
+  INovaAvaliacao,
+  INovaQuestao,
+  IQuestaoAdmin
+} from '../services/AvaliacaoAdminService';
+
+import {
+  IAtribuicaoManual,
+  IResultadoAtribuicao,
+  ITrilhaAtribuicao,
+  IUsuarioAtribuicao
+} from '../services/AtribuicaoAdminService';
+
+import AcessoNegadoPage from
+  '../pages/AcessoNegadoPage';
+
+import {
+  IContextoAcesso
+} from '../services/AutorizacaoService';
+
+import {
+  verificarPermissaoRota
+} from '../services/RoutePermissionService';
+
 // ============================================================
 // PROPS
 // ============================================================
 
 export interface IPortalRouterProps {
+  avaliacoesAdministrativas:
+  IAvaliacaoAdmin[];
+
+  questoesAdministrativas:
+  IQuestaoAdmin[];
+
+  alternativasAdministrativas:
+  IAlternativaAdmin[];
+
+  treinamentoAvaliacaoSelecionadoId:
+  string;
+
+  avaliacaoAdministrativaSelecionada?:
+  IAvaliacaoAdmin;
+
+  questaoAdministrativaSelecionada?:
+  IQuestaoAdmin;
+
+  carregandoGestaoAvaliacoes:
+  boolean;
+
+  processandoGestaoAvaliacoes:
+  boolean;
+
+  erroGestaoAvaliacoes:
+  string;
+
+  selecionarTreinamentoAvaliacao:
+  (id: string) => Promise<void>;
+
+  selecionarAvaliacaoAdministrativa:
+  (item: IAvaliacaoAdmin) => Promise<void>;
+
+  selecionarQuestaoAdministrativa:
+  (item: IQuestaoAdmin) => Promise<void>;
+
+  criarAvaliacaoAdministrativa:
+  (dados: INovaAvaliacao) => Promise<void>;
+
+  editarAvaliacaoAdministrativa:
+  (dados: IEditarAvaliacao) => Promise<void>;
+
+  definirAvaliacaoAtiva:
+  (id: string, ativa: boolean) => Promise<void>;
+
+  criarQuestaoAdministrativa:
+  (dados: INovaQuestao) => Promise<void>;
+
+  editarQuestaoAdministrativa:
+  (dados: IEditarQuestao) => Promise<void>;
+
+  definirQuestaoAtiva:
+  (id: string, ativa: boolean) => Promise<void>;
+
+  criarAlternativaAdministrativa:
+  (dados: INovaAlternativa) => Promise<void>;
+
+  editarAlternativaAdministrativa:
+  (dados: IEditarAlternativa) => Promise<void>;
+
+  definirAlternativaAtiva:
+  (id: string, ativa: boolean) => Promise<void>;
 
   treinamentosAdministrativos:
   ITreinamentoAdmin[];
@@ -125,6 +243,106 @@ export interface IPortalRouterProps {
     ativo:
       boolean
   ) => Promise<void>;
+
+
+  usuariosAtribuicao:
+  IUsuarioAtribuicao[];
+
+  trilhasAtribuicao:
+  ITrilhaAtribuicao[];
+
+  carregandoAtribuicoes:
+  boolean;
+
+  processandoAtribuicao:
+  boolean;
+
+  erroAtribuicao:
+  string;
+
+  resultadoAtribuicao?:
+  IResultadoAtribuicao;
+
+  processarAtribuicao:
+  (
+    dados:
+      IAtribuicaoManual
+  ) => Promise<IResultadoAtribuicao>;
+
+  limparResultadoAtribuicao:
+  () => void;
+
+  // ============================================================
+  // GESTÃO DOCUMENTAL ADMINISTRATIVA
+  // ============================================================
+
+  documentosAdministrativos:
+  IDocumentoAdmin[];
+
+  documentoAdministrativoSelecionado?:
+  IDocumentoAdmin;
+
+  revisoesAdministrativas:
+  IRevisaoAdmin[];
+
+  carregandoGestaoDocumentos:
+  boolean;
+
+  processandoGestaoDocumentos:
+  boolean;
+
+  erroGestaoDocumentos:
+  string;
+
+  selecionarDocumentoAdministrativo:
+  (
+    documento:
+      IDocumentoAdmin
+  ) => Promise<void>;
+
+  criarRevisaoAdministrativa:
+  (
+    dados:
+      INovaRevisaoDocumento
+  ) => Promise<void>;
+
+  limparDocumentoAdministrativo:
+  () => void;
+
+  // ============================================================
+  // PUBLICAÇÃO DE REVISÃO DOCUMENTAL
+  // ============================================================
+
+  processandoPublicacao:
+  boolean;
+
+  erroPublicacao:
+  string;
+
+  resultadoPublicacao?:
+  IResultadoPublicacaoRevisao;
+
+  publicarRevisao:
+  (
+    dados:
+      IPublicarRevisao
+  ) => Promise<IResultadoPublicacaoRevisao>;
+
+  limparResultadoPublicacao:
+  () => void;
+
+  // ============================================================
+  // AUTORIZAÇÃO
+  // ============================================================
+
+  contextoAcesso?:
+  IContextoAcesso;
+
+  carregandoAutorizacao:
+  boolean;
+
+  erroAutorizacao:
+  string;
   // ============================================================
   // NAVEGAÇÃO
   // ============================================================
@@ -382,7 +600,50 @@ export interface IPortalRouterProps {
         string[]
       >
   ) => void;
+
+  modulosAdministrativos:
+  IModuloAdmin[];
+
+  treinamentoModuloSelecionadoId:
+  string;
+
+  carregandoGestaoModulos:
+  boolean;
+
+  processandoGestaoModulos:
+  boolean;
+
+  erroGestaoModulos:
+  string;
+
+  selecionarTreinamentoModulo:
+  (
+    treinamentoId:
+      string
+  ) => Promise<void>;
+
+  criarModuloAdministrativo:
+  (
+    dados:
+      INovoModulo
+  ) => Promise<void>;
+
+  editarModuloAdministrativo:
+  (
+    dados:
+      IEditarModulo
+  ) => Promise<void>;
+
+  definirModuloAtivo:
+  (
+    moduloId:
+      string,
+    ativo:
+      boolean
+  ) => Promise<void>;
 }
+
+
 
 // ============================================================
 // COMPONENTE
@@ -392,7 +653,59 @@ const PortalRouter:
   React.FC<IPortalRouterProps> = (
     props
   ) => {
+    if (
+      props.carregandoAutorizacao
+    ) {
+      return (
+        <div
+          style={{
+            padding: '32px'
+          }}
+        >
+          Carregando permissões...
+        </div>
+      );
+    }
 
+    if (
+      props.erroAutorizacao
+    ) {
+      return (
+        <AcessoNegadoPage
+          mensagem={
+            props.erroAutorizacao
+          }
+          onVoltar={() =>
+            props.navegar(
+              'inicio'
+            )
+          }
+        />
+      );
+    }
+
+    const permissaoRota =
+      verificarPermissaoRota(
+        props.pagina,
+        props.contextoAcesso
+      );
+
+    if (
+      !permissaoRota.permitido
+    ) {
+      return (
+        <AcessoNegadoPage
+          mensagem={
+            permissaoRota.mensagem
+          }
+          onVoltar={() =>
+            props.navegar(
+              'inicio'
+            )
+          }
+        />
+      );
+    }
     switch (
     props.pagina
     ) {
@@ -739,6 +1052,24 @@ const PortalRouter:
             onDefinirAtivo={
               props.definirTreinamentoAtivo
             }
+
+            onModulos={() =>
+              props.navegar(
+                'gestaoModulos'
+              )
+            }
+
+            onAvaliacoes={() =>
+              props.navegar(
+                'gestaoAvaliacoes'
+              )
+            }
+
+            onDocumentos={() =>
+              props.navegar(
+                'gestaoDocumentos'
+              )
+            }
           />
         );
 
@@ -856,15 +1187,51 @@ const PortalRouter:
       // ========================================================
       // ATRIBUIR TREINAMENTO
       // ========================================================
-
       case 'atribuirTreinamento':
 
         return (
           <AtribuirTreinamentoPage
+
+            usuarios={
+              props.usuariosAtribuicao
+            }
+
+            treinamentos={
+              props.treinamentosAdministrativos
+            }
+
+            trilhas={
+              props.trilhasAtribuicao
+            }
+
+            carregando={
+              props.carregandoAtribuicoes
+            }
+
+            processando={
+              props.processandoAtribuicao
+            }
+
+            erro={
+              props.erroAtribuicao
+            }
+
+            resultado={
+              props.resultadoAtribuicao
+            }
+
             onVoltar={() =>
               props.navegar(
                 'gestao'
               )
+            }
+
+            onAtribuir={
+              props.processarAtribuicao
+            }
+
+            onLimparResultado={
+              props.limparResultadoAtribuicao
             }
           />
         );
@@ -941,6 +1308,256 @@ const PortalRouter:
 
             onEnviar={
               props.enviarAvaliacao
+            }
+          />
+        );
+
+      case 'gestaoAvaliacoes':
+
+        return (
+          <GestaoAvaliacoesPage
+
+            treinamentos={
+              props.treinamentosAdministrativos
+            }
+
+            treinamentoId={
+              props.treinamentoAvaliacaoSelecionadoId
+            }
+
+            avaliacaoSelecionada={
+              props.avaliacaoAdministrativaSelecionada
+            }
+
+            questaoSelecionada={
+              props.questaoAdministrativaSelecionada
+            }
+
+            avaliacoes={
+              props.avaliacoesAdministrativas
+            }
+
+            questoes={
+              props.questoesAdministrativas
+            }
+
+            alternativas={
+              props.alternativasAdministrativas
+            }
+
+            carregando={
+              props.carregandoGestaoAvaliacoes
+            }
+
+            processando={
+              props.processandoGestaoAvaliacoes
+            }
+
+            erro={
+              props.erroGestaoAvaliacoes
+            }
+
+            onVoltar={() =>
+              props.navegar(
+                'gestao'
+              )
+            }
+
+            onSelecionarTreinamento={
+              props.selecionarTreinamentoAvaliacao
+            }
+
+            onSelecionarAvaliacao={
+              props.selecionarAvaliacaoAdministrativa
+            }
+
+            onSelecionarQuestao={
+              props.selecionarQuestaoAdministrativa
+            }
+
+            onCriarAvaliacao={
+              props.criarAvaliacaoAdministrativa
+            }
+
+            onEditarAvaliacao={
+              props.editarAvaliacaoAdministrativa
+            }
+
+            onDefinirAvaliacaoAtiva={
+              props.definirAvaliacaoAtiva
+            }
+
+            onCriarQuestao={
+              props.criarQuestaoAdministrativa
+            }
+
+            onEditarQuestao={
+              props.editarQuestaoAdministrativa
+            }
+
+            onDefinirQuestaoAtiva={
+              props.definirQuestaoAtiva
+            }
+
+            onCriarAlternativa={
+              props.criarAlternativaAdministrativa
+            }
+
+            onEditarAlternativa={
+              props.editarAlternativaAdministrativa
+            }
+
+            onDefinirAlternativaAtiva={
+              props.definirAlternativaAtiva
+            }
+          />
+        );
+
+      case 'gestaoModulos':
+
+        return (
+          <GestaoModulosPage
+
+            treinamentos={
+              props
+                .treinamentosAdministrativos
+            }
+
+            treinamentoId={
+              props
+                .treinamentoModuloSelecionadoId
+            }
+
+            modulos={
+              props
+                .modulosAdministrativos
+            }
+
+            carregando={
+              props
+                .carregandoGestaoModulos
+            }
+
+            processando={
+              props
+                .processandoGestaoModulos
+            }
+
+            erro={
+              props
+                .erroGestaoModulos
+            }
+
+            onVoltar={() =>
+              props.navegar(
+                'gestao'
+              )
+            }
+
+            onSelecionarTreinamento={
+              props
+                .selecionarTreinamentoModulo
+            }
+
+            onCriar={
+              props
+                .criarModuloAdministrativo
+            }
+
+            onEditar={
+              props
+                .editarModuloAdministrativo
+            }
+
+            onDefinirAtivo={
+              props
+                .definirModuloAtivo
+            }
+          />
+        );
+
+      // ========================================================
+      // GESTÃO DOCUMENTAL
+      // ========================================================
+
+      case 'gestaoDocumentos':
+
+        return (
+          <GestaoDocumentosPage
+            documentos={
+              props
+                .documentosAdministrativos
+            }
+
+            documentoSelecionado={
+              props
+                .documentoAdministrativoSelecionado
+            }
+
+            revisoes={
+              props
+                .revisoesAdministrativas
+            }
+
+            carregando={
+              props
+                .carregandoGestaoDocumentos
+            }
+
+            processando={
+              props
+                .processandoGestaoDocumentos
+            }
+
+            erro={
+              props
+                .erroGestaoDocumentos
+            }
+
+            processandoPublicacao={
+              props
+                .processandoPublicacao
+            }
+
+            erroPublicacao={
+              props
+                .erroPublicacao
+            }
+
+            resultadoPublicacao={
+              props
+                .resultadoPublicacao
+            }
+
+            onVoltar={() =>
+              props.navegar(
+                'gestao'
+              )
+            }
+
+            onSelecionarDocumento={
+              props
+                .selecionarDocumentoAdministrativo
+            }
+
+            onCriarRevisao={
+              props
+                .criarRevisaoAdministrativa
+            }
+
+            onLimparSelecao={
+              props
+                .limparDocumentoAdministrativo
+            }
+
+            onPublicarRevisao={
+              props
+                .publicarRevisao
+            }
+
+            onLimparResultadoPublicacao={
+              props
+                .limparResultadoPublicacao
             }
           />
         );
