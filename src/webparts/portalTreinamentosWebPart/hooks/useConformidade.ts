@@ -5,31 +5,63 @@ import {
 } from '../services/DataverseService';
 
 import {
-  AutorizacaoService,
-  IContextoAcesso
-} from '../services/AutorizacaoService';
+  ConformidadeService,
+  IItemConformidade,
+  IResumoConformidade
+} from '../services/ConformidadeService';
 
-export interface IUseAutorizacao {
-  contexto?: IContextoAcesso;
-  carregando: boolean;
-  erro: string;
-  recarregar: () => Promise<void>;
+export interface IUseConformidade {
+  itens:
+    IItemConformidade[];
+
+  resumo:
+    IResumoConformidade;
+
+  carregando:
+    boolean;
+
+  erro:
+    string;
+
+  recarregar:
+    () => Promise<void>;
 }
 
-export const useAutorizacao = (
+const resumoInicial:
+  IResumoConformidade = {
+    total: 0,
+    concluidos: 0,
+    pendentes: 0,
+    vencidos: 0,
+    aVencer: 0,
+    bloqueados: 0,
+    emAndamento: 0,
+    reprovados: 0,
+    conformidadePercentual: 0
+  };
+
+export const useConformidade = (
   dataverse:
-    DataverseService,
-  email:
-    string
-): IUseAutorizacao => {
+    DataverseService
+): IUseConformidade => {
 
   const [
-    contexto,
-    setContexto
+    itens,
+    setItens
   ] =
     React.useState<
-      IContextoAcesso | undefined
-    >(undefined);
+      IItemConformidade[]
+    >([]);
+
+  const [
+    resumo,
+    setResumo
+  ] =
+    React.useState<
+      IResumoConformidade
+    >(
+      resumoInicial
+    );
 
   const [
     carregando,
@@ -48,7 +80,7 @@ export const useAutorizacao = (
   const service =
     React.useMemo(
       () =>
-        new AutorizacaoService(
+        new ConformidadeService(
           dataverse
         ),
       [
@@ -60,22 +92,6 @@ export const useAutorizacao = (
     React.useCallback(
       async (): Promise<void> => {
 
-        if (!email.trim()) {
-          setContexto(
-            undefined
-          );
-
-          setCarregando(
-            false
-          );
-
-          setErro(
-            'E-mail do usuário não informado.'
-          );
-
-          return;
-        }
-
         setCarregando(
           true
         );
@@ -83,45 +99,41 @@ export const useAutorizacao = (
         setErro('');
 
         try {
-
-          const retorno =
+          const dados =
             await service
-              .carregar(
-                email
-              );
+              .carregar();
 
-          setContexto(
-            retorno
+          setItens(
+            dados.itens
           );
 
+          setResumo(
+            dados.resumo
+          );
         } catch (e) {
-
-          setContexto(
-            undefined
+          setItens([]);
+          setResumo(
+            resumoInicial
           );
 
           setErro(
             e instanceof Error
               ? e.message
-              : 'Não foi possível carregar as permissões do usuário.'
+              : 'Erro ao carregar conformidade.'
           );
-
         } finally {
-
           setCarregando(
             false
           );
         }
       },
       [
-        email,
         service
       ]
     );
 
   React.useEffect(
     () => {
-
       recarregar()
         .catch(
           (
@@ -132,7 +144,6 @@ export const useAutorizacao = (
               error
             )
         );
-
     },
     [
       recarregar
@@ -140,7 +151,8 @@ export const useAutorizacao = (
   );
 
   return {
-    contexto,
+    itens,
+    resumo,
     carregando,
     erro,
     recarregar

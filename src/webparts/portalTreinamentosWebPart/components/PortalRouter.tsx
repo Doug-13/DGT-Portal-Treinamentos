@@ -150,6 +150,17 @@ import {
   verificarPermissaoRota
 } from '../services/RoutePermissionService';
 
+import GestaoConformidadePage from
+  '../pages/Gestao/GestaoConformidadePage';
+
+import {
+  IItemConformidade,
+  IResumoConformidade
+} from '../services/ConformidadeService';
+
+import IndicadoresPage from
+  '../pages/Indicadores/IndicadoresPage';
+
 // ============================================================
 // PROPS
 // ============================================================
@@ -271,6 +282,18 @@ export interface IPortalRouterProps {
 
   limparResultadoAtribuicao:
   () => void;
+
+  itensConformidade:
+  IItemConformidade[];
+
+  resumoConformidade:
+  IResumoConformidade;
+
+  carregandoConformidade:
+  boolean;
+
+  erroConformidade:
+  string;
 
   // ============================================================
   // GESTÃO DOCUMENTAL ADMINISTRATIVA
@@ -1070,6 +1093,17 @@ const PortalRouter:
                 'gestaoDocumentos'
               )
             }
+
+            onConformidade={() =>
+              props.navegar(
+                'gestaoConformidade'
+              )
+            }
+            onIndicadores={() =>
+              props.navegar(
+                'indicadores'
+              )
+            }
           />
         );
 
@@ -1621,7 +1655,56 @@ const PortalRouter:
             }
           />
         );
+
+      case 'gestaoConformidade':
+
+        return (
+          <GestaoConformidadePage
+            itens={
+              props.itensConformidade
+            }
+
+            resumo={
+              props.resumoConformidade
+            }
+
+            carregando={
+              props.carregandoConformidade
+            }
+
+            erro={
+              props.erroConformidade
+            }
+
+            onVoltar={() =>
+              props.navegar(
+                'gestao'
+              )
+            }
+          />
+
+        );
+      case 'indicadores':
+
+        return (
+          <IndicadoresPage
+            itens={
+              props.itensConformidade
+            }
+
+            resumo={
+              props.resumoConformidade
+            }
+
+            onVoltar={() =>
+              props.navegar(
+                'inicio'
+              )
+            }
+          />
+        );
     }
+
   };
 
 export default PortalRouter;

@@ -1,105 +1,30 @@
 import * as React from 'react';
-
-import styles from
-  './PortalTreinamentos.module.scss';
-
-import {
-  IPortalTreinamentosProps
-} from './IPortalTreinamentosProps';
-
-import logoDgt from
-  '../assets/logo-dgt.png';
-
-import {
-  DataverseService,
-  IDataverseRecord
-} from '../services/DataverseService';
-
-import {
-  UsuarioService
-} from '../services/UsuarioService';
-
-import {
-  TrilhaService
-} from '../services/TrilhaService';
-
-import PortalRouter from
-  './PortalRouter';
-
-import {
-  Pagina
-} from '../constants/routes';
-
-import {
-  ITreinamento,
-  IHistorico,
-  ICertificado
-} from '../models/Treinamento';
-
-import {
-  IDocumento,
-  IDocumentoRevisao
-} from '../models/Documento';
-
-import {
-  DocumentoService
-} from '../services/DocumentoService';
-
-import {
-  IColaborador
-} from '../models/Usuario';
-
-import {
-  ITrilha
-} from '../models/Trilha';
-
-import {
-  useModulos
-} from '../hooks/useModulos';
-
-import {
-  useUsuario
-} from '../hooks/useUsuario';
-
-import {
-  useAvaliacao
-} from '../hooks/useAvaliacao';
-
-import {
-  INovoTreinamento
-} from '../services/TreinamentoAdminService';
-
-import {
-  useGestaoTreinamentos
-} from '../hooks/useGestaoTreinamentos';
-
-import {
-  useGestaoTrilhas
-} from '../hooks/useGestaoTrilhas';
-
-import {
-  useGestaoModulos
-} from '../hooks/useGestaoModulos';
-
-import {
-  useGestaoAvaliacoes
-} from '../hooks/useGestaoAvaliacoes';
-
-import {
-  useGestaoAtribuicoes
-} from '../hooks/useGestaoAtribuicoes';
-
-import {
-  useRevisaoDocumento
-} from '../hooks/useRevisaoDocumento';
-
-import {
-  useAutorizacao
-} from '../hooks/useAutorizacao';
-
-import {
-  useGestaoDocumentos
-} from '../hooks/useGestaoDocumentos';
+import styles from './PortalTreinamentos.module.scss';
+import { IPortalTreinamentosProps } from './IPortalTreinamentosProps';
+import logoDgt from '../assets/logo-dgt.png';
+import { DataverseService, IDataverseRecord } from '../services/DataverseService';
+import { UsuarioService } from '../services/UsuarioService';
+import { TrilhaService } from '../services/TrilhaService';
+import PortalRouter from './PortalRouter';
+import { Pagina } from '../constants/routes';
+import { ITreinamento, IHistorico, ICertificado } from '../models/Treinamento';
+import { IDocumento, IDocumentoRevisao } from '../models/Documento';
+import { DocumentoService } from '../services/DocumentoService';
+import { IColaborador } from '../models/Usuario';
+import { ITrilha } from '../models/Trilha';
+import { useModulos } from '../hooks/useModulos';
+import { useUsuario } from '../hooks/useUsuario';
+import { useAvaliacao } from '../hooks/useAvaliacao';
+import { INovoTreinamento } from '../services/TreinamentoAdminService';
+import { useGestaoTreinamentos } from '../hooks/useGestaoTreinamentos';
+import { useGestaoTrilhas } from '../hooks/useGestaoTrilhas';
+import { useGestaoModulos } from '../hooks/useGestaoModulos';
+import { useGestaoAvaliacoes } from '../hooks/useGestaoAvaliacoes';
+import { useGestaoAtribuicoes } from '../hooks/useGestaoAtribuicoes';
+import { useRevisaoDocumento } from '../hooks/useRevisaoDocumento';
+import { useAutorizacao } from '../hooks/useAutorizacao';
+import { useGestaoDocumentos } from '../hooks/useGestaoDocumentos';
+import { useConformidade } from '../hooks/useConformidade';
 
 type DataverseRecord =
   IDataverseRecord;
@@ -567,7 +492,10 @@ const PortalTreinamentos:
         userEmail
       );
 
-
+    const conformidade =
+      useConformidade(
+        dataverseService
+      );
     // ==========================================================
     // CARREGAR PORTAL
     // ==========================================================
@@ -2590,6 +2518,22 @@ const PortalTreinamentos:
 
                 limparResultadoPublicacao={
                   revisaoDocumento.limparResultado
+                }
+                
+                itensConformidade={
+                  conformidade.itens
+                }
+
+                resumoConformidade={
+                  conformidade.resumo
+                }
+
+                carregandoConformidade={
+                  conformidade.carregando
+                }
+
+                erroConformidade={
+                  conformidade.erro
                 }
               />
 

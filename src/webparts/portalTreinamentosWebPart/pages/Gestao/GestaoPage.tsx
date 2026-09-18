@@ -52,9 +52,11 @@ export interface IGestaoPageProps {
 
   onAvaliacoes: () => void;
 
+  onDocumentos: () => void;
 
-  onDocumentos:
-  () => void;
+  onConformidade: () => void;
+
+  onIndicadores: () => void;
 
 }
 
@@ -646,11 +648,29 @@ const GestaoPage:
           />
 
           <Acao
+            titulo="Conformidade"
+            descricao="Acompanhe concluídos, pendências, vencidos e próximos do vencimento."
+            icone="◉"
+            onClick={
+              props.onConformidade
+            }
+          />
+
+          <Acao
             titulo="Documentos"
             descricao="Gerencie documentos, revisões e retreinamentos."
             icone="▤"
             onClick={
               props.onDocumentos
+            }
+          />
+          
+          <Acao
+            titulo="Indicadores"
+            descricao="Acompanhe conformidade, vencimentos e desempenho."
+            icone="▥"
+            onClick={
+              props.onIndicadores
             }
           />
 

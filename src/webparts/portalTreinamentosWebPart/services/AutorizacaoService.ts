@@ -33,10 +33,16 @@ const texto = (
   const valor =
     registro[campo];
 
-  return valor === undefined ||
+  if (
+    valor === undefined ||
     valor === null
-      ? padrao
-      : String(valor);
+  ) {
+    return padrao;
+  }
+
+  return String(
+    valor
+  ).trim() || padrao;
 };
 
 const booleano = (
@@ -48,7 +54,10 @@ const booleano = (
   const valor =
     registro[campo];
 
-  if (typeof valor === 'boolean') {
+  if (
+    typeof valor ===
+      'boolean'
+  ) {
     return valor;
   }
 
@@ -75,22 +84,21 @@ const normalizarPerfil = (
   valor: string
 ): PerfilAcesso => {
 
-  const normalizado =
+  const perfil =
     valor
       .trim()
       .toLowerCase();
 
   if (
-    normalizado === 'administrador' ||
-    normalizado === 'admin' ||
-    normalizado === 'rh'
+    perfil ===
+      'administrador'
   ) {
     return 'Administrador';
   }
 
   if (
-    normalizado === 'gestor' ||
-    normalizado === 'manager'
+    perfil ===
+      'gestor'
   ) {
     return 'Gestor';
   }
@@ -111,9 +119,8 @@ export class AutorizacaoService {
       dataverse;
   }
 
-  public async obterContexto(
-    email:
-      string
+  public async carregar(
+    email: string
   ): Promise<IContextoAcesso> {
 
     if (!email.trim()) {
@@ -133,7 +140,7 @@ export class AutorizacaoService {
 
     if (!registro) {
       throw new Error(
-        'Usuário não cadastrado no Portal de Treinamentos.'
+        'Seu usuário não está cadastrado no Portal de Treinamentos.'
       );
     }
 
@@ -146,7 +153,7 @@ export class AutorizacaoService {
 
     if (!ativo) {
       throw new Error(
-        'Usuário inativo no Portal de Treinamentos.'
+        'Seu usuário está inativo no Portal de Treinamentos.'
       );
     }
 
@@ -159,6 +166,15 @@ export class AutorizacaoService {
         )
       );
 
+    const admin =
+      perfil ===
+      'Administrador';
+
+    const gestorOuAdmin =
+      perfil ===
+        'Gestor' ||
+      admin;
+
     return {
       usuarioId:
         texto(
@@ -169,8 +185,7 @@ export class AutorizacaoService {
       nome:
         texto(
           registro,
-          'dgt_name',
-          'Usuário'
+          'dgt_name'
         ),
 
       email:
@@ -184,34 +199,22 @@ export class AutorizacaoService {
       ativo,
 
       podeGerenciarTreinamentos:
-        perfil ===
-        'Administrador',
+        admin,
 
       podeGerenciarDocumentos:
-        perfil ===
-        'Administrador',
+        admin,
 
       podeGerenciarUsuarios:
-        perfil ===
-        'Administrador',
+        admin,
 
       podeAtribuirTreinamentos:
-        perfil ===
-          'Administrador' ||
-        perfil ===
-          'Gestor',
+        gestorOuAdmin,
 
       podeVerEquipe:
-        perfil ===
-          'Administrador' ||
-        perfil ===
-          'Gestor',
+        gestorOuAdmin,
 
       podeVerIndicadoresGerenciais:
-        perfil ===
-          'Administrador' ||
-        perfil ===
-          'Gestor'
+        gestorOuAdmin
     };
   }
 }

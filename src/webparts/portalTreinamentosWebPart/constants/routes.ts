@@ -17,7 +17,8 @@ export type Pagina =
   | 'equipe'
   | 'executarTreinamento'
   | 'avaliacao'
-  | 'indicadores';
+  | 'indicadores'
+  | 'gestaoConformidade';
 
 export const ROTAS = {
   INICIO: 'inicio',
@@ -38,5 +39,6 @@ export const ROTAS = {
   EQUIPE: 'equipe',
   EXECUTAR_TREINAMENTO: 'executarTreinamento',
   AVALIACAO: 'avaliacao',
-  INDICADORES: 'indicadores'
+  INDICADORES: 'indicadores',
+  GESTAO_CONFORMIDADE: 'gestaoConformidade',
 } as const;

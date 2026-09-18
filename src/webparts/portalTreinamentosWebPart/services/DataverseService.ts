@@ -124,8 +124,7 @@ export class DataverseService {
         'dgt_trilhaid',
         'dgt_name',
         'dgt_descricao',
-        'dgt_diasparaconclusao',
-        'dgt_ativo'
+        'dgt_ativa'
       ].join(',') +
       '&$orderby=dgt_name asc'
     );
@@ -625,9 +624,9 @@ export class DataverseService {
         'dgt_trilhaid',
         'dgt_name',
         'dgt_descricao',
-        'dgt_ativo'
+        'dgt_ativa'
       ].join(',') +
-      '&$filter=dgt_ativo eq true' +
+      '&$filter=dgt_ativa eq true' +
       '&$orderby=dgt_name asc'
     );
   }
@@ -698,11 +697,11 @@ export class DataverseService {
         'dgt_duracaomin',
         'dgt_tipomodulo',
         'dgt_obrigatorio',
-        'dgt_ativo',
+        'dgt_ativa',
         'dgt_urlconteudo',
         '_dgt_treinamento_value'
       ].join(',') +
-      `&$filter=_dgt_treinamento_value eq ${idLimpo} and dgt_ativo eq true` +
+      `&$filter=_dgt_treinamento_value eq ${idLimpo} and dgt_ativa eq true` +
       '&$orderby=dgt_ordem asc';
 
     return this.get(
@@ -740,11 +739,11 @@ export class DataverseService {
         'dgt_datainicio',
         'dgt_dataconclusao',
         'dgt_tempoutilizadoseg',
-        'dgt_ativo',
+        'dgt_ativa',
         '_dgt_modulo_value',
         '_dgt_usuariotreinamento_value'
       ].join(',') +
-      `&$filter=_dgt_usuariotreinamento_value eq ${idLimpo} and dgt_ativo eq true`;
+      `&$filter=_dgt_usuariotreinamento_value eq ${idLimpo} and dgt_ativa eq true`;
 
     return this.get(
       endpoint
@@ -1197,12 +1196,12 @@ export class DataverseService {
         'dgt_obrigatorio',
         'dgt_observacao',
         'dgt_ordem',
-        'dgt_ativo',
+        'dgt_ativa',
         '_dgt_documento_value',
         '_dgt_treinamento_value'
       ].join(',') +
       `&$filter=_dgt_treinamento_value eq ${idLimpo}` +
-      ' and dgt_ativo eq true' +
+      ' and dgt_ativa eq true' +
       '&$orderby=dgt_ordem asc'
     );
   }
@@ -1293,7 +1292,7 @@ export class DataverseService {
         'dgt_duracaomin',
         'dgt_tipomodulo',
         'dgt_obrigatorio',
-        'dgt_ativo',
+        'dgt_ativa',
         'dgt_urlconteudo',
         '_dgt_treinamento_value'
       ].join(',') +
