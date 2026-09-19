@@ -5,17 +5,16 @@ import {
 } from '../services/DataverseService';
 
 import {
-  IAdicionarTreinamentoTrilha,
-  IEditarTreinamentoTrilha,
   IEditarTrilha,
   INovaTrilha,
   ITrilhaAdmin,
+  ITrilhaAreaAdmin,
   ITrilhaTreinamentoAdmin,
+  ITrilhaTreinamentoEdicao,
   TrilhaAdminService
 } from '../services/TrilhaAdminService';
 
 export interface IUseGestaoTrilhas {
-
   trilhas:
     ITrilhaAdmin[];
 
@@ -24,6 +23,9 @@ export interface IUseGestaoTrilhas {
 
   treinamentosTrilha:
     ITrilhaTreinamentoAdmin[];
+
+  areasTrilha:
+    ITrilhaAreaAdmin[];
 
   carregando:
     boolean;
@@ -53,7 +55,7 @@ export interface IUseGestaoTrilhas {
     (
       dados:
         INovaTrilha
-    ) => Promise<void>;
+    ) => Promise<ITrilhaAdmin>;
 
   editarTrilha:
     (
@@ -69,535 +71,575 @@ export interface IUseGestaoTrilhas {
         boolean
     ) => Promise<void>;
 
-  adicionarTreinamento:
+  salvarTreinamentos:
     (
-      dados:
-        IAdicionarTreinamentoTrilha
+      trilhaId:
+        string,
+      itens:
+        ITrilhaTreinamentoEdicao[]
     ) => Promise<void>;
 
-  editarTreinamento:
+  salvarAreas:
     (
-      dados:
-        IEditarTreinamentoTrilha
-    ) => Promise<void>;
-
-  removerTreinamento:
-    (
-      relacaoId:
-        string
+      trilhaId:
+        string,
+      todasAreas:
+        boolean,
+      areaIds:
+        string[]
     ) => Promise<void>;
 }
 
-export const useGestaoTrilhas = (
-  dataverse:
-    DataverseService
-): IUseGestaoTrilhas => {
+export const useGestaoTrilhas =
+  (
+    dataverse:
+      DataverseService
+  ):
+    IUseGestaoTrilhas => {
 
-  const [
-    trilhas,
-    setTrilhas
-  ] =
-    React.useState<
-      ITrilhaAdmin[]
-    >([]);
-
-  const [
-    trilhaSelecionada,
-    setTrilhaSelecionada
-  ] =
-    React.useState<
-      ITrilhaAdmin | undefined
-    >(undefined);
-
-  const [
-    treinamentosTrilha,
-    setTreinamentosTrilha
-  ] =
-    React.useState<
-      ITrilhaTreinamentoAdmin[]
-    >([]);
-
-  const [
-    carregando,
-    setCarregando
-  ] =
-    React.useState(
-      true
-    );
-
-  const [
-    carregandoConteudo,
-    setCarregandoConteudo
-  ] =
-    React.useState(
-      false
-    );
-
-  const [
-    processando,
-    setProcessando
-  ] =
-    React.useState(
-      false
-    );
-
-  const [
-    erro,
-    setErro
-  ] =
-    React.useState('');
-
-  const service =
-    React.useMemo(
-      () =>
-        new TrilhaAdminService(
+    const service =
+      React.useMemo(
+        () =>
+          new TrilhaAdminService(
+            dataverse
+          ),
+        [
           dataverse
-        ),
-      [
-        dataverse
-      ]
-    );
+        ]
+      );
 
-  const carregar =
-    React.useCallback(
-      async (): Promise<void> => {
+    const [
+      trilhas,
+      setTrilhas
+    ] =
+      React.useState<
+        ITrilhaAdmin[]
+      >([]);
 
-        setCarregando(
-          true
-        );
+    const [
+      trilhaSelecionada,
+      setTrilhaSelecionada
+    ] =
+      React.useState<
+        ITrilhaAdmin | undefined
+      >(
+        undefined
+      );
 
-        setErro('');
+    const [
+      treinamentosTrilha,
+      setTreinamentosTrilha
+    ] =
+      React.useState<
+        ITrilhaTreinamentoAdmin[]
+      >([]);
 
-        try {
+    const [
+      areasTrilha,
+      setAreasTrilha
+    ] =
+      React.useState<
+        ITrilhaAreaAdmin[]
+      >([]);
 
-          const dados =
-            await service
-              .listarTrilhas();
+    const [
+      carregando,
+      setCarregando
+    ] =
+      React.useState(
+        false
+      );
 
-          setTrilhas(
-            dados
-          );
+    const [
+      carregandoConteudo,
+      setCarregandoConteudo
+    ] =
+      React.useState(
+        false
+      );
 
-        } catch (e) {
+    const [
+      processando,
+      setProcessando
+    ] =
+      React.useState(
+        false
+      );
 
-          setErro(
-            e instanceof Error
-              ? e.message
-              : 'Erro ao carregar trilhas.'
-          );
+    const [
+      erro,
+      setErro
+    ] =
+      React.useState('');
 
-        } finally {
+    const carregar =
+      React.useCallback(
+        async (): Promise<void> => {
 
           setCarregando(
-            false
+            true
           );
-        }
+
+          setErro('');
+
+          try {
+
+            const lista =
+              await service
+                .listarTrilhas();
+
+            setTrilhas(
+              lista
+            );
+
+          } catch (e) {
+
+            setErro(
+              e instanceof Error
+                ? e.message
+                : 'Erro ao carregar trilhas.'
+            );
+
+          } finally {
+
+            setCarregando(
+              false
+            );
+          }
+        },
+        [
+          service
+        ]
+      );
+
+    React.useEffect(
+      () => {
+
+        void carregar();
+
       },
       [
-        service
+        carregar
       ]
     );
 
-  const selecionarTrilha =
-    React.useCallback(
-      async (
-        trilha:
-          ITrilhaAdmin
-      ): Promise<void> => {
+    const carregarConteudo =
+      React.useCallback(
+        async (
+          trilha:
+            ITrilhaAdmin
+        ): Promise<void> => {
 
-        setTrilhaSelecionada(
-          trilha
-        );
-
-        setCarregandoConteudo(
-          true
-        );
-
-        setErro('');
-
-        try {
-
-          const itens =
-            await service
-              .listarTreinamentosTrilha(
-                trilha.id
-              );
-
-          setTreinamentosTrilha(
-            itens
+          setCarregandoConteudo(
+            true
           );
 
-        } catch (e) {
+          setErro('');
+
+          try {
+
+            const [
+              treinamentos,
+              areas
+            ] =
+              await Promise.all([
+                service
+                  .listarTreinamentosTrilha(
+                    trilha.id
+                  ),
+
+                service
+                  .listarAreasTrilha(
+                    trilha.id
+                  )
+              ]);
+
+            setTreinamentosTrilha(
+              treinamentos
+            );
+
+            setAreasTrilha(
+              areas
+            );
+
+          } catch (e) {
+
+            setErro(
+              e instanceof Error
+                ? e.message
+                : 'Erro ao carregar a configuração da trilha.'
+            );
+
+          } finally {
+
+            setCarregandoConteudo(
+              false
+            );
+          }
+        },
+        [
+          service
+        ]
+      );
+
+    const selecionarTrilha =
+      React.useCallback(
+        async (
+          trilha:
+            ITrilhaAdmin
+        ): Promise<void> => {
+
+          setTrilhaSelecionada(
+            trilha
+          );
+
+          await carregarConteudo(
+            trilha
+          );
+        },
+        [
+          carregarConteudo
+        ]
+      );
+
+    const limparSelecao =
+      React.useCallback(
+        (): void => {
+
+          setTrilhaSelecionada(
+            undefined
+          );
 
           setTreinamentosTrilha(
             []
           );
 
-          setErro(
-            e instanceof Error
-              ? e.message
-              : 'Erro ao carregar treinamentos da trilha.'
+          setAreasTrilha(
+            []
           );
 
-        } finally {
+          setErro('');
+        },
+        []
+      );
 
-          setCarregandoConteudo(
-            false
-          );
-        }
-      },
-      [
-        service
-      ]
-    );
-
-  const atualizarConteudoSelecionado =
-    React.useCallback(
-      async (): Promise<void> => {
-
-        if (
-          !trilhaSelecionada
-        ) {
-          return;
-        }
-
-        const itens =
-          await service
-            .listarTreinamentosTrilha(
-              trilhaSelecionada.id
-            );
-
-        setTreinamentosTrilha(
-          itens
-        );
-
-        const trilhasAtualizadas =
-          await service
-            .listarTrilhas();
-
-        setTrilhas(
-          trilhasAtualizadas
-        );
-
-        const trilhaAtualizada =
-          trilhasAtualizadas.find(
-            item =>
-              item.id ===
-              trilhaSelecionada.id
-          );
-
-        if (
-          trilhaAtualizada
-        ) {
-
-          setTrilhaSelecionada(
-            trilhaAtualizada
-          );
-        }
-      },
-      [
-        service,
-        trilhaSelecionada
-      ]
-    );
-
-  const criarTrilha =
-    React.useCallback(
-      async (
-        dados:
-          INovaTrilha
-      ): Promise<void> => {
-
-        setProcessando(
-          true
-        );
-
-        try {
-
-          await service
-            .criarTrilha(
-              dados
-            );
-
-          await carregar();
-
-        } finally {
+    const criarTrilha =
+      React.useCallback(
+        async (
+          dados:
+            INovaTrilha
+        ): Promise<ITrilhaAdmin> => {
 
           setProcessando(
-            false
+            true
           );
-        }
-      },
-      [
-        carregar,
-        service
-      ]
-    );
 
-  const editarTrilha =
-    React.useCallback(
-      async (
-        dados:
-          IEditarTrilha
-      ): Promise<void> => {
+          setErro('');
 
-        setProcessando(
-          true
-        );
+          try {
 
-        try {
+            const criada =
+              await service
+                .criarTrilha(
+                  dados
+                );
 
-          await service
-            .editarTrilha(
-              dados
-            );
-
-          await carregar();
-
-          if (
-            trilhaSelecionada?.id ===
-            dados.id
-          ) {
+            await carregar();
 
             setTrilhaSelecionada(
-              atual =>
-                atual
-                  ? {
-                      ...atual,
+              criada
+            );
 
-                      nome:
-                        dados.nome,
+            setTreinamentosTrilha(
+              []
+            );
 
-                      descricao:
-                        dados.descricao,
+            setAreasTrilha(
+              []
+            );
 
-                      diasParaConclusao:
-                        dados.diasParaConclusao,
+            return criada;
 
-                      ativa:
-                        dados.ativa
-                    }
-                  : undefined
+          } catch (e) {
+
+            const mensagem =
+              e instanceof Error
+                ? e.message
+                : 'Erro ao criar trilha.';
+
+            setErro(
+              mensagem
+            );
+
+            throw e;
+
+          } finally {
+
+            setProcessando(
+              false
             );
           }
+        },
+        [
+          carregar,
+          service
+        ]
+      );
 
-        } finally {
+    const editarTrilha =
+      React.useCallback(
+        async (
+          dados:
+            IEditarTrilha
+        ): Promise<void> => {
 
           setProcessando(
-            false
+            true
           );
-        }
-      },
-      [
-        carregar,
-        service,
-        trilhaSelecionada
-      ]
-    );
 
-  const definirTrilhaAtiva =
-    React.useCallback(
-      async (
-        trilhaId:
-          string,
-        ativa:
-          boolean
-      ): Promise<void> => {
+          setErro('');
 
-        setProcessando(
-          true
-        );
+          try {
 
-        try {
+            await service
+              .editarTrilha(
+                dados
+              );
 
-          await service
-            .definirTrilhaAtiva(
-              trilhaId,
-              ativa
+            await carregar();
+
+            const atualizada =
+              await service
+                .obterTrilha(
+                  dados.id
+                );
+
+            if (
+              atualizada
+            ) {
+              setTrilhaSelecionada(
+                atualizada
+              );
+            }
+
+          } catch (e) {
+
+            setErro(
+              e instanceof Error
+                ? e.message
+                : 'Erro ao editar trilha.'
             );
 
-          await carregar();
+            throw e;
 
-        } finally {
+          } finally {
+
+            setProcessando(
+              false
+            );
+          }
+        },
+        [
+          carregar,
+          service
+        ]
+      );
+
+    const definirTrilhaAtiva =
+      React.useCallback(
+        async (
+          trilhaId:
+            string,
+          ativa:
+            boolean
+        ): Promise<void> => {
 
           setProcessando(
-            false
+            true
           );
-        }
-      },
-      [
-        carregar,
-        service
-      ]
-    );
 
-  const adicionarTreinamento =
-    React.useCallback(
-      async (
-        dados:
-          IAdicionarTreinamentoTrilha
-      ): Promise<void> => {
+          setErro('');
 
-        setProcessando(
-          true
-        );
+          try {
 
-        try {
+            await service
+              .definirTrilhaAtiva(
+                trilhaId,
+                ativa
+              );
 
-          await service
-            .adicionarTreinamento(
-              dados
+            await carregar();
+
+          } catch (e) {
+
+            setErro(
+              e instanceof Error
+                ? e.message
+                : 'Erro ao alterar trilha.'
             );
 
-          await atualizarConteudoSelecionado();
+            throw e;
 
-        } finally {
+          } finally {
+
+            setProcessando(
+              false
+            );
+          }
+        },
+        [
+          carregar,
+          service
+        ]
+      );
+
+    const salvarTreinamentos =
+      React.useCallback(
+        async (
+          trilhaId:
+            string,
+          itens:
+            ITrilhaTreinamentoEdicao[]
+        ): Promise<void> => {
 
           setProcessando(
-            false
+            true
           );
-        }
-      },
-      [
-        atualizarConteudoSelecionado,
-        service
-      ]
-    );
 
-  const editarTreinamento =
-    React.useCallback(
-      async (
-        dados:
-          IEditarTreinamentoTrilha
-      ): Promise<void> => {
+          setErro('');
 
-        setProcessando(
-          true
-        );
+          try {
 
-        try {
+            await service
+              .salvarTreinamentos(
+                trilhaId,
+                itens
+              );
 
-          await service
-            .editarTreinamentoTrilha(
-              dados
+            if (
+              trilhaSelecionada &&
+              trilhaSelecionada.id ===
+              trilhaId
+            ) {
+              await carregarConteudo(
+                trilhaSelecionada
+              );
+            }
+
+            await carregar();
+
+          } catch (e) {
+
+            setErro(
+              e instanceof Error
+                ? e.message
+                : 'Erro ao salvar treinamentos da trilha.'
             );
 
-          await atualizarConteudoSelecionado();
+            throw e;
 
-        } finally {
+          } finally {
+
+            setProcessando(
+              false
+            );
+          }
+        },
+        [
+          carregar,
+          carregarConteudo,
+          service,
+          trilhaSelecionada
+        ]
+      );
+
+    const salvarAreas =
+      React.useCallback(
+        async (
+          trilhaId:
+            string,
+          todasAreas:
+            boolean,
+          areaIds:
+            string[]
+        ): Promise<void> => {
 
           setProcessando(
-            false
+            true
           );
-        }
-      },
-      [
-        atualizarConteudoSelecionado,
-        service
-      ]
-    );
 
-  const removerTreinamento =
-    React.useCallback(
-      async (
-        relacaoId:
-          string
-      ): Promise<void> => {
+          setErro('');
 
-        setProcessando(
-          true
-        );
+          try {
 
-        try {
+            await service
+              .salvarAreas(
+                trilhaId,
+                todasAreas,
+                areaIds
+              );
 
-          await service
-            .removerTreinamento(
-              relacaoId
+            const atualizada =
+              await service
+                .obterTrilha(
+                  trilhaId
+                );
+
+            if (
+              atualizada
+            ) {
+
+              setTrilhaSelecionada(
+                atualizada
+              );
+
+              await carregarConteudo(
+                atualizada
+              );
+            }
+
+            await carregar();
+
+          } catch (e) {
+
+            setErro(
+              e instanceof Error
+                ? e.message
+                : 'Erro ao salvar áreas da trilha.'
             );
 
-          await atualizarConteudoSelecionado();
+            throw e;
 
-        } finally {
+          } finally {
 
-          setProcessando(
-            false
-          );
-        }
-      },
-      [
-        atualizarConteudoSelecionado,
-        service
-      ]
-    );
+            setProcessando(
+              false
+            );
+          }
+        },
+        [
+          carregar,
+          carregarConteudo,
+          service
+        ]
+      );
 
-  const limparSelecao =
-    React.useCallback(
-      (): void => {
-
-        setTrilhaSelecionada(
-          undefined
-        );
-
-        setTreinamentosTrilha(
-          []
-        );
-      },
-      []
-    );
-
-  React.useEffect(
-    () => {
-
-      carregar()
-        .catch(
-          (
-            error:
-              unknown
-          ) =>
-            console.error(
-              'Erro ao carregar gestão de trilhas:',
-              error
-            )
-        );
-
-    },
-    [
-      carregar
-    ]
-  );
-
-  return {
-
-    trilhas,
-
-    trilhaSelecionada,
-
-    treinamentosTrilha,
-
-    carregando,
-
-    carregandoConteudo,
-
-    processando,
-
-    erro,
-
-    carregar,
-
-    selecionarTrilha,
-
-    limparSelecao,
-
-    criarTrilha,
-
-    editarTrilha,
-
-    definirTrilhaAtiva,
-
-    adicionarTreinamento,
-
-    editarTreinamento,
-
-    removerTreinamento
+    return {
+      trilhas,
+      trilhaSelecionada,
+      treinamentosTrilha,
+      areasTrilha,
+      carregando,
+      carregandoConteudo,
+      processando,
+      erro,
+      carregar,
+      selecionarTrilha,
+      limparSelecao,
+      criarTrilha,
+      editarTrilha,
+      definirTrilhaAtiva,
+      salvarTreinamentos,
+      salvarAreas
+    };
   };
-};

@@ -4,6 +4,8 @@ import { IDocumento } from '../../models/Documento';
 import Loading from '../../components/common/Loading';
 import EmptyState from '../../components/common/EmptyState';
 import ErrorMessage from '../../components/common/ErrorMessage';
+import TreinamentoCard from
+  '../../components/treinamentos/TreinamentoCard';
 
 export interface IInicioPageProps {
   primeiroNome: string;
@@ -153,180 +155,43 @@ const InicioPage: React.FC<IInicioPageProps> = ({
               <div
                 style={{
                   padding: 14,
+
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(4,minmax(0,1fr))',
-                  gap: 12
+
+                  gridTemplateColumns:
+                    'repeat(4,minmax(0,1fr))',
+
+                  gap: 12,
+
+                  alignItems:
+                    'stretch'
                 }}
               >
-                {cards.map(t => {
-                  const concluido = t.status === 'Concluído';
-                  const bloqueado = t.status === 'Bloqueado';
-                  const emAndamento = t.status === 'Em andamento';
-                  const disponivel = t.status === 'Disponível';
 
-                  let corStatus = '#0877d1';
+                {
+                  cards.map(
+                    treinamento => (
 
-                  if (concluido) {
-                    corStatus = '#217346';
-                  }
+                      <TreinamentoCard
+                        key={
+                          `${treinamento.id
+                          }-${treinamento.usuarioTreinamentoId ||
+                          ''
+                          }`
+                        }
+                        treinamento={
+                          treinamento
+                        }
+                        modo="compacto"
+                        onAbrir={
+                          onAbrirTreinamento
+                        }
+                      />
 
-                  if (bloqueado) {
-                    corStatus = '#60758a';
-                  }
+                    )
+                  )
+                }
 
-                  if (emAndamento) {
-                    corStatus = '#a46600';
-                  }
-
-                  let textoBotao = 'Abrir treinamento';
-
-                  if (concluido) {
-                    textoBotao = '✓ Treinamento concluído';
-                  } else if (bloqueado) {
-                    textoBotao = '🔒 Pré-requisito';
-                  } else if (emAndamento) {
-                    textoBotao = 'Continuar';
-                  } else if (disponivel) {
-                    textoBotao = 'Iniciar treinamento';
-                  }
-
-                  return (
-                    <div
-                      key={`${t.id}-${t.usuarioTreinamentoId || ''}`}
-                      style={{
-                        position: 'relative',
-                        border: concluido
-                          ? '1px solid #9fd4b2'
-                          : '1px solid #e3eaf0',
-                        borderRadius: 9,
-                        overflow: 'hidden',
-                        background: concluido
-                          ? '#fbfffc'
-                          : '#ffffff',
-                        boxShadow: concluido
-                          ? '0 2px 7px rgba(33,115,70,.10)'
-                          : 'none',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        minHeight: 165
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: 'relative'
-                        }}
-                      >
-                        <img
-                          src={t.imagem}
-                          alt={t.nome}
-                          style={{
-                            width: '100%',
-                            height: 70,
-                            objectFit: 'cover',
-                            display: 'block'
-                          }}
-                        />
-
-                        {concluido && (
-                          <div
-                            style={{
-                              position: 'absolute',
-                              top: 6,
-                              right: 6,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 4,
-                              padding: '3px 7px',
-                              borderRadius: 12,
-                              background: '#217346',
-                              color: '#ffffff',
-                              fontSize: 8,
-                              fontWeight: 700,
-                              boxShadow: '0 2px 5px rgba(0,0,0,.15)'
-                            }}
-                          >
-                            <span>✓</span>
-                            <span>CONCLUÍDO</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div
-                        style={{
-                          padding: 10,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          flex: 1
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            color: corStatus,
-                            minHeight: 14
-                          }}
-                        >
-                          {t.status.toUpperCase()}
-                        </span>
-
-                        <strong
-                          style={{
-                            display: 'block',
-                            margin: '6px 0',
-                            minHeight: 32,
-                            fontSize: 12,
-                            lineHeight: '16px',
-                            color: '#173153'
-                          }}
-                        >
-                          {t.nome}
-                        </strong>
-
-                        <small
-                          style={{
-                            color: '#52687d',
-                            minHeight: 16
-                          }}
-                        >
-                          {t.cargaHoraria}
-                        </small>
-
-                        <button
-                          type="button"
-                          disabled={bloqueado}
-                          onClick={() => onAbrirTreinamento(t)}
-                          style={{
-                            width: '100%',
-                            minHeight: 28,
-                            marginTop: 'auto',
-                            border: concluido
-                              ? '1px solid #9fd4b2'
-                              : 'none',
-                            borderRadius: 5,
-                            background: bloqueado
-                              ? '#dce5ec'
-                              : concluido
-                                ? '#e5f4eb'
-                                : '#2879ca',
-                            color: bloqueado
-                              ? '#81909d'
-                              : concluido
-                                ? '#217346'
-                                : '#ffffff',
-                            fontSize: 12,
-                            fontWeight: 700,
-                            cursor: bloqueado
-                              ? 'not-allowed'
-                              : 'pointer'
-                          }}
-                        >
-                          {textoBotao}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </article>
 

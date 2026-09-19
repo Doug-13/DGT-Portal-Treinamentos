@@ -61,6 +61,7 @@ export const useAutorizacao = (
       async (): Promise<void> => {
 
         if (!email.trim()) {
+
           setContexto(
             undefined
           );

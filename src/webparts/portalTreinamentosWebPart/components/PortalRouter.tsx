@@ -38,12 +38,12 @@ import GestaoTrilhasPage from
   '../pages/Gestao/GestaoTrilhasPage';
 
 import {
-  IAdicionarTreinamentoTrilha,
-  IEditarTreinamentoTrilha,
   IEditarTrilha,
   INovaTrilha,
   ITrilhaAdmin,
-  ITrilhaTreinamentoAdmin
+  ITrilhaAreaAdmin,
+  ITrilhaTreinamentoAdmin,
+  ITrilhaTreinamentoEdicao
 } from '../services/TrilhaAdminService';
 
 import {
@@ -85,6 +85,9 @@ import SuportePage from
 import GestaoPage from
   '../pages/Gestao/GestaoPage';
 
+import GestaoAreasPage from
+  '../pages/Gestao/GestaoAreasPage';
+
 import NovoTreinamentoPage from
   '../pages/Gestao/NovoTreinamentoPage';
 
@@ -102,6 +105,12 @@ import {
   IModuloAdmin,
   INovoModulo
 } from '../services/ModuloAdminService';
+
+import {
+  IEditarModuloConteudo,
+  IModuloConteudoAdmin,
+  INovoModuloConteudo
+} from '../services/ModuloConteudoAdminService';
 
 import GestaoAvaliacoesPage from
   '../pages/Gestao/GestaoAvaliacoesPage';
@@ -129,6 +138,7 @@ import {
   INovaAlternativa,
   INovaAvaliacao,
   INovaQuestao,
+  INovaQuestaoCompleta,
   IQuestaoAdmin
 } from '../services/AvaliacaoAdminService';
 
@@ -160,6 +170,16 @@ import {
 
 import IndicadoresPage from
   '../pages/Indicadores/IndicadoresPage';
+
+import {
+  IAreaAdmin,
+  IEditarArea,
+  IEditarUsuarioArea,
+  INovaArea,
+  INovoUsuarioArea,
+  IUsuarioAreaAdmin,
+  IUsuarioDisponivelArea
+} from '../services/AreaAdminService';
 
 // ============================================================
 // PROPS
@@ -214,6 +234,9 @@ export interface IPortalRouterProps {
   criarQuestaoAdministrativa:
   (dados: INovaQuestao) => Promise<void>;
 
+  criarQuestaoCompletaAdministrativa:
+  (dados: INovaQuestaoCompleta) => Promise<void>;
+
   editarQuestaoAdministrativa:
   (dados: IEditarQuestao) => Promise<void>;
 
@@ -229,6 +252,12 @@ export interface IPortalRouterProps {
   definirAlternativaAtiva:
   (id: string, ativa: boolean) => Promise<void>;
 
+  importarAvaliacaoJson:
+  (
+    arquivo:
+      File
+  ) => Promise<string>;
+
   treinamentosAdministrativos:
   ITreinamentoAdmin[];
 
@@ -241,10 +270,10 @@ export interface IPortalRouterProps {
   processandoTreinamentoId:
   string;
 
-  editarTreinamento:
+  abrirFluxoEdicaoTreinamento:
   (
-    dados:
-      IEditarTreinamento
+    treinamento:
+      ITreinamentoAdmin
   ) => Promise<void>;
 
   definirTreinamentoAtivo:
@@ -294,6 +323,68 @@ export interface IPortalRouterProps {
 
   erroConformidade:
   string;
+
+  // ============================================================
+  // ÁREAS E ACESSOS
+  // ============================================================
+
+  areasAdministrativas:
+  IAreaAdmin[];
+
+  usuariosDisponiveisArea:
+  IUsuarioDisponivelArea[];
+
+  usuariosAreasAdministrativos:
+  IUsuarioAreaAdmin[];
+
+  carregandoGestaoAreas:
+  boolean;
+
+  processandoGestaoAreas:
+  boolean;
+
+  erroGestaoAreas:
+  string;
+
+  criarAreaAdministrativa:
+  (
+    dados:
+      INovaArea
+  ) => Promise<void>;
+
+  editarAreaAdministrativa:
+  (
+    dados:
+      IEditarArea
+  ) => Promise<void>;
+
+  definirAreaAtiva:
+  (
+    areaId:
+      string,
+    ativa:
+      boolean
+  ) => Promise<void>;
+
+  vincularUsuarioArea:
+  (
+    dados:
+      INovoUsuarioArea
+  ) => Promise<void>;
+
+  editarUsuarioArea:
+  (
+    dados:
+      IEditarUsuarioArea
+  ) => Promise<void>;
+
+  definirUsuarioAreaAtivo:
+  (
+    vinculoId:
+      string,
+    ativo:
+      boolean
+  ) => Promise<void>;
 
   // ============================================================
   // GESTÃO DOCUMENTAL ADMINISTRATIVA
@@ -446,7 +537,7 @@ export interface IPortalRouterProps {
   (
     dados:
       INovaTrilha
-  ) => Promise<void>;
+  ) => Promise<ITrilhaAdmin>;
 
   editarTrilhaAdministrativa:
   (
@@ -462,22 +553,25 @@ export interface IPortalRouterProps {
       boolean
   ) => Promise<void>;
 
-  adicionarTreinamentoTrilha:
+  areasTrilhaAdministrativa:
+  ITrilhaAreaAdmin[];
+
+  salvarTreinamentosTrilha:
   (
-    dados:
-      IAdicionarTreinamentoTrilha
+    trilhaId:
+      string,
+    itens:
+      ITrilhaTreinamentoEdicao[]
   ) => Promise<void>;
 
-  editarTreinamentoTrilha:
+  salvarAreasTrilha:
   (
-    dados:
-      IEditarTreinamentoTrilha
-  ) => Promise<void>;
-
-  removerTreinamentoTrilha:
-  (
-    relacaoId:
-      string
+    trilhaId:
+      string,
+    todasAreas:
+      boolean,
+    areaIds:
+      string[]
   ) => Promise<void>;
 
   // ============================================================
@@ -489,6 +583,27 @@ export interface IPortalRouterProps {
     dados:
       INovoTreinamento
   ) => Promise<void>;
+
+  fluxoCriacaoTreinamentoId:
+  string;
+
+  avancarFluxoTreinamentoParaAvaliacao:
+  () => Promise<void>;
+
+  navegarEtapaFluxoTreinamento:
+  (
+    etapa:
+      1 | 2 | 3
+  ) => void;
+
+  atualizarTreinamentoFluxo:
+  (
+    dados:
+      IEditarTreinamento
+  ) => Promise<void>;
+
+  concluirFluxoCriacaoTreinamento:
+  () => Promise<void>;
 
   // ============================================================
   // MÓDULOS
@@ -663,6 +778,68 @@ export interface IPortalRouterProps {
       string,
     ativo:
       boolean
+  ) => Promise<void>;
+
+  importarModulosJson:
+  (
+    arquivo:
+      File
+  ) => Promise<string>;
+
+  moduloConteudoSelecionadoId:
+  string;
+
+  conteudosModuloAdministrativos:
+  IModuloConteudoAdmin[];
+
+  carregandoConteudosModulo:
+  boolean;
+
+  processandoConteudosModulo:
+  boolean;
+
+  erroConteudosModulo:
+  string;
+
+  selecionarModuloConteudo:
+  (
+    moduloId:
+      string
+  ) => Promise<void>;
+
+  limparModuloConteudo:
+  () => void;
+
+  criarConteudoModulo:
+  (
+    dados:
+      INovoModuloConteudo
+  ) => Promise<void>;
+
+  editarConteudoModulo:
+  (
+    dados:
+      IEditarModuloConteudo
+  ) => Promise<void>;
+
+  definirConteudoModuloAtivo:
+  (
+    id:
+      string,
+    ativo:
+      boolean
+  ) => Promise<void>;
+
+  moverConteudoModuloAcima:
+  (
+    item:
+      IModuloConteudoAdmin
+  ) => Promise<void>;
+
+  moverConteudoModuloAbaixo:
+  (
+    item:
+      IModuloConteudoAdmin
   ) => Promise<void>;
 }
 
@@ -1061,7 +1238,11 @@ const PortalRouter:
                 'gestaoTrilhas'
               )
             }
-
+            onAreas={() =>
+              props.navegar(
+                'gestaoAreas'
+              )
+            }
             onEquipe={() =>
               props.navegar(
                 'equipe'
@@ -1069,7 +1250,7 @@ const PortalRouter:
             }
 
             onEditarTreinamento={
-              props.editarTreinamento
+              props.abrirFluxoEdicaoTreinamento
             }
 
             onDefinirAtivo={
@@ -1130,9 +1311,19 @@ const PortalRouter:
                 .treinamentosTrilhaAdministrativa
             }
 
+            areasTrilha={
+              props
+                .areasTrilhaAdministrativa
+            }
+
             treinamentos={
               props
                 .treinamentosAdministrativos
+            }
+
+            areas={
+              props
+                .areasAdministrativas
             }
 
             carregando={
@@ -1186,19 +1377,14 @@ const PortalRouter:
                 .definirTrilhaAtiva
             }
 
-            onAdicionarTreinamento={
+            onSalvarTreinamentos={
               props
-                .adicionarTreinamentoTrilha
+                .salvarTreinamentosTrilha
             }
 
-            onEditarTreinamento={
+            onSalvarAreas={
               props
-                .editarTreinamentoTrilha
-            }
-
-            onRemoverTreinamento={
-              props
-                .removerTreinamentoTrilha
+                .salvarAreasTrilha
             }
           />
         );
@@ -1206,6 +1392,21 @@ const PortalRouter:
 
         return (
           <NovoTreinamentoPage
+            areas={
+              props.areasAdministrativas
+            }
+
+            treinamentoExistente={
+              props.fluxoCriacaoTreinamentoId
+                ? props.treinamentosAdministrativos
+                  .find(
+                    item =>
+                      item.id ===
+                      props.fluxoCriacaoTreinamentoId
+                  )
+                : undefined
+            }
+
             onVoltar={() =>
               props.navegar(
                 'gestao'
@@ -1214,6 +1415,14 @@ const PortalRouter:
 
             onSalvar={
               props.salvarNovoTreinamento
+            }
+
+            onAtualizar={
+              props.atualizarTreinamentoFluxo
+            }
+
+            onEtapaClick={
+              props.navegarEtapaFluxoTreinamento
             }
           />
         );
@@ -1391,6 +1600,20 @@ const PortalRouter:
               props.erroGestaoAvaliacoes
             }
 
+            modoFluxo={
+              !!props.fluxoCriacaoTreinamentoId &&
+              props.fluxoCriacaoTreinamentoId ===
+              props.treinamentoAvaliacaoSelecionadoId
+            }
+
+            onConcluir={
+              props.concluirFluxoCriacaoTreinamento
+            }
+
+            onEtapaClick={
+              props.navegarEtapaFluxoTreinamento
+            }
+
             onVoltar={() =>
               props.navegar(
                 'gestao'
@@ -1425,6 +1648,10 @@ const PortalRouter:
               props.criarQuestaoAdministrativa
             }
 
+            onCriarQuestaoCompleta={
+              props.criarQuestaoCompletaAdministrativa
+            }
+
             onEditarQuestao={
               props.editarQuestaoAdministrativa
             }
@@ -1443,6 +1670,10 @@ const PortalRouter:
 
             onDefinirAlternativaAtiva={
               props.definirAlternativaAtiva
+            }
+
+            onImportarJson={
+              props.importarAvaliacaoJson
             }
           />
         );
@@ -1482,6 +1713,20 @@ const PortalRouter:
                 .erroGestaoModulos
             }
 
+            modoFluxo={
+              !!props
+                .fluxoCriacaoTreinamentoId &&
+              props
+                .fluxoCriacaoTreinamentoId ===
+              props
+                .treinamentoModuloSelecionadoId
+            }
+
+            onAvancar={
+              props
+                .avancarFluxoTreinamentoParaAvaliacao
+            }
+
             onVoltar={() =>
               props.navegar(
                 'gestao'
@@ -1507,9 +1752,138 @@ const PortalRouter:
               props
                 .definirModuloAtivo
             }
+
+            onImportarJson={
+              props
+                .importarModulosJson
+            }
+
+            onEtapaClick={
+              props
+                .navegarEtapaFluxoTreinamento
+            }
+
+            moduloConteudoSelecionadoId={
+              props
+                .moduloConteudoSelecionadoId
+            }
+
+            conteudosModulo={
+              props
+                .conteudosModuloAdministrativos
+            }
+
+            carregandoConteudosModulo={
+              props
+                .carregandoConteudosModulo
+            }
+
+            processandoConteudosModulo={
+              props
+                .processandoConteudosModulo
+            }
+
+            erroConteudosModulo={
+              props
+                .erroConteudosModulo
+            }
+
+            onSelecionarModuloConteudo={
+              props
+                .selecionarModuloConteudo
+            }
+
+            onLimparModuloConteudo={
+              props
+                .limparModuloConteudo
+            }
+
+            onCriarConteudoModulo={
+              props
+                .criarConteudoModulo
+            }
+
+            onEditarConteudoModulo={
+              props
+                .editarConteudoModulo
+            }
+
+            onDefinirConteudoModuloAtivo={
+              props
+                .definirConteudoModuloAtivo
+            }
+
+            onMoverConteudoModuloAcima={
+              props
+                .moverConteudoModuloAcima
+            }
+
+            onMoverConteudoModuloAbaixo={
+              props
+                .moverConteudoModuloAbaixo
+            }
           />
         );
 
+      case 'gestaoAreas':
+
+        return (
+          <GestaoAreasPage
+            areas={
+              props.areasAdministrativas
+            }
+
+            usuarios={
+              props.usuariosDisponiveisArea
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
+            carregando={
+              props.carregandoGestaoAreas
+            }
+
+            processando={
+              props.processandoGestaoAreas
+            }
+
+            erro={
+              props.erroGestaoAreas
+            }
+
+            onVoltar={() =>
+              props.navegar(
+                'gestao'
+              )
+            }
+
+            onCriarArea={
+              props.criarAreaAdministrativa
+            }
+
+            onEditarArea={
+              props.editarAreaAdministrativa
+            }
+
+            onDefinirAreaAtiva={
+              props.definirAreaAtiva
+            }
+
+            onVincularUsuario={
+              props.vincularUsuarioArea
+            }
+
+            onEditarUsuarioArea={
+              props.editarUsuarioArea
+            }
+
+            onDefinirUsuarioAreaAtivo={
+              props.definirUsuarioAreaAtivo
+            }
+          />
+        );
       // ========================================================
       // GESTÃO DOCUMENTAL
       // ========================================================

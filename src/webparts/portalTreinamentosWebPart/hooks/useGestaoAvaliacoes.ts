@@ -14,6 +14,7 @@ import {
   INovaAlternativa,
   INovaAvaliacao,
   INovaQuestao,
+  INovaQuestaoCompleta,
   IQuestaoAdmin
 } from '../services/AvaliacaoAdminService';
 
@@ -48,6 +49,12 @@ export interface IUseGestaoAvaliacoes {
 
   criarQuestao:
     (dados: INovaQuestao) => Promise<void>;
+
+  criarQuestaoCompleta:
+    (
+      dados:
+        INovaQuestaoCompleta
+    ) => Promise<void>;
 
   editarQuestao:
     (dados: IEditarQuestao) => Promise<void>;
@@ -466,6 +473,64 @@ export const useGestaoAvaliacoes = (
       ]
     );
 
+
+  const criarQuestaoCompleta =
+    React.useCallback(
+      async (
+        dados:
+          INovaQuestaoCompleta
+      ): Promise<void> => {
+
+        setProcessando(
+          true
+        );
+
+        setErro('');
+
+        try {
+
+          const criada =
+            await service
+              .criarQuestaoCompleta(
+                dados
+              );
+
+          await carregarQuestoes(
+            dados.avaliacaoId
+          );
+
+          setQuestaoSelecionada(
+            criada
+          );
+
+          await carregarAlternativas(
+            criada.id
+          );
+
+        } catch (e) {
+
+          setErro(
+            e instanceof Error
+              ? e.message
+              : 'Erro ao criar questão.'
+          );
+
+          throw e;
+
+        } finally {
+
+          setProcessando(
+            false
+          );
+        }
+      },
+      [
+        carregarAlternativas,
+        carregarQuestoes,
+        service
+      ]
+    );
+
   const editarQuestao =
     React.useCallback(
       async (
@@ -656,6 +721,7 @@ export const useGestaoAvaliacoes = (
     editarAvaliacao,
     definirAvaliacaoAtiva,
     criarQuestao,
+    criarQuestaoCompleta,
     editarQuestao,
     definirQuestaoAtiva,
     criarAlternativa,

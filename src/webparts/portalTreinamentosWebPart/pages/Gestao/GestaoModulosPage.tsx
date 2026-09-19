@@ -3,6 +3,18 @@ import * as React from 'react';
 import PageHeader from
   '../../components/layout/PageHeader';
 
+import FluxoTreinamentoEtapas from
+  '../../components/common/FluxoTreinamentoEtapas';
+
+import ModuloConteudosEditor from
+  './ModuloConteudosEditor';
+
+import {
+  IEditarModuloConteudo,
+  IModuloConteudoAdmin,
+  INovoModuloConteudo
+} from '../../services/ModuloConteudoAdminService';
+
 import {
   ITreinamentoAdmin
 } from '../../services/TreinamentoAdminService';
@@ -61,11 +73,84 @@ export interface IGestaoModulosPageProps {
       ativo:
         boolean
     ) => Promise<void>;
+
+  moduloConteudoSelecionadoId:
+    string;
+
+  conteudosModulo:
+    IModuloConteudoAdmin[];
+
+  carregandoConteudosModulo:
+    boolean;
+
+  processandoConteudosModulo:
+    boolean;
+
+  erroConteudosModulo:
+    string;
+
+  onSelecionarModuloConteudo:
+    (
+      moduloId:
+        string
+    ) => Promise<void>;
+
+  onLimparModuloConteudo:
+    () => void;
+
+  onCriarConteudoModulo:
+    (
+      dados:
+        INovoModuloConteudo
+    ) => Promise<void>;
+
+  onEditarConteudoModulo:
+    (
+      dados:
+        IEditarModuloConteudo
+    ) => Promise<void>;
+
+  onDefinirConteudoModuloAtivo:
+    (
+      id:
+        string,
+      ativo:
+        boolean
+    ) => Promise<void>;
+
+  onMoverConteudoModuloAcima:
+    (
+      item:
+        IModuloConteudoAdmin
+    ) => Promise<void>;
+
+  onMoverConteudoModuloAbaixo:
+    (
+      item:
+        IModuloConteudoAdmin
+    ) => Promise<void>;
+
+  modoFluxo?:
+    boolean;
+
+  onAvancar?:
+    () => Promise<void>;
+
+  onImportarJson:
+    (
+      arquivo:
+        File
+    ) => Promise<string>;
+
+  onEtapaClick?:
+    (
+      etapa:
+        1 | 2 | 3
+    ) => void;
 }
 
 const inputStyle:
   React.CSSProperties = {
-
   width:
     '100%',
 
@@ -84,46 +169,83 @@ const inputStyle:
 
 const buttonPrimary:
   React.CSSProperties = {
-
   padding:
     '10px 16px',
 
   border:
-    'none',
+    '1px solid #0B5CAB',
 
   borderRadius:
     '8px',
 
   background:
-    '#1677ff',
+    '#0B5CAB',
 
   color:
-    '#ffffff',
+    '#FFFFFF',
 
   fontWeight:
     700,
 
   cursor:
-    'pointer'
+    'pointer',
+
+  opacity:
+    1
 };
 
 const buttonSecondary:
   React.CSSProperties = {
-
   padding:
     '9px 14px',
 
   border:
-    '1px solid #cbd5e1',
+    '1px solid #0B5CAB',
 
   borderRadius:
     '8px',
 
   background:
-    '#ffffff',
+    '#FFFFFF',
+
+  color:
+    '#0B5CAB',
+
+  fontWeight:
+    700,
 
   cursor:
-    'pointer'
+    'pointer',
+
+  opacity:
+    1
+};
+
+const buttonDanger:
+  React.CSSProperties = {
+  padding:
+    '9px 14px',
+
+  border:
+    '1px solid #B42318',
+
+  borderRadius:
+    '8px',
+
+  background:
+    '#FFFFFF',
+
+  color:
+    '#B42318',
+
+  fontWeight:
+    700,
+
+  cursor:
+    'pointer',
+
+  opacity:
+    1
 };
 
 const GestaoModulosPage:
@@ -132,6 +254,34 @@ const GestaoModulosPage:
   > = (
     props
   ) => {
+
+  const inputJsonRef =
+    React.useRef<
+      HTMLInputElement
+    >(
+      null
+    );
+
+    const [
+      importandoJson,
+      setImportandoJson
+    ] =
+      React.useState(
+        false
+      );
+
+    const [
+      mensagemImportacao,
+      setMensagemImportacao
+    ] =
+      React.useState('');
+
+    const [
+      erroImportacao,
+      setErroImportacao
+    ] =
+      React.useState('');
+
 
     const [
       editando,
@@ -174,20 +324,6 @@ const GestaoModulosPage:
       React.useState('0');
 
     const [
-      tipo,
-      setTipo
-    ] =
-      React.useState(
-        'Página'
-      );
-
-    const [
-      url,
-      setUrl
-    ] =
-      React.useState('');
-
-    const [
       obrigatorio,
       setObrigatorio
     ] =
@@ -208,6 +344,46 @@ const GestaoModulosPage:
       setErroLocal
     ] =
       React.useState('');
+
+    const [
+      moduloAguardandoConteudo,
+      setModuloAguardandoConteudo
+    ] =
+      React.useState<{
+        treinamentoId:
+          string;
+
+        titulo:
+          string;
+
+        ordem:
+          number;
+      } | null>(
+        null
+      );
+
+    const [
+      avancando,
+      setAvancando
+    ] =
+      React.useState(
+        false
+      );
+
+    const treinamentoSelecionado =
+      React.useMemo(
+        () =>
+          props.treinamentos
+            .find(
+              item =>
+                item.id ===
+                props.treinamentoId
+            ),
+        [
+          props.treinamentoId,
+          props.treinamentos
+        ]
+      );
 
     const abrirNovo =
       (): void => {
@@ -237,8 +413,6 @@ const GestaoModulosPage:
         );
 
         setDuracao('0');
-        setTipo('Página');
-        setUrl('');
         setObrigatorio(true);
         setAtivo(true);
         setErroLocal('');
@@ -277,15 +451,6 @@ const GestaoModulosPage:
         )
       );
 
-      setTipo(
-        modulo.tipoModulo ||
-        'Página'
-      );
-
-      setUrl(
-        modulo.urlConteudo
-      );
-
       setObrigatorio(
         modulo.obrigatorio
       );
@@ -300,6 +465,65 @@ const GestaoModulosPage:
         true
       );
     };
+
+    React.useEffect(
+      () => {
+
+        if (
+          !moduloAguardandoConteudo
+        ) {
+          return;
+        }
+
+        const moduloCriado =
+          props.modulos
+            .filter(
+              modulo =>
+                modulo.treinamentoId ===
+                  moduloAguardandoConteudo.treinamentoId &&
+                modulo.titulo
+                  .trim()
+                  .toLowerCase() ===
+                moduloAguardandoConteudo.titulo
+                  .trim()
+                  .toLowerCase() &&
+                modulo.ordem ===
+                  moduloAguardandoConteudo.ordem
+            )
+            .slice()
+            .reverse()[0];
+
+        if (
+          !moduloCriado?.id
+        ) {
+          return;
+        }
+
+        setModuloAguardandoConteudo(
+          null
+        );
+
+        props
+          .onSelecionarModuloConteudo(
+            moduloCriado.id
+          )
+          .catch(
+            (
+              error:
+                unknown
+            ) =>
+              console.error(
+                error
+              )
+          );
+
+      },
+      [
+        moduloAguardandoConteudo,
+        props.modulos,
+        props.onSelecionarModuloConteudo
+      ]
+    );
 
     const salvar =
       async (): Promise<void> => {
@@ -336,6 +560,30 @@ const GestaoModulosPage:
             duracao
           );
 
+        if (
+          !Number.isFinite(
+            ordemNumero
+          ) ||
+          ordemNumero <= 0
+        ) {
+          setErroLocal(
+            'Informe uma ordem válida.'
+          );
+          return;
+        }
+
+        if (
+          !Number.isFinite(
+            duracaoNumero
+          ) ||
+          duracaoNumero < 0
+        ) {
+          setErroLocal(
+            'Informe uma duração válida.'
+          );
+          return;
+        }
+
         try {
 
           if (
@@ -361,18 +609,31 @@ const GestaoModulosPage:
               duracaoMin:
                 duracaoNumero,
 
+              // Campo legado mantido apenas para compatibilidade.
+              // O conteúdo real agora é criado em blocos modulares.
               tipoModulo:
-                tipo,
+                'Página',
 
               obrigatorio,
 
               ativo,
 
               urlConteudo:
-                url.trim()
+                ''
             });
 
           } else {
+
+            setModuloAguardandoConteudo({
+              treinamentoId:
+                props.treinamentoId,
+
+              titulo:
+                titulo.trim(),
+
+              ordem:
+                ordemNumero
+            });
 
             await props.onCriar({
               treinamentoId:
@@ -390,15 +651,17 @@ const GestaoModulosPage:
               duracaoMin:
                 duracaoNumero,
 
+              // Campo legado mantido apenas para compatibilidade.
+              // O conteúdo real agora é criado em blocos modulares.
               tipoModulo:
-                tipo,
+                'Página',
 
               obrigatorio,
 
               ativo,
 
               urlConteudo:
-                url.trim()
+                ''
             });
           }
 
@@ -408,6 +671,14 @@ const GestaoModulosPage:
 
         } catch (e) {
 
+          if (
+            !editando
+          ) {
+            setModuloAguardandoConteudo(
+              null
+            );
+          }
+
           setErroLocal(
             e instanceof Error
               ? e.message
@@ -416,13 +687,259 @@ const GestaoModulosPage:
         }
       };
 
+    const avancar =
+      async (): Promise<void> => {
+
+        if (
+          !props.onAvancar
+        ) {
+          return;
+        }
+
+        if (
+          props.modulos.length ===
+          0
+        ) {
+          setErroLocal(
+            'Cadastre pelo menos um módulo antes de continuar para a avaliação.'
+          );
+          return;
+        }
+
+        setAvancando(
+          true
+        );
+
+        setErroLocal('');
+
+        try {
+
+          await props
+            .onAvancar();
+
+        } catch (e) {
+
+          setErroLocal(
+            e instanceof Error
+              ? e.message
+              : 'Não foi possível avançar para a avaliação.'
+          );
+
+        } finally {
+
+          setAvancando(
+            false
+          );
+        }
+      };
+
     return (
       <section>
 
         <PageHeader
-          titulo="Gestão de módulos"
-          subtitulo="Cadastre e organize o conteúdo interno dos treinamentos."
+          titulo={
+            props.modoFluxo
+              ? 'Módulos do treinamento'
+              : 'Gestão de módulos'
+          }
+          subtitulo={
+            props.modoFluxo
+              ? 'Etapa 2 de 3 — cadastre o conteúdo do treinamento e avance para a avaliação.'
+              : 'Cadastre e organize o conteúdo interno dos treinamentos.'
+          }
         />
+
+        {
+          props.modoFluxo &&
+          (
+            <FluxoTreinamentoEtapas
+              etapa={2}
+              permitirNavegacao={
+                true
+              }
+              onEtapaClick={
+                props.onEtapaClick
+              }
+            />
+          )
+        }
+
+        <input
+          ref={
+            inputJsonRef
+          }
+          type="file"
+          accept=".json,application/json"
+          style={{
+            display:
+              'none'
+          }}
+          onChange={
+            event => {
+
+              const arquivo =
+                event.target
+                  .files &&
+                event.target
+                  .files[0];
+
+              if (
+                !arquivo
+              ) {
+                return;
+              }
+
+              setImportandoJson(
+                true
+              );
+
+              setMensagemImportacao('');
+              setErroImportacao('');
+
+              void props
+                .onImportarJson(
+                  arquivo
+                )
+                .then(
+                  mensagem => {
+
+                    setMensagemImportacao(
+                      mensagem
+                    );
+
+                    return props
+                      .onSelecionarTreinamento(
+                        props.treinamentoId
+                      );
+                  }
+                )
+                .catch(
+                  (
+                    error:
+                      unknown
+                  ) => {
+
+                    setErroImportacao(
+                      error instanceof Error
+                        ? error.message
+                        : 'Erro ao importar JSON.'
+                    );
+                  }
+                )
+                .then(
+                  () => {
+
+                    setImportandoJson(
+                      false
+                    );
+
+                    if (
+                      inputJsonRef.current
+                    ) {
+                      inputJsonRef.current.value =
+                        '';
+                    }
+                  }
+                );
+            }
+          }
+        />
+
+        <div
+          style={{
+            display:
+              'flex',
+
+            justifyContent:
+              'flex-end',
+
+            marginBottom:
+              '14px'
+          }}
+        >
+          <button
+            type="button"
+            disabled={
+              !props.treinamentoId ||
+              importandoJson
+            }
+            onClick={() =>
+              inputJsonRef.current
+                ?.click()
+            }
+            style={{
+              ...buttonSecondary,
+
+              opacity:
+                !props.treinamentoId ||
+                importandoJson
+                  ? .55
+                  : 1
+            }}
+          >
+            {
+              importandoJson
+                ? 'Importando JSON...'
+                : '⬆ Importar módulos por JSON'
+            }
+          </button>
+        </div>
+
+        {
+          mensagemImportacao &&
+          (
+            <div
+              style={{
+                marginBottom:
+                  '14px',
+
+                padding:
+                  '12px',
+
+                borderRadius:
+                  '8px',
+
+                background:
+                  '#E7F5EE',
+
+                color:
+                  '#13795B'
+              }}
+            >
+              {
+                mensagemImportacao
+              }
+            </div>
+          )
+        }
+
+        {
+          erroImportacao &&
+          (
+            <div
+              style={{
+                marginBottom:
+                  '14px',
+
+                padding:
+                  '12px',
+
+                borderRadius:
+                  '8px',
+
+                background:
+                  '#FDE7E9',
+
+                color:
+                  '#A4262C'
+              }}
+            >
+              {
+                erroImportacao
+              }
+            </div>
+          )
+        }
 
         <div
           style={{
@@ -439,7 +956,10 @@ const GestaoModulosPage:
               '20px',
 
             alignItems:
-              'center'
+              'center',
+
+            flexWrap:
+              'wrap'
           }}
         >
 
@@ -452,7 +972,11 @@ const GestaoModulosPage:
               buttonSecondary
             }
           >
-            Voltar
+            {
+              props.modoFluxo
+                ? 'Sair do cadastro'
+                : 'Voltar'
+            }
           </button>
 
           <button
@@ -470,7 +994,6 @@ const GestaoModulosPage:
         </div>
 
         {props.erro && (
-
           <div
             style={{
               padding:
@@ -494,7 +1017,6 @@ const GestaoModulosPage:
         )}
 
         {erroLocal && (
-
           <div
             style={{
               padding:
@@ -517,89 +1039,147 @@ const GestaoModulosPage:
           </div>
         )}
 
-        <div
-          style={{
-            padding:
-              '20px',
+        {
+          props.modoFluxo
+            ? (
+              <div
+                style={{
+                  padding:
+                    '18px',
 
-            background:
-              '#ffffff',
+                  background:
+                    '#f8fafc',
 
-            border:
-              '1px solid #e5e7eb',
+                  border:
+                    '1px solid #e5e7eb',
 
-            borderRadius:
-              '14px',
+                  borderRadius:
+                    '12px',
 
-            marginBottom:
-              '20px'
-          }}
-        >
+                  marginBottom:
+                    '20px'
+                }}
+              >
+                <span
+                  style={{
+                    display:
+                      'block',
 
-          <label>
-            Treinamento
-          </label>
+                    color:
+                      '#64748b',
 
-          <select
-            value={
-              props.treinamentoId
-            }
-            onChange={
-              event => {
+                    fontSize:
+                      '12px'
+                  }}
+                >
+                  Treinamento em configuração
+                </span>
 
-                props
-                  .onSelecionarTreinamento(
-                    event.target.value
-                  )
-                  .catch(
-                    (
-                      error:
-                        unknown
-                    ) =>
-                      console.error(
-                        error
-                      )
-                  );
-              }
-            }
-            style={{
-              ...inputStyle,
+                <strong
+                  style={{
+                    display:
+                      'block',
 
-              marginTop:
-                '8px'
-            }}
-          >
+                    marginTop:
+                      '4px',
 
-            <option value="">
-              Selecione um treinamento
-            </option>
-
-            {props.treinamentos.map(
-              treinamento => (
-
-                <option
-                  key={
-                    treinamento.id
-                  }
-                  value={
-                    treinamento.id
-                  }
+                    color:
+                      '#0b1f3a'
+                  }}
                 >
                   {
-                    treinamento.codigo
-                  } - {
-                    treinamento.nome
+                    treinamentoSelecionado
+                      ? `${treinamentoSelecionado.codigo} - ${treinamentoSelecionado.nome}`
+                      : 'Treinamento selecionado'
                   }
-                </option>
-              )
-            )}
+                </strong>
+              </div>
+            )
+            : (
+              <div
+                style={{
+                  padding:
+                    '20px',
 
-          </select>
+                  background:
+                    '#ffffff',
 
-        </div>
+                  border:
+                    '1px solid #e5e7eb',
+
+                  borderRadius:
+                    '14px',
+
+                  marginBottom:
+                    '20px'
+                }}
+              >
+
+                <label>
+                  Treinamento
+                </label>
+
+                <select
+                  value={
+                    props.treinamentoId
+                  }
+                  onChange={
+                    event => {
+
+                      props
+                        .onSelecionarTreinamento(
+                          event.target.value
+                        )
+                        .catch(
+                          (
+                            error:
+                              unknown
+                          ) =>
+                            console.error(
+                              error
+                            )
+                        );
+                    }
+                  }
+                  style={{
+                    ...inputStyle,
+
+                    marginTop:
+                      '8px'
+                  }}
+                >
+
+                  <option value="">
+                    Selecione um treinamento
+                  </option>
+
+                  {props.treinamentos.map(
+                    treinamento => (
+
+                      <option
+                        key={
+                          treinamento.id
+                        }
+                        value={
+                          treinamento.id
+                        }
+                      >
+                        {
+                          treinamento.codigo
+                        } - {
+                          treinamento.nome
+                        }
+                      </option>
+                    )
+                  )}
+
+                </select>
+
+              </div>
+            )
+        }
 
         {props.carregando ? (
-
           <div
             style={{
               padding:
@@ -611,9 +1191,7 @@ const GestaoModulosPage:
           >
             Carregando módulos...
           </div>
-
         ) : (
-
           <div
             style={{
               display:
@@ -623,6 +1201,37 @@ const GestaoModulosPage:
                 '12px'
             }}
           >
+
+            {
+              props.modulos.length ===
+              0 &&
+              (
+                <div
+                  style={{
+                    padding:
+                      '28px',
+
+                    border:
+                      '1px dashed #cbd5e1',
+
+                    borderRadius:
+                      '12px',
+
+                    background:
+                      '#ffffff',
+
+                    textAlign:
+                      'center',
+
+                    color:
+                      '#64748b'
+                  }}
+                >
+                  Nenhum módulo cadastrado.
+                  Clique em <strong>+ Novo módulo</strong> para começar.
+                </div>
+              )
+            }
 
             {props.modulos.map(
               modulo => (
@@ -636,7 +1245,7 @@ const GestaoModulosPage:
                       'grid',
 
                     gridTemplateColumns:
-                      '70px 1fr 130px 120px 220px',
+                      '70px minmax(240px, 1fr) 120px 100px 310px',
 
                     gap:
                       '16px',
@@ -720,6 +1329,49 @@ const GestaoModulosPage:
 
                     <button
                       type="button"
+                      onClick={() => {
+
+                        if (
+                          props.moduloConteudoSelecionadoId ===
+                          modulo.id
+                        ) {
+                          props
+                            .onLimparModuloConteudo();
+
+                          return;
+                        }
+
+                        props
+                          .onSelecionarModuloConteudo(
+                            modulo.id
+                          )
+                          .catch(
+                            (
+                              error:
+                                unknown
+                            ) =>
+                              console.error(
+                                error
+                              )
+                          );
+                      }}
+                      style={
+                        props.moduloConteudoSelecionadoId ===
+                          modulo.id
+                          ? buttonPrimary
+                          : buttonSecondary
+                      }
+                    >
+                      {
+                        props.moduloConteudoSelecionadoId ===
+                          modulo.id
+                          ? 'Fechar conteúdo'
+                          : '+ Adicionar conteúdo'
+                      }
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() =>
                         abrirEditar(
                           modulo
@@ -755,7 +1407,9 @@ const GestaoModulosPage:
                           );
                       }}
                       style={
-                        buttonSecondary
+                        modulo.ativo
+                          ? buttonDanger
+                          : buttonSecondary
                       }
                     >
                       {
@@ -773,6 +1427,130 @@ const GestaoModulosPage:
 
           </div>
         )}
+
+        {
+          props.moduloConteudoSelecionadoId &&
+          (
+            <ModuloConteudosEditor
+              moduloId={
+                props.moduloConteudoSelecionadoId
+              }
+
+              moduloTitulo={
+                props.modulos
+                  .find(
+                    item =>
+                      item.id ===
+                      props.moduloConteudoSelecionadoId
+                  )
+                  ?.titulo ||
+                'Módulo'
+              }
+
+              conteudos={
+                props.conteudosModulo
+              }
+
+              carregando={
+                props.carregandoConteudosModulo
+              }
+
+              processando={
+                props.processandoConteudosModulo
+              }
+
+              erro={
+                props.erroConteudosModulo
+              }
+
+              onFechar={
+                props.onLimparModuloConteudo
+              }
+
+              onCriar={
+                props.onCriarConteudoModulo
+              }
+
+              onEditar={
+                props.onEditarConteudoModulo
+              }
+
+              onDefinirAtivo={
+                props.onDefinirConteudoModuloAtivo
+              }
+
+              onMoverAcima={
+                props.onMoverConteudoModuloAcima
+              }
+
+              onMoverAbaixo={
+                props.onMoverConteudoModuloAbaixo
+              }
+            />
+          )
+        }
+
+        {
+          props.modoFluxo &&
+          (
+            <div
+              style={{
+                display:
+                  'flex',
+
+                justifyContent:
+                  'flex-end',
+
+                marginTop:
+                  '24px'
+              }}
+            >
+              <button
+                type="button"
+                disabled={
+                  props.modulos.length ===
+                    0 ||
+                  avancando
+                }
+                onClick={() => {
+                  avancar()
+                    .catch(
+                      (
+                        error:
+                          unknown
+                      ) =>
+                        console.error(
+                          error
+                        )
+                    );
+                }}
+                style={{
+                  ...buttonPrimary,
+
+                  opacity:
+                    props.modulos.length ===
+                      0 ||
+                    avancando
+                      ? 0.55
+                      : 1,
+
+                  cursor:
+                    props.modulos.length ===
+                      0 ||
+                    avancando
+                      ? 'default'
+                      : 'pointer'
+                }}
+              >
+                {
+                  avancando
+                    ? 'Abrindo avaliação...'
+                    : 'Continuar para avaliação →'
+                }
+              </button>
+            </div>
+          )
+        }
 
         {mostrarFormulario && (
 
@@ -810,7 +1588,7 @@ const GestaoModulosPage:
                   '100%',
 
                 maxWidth:
-                  '700px',
+                  '760px',
 
                 maxHeight:
                   '90vh',
@@ -829,13 +1607,41 @@ const GestaoModulosPage:
               }}
             >
 
-              <h2>
+              <h2
+                style={{
+                  marginBottom:
+                    '6px',
+
+                  color:
+                    '#0B2D4D'
+                }}
+              >
                 {
                   editando
                     ? 'Editar módulo'
                     : 'Novo módulo'
                 }
               </h2>
+
+              <p
+                style={{
+                  marginTop:
+                    0,
+
+                  marginBottom:
+                    '20px',
+
+                  color:
+                    '#64748B',
+
+                  lineHeight:
+                    1.5
+                }}
+              >
+                Primeiro cadastre a estrutura do módulo.
+                Os materiais e conteúdos serão adicionados em blocos,
+                permitindo combinar texto, vídeo, PDF, links e imagens.
+              </p>
 
               <label>
                 Título
@@ -856,21 +1662,14 @@ const GestaoModulosPage:
                 }
               />
 
-              <div
-                style={{
-                  height:
-                    '12px'
-                }}
-              />
+              <div style={{height:'12px'}} />
 
               <label>
                 Descrição
               </label>
 
               <textarea
-                rows={
-                  4
-                }
+                rows={4}
                 value={
                   descricao
                 }
@@ -882,7 +1681,6 @@ const GestaoModulosPage:
                 }
                 style={{
                   ...inputStyle,
-
                   resize:
                     'vertical'
                 }}
@@ -894,7 +1692,7 @@ const GestaoModulosPage:
                     'grid',
 
                   gridTemplateColumns:
-                    '1fr 1fr 1fr',
+                    '1fr 1fr',
 
                   gap:
                     '12px',
@@ -905,13 +1703,13 @@ const GestaoModulosPage:
               >
 
                 <div>
-
                   <label>
                     Ordem
                   </label>
 
                   <input
                     type="number"
+                    min={1}
                     value={
                       ordem
                     }
@@ -925,17 +1723,16 @@ const GestaoModulosPage:
                       inputStyle
                     }
                   />
-
                 </div>
 
                 <div>
-
                   <label>
-                    Duração
+                    Duração estimada (min)
                   </label>
 
                   <input
                     type="number"
+                    min={0}
                     value={
                       duracao
                     }
@@ -949,80 +1746,56 @@ const GestaoModulosPage:
                       inputStyle
                     }
                   />
-
                 </div>
-
-                <div>
-
-                  <label>
-                    Tipo
-                  </label>
-
-                  <select
-                    value={
-                      tipo
-                    }
-                    onChange={
-                      event =>
-                        setTipo(
-                          event.target.value
-                        )
-                    }
-                    style={
-                      inputStyle
-                    }
-                  >
-                    <option value="Página">
-                      Página
-                    </option>
-
-                    <option value="Vídeo">
-                      Vídeo
-                    </option>
-
-                    <option value="PDF">
-                      PDF
-                    </option>
-
-                    <option value="Link">
-                      Link
-                    </option>
-
-                    <option value="Documento">
-                      Documento
-                    </option>
-                  </select>
-
-                </div>
-
               </div>
 
               <div
                 style={{
                   marginTop:
-                    '14px'
+                    '16px',
+
+                  padding:
+                    '14px 16px',
+
+                  background:
+                    '#F0F7FF',
+
+                  border:
+                    '1px solid #B9D7F0',
+
+                  borderRadius:
+                    '10px',
+
+                  color:
+                    '#0B2D4D'
                 }}
               >
+                <strong
+                  style={{
+                    display:
+                      'block',
 
-                <label>
-                  URL do conteúdo
-                </label>
+                    marginBottom:
+                      '5px'
+                  }}
+                >
+                  Conteúdo do módulo
+                </strong>
 
-                <input
-                  value={
-                    url
-                  }
-                  onChange={
-                    event =>
-                      setUrl(
-                        event.target.value
-                      )
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
+                <span
+                  style={{
+                    fontSize:
+                      '13px',
 
+                    lineHeight:
+                      1.5
+                  }}
+                >
+                  Ao salvar um novo módulo, o editor de conteúdo será
+                  aberto automaticamente. Nele você poderá adicionar
+                  textos para leitura, vídeos, materiais, links,
+                  imagens e destaques.
+                </span>
               </div>
 
               <label
@@ -1034,10 +1807,9 @@ const GestaoModulosPage:
                     '8px',
 
                   marginTop:
-                    '16px'
+                    '14px'
                 }}
               >
-
                 <input
                   type="checkbox"
                   checked={
@@ -1052,7 +1824,6 @@ const GestaoModulosPage:
                 />
 
                 Obrigatório
-
               </label>
 
               <label
@@ -1067,7 +1838,6 @@ const GestaoModulosPage:
                     '10px'
                 }}
               >
-
                 <input
                   type="checkbox"
                   checked={
@@ -1082,7 +1852,6 @@ const GestaoModulosPage:
                 />
 
                 Ativo
-
               </label>
 
               <div
@@ -1137,7 +1906,11 @@ const GestaoModulosPage:
                     buttonPrimary
                   }
                 >
-                  Salvar
+                  {
+                    props.processando
+                      ? 'Salvando...'
+                      : 'Salvar módulo'
+                  }
                 </button>
 
               </div>

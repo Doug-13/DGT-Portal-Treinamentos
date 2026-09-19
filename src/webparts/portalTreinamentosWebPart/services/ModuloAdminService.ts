@@ -3,6 +3,14 @@ import {
   IDataverseRecord
 } from './DataverseService';
 
+export type TipoModuloAdmin =
+  | 'Documento'
+  | 'Vídeo'
+  | 'Página'
+  | 'Conteúdo HTML'
+  | 'Link externo'
+  | 'Outro';
+
 export interface IModuloAdmin {
   id: string;
   treinamentoId: string;
@@ -10,7 +18,7 @@ export interface IModuloAdmin {
   descricao: string;
   ordem: number;
   duracaoMin: number;
-  tipoModulo: string;
+  tipoModulo: TipoModuloAdmin;
   obrigatorio: boolean;
   ativo: boolean;
   urlConteudo: string;
@@ -22,7 +30,7 @@ export interface INovoModulo {
   descricao: string;
   ordem: number;
   duracaoMin: number;
-  tipoModulo: string;
+  tipoModulo: TipoModuloAdmin;
   obrigatorio: boolean;
   ativo: boolean;
   urlConteudo: string;
@@ -33,15 +41,69 @@ export interface IEditarModulo
   id: string;
 }
 
+const TIPO_MODULO_VALORES:
+  Record<
+    TipoModuloAdmin,
+    number
+  > = {
+
+  Documento:
+    100000000,
+
+  'Vídeo':
+    100000001,
+
+  'Página':
+    100000002,
+
+  'Conteúdo HTML':
+    100000003,
+
+  'Link externo':
+    100000004,
+
+  Outro:
+    100000005
+};
+
+const TIPO_MODULO_ROTULOS:
+  Record<
+    number,
+    TipoModuloAdmin
+  > = {
+
+  100000000:
+    'Documento',
+
+  100000001:
+    'Vídeo',
+
+  100000002:
+    'Página',
+
+  100000003:
+    'Conteúdo HTML',
+
+  100000004:
+    'Link externo',
+
+  100000005:
+    'Outro'
+};
+
 const texto = (
   registro: IDataverseRecord,
   campo: string,
   padrao = ''
 ): string => {
-  const valor = registro[campo];
 
-  return valor === undefined ||
+  const valor =
+    registro[campo];
+
+  return (
+    valor === undefined ||
     valor === null
+  )
     ? padrao
     : String(valor);
 };
@@ -51,7 +113,9 @@ const numero = (
   campo: string,
   padrao = 0
 ): number => {
-  const valor = registro[campo];
+
+  const valor =
+    registro[campo];
 
   if (
     valor === undefined ||
@@ -61,9 +125,12 @@ const numero = (
     return padrao;
   }
 
-  const convertido = Number(valor);
+  const convertido =
+    Number(valor);
 
-  return Number.isNaN(convertido)
+  return Number.isNaN(
+    convertido
+  )
     ? padrao
     : convertido;
 };
@@ -73,9 +140,14 @@ const booleano = (
   campo: string,
   padrao = true
 ): boolean => {
-  const valor = registro[campo];
 
-  if (typeof valor === 'boolean') {
+  const valor =
+    registro[campo];
+
+  if (
+    typeof valor ===
+      'boolean'
+  ) {
     return valor;
   }
 
@@ -96,6 +168,64 @@ const booleano = (
   }
 
   return padrao;
+};
+
+const tipoModuloParaValor = (
+  tipo:
+    TipoModuloAdmin
+): number => {
+
+  return (
+    TIPO_MODULO_VALORES[
+      tipo
+    ] ??
+    TIPO_MODULO_VALORES
+      .Outro
+  );
+};
+
+const tipoModuloDoRegistro = (
+  registro:
+    IDataverseRecord
+): TipoModuloAdmin => {
+
+  const valorFormatado =
+    texto(
+      registro,
+      'dgt_tipomodulo@OData.Community.Display.V1.FormattedValue',
+      ''
+    ).trim();
+
+  if (
+    valorFormatado ===
+      'Documento' ||
+    valorFormatado ===
+      'Vídeo' ||
+    valorFormatado ===
+      'Página' ||
+    valorFormatado ===
+      'Conteúdo HTML' ||
+    valorFormatado ===
+      'Link externo' ||
+    valorFormatado ===
+      'Outro'
+  ) {
+    return valorFormatado;
+  }
+
+  const valor =
+    numero(
+      registro,
+      'dgt_tipomodulo',
+      100000002
+    );
+
+  return (
+    TIPO_MODULO_ROTULOS[
+      valor
+    ] ||
+    'Página'
+  );
 };
 
 export class ModuloAdminService {
@@ -167,9 +297,8 @@ export class ModuloAdminService {
             ),
 
           tipoModulo:
-            texto(
-              registro,
-              'dgt_tipomodulo'
+            tipoModuloDoRegistro(
+              registro
             ),
 
           obrigatorio:
@@ -229,7 +358,9 @@ export class ModuloAdminService {
             dados.duracaoMin,
 
           dgt_tipomodulo:
-            dados.tipoModulo,
+            tipoModuloParaValor(
+              dados.tipoModulo
+            ),
 
           dgt_obrigatorio:
             dados.obrigatorio,
@@ -275,7 +406,9 @@ export class ModuloAdminService {
             dados.duracaoMin,
 
           dgt_tipomodulo:
-            dados.tipoModulo,
+            tipoModuloParaValor(
+              dados.tipoModulo
+            ),
 
           dgt_obrigatorio:
             dados.obrigatorio,

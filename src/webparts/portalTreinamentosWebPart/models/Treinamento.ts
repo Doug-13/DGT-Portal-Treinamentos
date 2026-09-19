@@ -16,9 +16,12 @@ export interface ITreinamento {
   status: StatusTreinamento;
   progresso: number;
   cargaHoraria: string;
+  cargaHorariaMin?: number;
+  notaMinima?: number;
   validadeMeses?: number;
   ativo: boolean;
   imagem: string;
+  imagemUrl?: string;
 }
 
 export interface IHistorico {

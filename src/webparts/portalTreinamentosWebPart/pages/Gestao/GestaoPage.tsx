@@ -4,143 +4,114 @@ import PageHeader from
   '../../components/layout/PageHeader';
 
 import {
-  IEditarTreinamento,
   ITreinamentoAdmin
 } from '../../services/TreinamentoAdminService';
 
 export interface IGestaoPageProps {
 
   treinamentos:
-  ITreinamentoAdmin[];
+    ITreinamentoAdmin[];
 
   carregando:
-  boolean;
+    boolean;
 
   erro:
-  string;
+    string;
 
   processandoId:
-  string;
+    string;
 
   onNovoTreinamento:
-  () => void;
+    () => void;
 
   onAtribuirTreinamento:
-  () => void;
+    () => void;
 
   onTrilhas:
-  () => void;
+    () => void;
+
+  onAreas:
+    () => void;
 
   onEquipe:
-  () => void;
+    () => void;
 
   onEditarTreinamento:
-  (
-    dados:
-      IEditarTreinamento
-  ) => Promise<void>;
+    (
+      treinamento:
+        ITreinamentoAdmin
+    ) => Promise<void>;
 
   onDefinirAtivo:
-  (
-    treinamentoId:
-      string,
-    ativo:
-      boolean
-  ) => Promise<void>;
+    (
+      treinamentoId:
+        string,
+      ativo:
+        boolean
+    ) => Promise<void>;
 
-  onModulos: () => void;
+  /*
+   * Mantidos temporariamente por compatibilidade
+   * com o PortalRouter. Não aparecem mais como
+   * botões independentes no dashboard.
+   */
+  onModulos:
+    () => void;
 
-  onAvaliacoes: () => void;
+  onAvaliacoes:
+    () => void;
 
-  onDocumentos: () => void;
+  onDocumentos:
+    () => void;
 
-  onConformidade: () => void;
+  onConformidade:
+    () => void;
 
-  onIndicadores: () => void;
-
+  onIndicadores:
+    () => void;
 }
-
-// ============================================================
-// ESTILOS
-// ============================================================
 
 const thStyle:
   React.CSSProperties = {
-
-  padding:
-    '12px 14px',
-
-  textAlign:
-    'left',
-
-  fontSize:
-    '12px',
-
-  color:
-    '#64748b',
-
-  background:
-    '#f8fafc',
-
-  whiteSpace:
-    'nowrap'
+  padding: '12px 14px',
+  textAlign: 'left',
+  fontSize: '12px',
+  color: '#64748b',
+  background: '#f8fafc',
+  whiteSpace: 'nowrap'
 };
 
 const tdStyle:
   React.CSSProperties = {
-
-  padding:
-    '13px 14px',
-
-  borderTop:
-    '1px solid #edf0f4',
-
-  color:
-    '#334155',
-
-  fontSize:
-    '13px',
-
-  verticalAlign:
-    'middle'
+  padding: '13px 14px',
+  borderTop: '1px solid #edf0f4',
+  color: '#334155',
+  fontSize: '13px',
+  verticalAlign: 'middle'
 };
 
 const inputStyle:
   React.CSSProperties = {
-
-  width:
-    '100%',
-
-  boxSizing:
-    'border-box',
-
-  padding:
-    '10px 11px',
-
-  border:
-    '1px solid #d8dee8',
-
-  borderRadius:
-    '8px',
-
-  fontSize:
-    '14px'
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '10px 11px',
+  border: '1px solid #d8dee8',
+  borderRadius: '8px',
+  fontSize: '14px'
 };
-
-// ============================================================
-// CARD
-// ============================================================
 
 const Acao:
   React.FC<{
     titulo: string;
     descricao: string;
     icone: string;
+    destaque?: boolean;
     onClick: () => void;
   }> = ({
     titulo,
     descricao,
     icone,
+    destaque,
     onClick
   }) => (
 
@@ -157,13 +128,17 @@ const Acao:
           'left',
 
         border:
-          '1px solid #e5e7eb',
+          destaque
+            ? '1px solid #1677ff'
+            : '1px solid #e5e7eb',
 
         borderRadius:
           '14px',
 
         background:
-          '#ffffff',
+          destaque
+            ? '#eef6ff'
+            : '#ffffff',
 
         cursor:
           'pointer'
@@ -221,10 +196,6 @@ const Acao:
     </button>
   );
 
-// ============================================================
-// COMPONENTE
-// ============================================================
-
 const GestaoPage:
   React.FC<
     IGestaoPageProps
@@ -238,68 +209,6 @@ const GestaoPage:
     ] =
       React.useState('');
 
-    const [
-      editando,
-      setEditando
-    ] =
-      React.useState<
-        ITreinamentoAdmin | undefined
-      >(undefined);
-
-    const [
-      nome,
-      setNome
-    ] =
-      React.useState('');
-
-    const [
-      codigo,
-      setCodigo
-    ] =
-      React.useState('');
-
-    const [
-      descricao,
-      setDescricao
-    ] =
-      React.useState('');
-
-    const [
-      carga,
-      setCarga
-    ] =
-      React.useState('');
-
-    const [
-      nota,
-      setNota
-    ] =
-      React.useState('');
-
-    const [
-      validade,
-      setValidade
-    ] =
-      React.useState('');
-
-    const [
-      salvando,
-      setSalvando
-    ] =
-      React.useState(
-        false
-      );
-
-    const [
-      erroEdicao,
-      setErroEdicao
-    ] =
-      React.useState('');
-
-    // ==========================================================
-    // FILTRO
-    // ==========================================================
-
     const filtrados =
       React.useMemo(
         () => {
@@ -309,10 +218,7 @@ const GestaoPage:
               .trim()
               .toLowerCase();
 
-          if (
-            !termo
-          ) {
-
+          if (!termo) {
             return props
               .treinamentos;
           }
@@ -347,218 +253,13 @@ const GestaoPage:
         ]
       );
 
-    // ==========================================================
-    // ABRIR EDIÇÃO
-    // ==========================================================
-
-    const abrirEdicao = (
-      treinamento:
-        ITreinamentoAdmin
-    ): void => {
-
-      setEditando(
-        treinamento
-      );
-
-      setNome(
-        treinamento.nome
-      );
-
-      setCodigo(
-        treinamento.codigo
-      );
-
-      setDescricao(
-        treinamento.descricao
-      );
-
-      setCarga(
-        String(
-          treinamento.cargaHorariaMin
-        )
-      );
-
-      setNota(
-        String(
-          treinamento.notaMinima
-        )
-      );
-
-      setValidade(
-        String(
-          treinamento.validadeMeses
-        )
-      );
-
-      setErroEdicao('');
-    };
-
-    // ==========================================================
-    // FECHAR EDIÇÃO
-    // ==========================================================
-
-    const fecharEdicao =
-      (): void => {
-
-        setEditando(
-          undefined
-        );
-
-        setErroEdicao('');
-      };
-
-    // ==========================================================
-    // SALVAR EDIÇÃO
-    // ==========================================================
-
-    const salvarEdicao =
-      async (): Promise<void> => {
-
-        if (
-          !editando
-        ) {
-
-          return;
-        }
-
-        setErroEdicao('');
-
-        const cargaNumero =
-          Number(
-            carga
-          );
-
-        const notaNumero =
-          Number(
-            nota
-          );
-
-        const validadeNumero =
-          Number(
-            validade
-          );
-
-        if (
-          !nome.trim()
-        ) {
-
-          setErroEdicao(
-            'Informe o nome.'
-          );
-
-          return;
-        }
-
-        if (
-          !codigo.trim()
-        ) {
-
-          setErroEdicao(
-            'Informe o código.'
-          );
-
-          return;
-        }
-
-        if (
-          Number.isNaN(
-            cargaNumero
-          ) ||
-          cargaNumero <=
-          0
-        ) {
-
-          setErroEdicao(
-            'Carga horária inválida.'
-          );
-
-          return;
-        }
-
-        if (
-          Number.isNaN(
-            notaNumero
-          ) ||
-          notaNumero <
-          0 ||
-          notaNumero >
-          100
-        ) {
-
-          setErroEdicao(
-            'Nota mínima inválida.'
-          );
-
-          return;
-        }
-
-        setSalvando(
-          true
-        );
-
-        try {
-
-          await props
-            .onEditarTreinamento({
-
-              id:
-                editando.id,
-
-              nome:
-                nome.trim(),
-
-              codigo:
-                codigo
-                  .trim()
-                  .toUpperCase(),
-
-              descricao:
-                descricao.trim(),
-
-              cargaHorariaMin:
-                cargaNumero,
-
-              notaMinima:
-                notaNumero,
-
-              validadeMeses:
-                validadeNumero,
-
-              ativo:
-                editando.ativo
-            });
-
-          fecharEdicao();
-
-        } catch (e) {
-
-          setErroEdicao(
-            e instanceof Error
-              ? e.message
-              : 'Erro ao salvar alterações.'
-          );
-
-        } finally {
-
-          setSalvando(
-            false
-          );
-        }
-      };
-
-    // ==========================================================
-    // RENDER
-    // ==========================================================
-
     return (
       <section>
 
         <PageHeader
           titulo="Gestão de treinamentos"
-          subtitulo="Cadastros, trilhas, atribuições e acompanhamento da plataforma."
+          subtitulo="Cadastre treinamentos por um fluxo simples e linear. Módulos e avaliação são configurados automaticamente após o cadastro."
         />
-
-        {/* AÇÕES */}
 
         <div
           style={{
@@ -577,9 +278,10 @@ const GestaoPage:
         >
 
           <Acao
-            titulo="Novo treinamento"
-            descricao="Cadastre um novo treinamento."
+            titulo="Criar treinamento"
+            descricao="Fluxo guiado: treinamento → módulos → avaliação."
             icone="+"
+            destaque
             onClick={
               props.onNovoTreinamento
             }
@@ -596,7 +298,7 @@ const GestaoPage:
 
           <Acao
             titulo="Gerenciar trilhas"
-            descricao="Organize cursos, sequência e regras."
+            descricao="Organize cursos, sequência e pré-requisitos."
             icone="▰"
             onClick={
               props.onTrilhas
@@ -604,55 +306,20 @@ const GestaoPage:
           />
 
           <Acao
+            titulo="Áreas e acessos"
+            descricao="Gerencie áreas, usuários e perfis de acesso."
+            icone="◈"
+            onClick={
+              props.onAreas
+            }
+          />
+
+          <Acao
             titulo="Minha equipe"
-            descricao="Acompanhe conformidade e pendências."
+            descricao="Acompanhe progresso e pendências."
             icone="♟"
             onClick={
               props.onEquipe
-            }
-          />
-
-          <Acao
-            titulo="Gerenciar módulos"
-            descricao="Organize o conteúdo dos treinamentos."
-            icone="▤"
-            onClick={
-              props.onModulos
-            }
-          />
-
-          <Acao
-            titulo="Avaliações e questões"
-            descricao="Configure provas, banco de questões e alternativas."
-            icone="✓"
-            onClick={
-              props.onAvaliacoes
-            }
-          />
-          <Acao
-            titulo="Módulos"
-            descricao="Gerencie os módulos dos treinamentos."
-            icone="▦"
-            onClick={
-              props.onModulos
-            }
-          />
-
-          <Acao
-            titulo="Avaliações"
-            descricao="Gerencie avaliações, questões e alternativas."
-            icone="✓"
-            onClick={
-              props.onAvaliacoes
-            }
-          />
-
-          <Acao
-            titulo="Conformidade"
-            descricao="Acompanhe concluídos, pendências, vencidos e próximos do vencimento."
-            icone="◉"
-            onClick={
-              props.onConformidade
             }
           />
 
@@ -664,7 +331,16 @@ const GestaoPage:
               props.onDocumentos
             }
           />
-          
+
+          <Acao
+            titulo="Conformidade"
+            descricao="Acompanhe concluídos, pendentes e vencidos."
+            icone="◉"
+            onClick={
+              props.onConformidade
+            }
+          />
+
           <Acao
             titulo="Indicadores"
             descricao="Acompanhe conformidade, vencimentos e desempenho."
@@ -675,8 +351,6 @@ const GestaoPage:
           />
 
         </div>
-
-        {/* LISTAGEM */}
 
         <div
           style={{
@@ -783,7 +457,6 @@ const GestaoPage:
           </div>
 
           {props.erro && (
-
             <div
               style={{
                 margin:
@@ -807,7 +480,6 @@ const GestaoPage:
           )}
 
           {props.carregando ? (
-
             <div
               style={{
                 padding:
@@ -819,16 +491,13 @@ const GestaoPage:
             >
               Carregando treinamentos...
             </div>
-
           ) : (
-
             <div
               style={{
                 overflowX:
                   'auto'
               }}
             >
-
               <table
                 style={{
                   width:
@@ -838,11 +507,8 @@ const GestaoPage:
                     'collapse'
                 }}
               >
-
                 <thead>
-
                   <tr>
-
                     <th style={thStyle}>
                       Código
                     </th>
@@ -870,13 +536,10 @@ const GestaoPage:
                     <th style={thStyle}>
                       Ações
                     </th>
-
                   </tr>
-
                 </thead>
 
                 <tbody>
-
                   {filtrados.map(
                     treinamento => {
 
@@ -885,26 +548,21 @@ const GestaoPage:
                         treinamento.id;
 
                       return (
-
                         <tr
                           key={
                             treinamento.id
                           }
                         >
-
                           <td style={tdStyle}>
-
                             <strong>
                               {
                                 treinamento.codigo ||
                                 '-'
                               }
                             </strong>
-
                           </td>
 
                           <td style={tdStyle}>
-
                             <strong
                               style={{
                                 color:
@@ -917,7 +575,6 @@ const GestaoPage:
                             </strong>
 
                             {treinamento.descricao && (
-
                               <span
                                 style={{
                                   display:
@@ -941,7 +598,6 @@ const GestaoPage:
                                 }
                               </span>
                             )}
-
                           </td>
 
                           <td style={tdStyle}>
@@ -969,7 +625,6 @@ const GestaoPage:
                           </td>
 
                           <td style={tdStyle}>
-
                             <span
                               style={{
                                 display:
@@ -1004,11 +659,9 @@ const GestaoPage:
                                   : 'Inativo'
                               }
                             </span>
-
                           </td>
 
                           <td style={tdStyle}>
-
                             <div
                               style={{
                                 display:
@@ -1021,17 +674,28 @@ const GestaoPage:
                                   'wrap'
                               }}
                             >
-
                               <button
                                 type="button"
                                 disabled={
                                   processando
                                 }
-                                onClick={() =>
-                                  abrirEdicao(
-                                    treinamento
-                                  )
-                                }
+                                onClick={() => {
+
+                                  void props
+                                    .onEditarTreinamento(
+                                      treinamento
+                                    )
+                                    .catch(
+                                      (
+                                        error:
+                                          unknown
+                                      ) =>
+                                        console.error(
+                                          'Erro ao abrir edição do treinamento:',
+                                          error
+                                        )
+                                    );
+                                }}
                               >
                                 Editar
                               </button>
@@ -1042,7 +706,6 @@ const GestaoPage:
                                   processando
                                 }
                                 onClick={() => {
-
                                   props
                                     .onDefinirAtivo(
                                       treinamento.id,
@@ -1067,348 +730,18 @@ const GestaoPage:
                                       : 'Ativar'
                                 }
                               </button>
-
                             </div>
-
                           </td>
-
                         </tr>
                       );
                     }
                   )}
-
                 </tbody>
-
               </table>
-
             </div>
           )}
 
-        </div>
-
-        {/* MODAL DE EDIÇÃO */}
-
-        {editando && (
-
-          <div
-            style={{
-              position:
-                'fixed',
-
-              inset:
-                0,
-
-              zIndex:
-                10000,
-
-              display:
-                'flex',
-
-              alignItems:
-                'center',
-
-              justifyContent:
-                'center',
-
-              padding:
-                '20px',
-
-              background:
-                'rgba(15, 23, 42, 0.50)'
-            }}
-          >
-
-            <div
-              style={{
-                width:
-                  '100%',
-
-                maxWidth:
-                  '700px',
-
-                maxHeight:
-                  '90vh',
-
-                overflowY:
-                  'auto',
-
-                padding:
-                  '24px',
-
-                background:
-                  '#ffffff',
-
-                borderRadius:
-                  '16px',
-
-                boxShadow:
-                  '0 20px 60px rgba(0,0,0,.20)'
-              }}
-            >
-
-              <h2
-                style={{
-                  margin:
-                    '0 0 20px',
-
-                  color:
-                    '#0b1f3a'
-                }}
-              >
-                Editar treinamento
-              </h2>
-
-              {erroEdicao && (
-
-                <div
-                  style={{
-                    padding:
-                      '12px',
-
-                    marginBottom:
-                      '16px',
-
-                    background:
-                      '#fde7e9',
-
-                    color:
-                      '#a4262c',
-
-                    borderRadius:
-                      '8px'
-                  }}
-                >
-                  {erroEdicao}
-                </div>
-              )}
-
-              <label>
-                Nome
-              </label>
-
-              <input
-                value={
-                  nome
-                }
-                onChange={
-                  event =>
-                    setNome(
-                      event.target.value
-                    )
-                }
-                style={
-                  inputStyle
-                }
-              />
-
-              <div
-                style={{
-                  height:
-                    '14px'
-                }}
-              />
-
-              <label>
-                Código
-              </label>
-
-              <input
-                value={
-                  codigo
-                }
-                onChange={
-                  event =>
-                    setCodigo(
-                      event.target.value
-                    )
-                }
-                style={
-                  inputStyle
-                }
-              />
-
-              <div
-                style={{
-                  height:
-                    '14px'
-                }}
-              />
-
-              <label>
-                Descrição
-              </label>
-
-              <textarea
-                rows={
-                  4
-                }
-                value={
-                  descricao
-                }
-                onChange={
-                  event =>
-                    setDescricao(
-                      event.target.value
-                    )
-                }
-                style={{
-                  ...inputStyle,
-
-                  resize:
-                    'vertical'
-                }}
-              />
-
-              <div
-                style={{
-                  display:
-                    'grid',
-
-                  gridTemplateColumns:
-                    'repeat(3, minmax(0, 1fr))',
-
-                  gap:
-                    '14px',
-
-                  marginTop:
-                    '14px'
-                }}
-              >
-
-                <div>
-
-                  <label>
-                    Carga (min)
-                  </label>
-
-                  <input
-                    type="number"
-                    value={
-                      carga
-                    }
-                    onChange={
-                      event =>
-                        setCarga(
-                          event.target.value
-                        )
-                    }
-                    style={
-                      inputStyle
-                    }
-                  />
-
-                </div>
-
-                <div>
-
-                  <label>
-                    Nota mínima
-                  </label>
-
-                  <input
-                    type="number"
-                    value={
-                      nota
-                    }
-                    onChange={
-                      event =>
-                        setNota(
-                          event.target.value
-                        )
-                    }
-                    style={
-                      inputStyle
-                    }
-                  />
-
-                </div>
-
-                <div>
-
-                  <label>
-                    Validade
-                  </label>
-
-                  <input
-                    type="number"
-                    value={
-                      validade
-                    }
-                    onChange={
-                      event =>
-                        setValidade(
-                          event.target.value
-                        )
-                    }
-                    style={
-                      inputStyle
-                    }
-                  />
-
-                </div>
-
-              </div>
-
-              <div
-                style={{
-                  display:
-                    'flex',
-
-                  justifyContent:
-                    'flex-end',
-
-                  gap:
-                    '10px',
-
-                  marginTop:
-                    '24px'
-                }}
-              >
-
-                <button
-                  type="button"
-                  disabled={
-                    salvando
-                  }
-                  onClick={
-                    fecharEdicao
-                  }
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  type="button"
-                  disabled={
-                    salvando
-                  }
-                  onClick={() => {
-
-                    salvarEdicao()
-                      .catch(
-                        (
-                          error:
-                            unknown
-                        ) =>
-                          console.error(
-                            error
-                          )
-                      );
-                  }}
-                >
-                  {
-                    salvando
-                      ? 'Salvando...'
-                      : 'Salvar alterações'
-                  }
-                </button>
-
-              </div>
-
-            </div>
-
-          </div>
-        )}
+        </div>  
 
       </section>
     );

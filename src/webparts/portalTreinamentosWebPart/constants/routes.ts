@@ -13,6 +13,7 @@ export type Pagina =
   | 'gestaoModulos'
   | 'gestaoAvaliacoes'
   | 'gestaoDocumentos'
+  | 'gestaoAreas'
   | 'trilhas'
   | 'equipe'
   | 'executarTreinamento'
@@ -35,6 +36,7 @@ export const ROTAS = {
   GESTAO_MODULOS: 'gestaoModulos',
   GESTAO_AVALIACOES: 'gestaoAvaliacoes',
   GESTAO_DOCUMENTOS: 'gestaoDocumentos',
+  GESTAO_AREAS: 'gestaoAreas',
   TRILHAS: 'trilhas',
   EQUIPE: 'equipe',
   EXECUTAR_TREINAMENTO: 'executarTreinamento',

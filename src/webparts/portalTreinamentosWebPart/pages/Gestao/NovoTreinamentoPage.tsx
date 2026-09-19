@@ -3,11 +3,24 @@ import * as React from 'react';
 import PageHeader from
   '../../components/layout/PageHeader';
 
+import FluxoTreinamentoEtapas from
+  '../../components/common/FluxoTreinamentoEtapas';
+
 import {
-  INovoTreinamento
+  IEditarTreinamento,
+  INovoTreinamento,
+  ITreinamentoAdmin,
+  TipoTreinamentoAdmin
 } from '../../services/TreinamentoAdminService';
 
+import {
+  IAreaAdmin
+} from '../../services/AreaAdminService';
+
 export interface INovoTreinamentoPageProps {
+
+  areas:
+    IAreaAdmin[];
 
   onVoltar:
     () => void;
@@ -17,15 +30,60 @@ export interface INovoTreinamentoPageProps {
       dados:
         INovoTreinamento
     ) => Promise<void>;
+
+  treinamentoExistente?:
+    ITreinamentoAdmin;
+
+  onAtualizar?:
+    (
+      dados:
+        IEditarTreinamento
+    ) => Promise<void>;
+
+  onEtapaClick?:
+    (
+      etapa:
+        1 | 2 | 3
+    ) => void;
 }
 
-// ============================================================
-// ESTILOS
-// ============================================================
+const cores = {
+  azul:
+    '#0B5CAB',
+
+  azulEscuro:
+    '#0B2D4D',
+
+  branco:
+    '#FFFFFF',
+
+  texto:
+    '#18324A',
+
+  textoSecundario:
+    '#66788A',
+
+  borda:
+    '#D8E2EC',
+
+  fundoDesabilitado:
+    '#F1F5F9',
+
+  verdeClaro:
+    '#E7F5EE',
+
+  verde:
+    '#13795B',
+
+  vermelhoClaro:
+    '#FDE7E9',
+
+  vermelho:
+    '#A4262C'
+};
 
 const labelStyle:
   React.CSSProperties = {
-
   display:
     'block',
 
@@ -33,7 +91,7 @@ const labelStyle:
     '6px',
 
   color:
-    '#334155',
+    cores.texto,
 
   fontSize:
     '13px',
@@ -44,7 +102,6 @@ const labelStyle:
 
 const inputStyle:
   React.CSSProperties = {
-
   width:
     '100%',
 
@@ -55,7 +112,7 @@ const inputStyle:
     '11px 12px',
 
   border:
-    '1px solid #d8dee8',
+    `1px solid ${cores.borda}`,
 
   borderRadius:
     '8px',
@@ -63,24 +120,142 @@ const inputStyle:
   fontSize:
     '14px',
 
+  color:
+    cores.texto,
+
   background:
-    '#ffffff',
+    cores.branco,
 
   outline:
     'none'
 };
 
-// ============================================================
-// COMPONENTE
-// ============================================================
+const inputBloqueadoStyle:
+  React.CSSProperties = {
+  ...inputStyle,
+
+  background:
+    cores.fundoDesabilitado,
+
+  color:
+    '#475569',
+
+  cursor:
+    'not-allowed',
+
+  fontWeight:
+    700
+};
+
+const helpStyle:
+  React.CSSProperties = {
+  display:
+    'block',
+
+  marginTop:
+    '5px',
+
+  color:
+    cores.textoSecundario,
+
+  fontSize:
+    '12px'
+};
+
+const buttonPrimary:
+  React.CSSProperties = {
+  padding:
+    '10px 16px',
+
+  border:
+    `1px solid ${cores.azul}`,
+
+  borderRadius:
+    '8px',
+
+  background:
+    cores.azul,
+
+  color:
+    cores.branco,
+
+  fontWeight:
+    700,
+
+  cursor:
+    'pointer'
+};
+
+const buttonSecondary:
+  React.CSSProperties = {
+  padding:
+    '10px 16px',
+
+  border:
+    `1px solid ${cores.azul}`,
+
+  borderRadius:
+    '8px',
+
+  background:
+    cores.branco,
+
+  color:
+    cores.azul,
+
+  fontWeight:
+    700,
+
+  cursor:
+    'pointer'
+};
+
+const tiposTreinamento:
+  TipoTreinamentoAdmin[] = [
+  'POP',
+  'IT',
+  'PROC',
+  'POL',
+  'INT',
+  'NR',
+  'MAN',
+  'SIS',
+  'COM',
+  'TEC',
+  'OUT'
+];
 
 const NovoTreinamentoPage:
   React.FC<
     INovoTreinamentoPageProps
   > = ({
+    areas,
     onVoltar,
-    onSalvar
+    onSalvar,
+    treinamentoExistente,
+    onAtualizar,
+    onEtapaClick
   }) => {
+
+    const areasDisponiveis =
+      (areas || [])
+        .filter(
+          area =>
+            area.ativa
+        )
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            a.nome.localeCompare(
+              b.nome,
+              'pt-BR'
+            )
+        );
+
+    const modoEdicao =
+      !!treinamentoExistente;
 
     const [
       nome,
@@ -89,10 +264,20 @@ const NovoTreinamentoPage:
       React.useState('');
 
     const [
-      codigo,
-      setCodigo
+      areaId,
+      setAreaId
     ] =
       React.useState('');
+
+    const [
+      tipoTreinamento,
+      setTipoTreinamento
+    ] =
+      React.useState<
+        TipoTreinamentoAdmin
+      >(
+        'OUT'
+      );
 
     const [
       descricao,
@@ -125,6 +310,20 @@ const NovoTreinamentoPage:
       );
 
     const [
+      imagemUrl,
+      setImagemUrl
+    ] =
+      React.useState('');
+
+    const [
+      erroImagem,
+      setErroImagem
+    ] =
+      React.useState(
+        false
+      );
+
+    const [
       ativo,
       setAtivo
     ] =
@@ -152,15 +351,27 @@ const NovoTreinamentoPage:
     ] =
       React.useState('');
 
-    // ==========================================================
-    // LIMPAR
-    // ==========================================================
+    const areaSelecionada =
+      areasDisponiveis.find(
+        area =>
+          area.id ===
+          areaId
+      );
+
+    const codigoPreview =
+      areaSelecionada
+        ? `TRN-${areaSelecionada.sigla}-${tipoTreinamento}-XXX`
+        : `TRN-AREA-${tipoTreinamento}-XXX`;
 
     const limpar =
       (): void => {
 
         setNome('');
-        setCodigo('');
+        setAreaId('');
+        setTipoTreinamento(
+          'OUT'
+        );
+
         setDescricao('');
 
         setCargaHoraria(
@@ -175,14 +386,76 @@ const NovoTreinamentoPage:
           '12'
         );
 
-        setAtivo(
-          true
-        );
+        setImagemUrl('');
+        setErroImagem(false);
+        setAtivo(true);
       };
 
-    // ==========================================================
-    // SALVAR
-    // ==========================================================
+
+    React.useEffect(
+      () => {
+
+        if (
+          !treinamentoExistente
+        ) {
+          return;
+        }
+
+        setNome(
+          treinamentoExistente.nome ||
+          ''
+        );
+
+        setDescricao(
+          treinamentoExistente.descricao ||
+          ''
+        );
+
+        setCargaHoraria(
+          String(
+            treinamentoExistente.cargaHorariaMin ||
+            60
+          )
+        );
+
+        setNotaMinima(
+          String(
+            treinamentoExistente.notaMinima ||
+            70
+          )
+        );
+
+        setValidadeMeses(
+          String(
+            treinamentoExistente.validadeMeses ||
+            0
+          )
+        );
+
+        setImagemUrl(
+          treinamentoExistente.imagemUrl ||
+          ''
+        );
+
+        setAreaId(
+          treinamentoExistente.areaId ||
+          ''
+        );
+
+        setTipoTreinamento(
+          treinamentoExistente.tipoTreinamento ||
+          'OUT'
+        );
+
+        setAtivo(
+          treinamentoExistente.ativo
+        );
+
+      },
+      [
+        treinamentoExistente
+      ]
+    );
 
     const salvar =
       async (): Promise<void> => {
@@ -202,11 +475,23 @@ const NovoTreinamentoPage:
         }
 
         if (
-          !codigo.trim()
+          !modoEdicao &&
+          !areaId
         ) {
 
           setErro(
-            'Informe o código do treinamento.'
+            'Selecione a área do treinamento.'
+          );
+
+          return;
+        }
+
+        if (
+          !tipoTreinamento
+        ) {
+
+          setErro(
+            'Selecione o tipo do treinamento.'
           );
 
           return;
@@ -228,19 +513,23 @@ const NovoTreinamentoPage:
           );
 
         if (
-          Number.isNaN(carga) ||
+          !Number.isFinite(
+            carga
+          ) ||
           carga <= 0
         ) {
 
           setErro(
-            'Informe uma carga horária válida.'
+            'Informe uma carga horária válida em minutos.'
           );
 
           return;
         }
 
         if (
-          Number.isNaN(nota) ||
+          !Number.isFinite(
+            nota
+          ) ||
           nota < 0 ||
           nota > 100
         ) {
@@ -253,12 +542,28 @@ const NovoTreinamentoPage:
         }
 
         if (
-          Number.isNaN(validade) ||
+          !Number.isFinite(
+            validade
+          ) ||
           validade < 0
         ) {
 
           setErro(
             'Informe uma validade válida.'
+          );
+
+          return;
+        }
+
+        if (
+          imagemUrl.trim() &&
+          !/^https?:\/\//i.test(
+            imagemUrl.trim()
+          )
+        ) {
+
+          setErro(
+            'A URL da imagem deve começar com http:// ou https://.'
           );
 
           return;
@@ -275,24 +580,34 @@ const NovoTreinamentoPage:
             nome:
               nome.trim(),
 
+            // O código é criado pelo plugin no Dataverse.
             codigo:
-              codigo
-                .trim()
-                .toUpperCase(),
+              '',
+
+            areaId,
+
+            tipoTreinamento,
 
             descricao:
               descricao.trim(),
 
             cargaHorariaMin:
-              carga,
+              Math.round(
+                carga
+              ),
 
             notaMinima:
               nota,
 
             validadeMeses:
-              validade,
+              Math.round(
+                validade
+              ),
 
-            ativo
+            ativo,
+
+            imagemUrl:
+              imagemUrl.trim()
           });
 
           limpar();
@@ -317,41 +632,58 @@ const NovoTreinamentoPage:
         }
       };
 
-    // ==========================================================
-    // RENDER
-    // ==========================================================
-
     return (
       <section>
 
         <PageHeader
-          titulo="Novo treinamento"
-          subtitulo="Cadastre um novo treinamento no Portal DGT."
+          titulo={
+            modoEdicao
+              ? 'Editar treinamento'
+              : 'Novo treinamento'
+          }
+          subtitulo={
+            modoEdicao
+              ? 'Etapa 1 de 3 — revise os dados e navegue entre as etapas antes de concluir.'
+              : 'Etapa 1 de 3 — cadastre os dados gerais. O código será gerado automaticamente ao salvar.'
+          }
           acao={
             <button
               type="button"
               onClick={
                 onVoltar
               }
+              style={
+                buttonSecondary
+              }
             >
-              Voltar
+              ← Voltar
             </button>
+          }
+        />
+
+        <FluxoTreinamentoEtapas
+          etapa={1}
+          permitirNavegacao={
+            modoEdicao
+          }
+          onEtapaClick={
+            onEtapaClick
           }
         />
 
         <div
           style={{
             maxWidth:
-              '900px',
+              '980px',
 
             padding:
               '24px',
 
             background:
-              '#ffffff',
+              cores.branco,
 
             border:
-              '1px solid #e5e7eb',
+              `1px solid ${cores.borda}`,
 
             borderRadius:
               '14px'
@@ -368,10 +700,10 @@ const NovoTreinamentoPage:
                   '13px 15px',
 
                 background:
-                  '#fde7e9',
+                  cores.vermelhoClaro,
 
                 color:
-                  '#a4262c',
+                  cores.vermelho,
 
                 borderRadius:
                   '8px'
@@ -391,10 +723,10 @@ const NovoTreinamentoPage:
                   '13px 15px',
 
                 background:
-                  '#e7f5ee',
+                  cores.verdeClaro,
 
                 color:
-                  '#13795b',
+                  cores.verde,
 
                 borderRadius:
                   '8px'
@@ -403,8 +735,6 @@ const NovoTreinamentoPage:
               {sucesso}
             </div>
           )}
-
-          {/* NOME / CÓDIGO */}
 
           <div
             style={{
@@ -415,6 +745,9 @@ const NovoTreinamentoPage:
                 '2fr 1fr',
 
               gap:
+                '18px',
+
+              marginBottom:
                 '18px'
             }}
           >
@@ -456,36 +789,184 @@ const NovoTreinamentoPage:
                   labelStyle
                 }
               >
-                Código *
+                Código
               </label>
 
               <input
                 value={
-                  codigo
-                }
-                onChange={
-                  event =>
-                    setCodigo(
-                      event
-                        .target
-                        .value
+                  modoEdicao
+                    ? (
+                      treinamentoExistente
+                        ?.codigo ||
+                      codigoPreview
                     )
+                    : codigoPreview
                 }
-                placeholder="TRN-001"
+                readOnly
+                disabled
+                aria-label="Código gerado automaticamente"
                 style={
-                  inputStyle
+                  inputBloqueadoStyle
                 }
               />
+
+              <span
+                style={
+                  helpStyle
+                }
+              >
+                {
+                  modoEdicao
+                    ? 'Código gerado na criação e mantido imutável.'
+                    : 'Gerado automaticamente no formato TRN-ÁREA-TIPO-SEQUENCIAL.'
+                }
+              </span>
 
             </div>
 
           </div>
 
-          {/* DESCRIÇÃO */}
+          <div
+            style={{
+              display:
+                'grid',
+
+              gridTemplateColumns:
+                '1fr 1fr',
+
+              gap:
+                '18px',
+
+              marginBottom:
+                '18px'
+            }}
+          >
+
+            <div>
+
+              <label
+                style={
+                  labelStyle
+                }
+              >
+                Área *
+              </label>
+
+              <select
+                value={
+                  areaId
+                }
+                onChange={
+                  event =>
+                    setAreaId(
+                      event
+                        .target
+                        .value
+                    )
+                }
+                style={
+                  inputStyle
+                }
+              >
+
+                <option value="">
+                  Selecione a área
+                </option>
+
+                {areasDisponiveis.map(
+                  area => (
+
+                    <option
+                      key={
+                        area.id
+                      }
+                      value={
+                        area.id
+                      }
+                    >
+                      {
+                        area.sigla
+                      } - {
+                        area.nome
+                      }
+                    </option>
+                  )
+                )}
+
+              </select>
+
+              <span
+                style={
+                  helpStyle
+                }
+              >
+                A sigla da área será utilizada na geração do código.
+              </span>
+
+            </div>
+
+            <div>
+
+              <label
+                style={
+                  labelStyle
+                }
+              >
+                Tipo *
+              </label>
+
+              <select
+                value={
+                  tipoTreinamento
+                }
+                onChange={
+                  event =>
+                    setTipoTreinamento(
+                      event
+                        .target
+                        .value as TipoTreinamentoAdmin
+                    )
+                }
+                style={
+                  inputStyle
+                }
+              >
+
+                {tiposTreinamento.map(
+                  tipo => (
+
+                    <option
+                      key={
+                        tipo
+                      }
+                      value={
+                        tipo
+                      }
+                    >
+                      {
+                        tipo
+                      }
+                    </option>
+                  )
+                )}
+
+              </select>
+
+              <span
+                style={
+                  helpStyle
+                }
+              >
+                POP, IT, processo, política, integração, NR, sistema, técnico etc.
+              </span>
+
+            </div>
+
+          </div>
 
           <div
             style={{
-              marginTop:
+              marginBottom:
                 '18px'
             }}
           >
@@ -510,10 +991,10 @@ const NovoTreinamentoPage:
                       .value
                   )
               }
+              placeholder="Objetivo, público e conteúdo do treinamento..."
               rows={
                 5
               }
-              placeholder="Objetivo, público e conteúdo do treinamento..."
               style={{
                 ...inputStyle,
 
@@ -524,20 +1005,18 @@ const NovoTreinamentoPage:
 
           </div>
 
-          {/* PARÂMETROS */}
-
           <div
             style={{
               display:
                 'grid',
 
               gridTemplateColumns:
-                'repeat(3, minmax(0, 1fr))',
+                '1fr 1fr 1fr',
 
               gap:
                 '18px',
 
-              marginTop:
+              marginBottom:
                 '18px'
             }}
           >
@@ -549,13 +1028,15 @@ const NovoTreinamentoPage:
                   labelStyle
                 }
               >
-                Carga horária
-                (min)
+                Carga horária (min)
               </label>
 
               <input
                 type="number"
                 min={
+                  1
+                }
+                step={
                   1
                 }
                 value={
@@ -574,6 +1055,14 @@ const NovoTreinamentoPage:
                 }
               />
 
+              <span
+                style={
+                  helpStyle
+                }
+              >
+                Ex.: 40 = 40 min, 60 = 1h, 90 = 1h30.
+              </span>
+
             </div>
 
             <div>
@@ -583,8 +1072,7 @@ const NovoTreinamentoPage:
                   labelStyle
                 }
               >
-                Nota mínima
-                (%)
+                Nota mínima (%)
               </label>
 
               <input
@@ -594,6 +1082,9 @@ const NovoTreinamentoPage:
                 }
                 max={
                   100
+                }
+                step={
+                  0.01
                 }
                 value={
                   notaMinima
@@ -611,6 +1102,14 @@ const NovoTreinamentoPage:
                 }
               />
 
+              <span
+                style={
+                  helpStyle
+                }
+              >
+                Percentual padrão de aprovação.
+              </span>
+
             </div>
 
             <div>
@@ -620,14 +1119,16 @@ const NovoTreinamentoPage:
                   labelStyle
                 }
               >
-                Validade
-                (meses)
+                Validade (meses)
               </label>
 
               <input
                 type="number"
                 min={
                   0
+                }
+                step={
+                  1
                 }
                 value={
                   validadeMeses
@@ -645,92 +1146,181 @@ const NovoTreinamentoPage:
                 }
               />
 
+              <span
+                style={
+                  helpStyle
+                }
+              >
+                Use 0 para treinamento sem vencimento periódico.
+              </span>
+
             </div>
 
           </div>
 
-          {/* ATIVO */}
-
           <div
             style={{
-              marginTop:
-                '22px',
+              marginBottom:
+                '18px'
+            }}
+          >
+
+            <label
+              style={
+                labelStyle
+              }
+            >
+              Imagem do treinamento
+            </label>
+
+            <input
+              value={
+                imagemUrl
+              }
+              onChange={
+                event => {
+
+                  setImagemUrl(
+                    event
+                      .target
+                      .value
+                  );
+
+                  setErroImagem(
+                    false
+                  );
+                }
+              }
+              placeholder="https://.../imagem.jpg"
+              style={
+                inputStyle
+              }
+            />
+
+            <span
+              style={
+                helpStyle
+              }
+            >
+              Preferencialmente utilize uma URL do SharePoint.
+            </span>
+
+            {
+              imagemUrl &&
+              !erroImagem &&
+              /^https?:\/\//i.test(
+                imagemUrl
+              ) &&
+              (
+                <div
+                  style={{
+                    marginTop:
+                      '12px'
+                  }}
+                >
+                  <img
+                    src={
+                      imagemUrl
+                    }
+                    alt="Pré-visualização"
+                    onError={() =>
+                      setErroImagem(
+                        true
+                      )
+                    }
+                    style={{
+                      width:
+                        '180px',
+
+                      height:
+                        '100px',
+
+                      objectFit:
+                        'cover',
+
+                      borderRadius:
+                        '8px',
+
+                      border:
+                        `1px solid ${cores.borda}`
+                    }}
+                  />
+                </div>
+              )
+            }
+
+          </div>
+
+          <label
+            style={{
+              display:
+                'flex',
+
+              gap:
+                '10px',
+
+              alignItems:
+                'flex-start',
 
               padding:
                 '15px',
 
               border:
-                '1px solid #e5e7eb',
+                `1px solid ${cores.borda}`,
 
               borderRadius:
                 '10px',
 
               background:
-                '#f8fafc'
+                '#F8FAFC'
             }}
           >
 
-            <label
+            <input
+              type="checkbox"
+              checked={
+                ativo
+              }
+              onChange={
+                event =>
+                  setAtivo(
+                    event
+                      .target
+                      .checked
+                  )
+              }
               style={{
-                display:
-                  'flex',
-
-                alignItems:
-                  'center',
-
-                gap:
-                  '10px',
-
-                cursor:
-                  'pointer'
+                marginTop:
+                  '3px'
               }}
-            >
+            />
 
-              <input
-                type="checkbox"
-                checked={
-                  ativo
-                }
-                onChange={
-                  event =>
-                    setAtivo(
-                      event
-                        .target
-                        .checked
-                    )
-                }
-              />
+            <span>
 
-              <span>
+              <strong
+                style={{
+                  display:
+                    'block',
 
-                <strong
-                  style={{
-                    display:
-                      'block',
+                  color:
+                    cores.texto
+                }}
+              >
+                Treinamento ativo
+              </strong>
 
-                    color:
-                      '#334155'
-                  }}
-                >
-                  Treinamento ativo
-                </strong>
+              <small
+                style={{
+                  color:
+                    cores.textoSecundario
+                }}
+              >
+                O treinamento poderá ser utilizado em trilhas e atribuições.
+              </small>
 
-                <small
-                  style={{
-                    color:
-                      '#64748b'
-                  }}
-                >
-                  O treinamento poderá ser utilizado em trilhas e atribuições.
-                </small>
+            </span>
 
-              </span>
-
-            </label>
-
-          </div>
-
-          {/* BOTÕES */}
+          </label>
 
           <div
             style={{
@@ -750,27 +1340,19 @@ const NovoTreinamentoPage:
 
             <button
               type="button"
-              disabled={
-                salvando
-              }
               onClick={
                 onVoltar
               }
+              disabled={
+                salvando
+              }
               style={{
-                padding:
-                  '10px 18px',
+                ...buttonSecondary,
 
-                border:
-                  '1px solid #cbd5e1',
-
-                borderRadius:
-                  '8px',
-
-                background:
-                  '#ffffff',
-
-                cursor:
-                  'pointer'
+                opacity:
+                  salvando
+                    ? 0.6
+                    : 1
               }}
             >
               Cancelar
@@ -795,29 +1377,16 @@ const NovoTreinamentoPage:
                   );
               }}
               style={{
-                padding:
-                  '10px 20px',
+                ...buttonPrimary,
 
-                border:
-                  'none',
-
-                borderRadius:
-                  '8px',
-
-                background:
+                opacity:
                   salvando
-                    ? '#94a3b8'
-                    : '#1677ff',
-
-                color:
-                  '#ffffff',
-
-                fontWeight:
-                  700,
+                    ? 0.65
+                    : 1,
 
                 cursor:
                   salvando
-                    ? 'default'
+                    ? 'wait'
                     : 'pointer'
               }}
             >

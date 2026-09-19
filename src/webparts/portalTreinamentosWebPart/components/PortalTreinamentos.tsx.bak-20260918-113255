@@ -15,24 +15,17 @@ import { ITrilha } from '../models/Trilha';
 import { useModulos } from '../hooks/useModulos';
 import { useUsuario } from '../hooks/useUsuario';
 import { useAvaliacao } from '../hooks/useAvaliacao';
-import {
-  IEditarTreinamento,
-  INovoTreinamento,
-  ITreinamentoAdmin
-} from '../services/TreinamentoAdminService';
+import { INovoTreinamento } from '../services/TreinamentoAdminService';
 import { useGestaoTreinamentos } from '../hooks/useGestaoTreinamentos';
 import { useGestaoTrilhas } from '../hooks/useGestaoTrilhas';
 import { useGestaoModulos } from '../hooks/useGestaoModulos';
-import { useGestaoModuloConteudos } from '../hooks/useGestaoModuloConteudos';
 import { useGestaoAvaliacoes } from '../hooks/useGestaoAvaliacoes';
 import { useGestaoAtribuicoes } from '../hooks/useGestaoAtribuicoes';
 import { useRevisaoDocumento } from '../hooks/useRevisaoDocumento';
 import { useAutorizacao } from '../hooks/useAutorizacao';
 import { useGestaoDocumentos } from '../hooks/useGestaoDocumentos';
-import { useGestaoAreas } from '../hooks/useGestaoAreas';
 import { useConformidade } from '../hooks/useConformidade';
 import { obterMenuTreinamento } from '../services/MenuPermissionService';
-import { ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
 
 type DataverseRecord =
   IDataverseRecord;
@@ -258,13 +251,6 @@ const PortalTreinamentos:
     // ==========================================================
 
     const [
-      paginaAtual,
-      setPaginaAtual
-    ] =
-      React.useState<Pagina>(
-        'inicio'
-      );
-    const [
       fluxoCriacaoTreinamentoId,
       setFluxoCriacaoTreinamentoId
     ] =
@@ -436,18 +422,6 @@ const PortalTreinamentos:
       );
 
 
-    const importacaoJsonEtapasService =
-      React.useMemo(
-        () =>
-          new ImportacaoJsonEtapasService(
-            dataverseService
-          ),
-        [
-          dataverseService
-        ]
-      );
-
-
     // ==========================================================
     // HOOKS
     // ==========================================================
@@ -485,11 +459,6 @@ const PortalTreinamentos:
         dataverseService
       );
 
-    const gestaoModuloConteudos =
-      useGestaoModuloConteudos(
-        dataverseService
-      );
-
     const gestaoAvaliacoes =
       useGestaoAvaliacoes(
         dataverseService
@@ -502,11 +471,6 @@ const PortalTreinamentos:
 
     const gestaoDocumentos =
       useGestaoDocumentos(
-        dataverseService
-      );
-
-    const gestaoAreas =
-      useGestaoAreas(
         dataverseService
       );
 
@@ -1294,376 +1258,6 @@ const PortalTreinamentos:
           gestaoTreinamentos
         ]
       );
-    // ==========================================================
-    // AVANÇAR FLUXO DE CRIAÇÃO PARA AVALIAÇÃO
-    // ==========================================================
-
-    const avancarFluxoTreinamentoParaAvaliacao =
-      React.useCallback(
-        async (): Promise<void> => {
-
-          if (
-            !fluxoCriacaoTreinamentoId
-          ) {
-            throw new Error(
-              'O treinamento em criação não foi identificado.'
-            );
-          }
-
-          await gestaoAvaliacoes
-            .selecionarTreinamento(
-              fluxoCriacaoTreinamentoId
-            );
-
-          setPaginaAtual(
-            'gestaoAvaliacoes'
-          );
-
-          window.scrollTo(
-            0,
-            0
-          );
-
-        },
-        [
-          fluxoCriacaoTreinamentoId,
-          gestaoAvaliacoes
-        ]
-      );
-
-    // ==========================================================
-    // IMPORTAÇÃO JSON POR ETAPA
-    // ==========================================================
-
-    const importarModulosJson =
-      React.useCallback(
-        async (
-          arquivo:
-            File
-        ): Promise<string> => {
-
-          if (
-            !gestaoModulos.treinamentoId
-          ) {
-            throw new Error(
-              'Treinamento não selecionado.'
-            );
-          }
-
-          const mensagem =
-            await importacaoJsonEtapasService
-              .importarModulosArquivo(
-                gestaoModulos.treinamentoId,
-                arquivo
-              );
-
-          await gestaoModulos
-            .selecionarTreinamento(
-              gestaoModulos.treinamentoId
-            );
-
-          return mensagem;
-        },
-        [
-          gestaoModulos,
-          importacaoJsonEtapasService
-        ]
-      );
-
-    const importarAvaliacaoJson =
-      React.useCallback(
-        async (
-          arquivo:
-            File
-        ): Promise<string> => {
-
-          if (
-            !gestaoAvaliacoes.treinamentoId
-          ) {
-            throw new Error(
-              'Treinamento não selecionado.'
-            );
-          }
-
-          const mensagem =
-            await importacaoJsonEtapasService
-              .importarAvaliacaoArquivo(
-                gestaoAvaliacoes.treinamentoId,
-                arquivo
-              );
-
-          await gestaoAvaliacoes
-            .selecionarTreinamento(
-              gestaoAvaliacoes.treinamentoId
-            );
-
-          return mensagem;
-        },
-        [
-          gestaoAvaliacoes,
-          importacaoJsonEtapasService
-        ]
-      );
-
-    // ==========================================================
-    // ABRIR TREINAMENTO EXISTENTE NO FLUXO COMPLETO DE EDIÇÃO
-    // ==========================================================
-
-    const abrirFluxoEdicaoTreinamento =
-      React.useCallback(
-        async (
-          treinamento:
-            ITreinamentoAdmin
-        ): Promise<void> => {
-
-          if (
-            !treinamento ||
-            !treinamento.id
-          ) {
-            throw new Error(
-              'Treinamento não identificado.'
-            );
-          }
-
-          // O mesmo ID passa a controlar o assistente de edição.
-          // Dessa forma, a etapa 1 abre os dados existentes e
-          // as etapas 2 e 3 carregam módulos e avaliação do mesmo registro.
-          setFluxoCriacaoTreinamentoId(
-            treinamento.id
-          );
-
-          // Pré-carrega módulos e avaliação para que a linha do tempo
-          // possa navegar imediatamente entre as três etapas.
-          try {
-
-            await gestaoModulos
-              .selecionarTreinamento(
-                treinamento.id
-              );
-
-          } catch (error) {
-
-            console.error(
-              'Não foi possível pré-carregar os módulos:',
-              error
-            );
-          }
-
-          try {
-
-            await gestaoAvaliacoes
-              .selecionarTreinamento(
-                treinamento.id
-              );
-
-          } catch (error) {
-
-            console.error(
-              'Não foi possível pré-carregar a avaliação:',
-              error
-            );
-          }
-
-          setPaginaAtual(
-            'novoTreinamento'
-          );
-
-          window.scrollTo(
-            0,
-            0
-          );
-        },
-        [
-          gestaoAvaliacoes,
-          gestaoModulos
-        ]
-      );
-
-    // ==========================================================
-    // NAVEGAÇÃO ENTRE AS ETAPAS DO FLUXO
-    // ==========================================================
-
-    const navegarEtapaFluxoTreinamento =
-      React.useCallback(
-        (
-          etapa:
-            1 | 2 | 3
-        ): void => {
-
-          if (
-            !fluxoCriacaoTreinamentoId
-          ) {
-            return;
-          }
-
-          if (
-            etapa ===
-              1
-          ) {
-
-            setPaginaAtual(
-              'novoTreinamento'
-            );
-
-            window.scrollTo(
-              0,
-              0
-            );
-
-            return;
-          }
-
-          if (
-            etapa ===
-              2
-          ) {
-
-            void gestaoModulos
-              .selecionarTreinamento(
-                fluxoCriacaoTreinamentoId
-              )
-              .then(
-                () => {
-
-                  setPaginaAtual(
-                    'gestaoModulos'
-                  );
-
-                  window.scrollTo(
-                    0,
-                    0
-                  );
-                }
-              )
-              .catch(
-                (
-                  error:
-                    unknown
-                ) =>
-                  console.error(
-                    'Erro ao abrir módulos:',
-                    error
-                  )
-              );
-
-            return;
-          }
-
-          void gestaoAvaliacoes
-            .selecionarTreinamento(
-              fluxoCriacaoTreinamentoId
-            )
-            .then(
-              () => {
-
-                setPaginaAtual(
-                  'gestaoAvaliacoes'
-                );
-
-                window.scrollTo(
-                  0,
-                  0
-                );
-              }
-            )
-            .catch(
-              (
-                error:
-                  unknown
-              ) =>
-                console.error(
-                  'Erro ao abrir avaliação:',
-                  error
-                )
-            );
-        },
-        [
-          fluxoCriacaoTreinamentoId,
-          gestaoAvaliacoes,
-          gestaoModulos
-        ]
-      );
-
-    // ==========================================================
-    // ATUALIZAR ETAPA 1 E VOLTAR PARA MÓDULOS
-    // ==========================================================
-
-    const atualizarTreinamentoFluxo =
-      React.useCallback(
-        async (
-          dados:
-            IEditarTreinamento
-        ): Promise<void> => {
-
-          await gestaoTreinamentos
-            .editar(
-              dados
-            );
-
-          await gestaoModulos
-            .selecionarTreinamento(
-              dados.id
-            );
-
-          setPaginaAtual(
-            'gestaoModulos'
-          );
-
-          window.scrollTo(
-            0,
-            0
-          );
-        },
-        [
-          gestaoModulos,
-          gestaoTreinamentos
-        ]
-      );
-
-    // ==========================================================
-    // SALVAR E ENCERRAR A CRIAÇÃO
-    // ==========================================================
-
-    const concluirFluxoCriacaoTreinamento =
-      React.useCallback(
-        async (): Promise<void> => {
-
-          if (
-            !fluxoCriacaoTreinamentoId
-          ) {
-            throw new Error(
-              'O treinamento em criação não foi identificado.'
-            );
-          }
-
-          if (
-            gestaoAvaliacoes.avaliacoes.length ===
-              0
-          ) {
-            throw new Error(
-              'Cadastre ou importe pelo menos uma avaliação antes de encerrar.'
-            );
-          }
-
-          setFluxoCriacaoTreinamentoId(
-            ''
-          );
-
-          setPaginaAtual(
-            'gestao'
-          );
-
-          window.scrollTo(
-            0,
-            0
-          );
-        },
-        [
-          fluxoCriacaoTreinamentoId,
-          gestaoAvaliacoes.avaliacoes
-        ]
-      );
-
     // ==========================================================
     // NAVEGAÇÃO
     // ==========================================================
@@ -2679,27 +2273,6 @@ const PortalTreinamentos:
                 salvarNovoTreinamento={
                   salvarNovoTreinamento
                 }
-
-                fluxoCriacaoTreinamentoId={
-                  fluxoCriacaoTreinamentoId
-                }
-
-                avancarFluxoTreinamentoParaAvaliacao={
-                  avancarFluxoTreinamentoParaAvaliacao
-                }
-
-                navegarEtapaFluxoTreinamento={
-                  navegarEtapaFluxoTreinamento
-                }
-
-                atualizarTreinamentoFluxo={
-                  atualizarTreinamentoFluxo
-                }
-
-                concluirFluxoCriacaoTreinamento={
-                  concluirFluxoCriacaoTreinamento
-                }
-
                 treinamentosAdministrativos={
                   gestaoTreinamentos.treinamentos
                 }
@@ -2716,8 +2289,8 @@ const PortalTreinamentos:
                   gestaoTreinamentos.processandoId
                 }
 
-                abrirFluxoEdicaoTreinamento={
-                  abrirFluxoEdicaoTreinamento
+                editarTreinamento={
+                  gestaoTreinamentos.editar
                 }
 
                 definirTreinamentoAtivo={
@@ -2733,10 +2306,6 @@ const PortalTreinamentos:
 
                 treinamentosTrilhaAdministrativa={
                   gestaoTrilhas.treinamentosTrilha
-                }
-
-                areasTrilhaAdministrativa={
-                  gestaoTrilhas.areasTrilha
                 }
 
                 carregandoGestaoTrilhas={
@@ -2775,14 +2344,17 @@ const PortalTreinamentos:
                   gestaoTrilhas.definirTrilhaAtiva
                 }
 
-                salvarTreinamentosTrilha={
-                  gestaoTrilhas.salvarTreinamentos
+                adicionarTreinamentoTrilha={
+                  gestaoTrilhas.adicionarTreinamento
                 }
 
-                salvarAreasTrilha={
-                  gestaoTrilhas.salvarAreas
+                editarTreinamentoTrilha={
+                  gestaoTrilhas.editarTreinamento
                 }
 
+                removerTreinamentoTrilha={
+                  gestaoTrilhas.removerTreinamento
+                }
 
 
                 modulosAdministrativos={
@@ -2819,58 +2391,6 @@ const PortalTreinamentos:
 
                 definirModuloAtivo={
                   gestaoModulos.definirAtivo
-                }
-
-                importarModulosJson={
-                  importarModulosJson
-                }
-
-                moduloConteudoSelecionadoId={
-                  gestaoModuloConteudos.moduloId
-                }
-
-                conteudosModuloAdministrativos={
-                  gestaoModuloConteudos.conteudos
-                }
-
-                carregandoConteudosModulo={
-                  gestaoModuloConteudos.carregando
-                }
-
-                processandoConteudosModulo={
-                  gestaoModuloConteudos.processando
-                }
-
-                erroConteudosModulo={
-                  gestaoModuloConteudos.erro
-                }
-
-                selecionarModuloConteudo={
-                  gestaoModuloConteudos.selecionarModulo
-                }
-
-                limparModuloConteudo={
-                  gestaoModuloConteudos.limpar
-                }
-
-                criarConteudoModulo={
-                  gestaoModuloConteudos.criar
-                }
-
-                editarConteudoModulo={
-                  gestaoModuloConteudos.editar
-                }
-
-                definirConteudoModuloAtivo={
-                  gestaoModuloConteudos.definirAtivo
-                }
-
-                moverConteudoModuloAcima={
-                  gestaoModuloConteudos.moverAcima
-                }
-
-                moverConteudoModuloAbaixo={
-                  gestaoModuloConteudos.moverAbaixo
                 }
 
                 avaliacoesAdministrativas={
@@ -2937,10 +2457,6 @@ const PortalTreinamentos:
                   gestaoAvaliacoes.criarQuestao
                 }
 
-                criarQuestaoCompletaAdministrativa={
-                  gestaoAvaliacoes.criarQuestaoCompleta
-                }
-
                 editarQuestaoAdministrativa={
                   gestaoAvaliacoes.editarQuestao
                 }
@@ -2959,10 +2475,6 @@ const PortalTreinamentos:
 
                 definirAlternativaAtiva={
                   gestaoAvaliacoes.definirAlternativaAtiva
-                }
-
-                importarAvaliacaoJson={
-                  importarAvaliacaoJson
                 }
 
                 usuariosAtribuicao={
@@ -3007,54 +2519,6 @@ const PortalTreinamentos:
 
                 erroAutorizacao={
                   autorizacao.erro
-                }
-
-                areasAdministrativas={
-                  gestaoAreas.areas
-                }
-
-                usuariosDisponiveisArea={
-                  gestaoAreas.usuarios
-                }
-
-                usuariosAreasAdministrativos={
-                  gestaoAreas.usuariosAreas
-                }
-
-                carregandoGestaoAreas={
-                  gestaoAreas.carregando
-                }
-
-                processandoGestaoAreas={
-                  gestaoAreas.processando
-                }
-
-                erroGestaoAreas={
-                  gestaoAreas.erro
-                }
-
-                criarAreaAdministrativa={
-                  gestaoAreas.criarArea
-                }
-
-                editarAreaAdministrativa={
-                  gestaoAreas.editarArea
-                }
-
-                definirAreaAtiva={
-                  gestaoAreas.definirAreaAtiva
-                }
-
-                vincularUsuarioArea={
-                  gestaoAreas.vincularUsuario
-                }
-
-                editarUsuarioArea={
-                  gestaoAreas.editarUsuarioArea
-                }
-
-                definirUsuarioAreaAtivo={
-                  gestaoAreas.definirUsuarioAreaAtivo
                 }
 
                 documentosAdministrativos={

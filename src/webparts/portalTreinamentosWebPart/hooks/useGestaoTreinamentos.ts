@@ -32,7 +32,7 @@ export interface IUseGestaoTreinamentos {
     (
       dados:
         INovoTreinamento
-    ) => Promise<void>;
+    ) => Promise<ITreinamentoAdmin>;
 
   editar:
     (
@@ -93,10 +93,6 @@ export const useGestaoTreinamentos = (
       ]
     );
 
-  // ============================================================
-  // CARREGAR
-  // ============================================================
-
   const carregar =
     React.useCallback(
       async (): Promise<void> => {
@@ -141,35 +137,30 @@ export const useGestaoTreinamentos = (
       ]
     );
 
-  // ============================================================
-  // CRIAR
-  // ============================================================
-
   const criar =
     React.useCallback(
       async (
         dados:
           INovoTreinamento
-      ): Promise<void> => {
+      ): Promise<ITreinamentoAdmin> => {
 
         setErro('');
 
-        await service
-          .criar(
-            dados
-          );
+        const criado =
+          await service
+            .criar(
+              dados
+            );
 
         await carregar();
+
+        return criado;
       },
       [
         carregar,
         service
       ]
     );
-
-  // ============================================================
-  // EDITAR
-  // ============================================================
 
   const editar =
     React.useCallback(
@@ -203,10 +194,6 @@ export const useGestaoTreinamentos = (
         service
       ]
     );
-
-  // ============================================================
-  // ATIVAR / DESATIVAR
-  // ============================================================
 
   const definirAtivo =
     React.useCallback(
@@ -265,10 +252,6 @@ export const useGestaoTreinamentos = (
       ]
     );
 
-  // ============================================================
-  // CARREGAMENTO INICIAL
-  // ============================================================
-
   React.useEffect(
     () => {
 
@@ -291,21 +274,13 @@ export const useGestaoTreinamentos = (
   );
 
   return {
-
     treinamentos,
-
     carregando,
-
     processandoId,
-
     erro,
-
     carregar,
-
     criar,
-
     editar,
-
     definirAtivo
   };
 };

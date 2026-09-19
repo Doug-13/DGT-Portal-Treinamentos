@@ -3,17 +3,24 @@ import * as React from 'react';
 import PageHeader from
   '../../components/layout/PageHeader';
 
+import FluxoTrilhaEtapas from
+  '../../components/common/FluxoTrilhaEtapas';
+
+import {
+  IAreaAdmin
+} from '../../services/AreaAdminService';
+
 import {
   ITreinamentoAdmin
 } from '../../services/TreinamentoAdminService';
 
 import {
-  IAdicionarTreinamentoTrilha,
-  IEditarTreinamentoTrilha,
   IEditarTrilha,
   INovaTrilha,
   ITrilhaAdmin,
-  ITrilhaTreinamentoAdmin
+  ITrilhaAreaAdmin,
+  ITrilhaTreinamentoAdmin,
+  ITrilhaTreinamentoEdicao
 } from '../../services/TrilhaAdminService';
 
 export interface IGestaoTrilhasPageProps {
@@ -27,8 +34,14 @@ export interface IGestaoTrilhasPageProps {
   treinamentosTrilha:
     ITrilhaTreinamentoAdmin[];
 
+  areasTrilha:
+    ITrilhaAreaAdmin[];
+
   treinamentos:
     ITreinamentoAdmin[];
+
+  areas:
+    IAreaAdmin[];
 
   carregando:
     boolean;
@@ -58,7 +71,7 @@ export interface IGestaoTrilhasPageProps {
     (
       dados:
         INovaTrilha
-    ) => Promise<void>;
+    ) => Promise<ITrilhaAdmin>;
 
   onEditarTrilha:
     (
@@ -74,28 +87,44 @@ export interface IGestaoTrilhasPageProps {
         boolean
     ) => Promise<void>;
 
-  onAdicionarTreinamento:
+  onSalvarTreinamentos:
     (
-      dados:
-        IAdicionarTreinamentoTrilha
+      trilhaId:
+        string,
+      itens:
+        ITrilhaTreinamentoEdicao[]
     ) => Promise<void>;
 
-  onEditarTreinamento:
+  onSalvarAreas:
     (
-      dados:
-        IEditarTreinamentoTrilha
+      trilhaId:
+        string,
+      todasAreas:
+        boolean,
+      areaIds:
+        string[]
     ) => Promise<void>;
+}
 
-  onRemoverTreinamento:
-    (
-      relacaoId:
-        string
-    ) => Promise<void>;
+interface IItemTreinamentoLocal {
+  treinamentoId:
+    string;
+
+  selecionado:
+    boolean;
+
+  ordem:
+    number;
+
+  obrigatorio:
+    boolean;
+
+  diasParaConclusao:
+    number;
 }
 
 const inputStyle:
   React.CSSProperties = {
-
   width:
     '100%',
 
@@ -106,60 +135,80 @@ const inputStyle:
     '10px 12px',
 
   border:
-    '1px solid #d8dee8',
+    '1px solid #d8e2ec',
 
   borderRadius:
     '8px',
+
+  fontSize:
+    '14px',
+
+  color:
+    '#18324a',
 
   background:
     '#ffffff'
 };
 
-const buttonPrimary:
+const cardStyle:
   React.CSSProperties = {
-
   padding:
-    '10px 16px',
+    '18px',
 
   border:
-    'none',
+    '1px solid #d8e2ec',
 
   borderRadius:
-    '8px',
+    '14px',
 
   background:
-    '#1677ff',
-
-  color:
-    '#ffffff',
-
-  fontWeight:
-    700,
-
-  cursor:
-    'pointer'
+    '#ffffff'
 };
 
-const buttonSecondary:
+const btn:
   React.CSSProperties = {
-
   padding:
-    '9px 14px',
+    '9px 13px',
 
   border:
-    '1px solid #cbd5e1',
-
-  borderRadius:
-    '8px',
+    '1px solid #0b5cab',
 
   background:
     '#ffffff',
 
   color:
-    '#334155',
+    '#0b5cab',
+
+  borderRadius:
+    '8px',
 
   cursor:
-    'pointer'
+    'pointer',
+
+  fontWeight:
+    700
+};
+
+const btnPrimary:
+  React.CSSProperties = {
+  ...btn,
+
+  background:
+    '#0b5cab',
+
+  color:
+    '#ffffff'
+};
+
+const btnDanger:
+  React.CSSProperties = {
+  ...btn,
+
+  border:
+    '1px solid #b42318',
+
+  color:
+    '#b42318'
 };
 
 const GestaoTrilhasPage:
@@ -170,20 +219,22 @@ const GestaoTrilhasPage:
   ) => {
 
     const [
-      mostrarNovaTrilha,
-      setMostrarNovaTrilha
+      etapa,
+      setEtapa
+    ] =
+      React.useState<
+        1 | 2 | 3
+      >(
+        1
+      );
+
+    const [
+      modoFluxo,
+      setModoFluxo
     ] =
       React.useState(
         false
       );
-
-    const [
-      editandoTrilha,
-      setEditandoTrilha
-    ] =
-      React.useState<
-        ITrilhaAdmin | undefined
-      >(undefined);
 
     const [
       nome,
@@ -198,12 +249,10 @@ const GestaoTrilhasPage:
       React.useState('');
 
     const [
-      dias,
-      setDias
+      observacoes,
+      setObservacoes
     ] =
-      React.useState(
-        '30'
-      );
+      React.useState('');
 
     const [
       ativa,
@@ -214,40 +263,28 @@ const GestaoTrilhasPage:
       );
 
     const [
-      treinamentoId,
-      setTreinamentoId
+      itensTreinamento,
+      setItensTreinamento
     ] =
-      React.useState('');
+      React.useState<
+        IItemTreinamentoLocal[]
+      >([]);
 
     const [
-      ordem,
-      setOrdem
-    ] =
-      React.useState('');
-
-    const [
-      obrigatorio,
-      setObrigatorio
+      todasAreas,
+      setTodasAreas
     ] =
       React.useState(
         true
       );
 
     const [
-      regraLiberacao,
-      setRegraLiberacao
+      areasSelecionadas,
+      setAreasSelecionadas
     ] =
-      React.useState(
-        'Sequencial'
-      );
-
-    const [
-      diasTreinamento,
-      setDiasTreinamento
-    ] =
-      React.useState(
-        '0'
-      );
+      React.useState<
+        string[]
+      >([]);
 
     const [
       erroLocal,
@@ -255,152 +292,63 @@ const GestaoTrilhasPage:
     ] =
       React.useState('');
 
-    const abrirNovaTrilha =
+    const trilhaAtual =
+      props.trilhaSelecionada;
+
+    const iniciarNova =
       (): void => {
 
-        setEditandoTrilha(
-          undefined
-        );
+        props
+          .onLimparSelecao();
 
         setNome('');
         setDescricao('');
-        setDias('30');
+        setObservacoes('');
         setAtiva(true);
+        setItensTreinamento([]);
+        setTodasAreas(true);
+        setAreasSelecionadas([]);
+        setEtapa(1);
         setErroLocal('');
-
-        setMostrarNovaTrilha(
-          true
-        );
+        setModoFluxo(true);
       };
 
-    const abrirEditarTrilha = (
-      trilha:
-        ITrilhaAdmin
-    ): void => {
+    const prepararEdicao =
+      React.useCallback(
+        (
+          trilha:
+            ITrilhaAdmin
+        ): void => {
 
-      setEditandoTrilha(
-        trilha
-      );
-
-      setNome(
-        trilha.nome
-      );
-
-      setDescricao(
-        trilha.descricao
-      );
-
-      setDias(
-        String(
-          trilha.diasParaConclusao
-        )
-      );
-
-      setAtiva(
-        trilha.ativa
-      );
-
-      setErroLocal('');
-
-      setMostrarNovaTrilha(
-        true
-      );
-    };
-
-    const salvarTrilha =
-      async (): Promise<void> => {
-
-        setErroLocal('');
-
-        const diasNumero =
-          Number(
-            dias
+          setNome(
+            trilha.nome
           );
 
-        if (
-          !nome.trim()
-        ) {
-
-          setErroLocal(
-            'Informe o nome da trilha.'
+          setDescricao(
+            trilha.descricao
           );
 
-          return;
-        }
-
-        if (
-          Number.isNaN(
-            diasNumero
-          ) ||
-          diasNumero <
-          0
-        ) {
-
-          setErroLocal(
-            'Informe um prazo válido.'
+          setObservacoes(
+            trilha.observacoes
           );
 
-          return;
-        }
-
-        try {
-
-          if (
-            editandoTrilha
-          ) {
-
-            await props
-              .onEditarTrilha({
-
-                id:
-                  editandoTrilha.id,
-
-                nome:
-                  nome.trim(),
-
-                descricao:
-                  descricao.trim(),
-
-                diasParaConclusao:
-                  diasNumero,
-
-                ativa
-              });
-
-          } else {
-
-            await props
-              .onCriarTrilha({
-
-                nome:
-                  nome.trim(),
-
-                descricao:
-                  descricao.trim(),
-
-                diasParaConclusao:
-                  diasNumero,
-
-                ativa
-              });
-          }
-
-          setMostrarNovaTrilha(
-            false
+          setAtiva(
+            trilha.ativa
           );
 
-        } catch (e) {
-
-          setErroLocal(
-            e instanceof Error
-              ? e.message
-              : 'Não foi possível salvar a trilha.'
+          setTodasAreas(
+            trilha.todasAreas
           );
-        }
-      };
 
-    const adicionarTreinamento =
-      async (): Promise<void> => {
+          setEtapa(1);
+          setErroLocal('');
+          setModoFluxo(true);
+        },
+        []
+      );
+
+    React.useEffect(
+      () => {
 
         if (
           !props.trilhaSelecionada
@@ -408,92 +356,154 @@ const GestaoTrilhasPage:
           return;
         }
 
+        const selecionados =
+          props.treinamentosTrilha
+            .filter(
+              item =>
+                item.ativo
+            );
+
+        const locais =
+          props.treinamentos
+            .map(
+              treinamento => {
+
+                const relacao =
+                  selecionados.find(
+                    item =>
+                      item.treinamentoId ===
+                      treinamento.id
+                  );
+
+                return {
+                  treinamentoId:
+                    treinamento.id,
+
+                  selecionado:
+                    !!relacao,
+
+                  ordem:
+                    relacao?.ordem ||
+                    0,
+
+                  obrigatorio:
+                    relacao?.obrigatorio ??
+                    true,
+
+                  diasParaConclusao:
+                    relacao
+                      ?.diasParaConclusao ||
+                    30
+                };
+              }
+            );
+
+        setItensTreinamento(
+          locais
+        );
+
+        const areas =
+          props.areasTrilha
+            .filter(
+              item =>
+                item.ativa
+            )
+            .map(
+              item =>
+                item.areaId
+            );
+
+        setAreasSelecionadas(
+          areas
+        );
+
+        setTodasAreas(
+          props.trilhaSelecionada
+            .todasAreas
+        );
+
+      },
+      [
+        props.areasTrilha,
+        props.treinamentos,
+        props.treinamentosTrilha,
+        props.trilhaSelecionada
+      ]
+    );
+
+    const editar =
+      async (
+        trilha:
+          ITrilhaAdmin
+      ): Promise<void> => {
+
+        await props
+          .onSelecionarTrilha(
+            trilha
+          );
+
+        prepararEdicao(
+          trilha
+        );
+      };
+
+    const salvarEtapa1 =
+      async (): Promise<void> => {
+
         setErroLocal('');
-
-        const ordemNumero =
-          Number(
-            ordem
-          );
-
-        const diasNumero =
-          Number(
-            diasTreinamento
-          );
-
-        if (
-          !treinamentoId
-        ) {
-
-          setErroLocal(
-            'Selecione um treinamento.'
-          );
-
-          return;
-        }
-
-        if (
-          Number.isNaN(
-            ordemNumero
-          ) ||
-          ordemNumero <=
-          0
-        ) {
-
-          setErroLocal(
-            'Informe uma ordem válida.'
-          );
-
-          return;
-        }
 
         try {
 
-          await props
-            .onAdicionarTreinamento({
+          if (
+            trilhaAtual
+          ) {
 
-              trilhaId:
-                props
-                  .trilhaSelecionada
-                  .id,
+            await props
+              .onEditarTrilha({
+                id:
+                  trilhaAtual.id,
 
-              treinamentoId,
+                nome:
+                  nome.trim(),
 
-              ordem:
-                ordemNumero,
+                descricao:
+                  descricao.trim(),
 
-              obrigatorio,
+                observacoes:
+                  observacoes.trim(),
 
-              regraLiberacao,
+                ativa
+              });
 
-              diasParaConclusao:
-                Number.isNaN(
-                  diasNumero
-                )
-                  ? 0
-                  : diasNumero
-            });
-
-          setTreinamentoId('');
-
-          setOrdem(
-            String(
-              props
-                .treinamentosTrilha
-                .length +
+            setEtapa(
               2
-            )
-          );
+            );
 
-          setObrigatorio(
-            true
-          );
+            return;
+          }
 
-          setRegraLiberacao(
-            'Sequencial'
-          );
+          const criada =
+            await props
+              .onCriarTrilha({
+                nome:
+                  nome.trim(),
 
-          setDiasTreinamento(
-            '0'
+                descricao:
+                  descricao.trim(),
+
+                observacoes:
+                  observacoes.trim(),
+
+                ativa
+              });
+
+          await props
+            .onSelecionarTrilha(
+              criada
+            );
+
+          setEtapa(
+            2
           );
 
         } catch (e) {
@@ -501,962 +511,1599 @@ const GestaoTrilhasPage:
           setErroLocal(
             e instanceof Error
               ? e.message
-              : 'Erro ao adicionar treinamento.'
+              : 'Erro ao salvar trilha.'
           );
         }
       };
 
-    const alterarOrdem = (
-      item:
-        ITrilhaTreinamentoAdmin,
-      novaOrdem:
-        number
-    ): void => {
+    const alternarTreinamento =
+      (
+        treinamentoId:
+          string
+      ): void => {
 
-      if (
-        novaOrdem <=
-        0
-      ) {
-        return;
-      }
+        setItensTreinamento(
+          lista => {
 
-      props
-        .onEditarTreinamento({
+            const atual =
+              lista.find(
+                item =>
+                  item.treinamentoId ===
+                  treinamentoId
+              );
 
-          id:
-            item.id,
+            if (
+              atual
+            ) {
 
-          ordem:
-            novaOrdem,
+              return lista.map(
+                item =>
+                  item.treinamentoId ===
+                    treinamentoId
+                    ? {
+                      ...item,
+                      selecionado:
+                        !item.selecionado,
 
-          obrigatorio:
-            item.obrigatorio,
+                      ordem:
+                        !item.selecionado &&
+                        item.ordem <=
+                          0
+                          ? lista.filter(
+                            x =>
+                              x.selecionado
+                          ).length +
+                            1
+                          : item.ordem
+                    }
+                    : item
+              );
+            }
 
-          regraLiberacao:
-            item.regraLiberacao,
+            return [
+              ...lista,
+              {
+                treinamentoId,
+                selecionado:
+                  true,
+                ordem:
+                  lista.filter(
+                    item =>
+                      item.selecionado
+                  ).length +
+                  1,
+                obrigatorio:
+                  true,
+                diasParaConclusao:
+                  30
+              }
+            ];
+          }
+        );
+      };
 
-          diasParaConclusao:
-            item.diasParaConclusao,
+    const atualizarItem =
+      (
+        treinamentoId:
+          string,
+        dados:
+          Partial<
+            IItemTreinamentoLocal
+          >
+      ): void => {
 
-          ativo:
-            true
-        })
-        .catch(
-          (
-            error:
-              unknown
-          ) =>
-            console.error(
-              error
+        setItensTreinamento(
+          lista =>
+            lista.map(
+              item =>
+                item.treinamentoId ===
+                  treinamentoId
+                  ? {
+                    ...item,
+                    ...dados
+                  }
+                  : item
             )
         );
-    };
+      };
 
-    const treinamentosDisponiveis =
-      props.treinamentos
-        .filter(
-          treinamento =>
-            treinamento.ativo
-        )
-        .filter(
-          treinamento =>
-            !props
-              .treinamentosTrilha
-              .some(
+    const salvarEtapa2 =
+      async (): Promise<void> => {
+
+        if (
+          !trilhaAtual
+        ) {
+          return;
+        }
+
+        setErroLocal('');
+
+        try {
+
+          const selecionados =
+            itensTreinamento
+              .filter(
                 item =>
-                  item
-                    .treinamentoId
-                    .replace(
-                      /[{}]/g,
-                      ''
-                    )
-                    .toLowerCase() ===
-                  treinamento
-                    .id
-                    .replace(
-                      /[{}]/g,
-                      ''
-                    )
-                    .toLowerCase()
+                  item.selecionado
               )
+              .sort(
+                (
+                  a,
+                  b
+                ) =>
+                  a.ordem -
+                  b.ordem
+              )
+              .map(
+                (
+                  item,
+                  indice
+                ) => ({
+                  treinamentoId:
+                    item.treinamentoId,
+
+                  ordem:
+                    item.ordem >
+                      0
+                      ? item.ordem
+                      : indice +
+                        1,
+
+                  obrigatorio:
+                    item.obrigatorio,
+
+                  diasParaConclusao:
+                    item.diasParaConclusao
+                })
+              );
+
+          await props
+            .onSalvarTreinamentos(
+              trilhaAtual.id,
+              selecionados
+            );
+
+          setEtapa(
+            3
+          );
+
+        } catch (e) {
+
+          setErroLocal(
+            e instanceof Error
+              ? e.message
+              : 'Erro ao salvar treinamentos.'
+          );
+        }
+      };
+
+    const alternarArea =
+      (
+        areaId:
+          string
+      ): void => {
+
+        setAreasSelecionadas(
+          lista =>
+            lista.indexOf(
+              areaId
+            ) >=
+              0
+              ? lista.filter(
+                id =>
+                  id !==
+                  areaId
+              )
+              : [
+                ...lista,
+                areaId
+              ]
         );
+      };
+
+    const salvarEtapa3 =
+      async (): Promise<void> => {
+
+        if (
+          !trilhaAtual
+        ) {
+          return;
+        }
+
+        setErroLocal('');
+
+        try {
+
+          await props
+            .onSalvarAreas(
+              trilhaAtual.id,
+              todasAreas,
+              todasAreas
+                ? []
+                : areasSelecionadas
+            );
+
+          setModoFluxo(
+            false
+          );
+
+          setEtapa(
+            1
+          );
+
+          props
+            .onLimparSelecao();
+
+        } catch (e) {
+
+          setErroLocal(
+            e instanceof Error
+              ? e.message
+              : 'Erro ao salvar público da trilha.'
+          );
+        }
+      };
+
+    if (
+      modoFluxo
+    ) {
+
+      return (
+        <section>
+
+          <PageHeader
+            titulo={
+              trilhaAtual
+                ? 'Editar trilha'
+                : 'Nova trilha'
+            }
+            subtitulo={
+              etapa ===
+                1
+                ? 'Etapa 1 de 3 — cadastre os dados gerais da trilha.'
+                : etapa ===
+                    2
+                  ? 'Etapa 2 de 3 — selecione os treinamentos e defina a ordem.'
+                  : 'Etapa 3 de 3 — escolha quais áreas poderão visualizar a trilha.'
+            }
+          />
+
+          <div
+            style={{
+              display:
+                'flex',
+
+              justifyContent:
+                'flex-end',
+
+              marginBottom:
+                '12px'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+
+                setModoFluxo(
+                  false
+                );
+
+                setEtapa(
+                  1
+                );
+
+                props
+                  .onLimparSelecao();
+              }}
+              style={
+                btn
+              }
+            >
+              ← Voltar
+            </button>
+          </div>
+
+          <FluxoTrilhaEtapas
+            etapa={
+              etapa
+            }
+            permitirNavegacao={
+              !!trilhaAtual
+            }
+            onEtapaClick={
+              setEtapa
+            }
+          />
+
+          {
+            props.erro &&
+            (
+              <div
+                style={{
+                  ...cardStyle,
+
+                  marginBottom:
+                    '14px',
+
+                  background:
+                    '#fde7e9',
+
+                  color:
+                    '#a4262c'
+                }}
+              >
+                {
+                  props.erro
+                }
+              </div>
+            )
+          }
+
+          {
+            erroLocal &&
+            (
+              <div
+                style={{
+                  ...cardStyle,
+
+                  marginBottom:
+                    '14px',
+
+                  background:
+                    '#fff4ce',
+
+                  color:
+                    '#6a4b00'
+                }}
+              >
+                {
+                  erroLocal
+                }
+              </div>
+            )
+          }
+
+          {
+            etapa ===
+              1 &&
+            (
+              <div
+                style={{
+                  ...cardStyle,
+
+                  maxWidth:
+                    '980px'
+                }}
+              >
+
+                {
+                  trilhaAtual &&
+                  (
+                    <div
+                      style={{
+                        marginBottom:
+                          '16px',
+
+                        padding:
+                          '12px 14px',
+
+                        background:
+                          '#f8fafc',
+
+                        borderRadius:
+                          '8px',
+
+                        color:
+                          '#334155'
+                      }}
+                    >
+                      Código: <strong>
+                        {
+                          trilhaAtual.codigo
+                        }
+                      </strong>
+                    </div>
+                  )
+                }
+
+                <label>
+                  Nome da trilha *
+                </label>
+
+                <input
+                  value={
+                    nome
+                  }
+                  onChange={
+                    event =>
+                      setNome(
+                        event.target
+                          .value
+                      )
+                  }
+                  placeholder="Ex.: Formação Produção"
+                  style={{
+                    ...inputStyle,
+
+                    marginTop:
+                      '6px'
+                  }}
+                />
+
+                <div
+                  style={{
+                    height:
+                      '14px'
+                  }}
+                />
+
+                <label>
+                  Descrição
+                </label>
+
+                <textarea
+                  rows={
+                    5
+                  }
+                  value={
+                    descricao
+                  }
+                  onChange={
+                    event =>
+                      setDescricao(
+                        event.target
+                          .value
+                      )
+                  }
+                  style={{
+                    ...inputStyle,
+
+                    marginTop:
+                      '6px',
+
+                    resize:
+                      'vertical'
+                  }}
+                />
+
+                <div
+                  style={{
+                    height:
+                      '14px'
+                  }}
+                />
+
+                <label>
+                  Observações
+                </label>
+
+                <textarea
+                  rows={
+                    3
+                  }
+                  value={
+                    observacoes
+                  }
+                  onChange={
+                    event =>
+                      setObservacoes(
+                        event.target
+                          .value
+                      )
+                  }
+                  style={{
+                    ...inputStyle,
+
+                    marginTop:
+                      '6px',
+
+                    resize:
+                      'vertical'
+                  }}
+                />
+
+                <label
+                  style={{
+                    display:
+                      'flex',
+
+                    alignItems:
+                      'center',
+
+                    gap:
+                      '8px',
+
+                    marginTop:
+                      '16px'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={
+                      ativa
+                    }
+                    onChange={
+                      event =>
+                        setAtiva(
+                          event.target
+                            .checked
+                        )
+                    }
+                  />
+
+                  Trilha ativa
+                </label>
+
+                <div
+                  style={{
+                    display:
+                      'flex',
+
+                    justifyContent:
+                      'flex-end',
+
+                    marginTop:
+                      '22px'
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={
+                      props.processando
+                    }
+                    onClick={() => {
+
+                      void salvarEtapa1();
+
+                    }}
+                    style={
+                      btnPrimary
+                    }
+                  >
+                    {
+                      props.processando
+                        ? 'Salvando...'
+                        : 'Salvar e continuar →'
+                    }
+                  </button>
+                </div>
+
+              </div>
+            )
+          }
+
+          {
+            etapa ===
+              2 &&
+            (
+              <div
+                style={
+                  cardStyle
+                }
+              >
+
+                <div
+                  style={{
+                    display:
+                      'flex',
+
+                    justifyContent:
+                      'space-between',
+
+                    gap:
+                      '12px',
+
+                    alignItems:
+                      'center',
+
+                    marginBottom:
+                      '16px',
+
+                    flexWrap:
+                      'wrap'
+                  }}
+                >
+                  <div>
+                    <h3
+                      style={{
+                        margin:
+                          0,
+
+                        color:
+                          '#0b2d4d'
+                      }}
+                    >
+                      Treinamentos da trilha
+                    </h3>
+
+                    <p
+                      style={{
+                        margin:
+                          '5px 0 0',
+
+                        color:
+                          '#334155'
+                      }}
+                    >
+                      Selecione os cursos, defina a ordem e o prazo de conclusão.
+                    </p>
+                  </div>
+
+                  <span
+                    style={{
+                      color:
+                        '#334155',
+
+                      fontSize:
+                        '13px'
+                    }}
+                  >
+                    {
+                      itensTreinamento
+                        .filter(
+                          item =>
+                            item.selecionado
+                        )
+                        .length
+                    } selecionado(s)
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display:
+                      'grid',
+
+                    gap:
+                      '10px'
+                  }}
+                >
+                  {
+                    props.treinamentos
+                      .filter(
+                        item =>
+                          item.ativo
+                      )
+                      .map(
+                        treinamento => {
+
+                          const item =
+                            itensTreinamento
+                              .find(
+                                atual =>
+                                  atual.treinamentoId ===
+                                  treinamento.id
+                              ) || {
+                                treinamentoId:
+                                  treinamento.id,
+                                selecionado:
+                                  false,
+                                ordem:
+                                  0,
+                                obrigatorio:
+                                  true,
+                                diasParaConclusao:
+                                  30
+                              };
+
+                          return (
+                            <div
+                              key={
+                                treinamento.id
+                              }
+                              style={{
+                                display:
+                                  'grid',
+
+                                gridTemplateColumns:
+                                  '34px minmax(260px, 1fr) 100px 145px 170px',
+
+                                gap:
+                                  '12px',
+
+                                alignItems:
+                                  'center',
+
+                                padding:
+                                  '12px',
+
+                                border:
+                                  item.selecionado
+                                    ? '1px solid #8bbde8'
+                                    : '1px solid #e2e8f0',
+
+                                borderRadius:
+                                  '10px',
+
+                                background:
+                                  item.selecionado
+                                    ? '#f5faff'
+                                    : '#ffffff'
+                              }}
+                            >
+
+                              <input
+                                type="checkbox"
+                                checked={
+                                  item.selecionado
+                                }
+                                onChange={() =>
+                                  alternarTreinamento(
+                                    treinamento.id
+                                  )
+                                }
+                              />
+
+                              <div>
+                                <strong>
+                                  {
+                                    treinamento.codigo
+                                  } - {
+                                    treinamento.nome
+                                  }
+                                </strong>
+
+                                {
+                                  treinamento.descricao &&
+                                  (
+                                    <div
+                                      style={{
+                                        marginTop:
+                                          '3px',
+
+                                        color:
+                                          '#64748b',
+
+                                        fontSize:
+                                          '12px'
+                                      }}
+                                    >
+                                      {
+                                        treinamento.descricao
+                                      }
+                                    </div>
+                                  )
+                                }
+                              </div>
+
+                              <div>
+                                <label
+                                  style={{
+                                    fontSize:
+                                      '11px',
+
+                                    color:
+                                      '#64748b'
+                                  }}
+                                >
+                                  Ordem
+                                </label>
+
+                                <input
+                                  type="number"
+                                  min={
+                                    1
+                                  }
+                                  disabled={
+                                    !item.selecionado
+                                  }
+                                  value={
+                                    item.ordem ||
+                                    ''
+                                  }
+                                  onChange={
+                                    event =>
+                                      atualizarItem(
+                                        treinamento.id,
+                                        {
+                                          ordem:
+                                            Number(
+                                              event.target
+                                                .value
+                                            )
+                                        }
+                                      )
+                                  }
+                                  style={{
+                                    ...inputStyle,
+
+                                    marginTop:
+                                      '4px'
+                                  }}
+                                />
+                              </div>
+
+                              <label
+                                style={{
+                                  display:
+                                    'flex',
+
+                                  gap:
+                                    '7px',
+
+                                  alignItems:
+                                    'center'
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  disabled={
+                                    !item.selecionado
+                                  }
+                                  checked={
+                                    item.obrigatorio
+                                  }
+                                  onChange={
+                                    event =>
+                                      atualizarItem(
+                                        treinamento.id,
+                                        {
+                                          obrigatorio:
+                                            event.target
+                                              .checked
+                                        }
+                                      )
+                                  }
+                                />
+
+                                Obrigatório
+                              </label>
+
+                              <div>
+                                <label
+                                  style={{
+                                    fontSize:
+                                      '11px',
+
+                                    color:
+                                      '#64748b'
+                                  }}
+                                >
+                                  Prazo (dias)
+                                </label>
+
+                                <input
+                                  type="number"
+                                  min={
+                                    0
+                                  }
+                                  disabled={
+                                    !item.selecionado
+                                  }
+                                  value={
+                                    item.diasParaConclusao
+                                  }
+                                  onChange={
+                                    event =>
+                                      atualizarItem(
+                                        treinamento.id,
+                                        {
+                                          diasParaConclusao:
+                                            Number(
+                                              event.target
+                                                .value
+                                            )
+                                        }
+                                      )
+                                  }
+                                  style={{
+                                    ...inputStyle,
+
+                                    marginTop:
+                                      '4px'
+                                  }}
+                                />
+                              </div>
+
+                            </div>
+                          );
+                        }
+                      )
+                  }
+                </div>
+
+                <div
+                  style={{
+                    display:
+                      'flex',
+
+                    justifyContent:
+                      'space-between',
+
+                    marginTop:
+                      '22px'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEtapa(
+                        1
+                      )
+                    }
+                    style={
+                      btn
+                    }
+                  >
+                    ← Voltar
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      props.processando
+                    }
+                    onClick={() => {
+
+                      void salvarEtapa2();
+
+                    }}
+                    style={
+                      btnPrimary
+                    }
+                  >
+                    Salvar e continuar →
+                  </button>
+                </div>
+
+              </div>
+            )
+          }
+
+          {
+            etapa ===
+              3 &&
+            (
+              <div
+                style={
+                  cardStyle
+                }
+              >
+
+                <h3
+                  style={{
+                    marginTop:
+                      0,
+
+                    color:
+                      '#0b2d4d'
+                  }}
+                >
+                  Quem pode visualizar esta trilha?
+                </h3>
+
+                <p
+                  style={{
+                    color:
+                      '#334155',
+
+                    fontSize:
+                      '14px',
+
+                    lineHeight:
+                      1.5,
+
+                    fontWeight:
+                      500
+                  }}
+                >
+                  A visibilidade da trilha pode ser geral ou restrita a uma ou mais áreas.
+                </p>
+
+                <div
+                  style={{
+                    display:
+                      'grid',
+
+                    gridTemplateColumns:
+                      '1fr 1fr',
+
+                    gap:
+                      '12px',
+
+                    marginTop:
+                      '18px'
+                  }}
+                >
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTodasAreas(
+                        true
+                      )
+                    }
+                    style={{
+                      ...cardStyle,
+
+                      textAlign:
+                        'left',
+
+                      cursor:
+                        'pointer',
+
+                      border:
+                        todasAreas
+                          ? '2px solid #1677ff'
+                          : '1px solid #d8e2ec',
+
+                      background:
+                        todasAreas
+                          ? '#e7f2ff'
+                          : '#ffffff',
+
+                      color:
+                        '#0b2d4d'
+                    }}
+                  >
+                    <strong
+                      style={{
+                        color:
+                          '#0b2d4d',
+
+                        fontSize:
+                          '14px',
+
+                        fontWeight:
+                          700
+                      }}
+                    >
+                      Todas as áreas
+                    </strong>
+
+                    <span
+                      style={{
+                        display:
+                          'block',
+
+                        marginTop:
+                          '5px',
+
+                        color:
+                          '#334155',
+
+                        fontSize:
+                          '13px',
+
+                        fontWeight:
+                          500,
+
+                        lineHeight:
+                          1.45
+                      }}
+                    >
+                      Qualquer colaborador elegível poderá visualizar a trilha.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTodasAreas(
+                        false
+                      )
+                    }
+                    style={{
+                      ...cardStyle,
+
+                      textAlign:
+                        'left',
+
+                      cursor:
+                        'pointer',
+
+                      border:
+                        !todasAreas
+                          ? '2px solid #1677ff'
+                          : '1px solid #d8e2ec',
+
+                      background:
+                        !todasAreas
+                          ? '#e7f2ff'
+                          : '#ffffff',
+
+                      color:
+                        '#0b2d4d'
+                    }}
+                  >
+                    <strong
+                      style={{
+                        color:
+                          '#0b2d4d',
+
+                        fontSize:
+                          '14px',
+
+                        fontWeight:
+                          700
+                      }}
+                    >
+                      Áreas específicas
+                    </strong>
+
+                    <span
+                      style={{
+                        display:
+                          'block',
+
+                        marginTop:
+                          '5px',
+
+                        color:
+                          '#334155',
+
+                        fontSize:
+                          '13px',
+
+                        fontWeight:
+                          500,
+
+                        lineHeight:
+                          1.45
+                      }}
+                    >
+                      Apenas colaboradores das áreas selecionadas visualizarão a trilha.
+                    </span>
+                  </button>
+
+                </div>
+
+                {
+                  !todasAreas &&
+                  (
+                    <div
+                      style={{
+                        marginTop:
+                          '18px',
+
+                        display:
+                          'grid',
+
+                        gridTemplateColumns:
+                          'repeat(auto-fit, minmax(220px, 1fr))',
+
+                        gap:
+                          '10px'
+                      }}
+                    >
+                      {
+                        props.areas
+                          .filter(
+                            area =>
+                              area.ativa
+                          )
+                          .map(
+                            area => {
+
+                              const selecionada =
+                                areasSelecionadas
+                                  .indexOf(
+                                    area.id
+                                  ) >=
+                                0;
+
+                              return (
+                                <label
+                                  key={
+                                    area.id
+                                  }
+                                  style={{
+                                    display:
+                                      'flex',
+
+                                    gap:
+                                      '9px',
+
+                                    alignItems:
+                                      'center',
+
+                                    padding:
+                                      '12px',
+
+                                    border:
+                                      selecionada
+                                        ? '1px solid #8bbde8'
+                                        : '1px solid #e2e8f0',
+
+                                    borderRadius:
+                                      '9px',
+
+                                    background:
+                                      selecionada
+                                        ? '#f5faff'
+                                        : '#ffffff',
+
+                                    cursor:
+                                      'pointer'
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      selecionada
+                                    }
+                                    onChange={() =>
+                                      alternarArea(
+                                        area.id
+                                      )
+                                    }
+                                  />
+
+                                  <span>
+                                    <strong>
+                                      {
+                                        area.sigla
+                                      }
+                                    </strong>
+                                    {' - '}
+                                    {
+                                      area.nome
+                                    }
+                                  </span>
+                                </label>
+                              );
+                            }
+                          )
+                      }
+                    </div>
+                  )
+                }
+
+                <div
+                  style={{
+                    display:
+                      'flex',
+
+                    justifyContent:
+                      'space-between',
+
+                    marginTop:
+                      '24px'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEtapa(
+                        2
+                      )
+                    }
+                    style={
+                      btn
+                    }
+                  >
+                    ← Voltar
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      props.processando
+                    }
+                    onClick={() => {
+
+                      void salvarEtapa3();
+
+                    }}
+                    style={
+                      btnPrimary
+                    }
+                  >
+                    {
+                      props.processando
+                        ? 'Salvando...'
+                        : 'Salvar e encerrar'
+                    }
+                  </button>
+                </div>
+
+              </div>
+            )
+          }
+
+        </section>
+      );
+    }
 
     return (
       <section>
 
         <PageHeader
           titulo="Gestão de trilhas"
-          subtitulo="Configure trilhas, cursos, sequência e regras de liberação."
-          acao={
-            <button
-              type="button"
-              onClick={
-                props.onVoltar
-              }
-              style={
-                buttonSecondary
-              }
-            >
-              Voltar
-            </button>
-          }
+          subtitulo="Crie trilhas, organize a sequência dos treinamentos e defina quais áreas poderão visualizá-las."
         />
 
-        {props.erro && (
+        <div
+          style={{
+            display:
+              'flex',
 
-          <div
-            style={{
-              marginBottom:
-                '16px',
+            justifyContent:
+              'space-between',
 
-              padding:
-                '12px 14px',
+            gap:
+              '10px',
 
-              borderRadius:
-                '8px',
+            marginBottom:
+              '18px',
 
-              background:
-                '#fde7e9',
-
-              color:
-                '#a4262c'
-            }}
+            flexWrap:
+              'wrap'
+          }}
+        >
+          <button
+            type="button"
+            onClick={
+              props.onVoltar
+            }
+            style={
+              btn
+            }
           >
-            {props.erro}
-          </div>
-        )}
+            ← Voltar
+          </button>
 
-        {erroLocal && (
-
-          <div
-            style={{
-              marginBottom:
-                '16px',
-
-              padding:
-                '12px 14px',
-
-              borderRadius:
-                '8px',
-
-              background:
-                '#fff4ce',
-
-              color:
-                '#6a4b00'
-            }}
+          <button
+            type="button"
+            onClick={
+              iniciarNova
+            }
+            style={
+              btnPrimary
+            }
           >
-            {erroLocal}
-          </div>
-        )}
+            + Nova trilha
+          </button>
+        </div>
 
-        {!props.trilhaSelecionada ? (
-
-          <>
-
+        {
+          props.erro &&
+          (
             <div
               style={{
-                display:
-                  'flex',
-
-                justifyContent:
-                  'space-between',
-
-                alignItems:
-                  'center',
+                ...cardStyle,
 
                 marginBottom:
-                  '18px'
+                  '14px',
+
+                background:
+                  '#fde7e9',
+
+                color:
+                  '#a4262c'
               }}
             >
-
-              <div>
-
-                <strong
-                  style={{
-                    display:
-                      'block',
-
-                    color:
-                      '#0b1f3a',
-
-                    fontSize:
-                      '18px'
-                  }}
-                >
-                  Trilhas cadastradas
-                </strong>
-
-                <span
-                  style={{
-                    color:
-                      '#64748b',
-
-                    fontSize:
-                      '13px'
-                  }}
-                >
-                  {
-                    props.trilhas.length
-                  } trilha(s)
-                </span>
-
-              </div>
-
-              <button
-                type="button"
-                onClick={
-                  abrirNovaTrilha
-                }
-                style={
-                  buttonPrimary
-                }
-              >
-                + Nova trilha
-              </button>
-
+              {
+                props.erro
+              }
             </div>
+          )
+        }
 
-            {props.carregando ? (
-
+        {
+          props.carregando
+            ? (
               <div
-                style={{
-                  padding:
-                    '30px',
-
-                  textAlign:
-                    'center'
-                }}
+                style={
+                  cardStyle
+                }
               >
                 Carregando trilhas...
               </div>
-
-            ) : (
-
+            )
+            : (
               <div
                 style={{
                   display:
                     'grid',
 
                   gridTemplateColumns:
-                    'repeat(auto-fit, minmax(280px, 1fr))',
+                    'repeat(auto-fit, minmax(320px, 1fr))',
 
                   gap:
-                    '16px'
-                }}
-              >
-
-                {props.trilhas.map(
-                  trilha => (
-
-                    <article
-                      key={
-                        trilha.id
-                      }
-                      style={{
-                        padding:
-                          '20px',
-
-                        background:
-                          '#ffffff',
-
-                        border:
-                          '1px solid #e5e7eb',
-
-                        borderRadius:
-                          '14px'
-                      }}
-                    >
-
-                      <div
-                        style={{
-                          display:
-                            'flex',
-
-                          justifyContent:
-                            'space-between',
-
-                          gap:
-                            '12px'
-                        }}
-                      >
-
-                        <div>
-
-                          <h3
-                            style={{
-                              margin:
-                                0,
-
-                              color:
-                                '#0b1f3a'
-                            }}
-                          >
-                            {
-                              trilha.nome
-                            }
-                          </h3>
-
-                          <p
-                            style={{
-                              color:
-                                '#64748b',
-
-                              fontSize:
-                                '13px'
-                            }}
-                          >
-                            {
-                              trilha.descricao ||
-                              'Sem descrição.'
-                            }
-                          </p>
-
-                        </div>
-
-                        <span
-                          style={{
-                            height:
-                              'fit-content',
-
-                            padding:
-                              '5px 9px',
-
-                            borderRadius:
-                              '20px',
-
-                            background:
-                              trilha.ativa
-                                ? '#e7f5ee'
-                                : '#f1f5f9',
-
-                            color:
-                              trilha.ativa
-                                ? '#13795b'
-                                : '#64748b',
-
-                            fontSize:
-                              '12px',
-
-                            fontWeight:
-                              700
-                          }}
-                        >
-                          {
-                            trilha.ativa
-                              ? 'Ativa'
-                              : 'Inativa'
-                          }
-                        </span>
-
-                      </div>
-
-                      <div
-                        style={{
-                          display:
-                            'grid',
-
-                          gridTemplateColumns:
-                            '1fr 1fr',
-
-                          gap:
-                            '10px',
-
-                          margin:
-                            '18px 0'
-                        }}
-                      >
-
-                        <div>
-                          <strong>
-                            {
-                              trilha
-                                .quantidadeTreinamentos
-                            }
-                          </strong>
-
-                          <span
-                            style={{
-                              display:
-                                'block',
-
-                              color:
-                                '#64748b',
-
-                              fontSize:
-                                '12px'
-                            }}
-                          >
-                            treinamentos
-                          </span>
-                        </div>
-
-                        <div>
-                          <strong>
-                            {
-                              trilha
-                                .diasParaConclusao ||
-                              '-'
-                            }
-                          </strong>
-
-                          <span
-                            style={{
-                              display:
-                                'block',
-
-                              color:
-                                '#64748b',
-
-                              fontSize:
-                                '12px'
-                            }}
-                          >
-                            dias para concluir
-                          </span>
-                        </div>
-
-                      </div>
-
-                      <div
-                        style={{
-                          display:
-                            'flex',
-
-                          gap:
-                            '8px',
-
-                          flexWrap:
-                            'wrap'
-                        }}
-                      >
-
-                        <button
-                          type="button"
-                          onClick={() => {
-
-                            props
-                              .onSelecionarTrilha(
-                                trilha
-                              )
-                              .catch(
-                                (
-                                  error:
-                                    unknown
-                                ) =>
-                                  console.error(
-                                    error
-                                  )
-                              );
-                          }}
-                          style={
-                            buttonPrimary
-                          }
-                        >
-                          Gerenciar cursos
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            abrirEditarTrilha(
-                              trilha
-                            )
-                          }
-                          style={
-                            buttonSecondary
-                          }
-                        >
-                          Editar
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={
-                            props.processando
-                          }
-                          onClick={() => {
-
-                            props
-                              .onDefinirTrilhaAtiva(
-                                trilha.id,
-                                !trilha.ativa
-                              )
-                              .catch(
-                                (
-                                  error:
-                                    unknown
-                                ) =>
-                                  console.error(
-                                    error
-                                  )
-                              );
-                          }}
-                          style={
-                            buttonSecondary
-                          }
-                        >
-                          {
-                            trilha.ativa
-                              ? 'Desativar'
-                              : 'Ativar'
-                          }
-                        </button>
-
-                      </div>
-
-                    </article>
-                  )
-                )}
-
-              </div>
-            )}
-
-          </>
-
-        ) : (
-
-          <>
-
-            <div
-              style={{
-                display:
-                  'flex',
-
-                justifyContent:
-                  'space-between',
-
-                alignItems:
-                  'center',
-
-                marginBottom:
-                  '20px',
-
-                gap:
-                  '16px'
-              }}
-            >
-
-              <div>
-
-                <button
-                  type="button"
-                  onClick={
-                    props.onLimparSelecao
-                  }
-                  style={{
-                    ...buttonSecondary,
-                    marginBottom:
-                      '10px'
-                  }}
-                >
-                  ← Trilhas
-                </button>
-
-                <h2
-                  style={{
-                    margin:
-                      0,
-
-                    color:
-                      '#0b1f3a'
-                  }}
-                >
-                  {
-                    props
-                      .trilhaSelecionada
-                      .nome
-                  }
-                </h2>
-
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  abrirEditarTrilha(
-                    props
-                      .trilhaSelecionada as ITrilhaAdmin
-                  )
-                }
-                style={
-                  buttonSecondary
-                }
-              >
-                Editar trilha
-              </button>
-
-            </div>
-
-            {/* ADICIONAR TREINAMENTO */}
-
-            <div
-              style={{
-                marginBottom:
-                  '22px',
-
-                padding:
-                  '20px',
-
-                background:
-                  '#ffffff',
-
-                border:
-                  '1px solid #e5e7eb',
-
-                borderRadius:
-                  '14px'
-              }}
-            >
-
-              <h3
-                style={{
-                  marginTop:
-                    0,
-
-                  color:
-                    '#0b1f3a'
-                }}
-              >
-                Adicionar treinamento
-              </h3>
-
-              <div
-                style={{
-                  display:
-                    'grid',
-
-                  gridTemplateColumns:
-                    '2fr 100px 160px 160px',
-
-                  gap:
-                    '12px'
-                }}
-              >
-
-                <select
-                  value={
-                    treinamentoId
-                  }
-                  onChange={
-                    event =>
-                      setTreinamentoId(
-                        event.target.value
-                      )
-                  }
-                  style={
-                    inputStyle
-                  }
-                >
-
-                  <option value="">
-                    Selecione um treinamento
-                  </option>
-
-                  {treinamentosDisponiveis.map(
-                    treinamento => (
-
-                      <option
-                        key={
-                          treinamento.id
-                        }
-                        value={
-                          treinamento.id
-                        }
-                      >
-                        {
-                          treinamento.codigo
-                        } - {
-                          treinamento.nome
-                        }
-                      </option>
-                    )
-                  )}
-
-                </select>
-
-                <input
-                  type="number"
-                  min={
-                    1
-                  }
-                  placeholder="Ordem"
-                  value={
-                    ordem
-                  }
-                  onChange={
-                    event =>
-                      setOrdem(
-                        event.target.value
-                      )
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
-
-                <select
-                  value={
-                    regraLiberacao
-                  }
-                  onChange={
-                    event =>
-                      setRegraLiberacao(
-                        event.target.value
-                      )
-                  }
-                  style={
-                    inputStyle
-                  }
-                >
-                  <option value="Sequencial">
-                    Sequencial
-                  </option>
-
-                  <option value="Imediata">
-                    Imediata
-                  </option>
-                </select>
-
-                <input
-                  type="number"
-                  min={
-                    0
-                  }
-                  placeholder="Prazo (dias)"
-                  value={
-                    diasTreinamento
-                  }
-                  onChange={
-                    event =>
-                      setDiasTreinamento(
-                        event.target.value
-                      )
-                  }
-                  style={
-                    inputStyle
-                  }
-                />
-
-              </div>
-
-              <label
-                style={{
-                  display:
-                    'flex',
-
-                  gap:
-                    '8px',
-
-                  alignItems:
-                    'center',
-
-                  marginTop:
                     '14px'
                 }}
               >
-
-                <input
-                  type="checkbox"
-                  checked={
-                    obrigatorio
-                  }
-                  onChange={
-                    event =>
-                      setObrigatorio(
-                        event.target.checked
-                      )
-                  }
-                />
-
-                Treinamento obrigatório
-
-              </label>
-
-              <button
-                type="button"
-                disabled={
-                  props.processando
-                }
-                onClick={() => {
-
-                  adicionarTreinamento()
-                    .catch(
-                      (
-                        error:
-                          unknown
-                      ) =>
-                        console.error(
-                          error
-                        )
-                    );
-                }}
-                style={{
-                  ...buttonPrimary,
-
-                  marginTop:
-                    '16px'
-                }}
-              >
-                Adicionar à trilha
-              </button>
-
-            </div>
-
-            {/* CONTEÚDO DA TRILHA */}
-
-            <div
-              style={{
-                background:
-                  '#ffffff',
-
-                border:
-                  '1px solid #e5e7eb',
-
-                borderRadius:
-                  '14px',
-
-                overflow:
-                  'hidden'
-              }}
-            >
-
-              {props.carregandoConteudo ? (
-
-                <div
-                  style={{
-                    padding:
-                      '30px',
-
-                    textAlign:
-                      'center'
-                  }}
-                >
-                  Carregando treinamentos...
-                </div>
-
-              ) : (
-
-                props
-                  .treinamentosTrilha
-                  .map(
-                    (
-                      item,
-                      indice
-                    ) => (
-
-                      <div
+                {
+                  props.trilhas.map(
+                    trilha => (
+                      <article
                         key={
-                          item.id
+                          trilha.id
                         }
-                        style={{
-                          display:
-                            'grid',
-
-                          gridTemplateColumns:
-                            '70px 1fr 140px 120px 230px',
-
-                          gap:
-                            '12px',
-
-                          alignItems:
-                            'center',
-
-                          padding:
-                            '16px',
-
-                          borderBottom:
-                            indice <
-                            props
-                              .treinamentosTrilha
-                              .length -
-                            1
-                              ? '1px solid #edf0f4'
-                              : 'none'
-                        }}
+                        style={
+                          cardStyle
+                        }
                       >
-
                         <div
                           style={{
-                            width:
-                              '38px',
-
-                            height:
-                              '38px',
-
                             display:
                               'flex',
 
-                            alignItems:
-                              'center',
-
                             justifyContent:
-                              'center',
+                              'space-between',
 
-                            borderRadius:
-                              '50%',
+                            gap:
+                              '12px',
 
-                            background:
-                              '#eef5ff',
-
-                            color:
-                              '#1677ff',
-
-                            fontWeight:
-                              700
+                            alignItems:
+                              'flex-start'
                           }}
                         >
-                          {
-                            item.ordem
-                          }
-                        </div>
+                          <div>
+                            <span
+                              style={{
+                                color:
+                                  '#64748b',
 
-                        <div>
+                                fontSize:
+                                  '11px',
 
-                          <strong>
-                            {
-                              item
-                                .treinamentoNome
-                            }
-                          </strong>
+                                fontWeight:
+                                  700
+                              }}
+                            >
+                              {
+                                trilha.codigo ||
+                                'TRILHA'
+                              }
+                            </span>
+
+                            <h3
+                              style={{
+                                margin:
+                                  '4px 0 6px',
+
+                                color:
+                                  '#0b2d4d'
+                              }}
+                            >
+                              {
+                                trilha.nome
+                              }
+                            </h3>
+                          </div>
 
                           <span
                             style={{
-                              display:
-                                'block',
+                              padding:
+                                '5px 9px',
 
-                              marginTop:
-                                '4px',
+                              borderRadius:
+                                '999px',
+
+                              background:
+                                trilha.ativa
+                                  ? '#e7f5ee'
+                                  : '#f1f5f9',
 
                               color:
-                                '#64748b',
+                                trilha.ativa
+                                  ? '#13795b'
+                                  : '#64748b',
 
                               fontSize:
-                                '12px'
+                                '11px',
+
+                              fontWeight:
+                                700
                             }}
                           >
                             {
-                              item
-                                .treinamentoCodigo
+                              trilha.ativa
+                                ? 'Ativa'
+                                : 'Inativa'
                             }
                           </span>
-
                         </div>
 
-                        <span>
-                          {
-                            item.obrigatorio
-                              ? 'Obrigatório'
-                              : 'Opcional'
-                          }
-                        </span>
+                        {
+                          trilha.descricao &&
+                          (
+                            <p
+                              style={{
+                                color:
+                                  '#64748b',
 
-                        <span>
-                          {
-                            item.regraLiberacao ||
-                            'Sequencial'
-                          }
-                        </span>
+                                fontSize:
+                                  '13px',
+
+                                lineHeight:
+                                  1.5
+                              }}
+                            >
+                              {
+                                trilha.descricao
+                              }
+                            </p>
+                          )
+                        }
+
+                        <div
+                          style={{
+                            display:
+                              'grid',
+
+                            gridTemplateColumns:
+                              '1fr 1fr',
+
+                            gap:
+                              '10px',
+
+                            marginTop:
+                              '14px'
+                          }}
+                        >
+                          <div
+                            style={{
+                              padding:
+                                '10px',
+
+                              background:
+                                '#f8fafc',
+
+                              borderRadius:
+                                '8px'
+                            }}
+                          >
+                            <span
+                              style={{
+                                display:
+                                  'block',
+
+                                color:
+                                  '#64748b',
+
+                                fontSize:
+                                  '11px'
+                              }}
+                            >
+                              Treinamentos
+                            </span>
+
+                            <strong>
+                              {
+                                trilha.quantidadeTreinamentos
+                              }
+                            </strong>
+                          </div>
+
+                          <div
+                            style={{
+                              padding:
+                                '10px',
+
+                              background:
+                                '#f8fafc',
+
+                              borderRadius:
+                                '8px'
+                            }}
+                          >
+                            <span
+                              style={{
+                                display:
+                                  'block',
+
+                                color:
+                                  '#64748b',
+
+                                fontSize:
+                                  '11px'
+                              }}
+                            >
+                              Visibilidade
+                            </span>
+
+                            <strong>
+                              {
+                                trilha.todasAreas
+                                  ? 'Todas as áreas'
+                                  : `${trilha.quantidadeAreas} área(s)`
+                              }
+                            </strong>
+                          </div>
+                        </div>
 
                         <div
                           style={{
@@ -1464,51 +2111,32 @@ const GestaoTrilhasPage:
                               'flex',
 
                             gap:
-                              '6px',
+                              '8px',
+
+                            marginTop:
+                              '16px',
 
                             flexWrap:
                               'wrap'
                           }}
                         >
-
-                          <button
-                            type="button"
-                            disabled={
-                              item.ordem <=
-                              1 ||
-                              props.processando
-                            }
-                            onClick={() =>
-                              alterarOrdem(
-                                item,
-                                item.ordem -
-                                1
-                              )
-                            }
-                            style={
-                              buttonSecondary
-                            }
-                          >
-                            ↑
-                          </button>
-
                           <button
                             type="button"
                             disabled={
                               props.processando
                             }
-                            onClick={() =>
-                              alterarOrdem(
-                                item,
-                                item.ordem +
-                                1
-                              )
-                            }
+                            onClick={() => {
+
+                              void editar(
+                                trilha
+                              );
+
+                            }}
                             style={
-                              buttonSecondary
+                              btn
                             }
                           >
-                            ↓
+                            Editar trilha
                           </button>
 
                           <button
@@ -1518,282 +2146,34 @@ const GestaoTrilhasPage:
                             }
                             onClick={() => {
 
-                              props
-                                .onRemoverTreinamento(
-                                  item.id
-                                )
-                                .catch(
-                                  (
-                                    error:
-                                      unknown
-                                  ) =>
-                                    console.error(
-                                      error
-                                    )
+                              void props
+                                .onDefinirTrilhaAtiva(
+                                  trilha.id,
+                                  !trilha.ativa
                                 );
+
                             }}
                             style={
-                              buttonSecondary
+                              trilha.ativa
+                                ? btnDanger
+                                : btn
                             }
                           >
-                            Remover
+                            {
+                              trilha.ativa
+                                ? 'Desativar'
+                                : 'Ativar'
+                            }
                           </button>
-
                         </div>
 
-                      </div>
+                      </article>
                     )
                   )
-              )}
-
-            </div>
-
-          </>
-        )}
-
-        {/* MODAL TRILHA */}
-
-        {mostrarNovaTrilha && (
-
-          <div
-            style={{
-              position:
-                'fixed',
-
-              inset:
-                0,
-
-              zIndex:
-                10000,
-
-              display:
-                'flex',
-
-              justifyContent:
-                'center',
-
-              alignItems:
-                'center',
-
-              padding:
-                '20px',
-
-              background:
-                'rgba(15,23,42,.55)'
-            }}
-          >
-
-            <div
-              style={{
-                width:
-                  '100%',
-
-                maxWidth:
-                  '620px',
-
-                padding:
-                  '24px',
-
-                borderRadius:
-                  '16px',
-
-                background:
-                  '#ffffff'
-              }}
-            >
-
-              <h2
-                style={{
-                  marginTop:
-                    0
-                }}
-              >
-                {
-                  editandoTrilha
-                    ? 'Editar trilha'
-                    : 'Nova trilha'
                 }
-              </h2>
-
-              <label>
-                Nome
-              </label>
-
-              <input
-                value={
-                  nome
-                }
-                onChange={
-                  event =>
-                    setNome(
-                      event.target.value
-                    )
-                }
-                style={
-                  inputStyle
-                }
-              />
-
-              <div
-                style={{
-                  height:
-                    '14px'
-                }}
-              />
-
-              <label>
-                Descrição
-              </label>
-
-              <textarea
-                rows={
-                  4
-                }
-                value={
-                  descricao
-                }
-                onChange={
-                  event =>
-                    setDescricao(
-                      event.target.value
-                    )
-                }
-                style={{
-                  ...inputStyle,
-
-                  resize:
-                    'vertical'
-                }}
-              />
-
-              <div
-                style={{
-                  height:
-                    '14px'
-                }}
-              />
-
-              <label>
-                Dias para conclusão
-              </label>
-
-              <input
-                type="number"
-                min={
-                  0
-                }
-                value={
-                  dias
-                }
-                onChange={
-                  event =>
-                    setDias(
-                      event.target.value
-                    )
-                }
-                style={
-                  inputStyle
-                }
-              />
-
-              <label
-                style={{
-                  display:
-                    'flex',
-
-                  alignItems:
-                    'center',
-
-                  gap:
-                    '8px',
-
-                  marginTop:
-                    '16px'
-                }}
-              >
-
-                <input
-                  type="checkbox"
-                  checked={
-                    ativa
-                  }
-                  onChange={
-                    event =>
-                      setAtiva(
-                        event.target.checked
-                      )
-                  }
-                />
-
-                Trilha ativa
-
-              </label>
-
-              <div
-                style={{
-                  display:
-                    'flex',
-
-                  justifyContent:
-                    'flex-end',
-
-                  gap:
-                    '10px',
-
-                  marginTop:
-                    '24px'
-                }}
-              >
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setMostrarNovaTrilha(
-                      false
-                    )
-                  }
-                  style={
-                    buttonSecondary
-                  }
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  type="button"
-                  disabled={
-                    props.processando
-                  }
-                  onClick={() => {
-
-                    salvarTrilha()
-                      .catch(
-                        (
-                          error:
-                            unknown
-                        ) =>
-                          console.error(
-                            error
-                          )
-                      );
-                  }}
-                  style={
-                    buttonPrimary
-                  }
-                >
-                  {
-                    props.processando
-                      ? 'Salvando...'
-                      : 'Salvar'
-                  }
-                </button>
-
               </div>
-
-            </div>
-
-          </div>
-        )}
+            )
+        }
 
       </section>
     );

@@ -41,6 +41,27 @@ export interface IEditarAvaliacao
   id: string;
 }
 
+
+export type TipoQuestaoCriacao =
+  | 'Escolha única'
+  | 'Múltipla escolha'
+  | 'Verdadeiro/Falso'
+  | 'Sim/Não';
+
+export interface IAlternativaRascunho {
+  texto: string;
+  correta: boolean;
+}
+
+export interface INovaQuestaoCompleta {
+  avaliacaoId: string;
+  enunciado: string;
+  ordem: number;
+  peso: number;
+  tipo: TipoQuestaoCriacao;
+  alternativas: IAlternativaRascunho[];
+}
+
 export interface IQuestaoAdmin {
   id: string;
   avaliacaoId: string;
@@ -477,6 +498,198 @@ export class AvaliacaoAdminService {
             dados.ativa
         }
       );
+  }
+
+
+  public async criarQuestaoCompleta(
+    dados:
+      INovaQuestaoCompleta
+  ): Promise<IQuestaoAdmin> {
+
+    if (
+      !dados.avaliacaoId
+    ) {
+      throw new Error(
+        'Avaliação não informada.'
+      );
+    }
+
+    if (
+      !dados.enunciado
+        .trim()
+    ) {
+      throw new Error(
+        'Informe o enunciado da questão.'
+      );
+    }
+
+    if (
+      dados.peso <=
+        0
+    ) {
+      throw new Error(
+        'O peso deve ser maior que zero.'
+      );
+    }
+
+    const alternativas =
+      dados.alternativas
+        .map(
+          item => ({
+            texto:
+              item.texto
+                .trim(),
+
+            correta:
+              item.correta
+          })
+        )
+        .filter(
+          item =>
+            !!item.texto
+        );
+
+    if (
+      alternativas.length <
+        2
+    ) {
+      throw new Error(
+        'Cadastre pelo menos duas alternativas.'
+      );
+    }
+
+    const quantidadeCorretas =
+      alternativas
+        .filter(
+          item =>
+            item.correta
+        )
+        .length;
+
+    if (
+      quantidadeCorretas ===
+        0
+    ) {
+      throw new Error(
+        'Marque pelo menos uma alternativa correta.'
+      );
+    }
+
+    if (
+      dados.tipo !==
+        'Múltipla escolha' &&
+      quantidadeCorretas !==
+        1
+    ) {
+      throw new Error(
+        'Este tipo de questão deve possuir exatamente uma resposta correta.'
+      );
+    }
+
+    const nomeInterno =
+      `Questão ${dados.ordem} - ${Date.now()}`;
+
+    await this.criarQuestao({
+      avaliacaoId:
+        dados.avaliacaoId,
+
+      nome:
+        nomeInterno,
+
+      enunciado:
+        dados.enunciado
+          .trim(),
+
+      ordem:
+        dados.ordem,
+
+      peso:
+        dados.peso,
+
+      multiplasRespostas:
+        dados.tipo ===
+        'Múltipla escolha',
+
+      ativa:
+        true
+    });
+
+    let questaoCriada:
+      IQuestaoAdmin | undefined;
+
+    for (
+      let tentativa = 0;
+      tentativa < 4;
+      tentativa += 1
+    ) {
+
+      const questoes =
+        await this.listarQuestoes(
+          dados.avaliacaoId
+        );
+
+      questaoCriada =
+        questoes.find(
+          item =>
+            item.nome ===
+            nomeInterno
+        );
+
+      if (
+        questaoCriada
+      ) {
+        break;
+      }
+
+      await new Promise<void>(
+        resolve =>
+          window.setTimeout(
+            resolve,
+            350
+          )
+      );
+    }
+
+    if (
+      !questaoCriada
+    ) {
+      throw new Error(
+        'A questão foi criada, mas não foi possível localizar o registro para cadastrar as alternativas.'
+      );
+    }
+
+    for (
+      let indice = 0;
+      indice <
+        alternativas.length;
+      indice += 1
+    ) {
+
+      const alternativa =
+        alternativas[
+          indice
+        ];
+
+      await this.criarAlternativa({
+        questaoId:
+          questaoCriada.id,
+
+        texto:
+          alternativa.texto,
+
+        ordem:
+          indice +
+          1,
+
+        correta:
+          alternativa.correta,
+
+        ativa:
+          true
+      });
+    }
+
+    return questaoCriada;
   }
 
   public async editarQuestao(

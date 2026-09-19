@@ -40,9 +40,39 @@ const texto = (
     return padrao;
   }
 
-  return String(
-    valor
-  ).trim() || padrao;
+  return (
+    String(valor).trim() ||
+    padrao
+  );
+};
+
+const textoFormatado = (
+  registro: IDataverseRecord,
+  campo: string,
+  padrao = ''
+): string => {
+
+  const chave =
+    `${campo}@OData.Community.Display.V1.FormattedValue`;
+
+  const valor =
+    registro[chave];
+
+  if (
+    valor !== undefined &&
+    valor !== null &&
+    String(valor).trim()
+  ) {
+    return String(
+      valor
+    ).trim();
+  }
+
+  return texto(
+    registro,
+    campo,
+    padrao
+  );
 };
 
 const booleano = (
@@ -56,7 +86,7 @@ const booleano = (
 
   if (
     typeof valor ===
-      'boolean'
+    'boolean'
   ) {
     return valor;
   }
@@ -87,18 +117,23 @@ const normalizarPerfil = (
   const perfil =
     valor
       .trim()
-      .toLowerCase();
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(
+        /[\u0300-\u036f]/g,
+        ''
+      );
 
   if (
     perfil ===
-      'administrador'
+    'administrador'
   ) {
     return 'Administrador';
   }
 
   if (
     perfil ===
-      'gestor'
+    'gestor'
   ) {
     return 'Gestor';
   }
@@ -123,7 +158,12 @@ export class AutorizacaoService {
     email: string
   ): Promise<IContextoAcesso> {
 
-    if (!email.trim()) {
+    const emailNormalizado =
+      email
+        .trim()
+        .toLowerCase();
+
+    if (!emailNormalizado) {
       throw new Error(
         'E-mail do usuário não informado.'
       );
@@ -132,7 +172,7 @@ export class AutorizacaoService {
     const registros =
       await this.dataverse
         .getUsuarioAcessoPorEmail(
-          email
+          emailNormalizado
         );
 
     const registro =
@@ -159,7 +199,7 @@ export class AutorizacaoService {
 
     const perfil =
       normalizarPerfil(
-        texto(
+        textoFormatado(
           registro,
           'dgt_perfilacesso',
           'Funcionario'
@@ -192,7 +232,7 @@ export class AutorizacaoService {
         texto(
           registro,
           'dgt_email',
-          email
+          emailNormalizado
         ),
 
       perfil,
