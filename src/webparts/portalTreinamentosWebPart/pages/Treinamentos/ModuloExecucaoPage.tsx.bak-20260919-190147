@@ -1,0 +1,1055 @@
+import * as React from 'react';
+
+import {
+  IModuloTreinamento
+} from '../../models/Modulo';
+
+import {
+  IConteudoModuloExecucao,
+  IPerguntaRapidaExecucao
+} from '../../hooks/useModuloExecucao';
+
+export interface IModuloExecucaoPageProps {
+
+  modulo:
+    IModuloTreinamento;
+
+  conteudos:
+    IConteudoModuloExecucao[];
+
+  carregando:
+    boolean;
+
+  erro:
+    string;
+
+  podeConcluir:
+    boolean;
+
+  processando:
+    boolean;
+
+  onVoltar:
+    () => void;
+
+  onResponderPergunta:
+    (
+      pergunta:
+        IPerguntaRapidaExecucao,
+      alternativaIds:
+        string[]
+    ) => Promise<boolean>;
+
+  onConcluir:
+    () => Promise<void>;
+}
+
+interface ISelecaoPergunta {
+  perguntaId:
+    string;
+
+  alternativaIds:
+    string[];
+
+  respondida:
+    boolean;
+
+  correta:
+    boolean;
+}
+
+const card:
+  React.CSSProperties = {
+  padding:
+    '20px',
+
+  border:
+    '1px solid #D8E2EC',
+
+  borderRadius:
+    '14px',
+
+  background:
+    '#FFFFFF'
+};
+
+const botao:
+  React.CSSProperties = {
+  padding:
+    '10px 14px',
+
+  border:
+    '1px solid #0B5CAB',
+
+  borderRadius:
+    '8px',
+
+  background:
+    '#FFFFFF',
+
+  color:
+    '#0B5CAB',
+
+  fontWeight:
+    700,
+
+  cursor:
+    'pointer'
+};
+
+const botaoPrimario:
+  React.CSSProperties = {
+  ...botao,
+
+  border:
+    '1px solid #0B5CAB',
+
+  background:
+    '#0B5CAB',
+
+  color:
+    '#FFFFFF'
+};
+
+const ModuloExecucaoPage:
+  React.FC<
+    IModuloExecucaoPageProps
+  > = (
+    props
+  ) => {
+
+    const [
+      selecoes,
+      setSelecoes
+    ] =
+      React.useState<
+        ISelecaoPergunta[]
+      >([]);
+
+    const [
+      respondendoId,
+      setRespondendoId
+    ] =
+      React.useState('');
+
+    const [
+      erroLocal,
+      setErroLocal
+    ] =
+      React.useState('');
+
+    const obterSelecao =
+      (
+        perguntaId:
+          string
+      ): ISelecaoPergunta => {
+
+        const encontrada:
+          ISelecaoPergunta | undefined =
+          selecoes.find(
+            item =>
+              item.perguntaId ===
+              perguntaId
+          );
+
+        if (
+          encontrada
+        ) {
+          return encontrada;
+        }
+
+        const vazia:
+          ISelecaoPergunta = {
+          perguntaId,
+          alternativaIds:
+            [],
+          respondida:
+            false,
+          correta:
+            false
+        };
+
+        return vazia;
+      };
+
+    const alternarAlternativa =
+      (
+        pergunta:
+          IPerguntaRapidaExecucao,
+        alternativaId:
+          string
+      ): void => {
+
+        const multipla =
+          pergunta.tipo ===
+          100000001;
+
+        setSelecoes(
+          lista => {
+
+            const encontrada:
+              ISelecaoPergunta | undefined =
+              lista.find(
+                item =>
+                  item.perguntaId ===
+                  pergunta.id
+              );
+
+            const atual:
+              ISelecaoPergunta =
+              encontrada || {
+                perguntaId:
+                  pergunta.id,
+                alternativaIds:
+                  [],
+                respondida:
+                  false,
+                correta:
+                  false
+              };
+
+            let alternativaIds:
+              string[];
+
+            if (
+              multipla
+            ) {
+
+              alternativaIds =
+                atual.alternativaIds
+                  .indexOf(
+                    alternativaId
+                  ) >=
+                  0
+                  ? atual
+                    .alternativaIds
+                    .filter(
+                      id =>
+                        id !==
+                        alternativaId
+                    )
+                  : [
+                    ...atual
+                      .alternativaIds,
+                    alternativaId
+                  ];
+
+            } else {
+
+              alternativaIds = [
+                alternativaId
+              ];
+            }
+
+            const semAtual =
+              lista.filter(
+                item =>
+                  item.perguntaId !==
+                  pergunta.id
+              );
+
+            return [
+              ...semAtual,
+              {
+                perguntaId:
+                  pergunta.id,
+                alternativaIds,
+                respondida:
+                  false,
+                correta:
+                  false
+              }
+            ];
+          }
+        );
+      };
+
+    const responder =
+      async (
+        pergunta:
+          IPerguntaRapidaExecucao
+      ): Promise<void> => {
+
+        const atual:
+          ISelecaoPergunta =
+          obterSelecao(
+            pergunta.id
+          );
+
+        if (
+          atual.alternativaIds
+            .length ===
+          0
+        ) {
+
+          setErroLocal(
+            'Selecione uma resposta antes de confirmar.'
+          );
+
+          return;
+        }
+
+        setErroLocal('');
+        setRespondendoId(
+          pergunta.id
+        );
+
+        try {
+
+          const correta =
+            await props
+              .onResponderPergunta(
+                pergunta,
+                atual.alternativaIds
+              );
+
+          setSelecoes(
+            lista => {
+
+              const semAtual =
+                lista.filter(
+                  item =>
+                    item.perguntaId !==
+                    pergunta.id
+                );
+
+              return [
+                ...semAtual,
+                {
+                  ...atual,
+                  respondida:
+                    true,
+                  correta
+                }
+              ];
+            }
+          );
+
+        } catch (e) {
+
+          setErroLocal(
+            e instanceof Error
+              ? e.message
+              : 'Não foi possível registrar a resposta.'
+          );
+
+        } finally {
+
+          setRespondendoId(
+            ''
+          );
+        }
+      };
+
+    const renderConteudo =
+      (
+        item:
+          IConteudoModuloExecucao
+      ): React.ReactNode => {
+
+        switch (
+          item.tipo
+        ) {
+
+          case 'Texto':
+
+            return (
+              <div
+                dangerouslySetInnerHTML={{
+                  __html:
+                    item.conteudo
+                }}
+                style={{
+                  color:
+                    '#334155',
+
+                  lineHeight:
+                    1.7,
+
+                  fontSize:
+                    '15px'
+                }}
+              />
+            );
+
+          case 'Destaque':
+
+            return (
+              <div
+                style={{
+                  padding:
+                    '16px',
+
+                  borderLeft:
+                    '4px solid #F59E0B',
+
+                  background:
+                    '#FFF8E1',
+
+                  borderRadius:
+                    '8px',
+
+                  color:
+                    '#5C4300',
+
+                  lineHeight:
+                    1.6
+                }}
+              >
+                {
+                  item.conteudo
+                }
+              </div>
+            );
+
+          case 'Imagem':
+
+            return (
+              <img
+                src={
+                  item.url
+                }
+                alt={
+                  item.titulo ||
+                  'Imagem do módulo'
+                }
+                style={{
+                  maxWidth:
+                    '100%',
+
+                  borderRadius:
+                    '12px',
+
+                  display:
+                    'block'
+                }}
+              />
+            );
+
+          case 'Vídeo':
+
+            return (
+              <div>
+                <a
+                  href={
+                    item.url
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    ...botao,
+
+                    display:
+                      'inline-block',
+
+                    textDecoration:
+                      'none'
+                  }}
+                >
+                  ▶ Abrir vídeo
+                </a>
+              </div>
+            );
+
+          case 'Material':
+
+            return (
+              <a
+                href={
+                  item.url
+                }
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  ...botao,
+
+                  display:
+                    'inline-block',
+
+                  textDecoration:
+                    'none'
+                }}
+              >
+                ▤ Abrir material
+              </a>
+            );
+
+          case 'Link':
+
+            return (
+              <a
+                href={
+                  item.url
+                }
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  ...botao,
+
+                  display:
+                    'inline-block',
+
+                  textDecoration:
+                    'none'
+                }}
+              >
+                ↗ Abrir link
+              </a>
+            );
+
+          case 'Pergunta rápida':
+
+            if (
+              !item.pergunta
+            ) {
+
+              return (
+                <div
+                  style={{
+                    color:
+                      '#64748B'
+                  }}
+                >
+                  Pergunta rápida sem configuração.
+                </div>
+              );
+            }
+
+            const pergunta =
+              item.pergunta;
+
+            const atual =
+              obterSelecao(
+                pergunta.id
+              );
+
+            const multipla =
+              pergunta.tipo ===
+              100000001;
+
+            return (
+              <div
+                style={{
+                  padding:
+                    '18px',
+
+                  border:
+                    '1px solid #B9D7F0',
+
+                  borderRadius:
+                    '12px',
+
+                  background:
+                    '#F7FBFF'
+                }}
+              >
+
+                <div
+                  style={{
+                    fontSize:
+                      '12px',
+
+                    fontWeight:
+                      700,
+
+                    color:
+                      '#0B5CAB',
+
+                    marginBottom:
+                      '6px'
+                  }}
+                >
+                  TESTE SEU CONHECIMENTO
+                </div>
+
+                <h3
+                  style={{
+                    margin:
+                      '0 0 14px',
+
+                    color:
+                      '#0B2D4D'
+                  }}
+                >
+                  {
+                    pergunta.enunciado
+                  }
+                </h3>
+
+                <div
+                  style={{
+                    display:
+                      'grid',
+
+                    gap:
+                      '9px'
+                  }}
+                >
+                  {
+                    pergunta.alternativas
+                      .map(
+                        (
+                          alternativa:
+                            IPerguntaRapidaExecucao['alternativas'][number]
+                        ) => {
+
+                          const selecionada =
+                            atual
+                              .alternativaIds
+                              .indexOf(
+                                alternativa.id
+                              ) >=
+                            0;
+
+                          return (
+                            <label
+                              key={
+                                alternativa.id
+                              }
+                              style={{
+                                display:
+                                  'flex',
+
+                                gap:
+                                  '10px',
+
+                                alignItems:
+                                  'center',
+
+                                padding:
+                                  '12px',
+
+                                border:
+                                  selecionada
+                                    ? '1px solid #1677FF'
+                                    : '1px solid #D8E2EC',
+
+                                borderRadius:
+                                  '8px',
+
+                                background:
+                                  selecionada
+                                    ? '#EEF6FF'
+                                    : '#FFFFFF',
+
+                                cursor:
+                                  'pointer'
+                              }}
+                            >
+                              <input
+                                type={
+                                  multipla
+                                    ? 'checkbox'
+                                    : 'radio'
+                                }
+                                checked={
+                                  selecionada
+                                }
+                                onChange={() =>
+                                  alternarAlternativa(
+                                    pergunta,
+                                    alternativa.id
+                                  )
+                                }
+                              />
+
+                              <span
+                                style={{
+                                  color:
+                                    '#334155'
+                                }}
+                              >
+                                {
+                                  alternativa.texto
+                                }
+                              </span>
+                            </label>
+                          );
+                        }
+                      )
+                  }
+                </div>
+
+                <div
+                  style={{
+                    marginTop:
+                      '12px',
+
+                    display:
+                      'flex',
+
+                    alignItems:
+                      'center',
+
+                    gap:
+                      '12px',
+
+                    flexWrap:
+                      'wrap'
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={
+                      respondendoId ===
+                      pergunta.id
+                    }
+                    onClick={() => {
+
+                      void responder(
+                        pergunta
+                      );
+
+                    }}
+                    style={
+                      botaoPrimario
+                    }
+                  >
+                    {
+                      respondendoId ===
+                        pergunta.id
+                        ? 'Verificando...'
+                        : 'Confirmar resposta'
+                    }
+                  </button>
+
+                  {
+                    atual.respondida &&
+                    pergunta
+                      .mostrarFeedback &&
+                    (
+                      <span
+                        style={{
+                          color:
+                            atual.correta
+                              ? '#13795B'
+                              : '#B42318',
+
+                          fontWeight:
+                            700
+                        }}
+                      >
+                        {
+                          atual.correta
+                            ? pergunta
+                              .feedbackAcerto
+                            : pergunta
+                              .feedbackErro
+                        }
+                      </span>
+                    )
+                  }
+                </div>
+
+              </div>
+            );
+          }
+
+          default:
+
+            return (
+              <div>
+                {
+                  item.conteudo
+                }
+              </div>
+            );
+        }
+      };
+
+    return (
+      <section>
+
+        <div
+          style={{
+            display:
+              'flex',
+
+            justifyContent:
+              'space-between',
+
+            gap:
+              '12px',
+
+            alignItems:
+              'center',
+
+            marginBottom:
+              '18px',
+
+            flexWrap:
+              'wrap'
+          }}
+        >
+          <button
+            type="button"
+            onClick={
+              props.onVoltar
+            }
+            style={
+              botao
+            }
+          >
+            ← Voltar ao treinamento
+          </button>
+
+          <div
+            style={{
+              color:
+                '#64748B',
+
+              fontSize:
+                '13px'
+            }}
+          >
+            Módulo {
+              props.modulo.ordem
+            }
+          </div>
+        </div>
+
+        <div
+          style={{
+            ...card,
+
+            marginBottom:
+              '16px'
+          }}
+        >
+          <h1
+            style={{
+              margin:
+                '0 0 8px',
+
+              color:
+                '#0B2D4D'
+            }}
+          >
+            {
+              props.modulo.titulo
+            }
+          </h1>
+
+          {
+            props.modulo.descricao &&
+            (
+              <p
+                style={{
+                  margin:
+                    0,
+
+                  color:
+                    '#475569',
+
+                  lineHeight:
+                    1.6
+                }}
+              >
+                {
+                  props.modulo.descricao
+                }
+              </p>
+            )
+          }
+        </div>
+
+        {
+          props.erro &&
+          (
+            <div
+              style={{
+                ...card,
+
+                marginBottom:
+                  '16px',
+
+                background:
+                  '#FDE7E9',
+
+                color:
+                  '#A4262C'
+              }}
+            >
+              {
+                props.erro
+              }
+            </div>
+          )
+        }
+
+        {
+          erroLocal &&
+          (
+            <div
+              style={{
+                ...card,
+
+                marginBottom:
+                  '16px',
+
+                background:
+                  '#FFF4CE',
+
+                color:
+                  '#6A4B00'
+              }}
+            >
+              {
+                erroLocal
+              }
+            </div>
+          )
+        }
+
+        {
+          props.carregando
+            ? (
+              <div
+                style={
+                  card
+                }
+              >
+                Carregando conteúdo do módulo...
+              </div>
+            )
+            : props.conteudos.length ===
+                0
+              ? (
+                <div
+                  style={
+                    card
+                  }
+                >
+                  Nenhum conteúdo foi cadastrado para este módulo.
+                </div>
+              )
+              : (
+                <div
+                  style={{
+                    display:
+                      'grid',
+
+                    gap:
+                      '16px'
+                  }}
+                >
+                  {
+                    props.conteudos.map(
+                      (
+                        item,
+                        indice
+                      ) => (
+                        <article
+                          key={
+                            item.id
+                          }
+                          style={
+                            card
+                          }
+                        >
+                          {
+                            item.titulo &&
+                            (
+                              <h2
+                                style={{
+                                  margin:
+                                    '0 0 14px',
+
+                                  color:
+                                    '#0B2D4D',
+
+                                  fontSize:
+                                    '18px'
+                                }}
+                              >
+                                {
+                                  indice +
+                                  1
+                                }. {
+                                  item.titulo
+                                }
+                              </h2>
+                            )
+                          }
+
+                          {
+                            renderConteudo(
+                              item
+                            )
+                          }
+                        </article>
+                      )
+                    )
+                  }
+                </div>
+              )
+        }
+
+        <div
+          style={{
+            marginTop:
+              '22px',
+
+            display:
+              'flex',
+
+            justifyContent:
+              'flex-end'
+          }}
+        >
+          <button
+            type="button"
+            disabled={
+              !props.podeConcluir ||
+              props.processando ||
+              props.carregando
+            }
+            onClick={() => {
+
+              props
+                .onConcluir()
+                .catch(
+                  (
+                    error:
+                      unknown
+                  ) =>
+                    console.error(
+                      error
+                    )
+                );
+
+            }}
+            style={{
+              ...botaoPrimario,
+
+              background:
+                props.podeConcluir
+                  ? '#13795B'
+                  : '#CBD5E1',
+
+              borderColor:
+                props.podeConcluir
+                  ? '#13795B'
+                  : '#CBD5E1',
+
+              cursor:
+                props.podeConcluir
+                  ? 'pointer'
+                  : 'not-allowed'
+            }}
+          >
+            {
+              props.processando
+                ? 'Concluindo...'
+                : props.podeConcluir
+                  ? 'Concluir módulo ✓'
+                  : 'Responda as perguntas obrigatórias'
+            }
+          </button>
+        </div>
+
+      </section>
+    );
+  };
+
+export default ModuloExecucaoPage;

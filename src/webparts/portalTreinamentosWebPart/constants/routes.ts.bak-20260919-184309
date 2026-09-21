@@ -17,7 +17,6 @@ export type Pagina =
   | 'trilhas'
   | 'equipe'
   | 'executarTreinamento'
-  | 'executarModulo'
   | 'avaliacao'
   | 'indicadores'
   | 'gestaoConformidade';
@@ -41,9 +40,7 @@ export const ROTAS = {
   TRILHAS: 'trilhas',
   EQUIPE: 'equipe',
   EXECUTAR_TREINAMENTO: 'executarTreinamento',
-  EXECUTAR_MODULO: 'executarModulo',
   AVALIACAO: 'avaliacao',
   INDICADORES: 'indicadores',
   GESTAO_CONFORMIDADE: 'gestaoConformidade',
 } as const;
-

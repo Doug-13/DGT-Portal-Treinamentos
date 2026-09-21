@@ -745,7 +745,7 @@ const GestaoModulosPage:
           subtitulo={
             props.modoFluxo
               ? 'Etapa 2 de 3 — cadastre o conteúdo do treinamento e avance para a avaliação.'
-              : 'Cadastre, importe e edite módulos e conteúdos internos dos treinamentos.'
+              : 'Cadastre e organize o conteúdo interno dos treinamentos.'
           }
         />
 
@@ -1366,7 +1366,7 @@ const GestaoModulosPage:
                         props.moduloConteudoSelecionadoId ===
                           modulo.id
                           ? 'Fechar conteúdo'
-                          : 'Gerenciar conteúdo'
+                          : '+ Adicionar conteúdo'
                       }
                     </button>
 
@@ -1381,7 +1381,7 @@ const GestaoModulosPage:
                         buttonSecondary
                       }
                     >
-                      Editar módulo
+                      Editar
                     </button>
 
                     <button
@@ -1925,4 +1925,3 @@ const GestaoModulosPage:
   };
 
 export default GestaoModulosPage;
-

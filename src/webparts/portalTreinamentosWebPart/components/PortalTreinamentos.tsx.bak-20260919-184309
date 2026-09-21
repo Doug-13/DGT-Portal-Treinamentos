@@ -13,8 +13,6 @@ import { DocumentoService } from '../services/DocumentoService';
 import { IColaborador } from '../models/Usuario';
 import { ITrilha } from '../models/Trilha';
 import { useModulos } from '../hooks/useModulos';
-import { useModuloExecucao, IPerguntaRapidaExecucao } from '../hooks/useModuloExecucao';
-import { IModuloTreinamento, StatusUsuarioModulo } from '../models/Modulo';
 import { useUsuario } from '../hooks/useUsuario';
 import { useAvaliacao } from '../hooks/useAvaliacao';
 import {
@@ -279,15 +277,6 @@ const PortalTreinamentos:
       React.useState<
         ITreinamento | null
       >(null);
-    const [
-      moduloSelecionadoExecucao,
-      setModuloSelecionadoExecucao
-    ] =
-      React.useState<
-        IModuloTreinamento | undefined
-      >(
-        undefined
-      );
 
     const [
       carregandoDataverse,
@@ -472,10 +461,6 @@ const PortalTreinamentos:
 
     const modulos =
       useModulos(
-        dataverseService
-      );
-    const moduloExecucao =
-      useModuloExecucao(
         dataverseService
       );
 
@@ -1892,104 +1877,6 @@ const PortalTreinamentos:
 
 
     // ==========================================================
-    // ABRIR MÓDULO
-    // ==========================================================
-
-    const abrirModuloExecucao =
-      React.useCallback(
-        async (
-          modulo:
-            IModuloTreinamento
-        ): Promise<void> => {
-
-          if (
-            !treinamentoSelecionado
-              ?.usuarioTreinamentoId
-          ) {
-
-            setErroExecucaoTreinamento(
-              'A atribuição deste treinamento não foi localizada.'
-            );
-
-            return;
-          }
-
-          setErroExecucaoTreinamento(
-            ''
-          );
-
-          if (
-            modulo.statusModulo ===
-            StatusUsuarioModulo.NaoIniciado
-          ) {
-
-            await modulos
-              .iniciar(
-                modulo
-              );
-          }
-
-          setModuloSelecionadoExecucao(
-            modulo
-          );
-
-          await moduloExecucao
-            .carregar(
-              modulo.id,
-              treinamentoSelecionado
-                .usuarioTreinamentoId
-            );
-
-          navegar(
-            'executarModulo'
-          );
-        },
-        [
-          moduloExecucao,
-          modulos,
-          navegar,
-          treinamentoSelecionado
-        ]
-      );
-
-    // ==========================================================
-    // CONCLUIR MÓDULO ABERTO
-    // ==========================================================
-
-    const concluirModuloExecucao =
-      React.useCallback(
-        async (): Promise<void> => {
-
-          if (
-            !moduloSelecionadoExecucao
-          ) {
-            return;
-          }
-
-          await modulos
-            .concluir(
-              moduloSelecionadoExecucao
-            );
-
-          setModuloSelecionadoExecucao(
-            undefined
-          );
-
-          moduloExecucao
-            .limpar();
-
-          navegar(
-            'executarTreinamento'
-          );
-        },
-        [
-          moduloExecucao,
-          moduloSelecionadoExecucao,
-          modulos,
-          navegar
-        ]
-      );
-    // ==========================================================
     // INICIAR AVALIAÇÃO
     // ==========================================================
 
@@ -2673,25 +2560,6 @@ const PortalTreinamentos:
                 avaliacaoLiberada={
                   modulos.avaliacaoLiberada
                 }
-                moduloSelecionadoExecucao={
-                  moduloSelecionadoExecucao
-                }
-
-                conteudosModuloExecucao={
-                  moduloExecucao.conteudos
-                }
-
-                carregandoModuloExecucao={
-                  moduloExecucao.carregando
-                }
-
-                erroModuloExecucao={
-                  moduloExecucao.erro
-                }
-
-                podeConcluirModuloExecucao={
-                  moduloExecucao.podeConcluir
-                }
 
                 navegar={
                   navegar
@@ -2760,40 +2628,6 @@ const PortalTreinamentos:
                           )
                       );
                   }
-                }
-                abrirModulo={
-                  m => {
-
-                    abrirModuloExecucao(
-                      m
-                    ).catch(
-                      (
-                        error:
-                          unknown
-                      ) =>
-                        console.error(
-                          error
-                        )
-                    );
-                  }
-                }
-
-                responderPerguntaModulo={
-                  (
-                    pergunta:
-                      IPerguntaRapidaExecucao,
-                    alternativaIds:
-                      string[]
-                  ) =>
-                    moduloExecucao
-                      .responderPergunta(
-                        pergunta,
-                        alternativaIds
-                      )
-                }
-
-                concluirModuloExecucao={
-                  concluirModuloExecucao
                 }
 
                 iniciarAvaliacao={() => {
@@ -3307,4 +3141,3 @@ const PortalTreinamentos:
   };
 
 export default PortalTreinamentos;
-

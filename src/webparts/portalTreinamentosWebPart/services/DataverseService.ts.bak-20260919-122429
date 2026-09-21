@@ -697,11 +697,11 @@ export class DataverseService {
         'dgt_duracaomin',
         'dgt_tipomodulo',
         'dgt_obrigatorio',
-        'dgt_ativo',
+        'dgt_ativa',
         'dgt_urlconteudo',
         '_dgt_treinamento_value'
       ].join(',') +
-      `&$filter=_dgt_treinamento_value eq ${idLimpo} and dgt_ativo eq true` +
+      `&$filter=_dgt_treinamento_value eq ${idLimpo} and dgt_ativa eq true` +
       '&$orderby=dgt_ordem asc';
 
     return this.get(
@@ -739,11 +739,11 @@ export class DataverseService {
         'dgt_datainicio',
         'dgt_dataconclusao',
         'dgt_tempoutilizadoseg',
-        'dgt_ativo',
+        'dgt_ativa',
         '_dgt_modulo_value',
         '_dgt_usuariotreinamento_value'
       ].join(',') +
-      `&$filter=_dgt_usuariotreinamento_value eq ${idLimpo} and dgt_ativo eq true`;
+      `&$filter=_dgt_usuariotreinamento_value eq ${idLimpo} and dgt_ativa eq true`;
 
     return this.get(
       endpoint
@@ -782,175 +782,6 @@ export class DataverseService {
     );
   }
 
-
-  // ==========================================================
-  // GARANTIR REGISTRO USUÁRIO MÓDULO
-  // ==========================================================
-
-  public async garantirUsuarioModulo(
-    usuarioTreinamentoId:
-      string,
-    moduloId:
-      string,
-    moduloTitulo:
-      string
-  ): Promise<string> {
-
-    const usuarioTreinamento =
-      usuarioTreinamentoId
-        .replace(
-          /[{}]/g,
-          ''
-        )
-        .trim();
-
-    const modulo =
-      moduloId
-        .replace(
-          /[{}]/g,
-          ''
-        )
-        .trim();
-
-    const existentes =
-      await this.getUsuarioModulos(
-        usuarioTreinamento
-      );
-
-    const existente =
-      existentes.find(
-        item =>
-          String(
-            item._dgt_modulo_value ||
-            ''
-          )
-            .replace(
-              /[{}]/g,
-              ''
-            )
-            .trim()
-            .toLowerCase() ===
-          modulo.toLowerCase()
-      );
-
-    if (
-      existente
-    ) {
-
-      return String(
-        existente
-          .dgt_usuariomoduloid ||
-        ''
-      )
-        .replace(
-          /[{}]/g,
-          ''
-        )
-        .trim();
-    }
-
-    const [
-      usuarioModuloSet,
-      usuarioTreinamentoSet,
-      moduloSet
-    ] =
-      await Promise.all([
-        this.getEntitySetName(
-          'dgt_usuariomodulo'
-        ),
-
-        this.getEntitySetName(
-          'dgt_usuariotreinamento'
-        ),
-
-        this.getEntitySetName(
-          'dgt_modulo'
-        )
-      ]);
-
-    const criado =
-      await this.postObject(
-        usuarioModuloSet,
-        {
-          dgt_name:
-            moduloTitulo ||
-            'Módulo',
-
-          dgt_status:
-            100000000,
-
-          dgt_ativo:
-            true,
-
-          'dgt_UsuarioTreinamento@odata.bind':
-            `/${usuarioTreinamentoSet}(${usuarioTreinamento})`,
-
-          'dgt_Modulo@odata.bind':
-            `/${moduloSet}(${modulo})`
-        }
-      );
-
-    const idCriado =
-      String(
-        criado
-          .dgt_usuariomoduloid ||
-        ''
-      )
-        .replace(
-          /[{}]/g,
-          ''
-        )
-        .trim();
-
-    if (
-      idCriado
-    ) {
-      return idCriado;
-    }
-
-    const recarregados =
-      await this.getUsuarioModulos(
-        usuarioTreinamento
-      );
-
-    const localizado =
-      recarregados.find(
-        item =>
-          String(
-            item._dgt_modulo_value ||
-            ''
-          )
-            .replace(
-              /[{}]/g,
-              ''
-            )
-            .trim()
-            .toLowerCase() ===
-          modulo.toLowerCase()
-      );
-
-    const idLocalizado =
-      String(
-        localizado
-          ?.dgt_usuariomoduloid ||
-        ''
-      )
-        .replace(
-          /[{}]/g,
-          ''
-        )
-        .trim();
-
-    if (
-      !idLocalizado
-    ) {
-      throw new Error(
-        'O progresso do módulo foi criado, mas o registro não pôde ser localizado.'
-      );
-    }
-
-    return idLocalizado;
-  }
   // ==========================================================
   // INICIAR MÓDULO
   // ==========================================================
@@ -2933,8 +2764,6 @@ export class DataverseService {
   }
 
 }
-
-
 
 
 

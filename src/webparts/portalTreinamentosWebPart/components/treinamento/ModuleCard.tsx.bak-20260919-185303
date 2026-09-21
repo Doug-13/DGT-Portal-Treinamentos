@@ -27,12 +27,6 @@ export interface IModuleCardProps {
         IModuloTreinamento
     ) => void;
 
-  onAbrir:
-    (
-      modulo:
-        IModuloTreinamento
-    ) => void;
-
   className?:
     string;
 }
@@ -148,7 +142,6 @@ const ModuleCard:
     processando = false,
     onIniciar,
     onConcluir,
-    onAbrir,
     className
   }) => {
 
@@ -604,7 +597,7 @@ const ModuleCard:
                       !podeIniciar
                     }
                     onClick={() =>
-                      onAbrir(
+                      onIniciar(
                         modulo
                       )
                     }
@@ -657,7 +650,7 @@ const ModuleCard:
                         processando
                       }
                       onClick={() =>
-                        onAbrir(
+                        onIniciar(
                           modulo
                         )
                       }

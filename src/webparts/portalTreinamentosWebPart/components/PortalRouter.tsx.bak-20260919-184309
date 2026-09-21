@@ -64,14 +64,6 @@ import MeusTreinamentosPage from
 import ExecutarTreinamentoPage from
   '../pages/Treinamentos/ExecutarTreinamentoPage';
 
-import ModuloExecucaoPage from
-  '../pages/Treinamentos/ModuloExecucaoPage';
-
-import {
-  IConteudoModuloExecucao,
-  IPerguntaRapidaExecucao
-} from '../hooks/useModuloExecucao';
-
 import DocumentosPage from
   '../pages/Documentos/DocumentosPage';
 
@@ -646,37 +638,6 @@ export interface IPortalRouterProps {
     modulo:
       IModuloTreinamento
   ) => void;
-  abrirModulo:
-  (
-    modulo:
-      IModuloTreinamento
-  ) => void;
-
-  moduloSelecionadoExecucao?:
-  IModuloTreinamento;
-
-  conteudosModuloExecucao:
-  IConteudoModuloExecucao[];
-
-  carregandoModuloExecucao:
-  boolean;
-
-  erroModuloExecucao:
-  string;
-
-  podeConcluirModuloExecucao:
-  boolean;
-
-  responderPerguntaModulo:
-  (
-    pergunta:
-      IPerguntaRapidaExecucao,
-    alternativaIds:
-      string[]
-  ) => Promise<boolean>;
-
-  concluirModuloExecucao:
-  () => Promise<void>;
 
   // ============================================================
   // DOCUMENTOS
@@ -1108,9 +1069,6 @@ const PortalRouter:
             onIniciarModulo={
               props.iniciarModulo
             }
-            onAbrirModulo={
-              props.abrirModulo
-            }
 
             onConcluirModulo={
               props.concluirModulo
@@ -1122,125 +1080,6 @@ const PortalRouter:
           />
         );
 
-      // ========================================================
-      // EXECUTAR MÓDULO
-      // ========================================================
-
-      case 'executarModulo':
-
-        if (
-          !props.moduloSelecionadoExecucao
-        ) {
-
-          return (
-            <ExecutarTreinamentoPage
-              treinamento={
-                props.treinamentoSelecionado as ITreinamento
-              }
-
-              modulos={
-                props.modulos
-              }
-
-              carregandoModulos={
-                props.carregandoModulos
-              }
-
-              erroModulos={
-                props.erroModulos
-              }
-
-              erroExecucao={
-                props.erroExecucao
-              }
-
-              processandoModuloId={
-                props.processandoModuloId
-              }
-
-              iniciandoTreinamento={
-                props.iniciandoTreinamento
-              }
-
-              progresso={
-                props.progressoModulos
-              }
-
-              avaliacaoLiberada={
-                props.avaliacaoLiberada
-              }
-
-              onVoltar={() =>
-                props.navegar(
-                  'treinamentos'
-                )
-              }
-
-              onIniciarTreinamento={
-                props.iniciarTreinamento
-              }
-
-              onIniciarModulo={
-                props.iniciarModulo
-              }
-
-              onAbrirModulo={
-                props.abrirModulo
-              }
-
-              onConcluirModulo={
-                props.concluirModulo
-              }
-
-              onIniciarAvaliacao={
-                props.iniciarAvaliacao
-              }
-            />
-          );
-        }
-
-        return (
-          <ModuloExecucaoPage
-            modulo={
-              props.moduloSelecionadoExecucao
-            }
-
-            conteudos={
-              props.conteudosModuloExecucao
-            }
-
-            carregando={
-              props.carregandoModuloExecucao
-            }
-
-            erro={
-              props.erroModuloExecucao
-            }
-
-            podeConcluir={
-              props.podeConcluirModuloExecucao
-            }
-
-            processando={
-              props.processandoModuloId ===
-              props.moduloSelecionadoExecucao.id
-            }
-
-            onVoltar={() =>
-              props.navegar(
-                'executarTreinamento'
-              )
-            }
-
-            onResponderPergunta={
-              props.responderPerguntaModulo
-            }
-
-            onConcluir={
-              props.concluirModuloExecucao
-            }
-          />
-        );
       // ========================================================
       // TRILHAS
       // ========================================================

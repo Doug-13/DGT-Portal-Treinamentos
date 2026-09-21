@@ -30,7 +30,6 @@ const regras:
     { rota: 'historico', nivel: 'Funcionario' },
     { rota: 'certificados', nivel: 'Funcionario' },
     { rota: 'executarTreinamento', nivel: 'Funcionario' },
-    { rota: 'executarModulo', nivel: 'Funcionario' },
     { rota: 'avaliacao', nivel: 'Funcionario' },
     { rota: 'suporte', nivel: 'Funcionario' },
 
@@ -160,4 +159,3 @@ export const podeAcessarRota = (
     rota,
     contexto
   ).permitido;
-
