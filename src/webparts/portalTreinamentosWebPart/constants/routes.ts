@@ -1,7 +1,9 @@
 export type Pagina =
   | 'inicio'
+  | 'treinamentosVisaoGeral'
   | 'treinamentos'
   | 'documentos'
+  | 'novoDocumento'
   | 'documentoDetalhe'
   | 'historico'
   | 'certificados'
@@ -24,8 +26,10 @@ export type Pagina =
 
 export const ROTAS = {
   INICIO: 'inicio',
+  TREINAMENTOS_VISAO_GERAL: 'treinamentosVisaoGeral',
   TREINAMENTOS: 'treinamentos',
   DOCUMENTOS: 'documentos',
+  NOVO_DOCUMENTO: 'novoDocumento',
   DOCUMENTO_DETALHE: 'documentoDetalhe',
   HISTORICO: 'historico',
   CERTIFICADOS: 'certificados',
@@ -46,4 +50,6 @@ export const ROTAS = {
   INDICADORES: 'indicadores',
   GESTAO_CONFORMIDADE: 'gestaoConformidade',
 } as const;
+
+
 

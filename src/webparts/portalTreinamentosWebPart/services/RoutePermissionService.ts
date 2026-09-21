@@ -23,6 +23,7 @@ const regras:
 
     // Funcionário
     { rota: 'inicio', nivel: 'Funcionario' },
+    { rota: 'treinamentosVisaoGeral', nivel: 'Funcionario' },
     { rota: 'treinamentos', nivel: 'Funcionario' },
     { rota: 'trilhas', nivel: 'Funcionario' },
     { rota: 'documentos', nivel: 'Funcionario' },
@@ -160,4 +161,6 @@ export const podeAcessarRota = (
     rota,
     contexto
   ).permitido;
+
+
 

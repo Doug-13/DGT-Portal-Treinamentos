@@ -1332,6 +1332,51 @@ export class DataverseService {
   }
 
   // ==========================================================
+  // WORKFLOW DE REVISAO DOCUMENTAL
+  // ==========================================================
+
+  public async alterarStatusDocumentoRevisao(
+    documentoRevisaoId:
+      string,
+
+    status:
+      string
+  ): Promise<void> {
+
+    if (!documentoRevisaoId) {
+      throw new Error(
+        'Revisão documental não informada.'
+      );
+    }
+
+    if (!status.trim()) {
+      throw new Error(
+        'Status documental não informado.'
+      );
+    }
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_documentorevisao'
+      );
+
+    const id =
+      documentoRevisaoId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    await this.patch(
+      `${entitySet}(${id})`,
+      {
+        dgt_status:
+          status.trim()
+      }
+    );
+  }
+  // ==========================================================
   // TREINAMENTO DOCUMENTOS
   // ==========================================================
 
@@ -1365,16 +1410,165 @@ export class DataverseService {
         'dgt_obrigatorio',
         'dgt_observacao',
         'dgt_ordem',
-        'dgt_ativa',
+        'dgt_ativo',
         '_dgt_documento_value',
         '_dgt_treinamento_value'
       ].join(',') +
       `&$filter=_dgt_treinamento_value eq ${idLimpo}` +
-      ' and dgt_ativa eq true' +
+      ' and dgt_ativo eq true' +
       '&$orderby=dgt_ordem asc'
     );
   }
 
+  // ==========================================================
+  // GESTÃO DOCUMENTO / TREINAMENTOS
+  // ==========================================================
+
+  public async getTreinamentosDocumentoAdmin(
+    documentoId:
+      string
+  ): Promise<IDataverseRecord[]> {
+
+    if (
+      !documentoId
+    ) {
+      return [];
+    }
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_treinamentodocumento'
+      );
+
+    const id =
+      documentoId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    return this.get(
+      `${entitySet}?$select=` +
+      [
+        'dgt_treinamentodocumentoid',
+        'dgt_name',
+        'dgt_obrigatorio',
+        'dgt_observacao',
+        'dgt_ordem',
+        'dgt_ativo',
+        '_dgt_documento_value',
+        '_dgt_treinamento_value'
+      ].join(',') +
+      '&$expand=dgt_Treinamento($select=dgt_treinamentoid,dgt_name,dgt_codigo,dgt_ativo)' +
+      `&$filter=_dgt_documento_value eq ${id}` +
+      '&$orderby=dgt_ordem asc'
+    );
+  }
+
+  public async criarTreinamentoDocumento(
+    documentoId:
+      string,
+
+    treinamentoId:
+      string,
+
+    dados:
+      Record<string, unknown>
+  ): Promise<IDataverseRecord> {
+
+    if (
+      !documentoId ||
+      !treinamentoId
+    ) {
+      throw new Error(
+        'Documento e treinamento são obrigatórios.'
+      );
+    }
+
+    const [
+      relacaoSet,
+      documentoSet,
+      treinamentoSet
+    ] =
+      await Promise.all([
+        this.getEntitySetName(
+          'dgt_treinamentodocumento'
+        ),
+
+        this.getEntitySetName(
+          'dgt_documento'
+        ),
+
+        this.getEntitySetName(
+          'dgt_treinamento'
+        )
+      ]);
+
+    const documento =
+      documentoId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    const treinamento =
+      treinamentoId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    return this.postObject(
+      relacaoSet,
+      {
+        ...dados,
+
+        'dgt_Documento@odata.bind':
+          `/${documentoSet}(${documento})`,
+
+        'dgt_Treinamento@odata.bind':
+          `/${treinamentoSet}(${treinamento})`
+      }
+    );
+  }
+
+  public async atualizarTreinamentoDocumento(
+    relacaoId:
+      string,
+
+    dados:
+      Record<string, unknown>
+  ): Promise<void> {
+
+    if (
+      !relacaoId
+    ) {
+      throw new Error(
+        'Vínculo Documento/Treinamento não informado.'
+      );
+    }
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_treinamentodocumento'
+      );
+
+    const id =
+      relacaoId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    await this.patch(
+      `${entitySet}(${id})`,
+      dados
+    );
+  }
   // ==========================================================
   // CRIAR TREINAMENTO
   // ==========================================================
@@ -1950,6 +2144,21 @@ export class DataverseService {
   // ADICIONAR UMA ÚNICA VEZ DENTRO DA CLASSE DataverseService
   // ============================================================
 
+  public async criarDocumentoAdmin(
+    dados:
+      Record<string, unknown>
+  ): Promise<IDataverseRecord> {
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_documento'
+      );
+
+    return this.postObject(
+      entitySet,
+      dados
+    );
+  }
   public async getDocumentosAdmin():
     Promise<IDataverseRecord[]> {
 
@@ -1968,13 +2177,106 @@ export class DataverseService {
         'dgt_descricao',
         'dgt_tipo',
         'dgt_revisaoatual',
+        '_dgt_responsavel_value',
         'dgt_status',
-        'dgt_ativo'
+        'dgt_ativo',
+        '_dgt_area_value'
       ].join(',') +
+      '&$expand=dgt_Area($select=dgt_areaid,dgt_name,dgt_sigla)' +
       '&$orderby=dgt_codigo asc'
     );
   }
 
+  public async getAreaAdminPorNome(
+    nome:
+      string
+  ): Promise<IDataverseRecord | undefined> {
+
+    if (
+      !nome.trim()
+    ) {
+      return undefined;
+    }
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_area'
+      );
+
+    const nomeSeguro =
+      nome
+        .trim()
+        .replace(
+          /'/g,
+          "''"
+        );
+
+    const registros =
+      await this.get(
+        `${entitySet}?$select=` +
+        [
+          'dgt_areaid',
+          'dgt_name',
+          'dgt_sigla',
+          'dgt_ativo'
+        ].join(',') +
+        `&$filter=dgt_name eq '${nomeSeguro}'` +
+        '&$top=1'
+      );
+
+    return registros.length > 0
+      ? registros[0]
+      : undefined;
+  }
+
+  public async criarDocumentoAdminComArea(
+    areaId:
+      string,
+
+    dados:
+      Record<string, unknown>
+  ): Promise<IDataverseRecord> {
+
+    if (
+      !areaId
+    ) {
+      throw new Error(
+        'Área não informada para o documento.'
+      );
+    }
+
+    const [
+      documentoSet,
+      areaSet
+    ] =
+      await Promise.all([
+        this.getEntitySetName(
+          'dgt_documento'
+        ),
+
+        this.getEntitySetName(
+          'dgt_area'
+        )
+      ]);
+
+    const area =
+      areaId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    return this.postObject(
+      documentoSet,
+      {
+        ...dados,
+
+        'dgt_Area@odata.bind':
+          `/${areaSet}(${area})`
+      }
+    );
+  }
   public async getRevisoesDocumentoAdmin(
     documentoId: string
   ): Promise<IDataverseRecord[]> {
@@ -2017,6 +2319,40 @@ export class DataverseService {
     );
   }
 
+  public async atualizarDocumentoRevisao(
+    documentoRevisaoId:
+      string,
+
+    dados:
+      Record<string, unknown>
+  ): Promise<void> {
+
+    if (
+      !documentoRevisaoId
+    ) {
+      throw new Error(
+        'Revisão documental não informada.'
+      );
+    }
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_documentorevisao'
+      );
+
+    const id =
+      documentoRevisaoId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    await this.patch(
+      `${entitySet}(${id})`,
+      dados
+    );
+  }
   public async criarDocumentoRevisao(
     documentoId: string,
     dados: Record<string, unknown>
@@ -2933,6 +3269,14 @@ export class DataverseService {
   }
 
 }
+
+
+
+
+
+
+
+
 
 
 

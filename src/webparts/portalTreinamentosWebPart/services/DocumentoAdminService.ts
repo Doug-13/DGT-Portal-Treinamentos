@@ -7,6 +7,8 @@ export interface IDocumentoAdmin {
   id: string;
   codigo: string;
   titulo: string;
+  area: string;
+  areaId: string;
   tipo: string;
   revisaoAtual: string;
   responsavel: string;
@@ -28,8 +30,37 @@ export interface IRevisaoAdmin {
   justificativa: string;
   status: string;
   ativa: boolean;
+
+  criadoEm: string;
+  criadoPor: string;
+  modificadoEm: string;
+  modificadoPor: string;
+  aprovadoPor: string;
+  dataAprovacao: string;
 }
 
+export interface INovoDocumentoAdmin {
+  codigo: string;
+  titulo: string;
+  descricao: string;
+  tipo: string;
+  area: string;
+  responsavel: string;
+  revisaoInicial: string;
+  status: string;
+  ativo: boolean;
+  arquivoNome?: string;
+}
+export interface INovoDocumentoCompleto
+  extends INovoDocumentoAdmin {
+  arquivo:
+    File;
+}
+export interface INovaRevisaoDocumentoArquivo
+  extends INovaRevisaoDocumento {
+  arquivo:
+    File;
+}
 export interface INovaRevisaoDocumento {
   documentoId: string;
   revisao: string;
@@ -56,6 +87,60 @@ const texto = (
     : String(valor);
 };
 
+const textoRelacionado = (
+  registro:
+    IDataverseRecord,
+
+  relacao:
+    string,
+
+  campo:
+    string
+): string => {
+
+  const relacionado =
+    registro[
+      relacao
+    ];
+
+  if (
+    !relacionado ||
+    typeof relacionado !==
+      'object'
+  ) {
+    return '';
+  }
+
+  const valor =
+    (
+      relacionado as
+        Record<string, unknown>
+    )[
+      campo
+    ];
+
+  return valor ===
+      undefined ||
+    valor ===
+      null
+      ? ''
+      : String(
+        valor
+      );
+};
+const formatado = (
+  registro:
+    IDataverseRecord,
+
+  campo:
+    string
+): string => {
+
+  return texto(
+    registro,
+    `${campo}@OData.Community.Display.V1.FormattedValue`
+  );
+};
 const booleano = (
   registro: IDataverseRecord,
   campo: string,
@@ -123,6 +208,15 @@ export class DocumentoAdminService {
               'dgt_name',
               'Documento'
             )
+          ),
+          area: textoRelacionado(
+            registro,
+            'dgt_Area',
+            'dgt_name'
+          ),
+          areaId: texto(
+            registro,
+            '_dgt_area_value'
           ),
           tipo: texto(
             registro,
@@ -221,7 +315,42 @@ export class DocumentoAdminService {
           registro,
           'dgt_ativa',
           true
-        )
+        ),
+        criadoEm:
+          texto(
+            registro,
+            'createdon'
+          ),
+
+        criadoPor:
+          formatado(
+            registro,
+            '_createdby_value'
+          ),
+
+        modificadoEm:
+          texto(
+            registro,
+            'modifiedon'
+          ),
+
+        modificadoPor:
+          formatado(
+            registro,
+            '_modifiedby_value'
+          ),
+
+        aprovadoPor:
+          formatado(
+            registro,
+            '_dgt_aprovadopor_value'
+          ),
+
+        dataAprovacao:
+          texto(
+            registro,
+            'dgt_dataaprovacao'
+          )
       })
     );
   }
@@ -294,4 +423,136 @@ export class DocumentoAdminService {
         }
       );
   }
+
+  public async criarDocumento(
+    dados:
+      INovoDocumentoAdmin
+  ): Promise<IDocumentoAdmin> {
+
+    if (
+      !dados.codigo.trim()
+    ) {
+      throw new Error(
+        'Informe o código do documento.'
+      );
+    }
+
+    if (
+      !dados.titulo.trim()
+    ) {
+      throw new Error(
+        'Informe o título do documento.'
+      );
+    }
+
+    const areaRegistro =
+      await this.dataverse
+        .getAreaAdminPorNome(
+          dados.area
+        );
+
+    if (
+      !areaRegistro
+    ) {
+      throw new Error(
+        `A área "${dados.area}" não está cadastrada no Dataverse.`
+      );
+    }
+
+    const areaId =
+      texto(
+        areaRegistro,
+        'dgt_areaid'
+      );
+
+    if (
+      !areaId
+    ) {
+      throw new Error(
+        'A área selecionada não possui identificador válido.'
+      );
+    }
+
+    const criado =
+      await this.dataverse
+        .criarDocumentoAdminComArea(
+          areaId,
+          {
+          dgt_name:
+            dados.titulo.trim(),
+
+          dgt_codigo:
+            dados.codigo
+              .trim()
+              .toUpperCase(),
+
+          dgt_titulo:
+            dados.titulo.trim(),
+
+          dgt_descricao:
+            dados.descricao.trim(),
+
+          dgt_tipo:
+            dados.tipo.trim(),
+
+          dgt_responsavel:
+            dados.responsavel.trim(),
+
+          dgt_revisaoatual:
+            dados.revisaoInicial.trim(),
+
+          dgt_status:
+            dados.status.trim(),
+
+          dgt_ativo:
+            dados.ativo
+          }
+        );
+
+    return {
+      id:
+        texto(
+          criado,
+          'dgt_documentoid'
+        ),
+
+      codigo:
+        dados.codigo
+          .trim()
+          .toUpperCase(),
+
+      titulo:
+        dados.titulo.trim(),
+
+      area:
+        dados.area.trim(),
+
+      areaId:
+        areaId,
+
+      tipo:
+        dados.tipo.trim(),
+
+      revisaoAtual:
+        dados.revisaoInicial.trim(),
+
+      responsavel:
+        dados.responsavel.trim(),
+
+      status:
+        dados.status.trim(),
+
+      ativo:
+        dados.ativo
+    };
+  }
 }
+
+
+
+
+
+
+
+
+

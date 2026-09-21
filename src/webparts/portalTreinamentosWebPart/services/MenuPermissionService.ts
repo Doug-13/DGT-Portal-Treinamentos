@@ -19,7 +19,7 @@ export interface IItemMenuTreinamento {
 const todosItens:
   IItemMenuTreinamento[] = [
     {
-      pagina: 'inicio',
+      pagina: 'treinamentosVisaoGeral',
       label: 'Visão geral',
       icon: '⌂'
     },

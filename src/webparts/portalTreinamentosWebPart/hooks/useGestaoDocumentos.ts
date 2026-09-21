@@ -1,5 +1,7 @@
 import * as React from 'react';
 
+import { DocumentoWorkflowService } from '../services/DocumentoWorkflowService';
+
 import {
   DataverseService
 } from '../services/DataverseService';
@@ -7,9 +9,16 @@ import {
 import {
   DocumentoAdminService,
   IDocumentoAdmin,
+  INovoDocumentoAdmin,
+  INovoDocumentoCompleto,
   INovaRevisaoDocumento,
+  INovaRevisaoDocumentoArquivo,
   IRevisaoAdmin
 } from '../services/DocumentoAdminService';
+
+import {
+  SharePointDocumentoService
+} from '../services/sharepoint/SharePointDocumentoService';
 
 export interface IUseGestaoDocumentos {
   documentos: IDocumentoAdmin[];
@@ -22,15 +31,49 @@ export interface IUseGestaoDocumentos {
   selecionarDocumento:
     (documento: IDocumentoAdmin) => Promise<void>;
 
+  criarDocumentoCompleto:
+    (
+      dados:
+        INovoDocumentoCompleto
+    ) => Promise<void>;
+  criarDocumento:
+    (
+      dados:
+        INovoDocumentoAdmin
+    ) => Promise<void>;
+  criarRevisaoComArquivo:
+    (
+      dados:
+        INovaRevisaoDocumentoArquivo
+    ) => Promise<void>;
   criarRevisao:
     (dados: INovaRevisaoDocumento) => Promise<void>;
 
   limparSelecao:
     () => void;
+
+  enviarRevisaoParaRevisao:
+    (
+      revisao:
+        IRevisaoAdmin
+    ) => Promise<void>;
+
+  enviarRevisaoParaAprovacao:
+    (
+      revisao:
+        IRevisaoAdmin
+    ) => Promise<void>;
+
+  devolverRevisaoParaElaboracao:
+    (
+      revisao:
+        IRevisaoAdmin
+    ) => Promise<void>;
 }
 
 export const useGestaoDocumentos = (
-  dataverse: DataverseService
+  dataverse: DataverseService,
+  sharePoint: SharePointDocumentoService
 ): IUseGestaoDocumentos => {
 
   const [
@@ -83,6 +126,16 @@ export const useGestaoDocumentos = (
     React.useMemo(
       () =>
         new DocumentoAdminService(
+          dataverse
+        ),
+      [
+        dataverse
+      ]
+    );
+  const workflowService =
+    React.useMemo(
+      () =>
+        new DocumentoWorkflowService(
           dataverse
         ),
       [
@@ -153,6 +206,249 @@ export const useGestaoDocumentos = (
       ]
     );
 
+  const criarDocumentoCompleto =
+    React.useCallback(
+      async (
+        dados:
+          INovoDocumentoCompleto
+      ): Promise<void> => {
+
+        setProcessando(
+          true
+        );
+
+        setErro('');
+
+        try {
+
+          if (
+            !dados.arquivo
+          ) {
+            throw new Error(
+              'Selecione o arquivo do documento.'
+            );
+          }
+
+          const documentoCriado =
+            await service
+              .criarDocumento(
+                dados
+              );
+
+          if (
+            !documentoCriado.id
+          ) {
+            throw new Error(
+              'O documento foi criado, mas o Dataverse não retornou o ID.'
+            );
+          }
+
+          const upload =
+            await sharePoint
+              .uploadArquivo(
+                dados.area,
+                dados.codigo,
+                dados.revisaoInicial,
+                dados.arquivo
+              );
+
+          await service
+            .criarRevisao({
+              documentoId:
+                documentoCriado.id,
+
+              revisao:
+                dados.revisaoInicial,
+
+              dataRevisao:
+                new Date()
+                  .toISOString(),
+
+              arquivoUrl:
+                upload.arquivoUrl,
+
+              responsavel:
+                dados.responsavel,
+
+              motivoAlteracao:
+                'Criação inicial do documento',
+
+              descricaoAlteracoes:
+                'Primeira revisão cadastrada no Portal DGT.',
+
+              requerRetreinamento:
+                false,
+
+              justificativa:
+                'Não se aplica à criação inicial do documento.'
+            });
+
+          setDocumentos(
+            await service
+              .listarDocumentos()
+          );
+
+        } catch (e) {
+
+          const mensagem =
+            e instanceof Error
+              ? e.message
+              : 'Erro ao criar documento completo.';
+
+          setErro(
+            mensagem
+          );
+
+          throw e;
+
+        } finally {
+
+          setProcessando(
+            false
+          );
+        }
+      },
+      [
+        service,
+        sharePoint
+      ]
+    );
+  const criarDocumento =
+    React.useCallback(
+      async (
+        dados:
+          INovoDocumentoAdmin
+      ): Promise<void> => {
+
+        setProcessando(
+          true
+        );
+
+        setErro('');
+
+        try {
+
+          await service
+            .criarDocumento(
+              dados
+            );
+
+          setDocumentos(
+            await service
+              .listarDocumentos()
+          );
+
+        } catch (e) {
+
+          const mensagem =
+            e instanceof Error
+              ? e.message
+              : 'Erro ao criar documento.';
+
+          setErro(
+            mensagem
+          );
+
+          throw e;
+
+        } finally {
+
+          setProcessando(
+            false
+          );
+        }
+      },
+      [
+        service
+      ]
+    );
+  const criarRevisaoComArquivo =
+    React.useCallback(
+      async (
+        dados:
+          INovaRevisaoDocumentoArquivo
+      ): Promise<void> => {
+
+        if (
+          !documentoSelecionado
+        ) {
+          throw new Error(
+            'Selecione o documento.'
+          );
+        }
+
+        if (
+          !dados.arquivo
+        ) {
+          throw new Error(
+            'Selecione o arquivo da nova revisão.'
+          );
+        }
+
+        setProcessando(
+          true
+        );
+
+        setErro('');
+
+        try {
+
+          const upload =
+            await sharePoint
+              .uploadArquivo(
+                documentoSelecionado.area,
+                documentoSelecionado.codigo,
+                dados.revisao,
+                dados.arquivo
+              );
+
+          await service
+            .criarRevisao({
+              ...dados,
+
+              arquivoUrl:
+                upload.arquivoUrl,
+
+              requerRetreinamento:
+                false,
+
+              justificativa:
+                'Definido na publicação da revisão.'
+            });
+
+          setRevisoes(
+            await service
+              .listarRevisoes(
+                documentoSelecionado.id
+              )
+          );
+
+        } catch (e) {
+
+          const mensagem =
+            e instanceof Error
+              ? e.message
+              : 'Erro ao criar nova revisão.';
+
+          setErro(
+            mensagem
+          );
+
+          throw e;
+
+        } finally {
+
+          setProcessando(
+            false
+          );
+        }
+      },
+      [
+        documentoSelecionado,
+        service,
+        sharePoint
+      ]
+    );
   const criarRevisao =
     React.useCallback(
       async (
@@ -200,6 +496,140 @@ export const useGestaoDocumentos = (
       ]
     );
 
+  const recarregarRevisoesSelecionadas =
+    React.useCallback(
+      async (): Promise<void> => {
+
+        if (!documentoSelecionado) {
+          return;
+        }
+
+        setRevisoes(
+          await service
+            .listarRevisoes(
+              documentoSelecionado.id
+            )
+        );
+      },
+      [
+        documentoSelecionado,
+        service
+      ]
+    );
+
+  const enviarRevisaoParaRevisao =
+    React.useCallback(
+      async (
+        revisao:
+          IRevisaoAdmin
+      ): Promise<void> => {
+
+        setProcessando(true);
+        setErro('');
+
+        try {
+          await workflowService
+            .enviarParaRevisao(
+              revisao.id,
+              revisao.status
+            );
+
+          await recarregarRevisoesSelecionadas();
+        }
+        catch (e) {
+          const mensagem =
+            e instanceof Error
+              ? e.message
+              : 'Erro ao enviar revisão para análise.';
+
+          setErro(mensagem);
+          throw e;
+        }
+        finally {
+          setProcessando(false);
+        }
+      },
+      [
+        workflowService,
+        recarregarRevisoesSelecionadas
+      ]
+    );
+
+  const enviarRevisaoParaAprovacao =
+    React.useCallback(
+      async (
+        revisao:
+          IRevisaoAdmin
+      ): Promise<void> => {
+
+        setProcessando(true);
+        setErro('');
+
+        try {
+          await workflowService
+            .enviarParaAprovacao(
+              revisao.id,
+              revisao.status
+            );
+
+          await recarregarRevisoesSelecionadas();
+        }
+        catch (e) {
+          const mensagem =
+            e instanceof Error
+              ? e.message
+              : 'Erro ao enviar revisão para aprovação.';
+
+          setErro(mensagem);
+          throw e;
+        }
+        finally {
+          setProcessando(false);
+        }
+      },
+      [
+        workflowService,
+        recarregarRevisoesSelecionadas
+      ]
+    );
+
+  const devolverRevisaoParaElaboracao =
+    React.useCallback(
+      async (
+        revisao:
+          IRevisaoAdmin
+      ): Promise<void> => {
+
+        setProcessando(true);
+        setErro('');
+
+        try {
+          await workflowService
+            .devolverParaElaboracao(
+              revisao.id,
+              revisao.status
+            );
+
+          await recarregarRevisoesSelecionadas();
+        }
+        catch (e) {
+          const mensagem =
+            e instanceof Error
+              ? e.message
+              : 'Erro ao devolver revisão para elaboração.';
+
+          setErro(mensagem);
+          throw e;
+        }
+        finally {
+          setProcessando(false);
+        }
+      },
+      [
+        workflowService,
+        recarregarRevisoesSelecionadas
+      ]
+    );
   const limparSelecao =
     React.useCallback(
       (): void => {
@@ -231,6 +661,9 @@ export const useGestaoDocumentos = (
 
   return {
     documentos,
+    criarRevisaoComArquivo,
+    criarDocumentoCompleto,
+    criarDocumento,
     documentoSelecionado,
     revisoes,
     carregando,
@@ -238,6 +671,14 @@ export const useGestaoDocumentos = (
     erro,
     selecionarDocumento,
     criarRevisao,
+    enviarRevisaoParaRevisao,
+    enviarRevisaoParaAprovacao,
+    devolverRevisaoParaElaboracao,
     limparSelecao
   };
 };
+
+
+
+
+

@@ -1,0 +1,197 @@
+import * as React from 'react';
+
+import { IDocumento } from '../../models/Documento';
+import EmptyState from '../../components/common/EmptyState';
+
+export interface IDocumentosPageProps {
+  documentos: IDocumento[];
+  carregando?: boolean;
+  erro?: string;
+  onAbrirDocumento?: (documento: IDocumento) => void;
+}
+
+const th: React.CSSProperties = {
+  padding: '11px 12px',
+  textAlign: 'left',
+  color: '#334155',
+  fontSize: '12px',
+  whiteSpace: 'nowrap'
+};
+
+const td: React.CSSProperties = {
+  padding: '12px',
+  color: '#334155',
+  fontSize: '13px',
+  verticalAlign: 'middle'
+};
+
+const DocumentosPage: React.FC<IDocumentosPageProps> = ({
+  documentos,
+  carregando = false,
+  erro = '',
+  onAbrirDocumento
+}) => {
+  const [pesquisa, setPesquisa] = React.useState('');
+  const [area, setArea] = React.useState('');
+  const [tipo, setTipo] = React.useState('');
+  const [status, setStatus] = React.useState('');
+
+  const unicos = (valores: string[]): string[] => {
+    const retorno: string[] = [];
+    valores.forEach(valor => {
+      const item = (valor || '').trim();
+      if (item && retorno.indexOf(item) < 0) {
+        retorno.push(item);
+      }
+    });
+    return retorno.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  };
+
+  const areas = React.useMemo(() => unicos(documentos.map(item => item.categoria || '')), [documentos]);
+  const tipos = React.useMemo(() => unicos(documentos.map(item => item.tipo || '')), [documentos]);
+  const statuses = React.useMemo(() => unicos(documentos.map(item => item.status || '')), [documentos]);
+
+  const filtrados = React.useMemo(() => {
+    const termo = pesquisa.trim().toLowerCase();
+    return documentos.filter(item => {
+      const pesquisaOk = !termo ||
+        item.codigo.toLowerCase().indexOf(termo) >= 0 ||
+        item.titulo.toLowerCase().indexOf(termo) >= 0 ||
+        item.tipo.toLowerCase().indexOf(termo) >= 0 ||
+        item.status.toLowerCase().indexOf(termo) >= 0;
+      const areaOk = !area || item.categoria === area;
+      const tipoOk = !tipo || item.tipo === tipo;
+      const statusOk = !status || item.status === status;
+      return pesquisaOk && areaOk && tipoOk && statusOk;
+    });
+  }, [documentos, pesquisa, area, tipo, status]);
+
+  const categorias = [
+    ['📁','Todos os documentos','Acesse todo o acervo da empresa.',''],
+    ['⚙','Qualidade','POPs, normas e procedimentos.','Qualidade'],
+    ['⛑','Segurança','NRs, instruções e diretrizes.','Segurança'],
+    ['🔧','Engenharia','Projetos, manuais e especificações.','Engenharia'],
+    ['👥','RH','Políticas, formulários e orientações.','RH'],
+    ['🏢','Administrativo','Processos e documentos gerais.','Administrativo']
+  ];
+
+  return (
+    <section style={{ color: '#0B2D4D' }}>
+      <div style={{ minHeight: '165px', padding: '28px 34px', display: 'grid', gridTemplateColumns: '100px 1fr 280px', gap: '24px', alignItems: 'center', borderRadius: '18px', background: 'linear-gradient(120deg,#DDEFFF 0%,#C5DFF3 55%,#8EB4D1 100%)' }}>
+        <div style={{ width: '78px', height: '78px', borderRadius: '16px', background: '#2E8CEB', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px' }}>📄</div>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '38px' }}>Documentos</h1>
+          <p style={{ margin: '5px 0 0', fontSize: '20px', color: '#173D63' }}>Procedimentos, políticas, instruções e muito mais.</p>
+          <p style={{ margin: '8px 0 0', color: '#365A78' }}>Acesse os documentos da sua área ou navegue por todas as categorias.</p>
+        </div>
+        <div style={{ padding: '16px 18px', borderRadius: '12px', background: 'rgba(6,47,82,.82)', color: '#fff', lineHeight: 1.5 }}>
+          “Informação organizada gera segurança e melhores resultados.”
+          <div style={{ marginTop: '12px', textAlign: 'right', fontWeight: 800 }}>DGT</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(150px,1fr))', gap: '12px', marginTop: '14px' }}>
+        {categorias.map(item => (
+          <button key={item[1]} type="button" onClick={() => setArea(item[3])} style={{ minHeight: '145px', padding: '16px', textAlign: 'left', border: area === item[3] ? '2px solid #1677FF' : '1px solid #E4EAF0', borderRadius: '13px', background: '#fff', cursor: 'pointer' }}>
+            <div style={{ fontSize: '27px' }}>{item[0]}</div>
+            <strong style={{ display: 'block', marginTop: '12px', fontSize: '16px' }}>{item[1]}</strong>
+            <small style={{ display: 'block', marginTop: '5px', color: '#64748B', lineHeight: 1.4 }}>{item[2]}</small>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px,1.5fr) 150px 150px 150px', gap: '10px', marginTop: '16px' }}>
+        <input type="search" value={pesquisa} onChange={e => setPesquisa(e.target.value)} placeholder="Pesquisar documentos por nome, código, palavra-chave..." style={{ padding: '11px 14px', border: '1px solid #D5DFE8', borderRadius: '9px' }} />
+        <select value={area} onChange={e => setArea(e.target.value)} style={{ padding: '10px 12px', border: '1px solid #D5DFE8', borderRadius: '9px' }}>
+          <option value="">Todas as áreas</option>
+          {areas.map(item => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '10px 12px', border: '1px solid #D5DFE8', borderRadius: '9px' }}>
+          <option value="">Todos os tipos</option>
+          {tipos.map(item => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select value={status} onChange={e => setStatus(e.target.value)} style={{ padding: '10px 12px', border: '1px solid #D5DFE8', borderRadius: '9px' }}>
+          <option value="">Todos os status</option>
+          {statuses.map(item => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </div>
+
+      {erro && <div style={{ marginTop: '16px', padding: '13px', borderRadius: '8px', background: '#FDE7E9', color: '#A4262C' }}>{erro}</div>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 310px', gap: '16px', marginTop: '16px', alignItems: 'start' }}>
+        <div>
+          <div style={{ background: '#fff', border: '1px solid #E4EAF0', borderRadius: '14px', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E7EDF3' }}>
+              <strong>📄 Documentos recentes</strong>
+              <span style={{ color: '#0867D7', fontWeight: 700, fontSize: '13px' }}>{filtrados.length} encontrado(s)</span>
+            </div>
+
+            {carregando ? (
+              <div style={{ padding: '30px', textAlign: 'center' }}>Carregando documentos...</div>
+            ) : filtrados.length === 0 ? (
+              <div style={{ padding: '20px' }}><EmptyState titulo="Nenhum documento encontrado" descricao="Ajuste os filtros ou a pesquisa." /></div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#F3F6F9' }}>
+                      <th style={th}>Nome</th><th style={th}>Código</th><th style={th}>Tipo</th><th style={th}>Área</th><th style={th}>Revisão</th><th style={th}>Status</th><th style={th}>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtrados.map(documento => (
+                      <tr key={documento.id} style={{ borderTop: '1px solid #EDF1F5' }}>
+                        <td style={td}><strong>{documento.titulo}</strong></td>
+                        <td style={td}>{documento.codigo || '-'}</td>
+                        <td style={td}>{documento.tipo || '-'}</td>
+                        <td style={td}>{documento.categoria || '-'}</td>
+                        <td style={td}>{documento.revisaoAtual || '-'}</td>
+                        <td style={td}><span style={{ display: 'inline-block', padding: '5px 12px', borderRadius: '999px', background: '#DDF7EC', color: '#07825C', fontWeight: 700, fontSize: '12px' }}>{documento.status || '-'}</span></td>
+                        <td style={td}>
+                          {onAbrirDocumento ? (
+                            <button type="button" title="Abrir documento" onClick={() => onAbrirDocumento(documento)} style={{ border: 0, background: 'transparent', color: '#0867D7', cursor: 'pointer', fontSize: '18px', fontWeight: 800 }}>⋯</button>
+                          ) : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: '14px', padding: '14px', background: '#fff', border: '1px solid #E4EAF0', borderRadius: '14px' }}>
+            <strong>▰ Navegar por tipo de documento</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(125px,1fr))', gap: '10px', marginTop: '12px' }}>
+              {[['📘','POP'],['🛡','Política'],['📖','Instrução'],['📋','Formulário'],['⚖','Norma'],['📚','Manual']].map(item => (
+                <button key={item[1]} type="button" onClick={() => setTipo(item[1])} style={{ padding: '12px', textAlign: 'left', border: '1px solid #E7EDF3', borderRadius: '10px', background: '#FAFCFE', cursor: 'pointer' }}>
+                  <span style={{ fontSize: '21px' }}>{item[0]}</span><strong style={{ display: 'block', marginTop: '6px' }}>{item[1]}</strong>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <aside style={{ display: 'grid', gap: '14px' }}>
+          <div style={{ padding: '16px', background: '#fff', border: '1px solid #E4EAF0', borderRadius: '14px' }}>
+            <strong>⭐ Meus documentos favoritos</strong>
+            {documentos.slice(0, 3).map(item => (
+              <div key={item.id} style={{ padding: '11px 0', borderBottom: '1px solid #EDF1F5' }}>
+                <strong style={{ display: 'block', fontSize: '13px' }}>{item.titulo}</strong>
+                <small style={{ color: '#64748B' }}>{item.codigo} · Rev. {item.revisaoAtual || '-'}</small>
+              </div>
+            ))}
+          </div>
+          <div style={{ padding: '16px', background: '#fff', border: '1px solid #E4EAF0', borderRadius: '14px' }}>
+            <strong>🔗 Links úteis</strong>
+            {['Biblioteca de Templates','Formulários e Modelos','Normas e Legislações','Solicitar nova revisão'].map(item => (
+              <div key={item} style={{ padding: '10px 0', borderBottom: '1px solid #EDF1F5', color: '#24425E', fontSize: '13px' }}>{item}</div>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+};
+
+export default DocumentosPage;

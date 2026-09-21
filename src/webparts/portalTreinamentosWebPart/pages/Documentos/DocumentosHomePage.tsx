@@ -1,0 +1,1862 @@
+import * as React from 'react';
+
+import {
+  IDocumento
+} from '../../models/Documento';
+
+import EmptyState from
+  '../../components/common/EmptyState';
+
+export interface IDocumentosHomePageProps {
+
+  documentos:
+    IDocumento[];
+
+  carregando?:
+    boolean;
+
+  erro?:
+    string;
+
+  onAbrirDocumento?:
+    (
+      documento:
+        IDocumento
+    ) => void;
+
+  onNovoDocumento?:
+    () => void;
+}
+
+interface ICategoriaCard {
+  titulo:
+    string;
+
+  subtitulo:
+    string;
+
+  icone:
+    string;
+
+  valor:
+    string;
+
+  fundoIcone:
+    string;
+
+  corIcone:
+    string;
+}
+
+const C = {
+  azul:
+    '#0B67D1',
+
+  azulEscuro:
+    '#0A2845',
+
+  texto:
+    '#28445F',
+
+  secundario:
+    '#61788E',
+
+  borda:
+    '#D8E2EC',
+
+  fundo:
+    '#F5F8FB',
+
+  branco:
+    '#FFFFFF',
+
+  verde:
+    '#07825C',
+
+  verdeClaro:
+    '#DDF7EC'
+};
+
+const categorias:
+  ICategoriaCard[] = [
+    {
+      titulo:
+        'Todos os documentos',
+
+      subtitulo:
+        'Acesse todo o acervo disponível.',
+
+      icone:
+        '📁',
+
+      valor:
+        '',
+
+      fundoIcone:
+        '#FFF1CF',
+
+      corIcone:
+        '#D98A00'
+    },
+    {
+      titulo:
+        'Qualidade',
+
+      subtitulo:
+        'POPs, normas e procedimentos.',
+
+      icone:
+        '⚙',
+
+      valor:
+        'Qualidade',
+
+      fundoIcone:
+        '#E6F2FF',
+
+      corIcone:
+        '#0B67D1'
+    },
+    {
+      titulo:
+        'Segurança',
+
+      subtitulo:
+        'NRs, instruções e diretrizes.',
+
+      icone:
+        '⛑',
+
+      valor:
+        'Segurança',
+
+      fundoIcone:
+        '#FFF0D5',
+
+      corIcone:
+        '#D98200'
+    },
+    {
+      titulo:
+        'Engenharia',
+
+      subtitulo:
+        'Projetos, manuais e especificações.',
+
+      icone:
+        '🔧',
+
+      valor:
+        'Engenharia',
+
+      fundoIcone:
+        '#E7F3FF',
+
+      corIcone:
+        '#0A6DD8'
+    },
+    {
+      titulo:
+        'RH',
+
+      subtitulo:
+        'Políticas, formulários e orientações.',
+
+      icone:
+        '👥',
+
+      valor:
+        'RH',
+
+      fundoIcone:
+        '#FFE9F0',
+
+      corIcone:
+        '#C41C55'
+    },
+    {
+      titulo:
+        'Administrativo',
+
+      subtitulo:
+        'Processos e documentos gerais.',
+
+      icone:
+        '🏢',
+
+      valor:
+        'Administrativo',
+
+      fundoIcone:
+        '#EEEAFE',
+
+      corIcone:
+        '#5B43D6'
+    }
+  ];
+
+const tiposNavegacao = [
+  {
+    icone:
+      '📘',
+
+    titulo:
+      'POP',
+
+    descricao:
+      'Procedimentos Operacionais Padrão'
+  },
+  {
+    icone:
+      '🛡',
+
+    titulo:
+      'Políticas',
+
+    descricao:
+      'Diretrizes e políticas da empresa'
+  },
+  {
+    icone:
+      '📖',
+
+    titulo:
+      'Instruções',
+
+    descricao:
+      'Instruções de trabalho'
+  },
+  {
+    icone:
+      '📋',
+
+    titulo:
+      'Formulários',
+
+    descricao:
+      'Formulários e modelos'
+  },
+  {
+    icone:
+      '⚖',
+
+    titulo:
+      'Normas',
+
+    descricao:
+      'Normas e legislações'
+  },
+  {
+    icone:
+      '📚',
+
+    titulo:
+      'Manuais',
+
+    descricao:
+      'Manuais e guias'
+  }
+];
+
+const inputStyle:
+  React.CSSProperties = {
+
+  width:
+    '100%',
+
+  minHeight:
+    '42px',
+
+  boxSizing:
+    'border-box',
+
+  padding:
+    '10px 12px',
+
+  border:
+    `1px solid ${C.borda}`,
+
+  borderRadius:
+    '9px',
+
+  background:
+    C.branco,
+
+  color:
+    C.azulEscuro,
+
+  fontSize:
+    '13px'
+};
+
+const th:
+  React.CSSProperties = {
+
+  padding:
+    '12px 14px',
+
+  textAlign:
+    'left',
+
+  fontSize:
+    '12px',
+
+  fontWeight:
+    800,
+
+  color:
+    '#38536D',
+
+  whiteSpace:
+    'nowrap'
+};
+
+const td:
+  React.CSSProperties = {
+
+  padding:
+    '13px 14px',
+
+  color:
+    '#28445F',
+
+  fontSize:
+    '13px',
+
+  verticalAlign:
+    'middle'
+};
+
+const DocumentosHomePage:
+  React.FC<
+    IDocumentosHomePageProps
+  > = ({
+    documentos,
+    carregando = false,
+    erro = '',
+    onAbrirDocumento,
+    onNovoDocumento
+  }) => {
+
+    const [
+      pesquisa,
+      setPesquisa
+    ] =
+      React.useState('');
+
+    const [
+      area,
+      setArea
+    ] =
+      React.useState('');
+
+    const [
+      tipo,
+      setTipo
+    ] =
+      React.useState('');
+
+    const [
+      status,
+      setStatus
+    ] =
+      React.useState('');
+
+    const areas =
+      React.useMemo(
+        () => {
+
+          const valores:
+            string[] = [];
+
+          documentos.forEach(
+            item => {
+
+              const valor =
+                (
+                  item.categoria ||
+                  ''
+                ).trim();
+
+              if (
+                valor &&
+                valores.indexOf(
+                  valor
+                ) <
+                0
+              ) {
+                valores.push(
+                  valor
+                );
+              }
+            }
+          );
+
+          return valores.sort();
+        },
+        [
+          documentos
+        ]
+      );
+
+    const tipos =
+      React.useMemo(
+        () => {
+
+          const valores:
+            string[] = [];
+
+          documentos.forEach(
+            item => {
+
+              const valor =
+                (
+                  item.tipo ||
+                  ''
+                ).trim();
+
+              if (
+                valor &&
+                valores.indexOf(
+                  valor
+                ) <
+                0
+              ) {
+                valores.push(
+                  valor
+                );
+              }
+            }
+          );
+
+          return valores.sort();
+        },
+        [
+          documentos
+        ]
+      );
+
+    const statusDisponiveis =
+      React.useMemo(
+        () => {
+
+          const valores:
+            string[] = [];
+
+          documentos.forEach(
+            item => {
+
+              const valor =
+                (
+                  item.status ||
+                  ''
+                ).trim();
+
+              if (
+                valor &&
+                valores.indexOf(
+                  valor
+                ) <
+                0
+              ) {
+                valores.push(
+                  valor
+                );
+              }
+            }
+          );
+
+          return valores.sort();
+        },
+        [
+          documentos
+        ]
+      );
+
+    const filtrados =
+      React.useMemo(
+        () => {
+
+          const termo =
+            pesquisa
+              .trim()
+              .toLowerCase();
+
+          return documentos.filter(
+            item => {
+
+              const texto =
+                [
+                  item.codigo,
+                  item.titulo,
+                  item.tipo,
+                  item.categoria,
+                  item.status,
+                  item.revisaoAtual
+                ]
+                  .join(
+                    ' '
+                  )
+                  .toLowerCase();
+
+              return (
+                (
+                  !termo ||
+                  texto.indexOf(
+                    termo
+                  ) >=
+                  0
+                ) &&
+                (
+                  !area ||
+                  item.categoria ===
+                  area
+                ) &&
+                (
+                  !tipo ||
+                  item.tipo ===
+                  tipo
+                ) &&
+                (
+                  !status ||
+                  item.status ===
+                  status
+                )
+              );
+            }
+          );
+        },
+        [
+          documentos,
+          pesquisa,
+          area,
+          tipo,
+          status
+        ]
+      );
+
+    return (
+      <section
+        style={{
+          color:
+            C.azulEscuro
+        }}
+      >
+
+        <div
+          style={{
+            display:
+              'flex',
+
+            justifyContent:
+              'flex-end',
+
+            marginBottom:
+              '10px'
+          }}
+        >
+          {
+            onNovoDocumento &&
+            (
+              <button
+                type="button"
+                onClick={
+                  onNovoDocumento
+                }
+                style={{
+                  padding:
+                    '10px 15px',
+
+                  border:
+                    0,
+
+                  borderRadius:
+                    '8px',
+
+                  background:
+                    '#0B67D1',
+
+                  color:
+                    '#FFFFFF',
+
+                  fontWeight:
+                    800,
+
+                  cursor:
+                    'pointer'
+                }}
+              >
+                + Novo documento
+              </button>
+            )
+          }
+        </div>
+
+        {/* HERO */}
+
+        <div
+          style={{
+            minHeight:
+              '125px',
+
+            display:
+              'grid',
+
+            gridTemplateColumns:
+              '76px minmax(0,1fr) 230px',
+
+            gap:
+              '20px',
+
+            alignItems:
+              'center',
+
+            padding:
+              '22px 26px',
+
+            borderRadius:
+              '16px',
+
+            background:
+              'linear-gradient(105deg,#DDEFFF 0%,#C6E0F5 58%,#9EC3DF 100%)',
+
+            overflow:
+              'hidden'
+          }}
+        >
+          <div
+            style={{
+              width:
+                '58px',
+
+              height:
+                '58px',
+
+              display:
+                'flex',
+
+              alignItems:
+                'center',
+
+              justifyContent:
+                'center',
+
+              borderRadius:
+                '12px',
+
+              background:
+                '#2F8DEB',
+
+              fontSize:
+                '29px'
+            }}
+          >
+            📄
+          </div>
+
+          <div>
+            <h1
+              style={{
+                margin:
+                  0,
+
+                fontSize:
+                  '30px',
+
+                lineHeight:
+                  1.05,
+
+                color:
+                  C.azulEscuro
+              }}
+            >
+              Documentos
+            </h1>
+
+            <p
+              style={{
+                margin:
+                  '7px 0 0',
+
+                fontSize:
+                  '16px',
+
+                fontWeight:
+                  600,
+
+                color:
+                  '#234A6C'
+              }}
+            >
+              Procedimentos, políticas, instruções e muito mais.
+            </p>
+
+            <p
+              style={{
+                margin:
+                  '5px 0 0',
+
+                color:
+                  '#496A86',
+
+                fontSize:
+                  '12px'
+              }}
+            >
+              Acesse os documentos da sua área ou navegue por todas as categorias.
+            </p>
+          </div>
+
+          <div
+            style={{
+              padding:
+                '13px 15px',
+
+              borderRadius:
+                '11px',
+
+              background:
+                'rgba(7,54,89,.82)',
+
+              color:
+                '#FFFFFF',
+
+              lineHeight:
+                1.45,
+
+              fontSize:
+                '12px'
+            }}
+          >
+            “Informação organizada gera segurança e melhores resultados.”
+
+            <div
+              style={{
+                marginTop:
+                  '8px',
+
+                textAlign:
+                  'right',
+
+                fontWeight:
+                  800
+              }}
+            >
+              DGT
+            </div>
+          </div>
+        </div>
+
+        {/* CARDS CATEGORIAS */}
+
+        <div
+          style={{
+            display:
+              'grid',
+
+            gridTemplateColumns:
+              'repeat(6,minmax(150px,1fr))',
+
+            gap:
+              '10px',
+
+            marginTop:
+              '12px'
+          }}
+        >
+          {
+            categorias.map(
+              item => {
+
+                const ativo =
+                  area ===
+                  item.valor;
+
+                return (
+                  <button
+                    key={
+                      item.titulo
+                    }
+                    type="button"
+                    onClick={() =>
+                      setArea(
+                        item.valor
+                      )
+                    }
+                    style={{
+                      minHeight:
+                        '122px',
+
+                      display:
+                        'grid',
+
+                      gridTemplateRows:
+                        '42px auto 1fr',
+
+                      alignContent:
+                        'start',
+
+                      gap:
+                        '7px',
+
+                      padding:
+                        '14px',
+
+                      border:
+                        ativo
+                          ? '2px solid #1677FF'
+                          : `1px solid ${C.borda}`,
+
+                      borderRadius:
+                        '12px',
+
+                      background:
+                        ativo
+                          ? '#F5FAFF'
+                          : C.branco,
+
+                      textAlign:
+                        'left',
+
+                      cursor:
+                        'pointer',
+
+                      boxShadow:
+                        ativo
+                          ? '0 3px 10px rgba(22,119,255,.08)'
+                          : 'none'
+                    }}
+                  >
+                    <div
+                      style={{
+                        width:
+                          '42px',
+
+                        height:
+                          '42px',
+
+                        display:
+                          'flex',
+
+                        alignItems:
+                          'center',
+
+                        justifyContent:
+                          'center',
+
+                        borderRadius:
+                          '9px',
+
+                        background:
+                          item.fundoIcone,
+
+                        color:
+                          item.corIcone,
+
+                        fontSize:
+                          '22px'
+                      }}
+                    >
+                      {
+                        item.icone
+                      }
+                    </div>
+
+                    <strong
+                      style={{
+                        display:
+                          'block',
+
+                        color:
+                          C.azulEscuro,
+
+                        fontSize:
+                          '14px',
+
+                        lineHeight:
+                          1.25
+                      }}
+                    >
+                      {
+                        item.titulo
+                      }
+                    </strong>
+
+                    <span
+                      style={{
+                        display:
+                          'block',
+
+                        color:
+                          C.secundario,
+
+                        fontSize:
+                          '11px',
+
+                        lineHeight:
+                          1.35
+                      }}
+                    >
+                      {
+                        item.subtitulo
+                      }
+                    </span>
+                  </button>
+                );
+              }
+            )
+          }
+        </div>
+
+        {/* FILTROS */}
+
+        <div
+          style={{
+            display:
+              'grid',
+
+            gridTemplateColumns:
+              'minmax(320px,1fr) 150px 150px 150px',
+
+            gap:
+              '9px',
+
+            marginTop:
+              '12px'
+          }}
+        >
+          <input
+            type="search"
+            placeholder="Pesquisar documentos por nome, código ou palavra-chave..."
+            value={
+              pesquisa
+            }
+            onChange={
+              event =>
+                setPesquisa(
+                  event.target.value
+                )
+            }
+            style={
+              inputStyle
+            }
+          />
+
+          <select
+            value={
+              area
+            }
+            onChange={
+              event =>
+                setArea(
+                  event.target.value
+                )
+            }
+            style={
+              inputStyle
+            }
+          >
+            <option value="">
+              Todas as áreas
+            </option>
+
+            {
+              areas.map(
+                item => (
+                  <option
+                    key={
+                      item
+                    }
+                    value={
+                      item
+                    }
+                  >
+                    {
+                      item
+                    }
+                  </option>
+                )
+              )
+            }
+          </select>
+
+          <select
+            value={
+              tipo
+            }
+            onChange={
+              event =>
+                setTipo(
+                  event.target.value
+                )
+            }
+            style={
+              inputStyle
+            }
+          >
+            <option value="">
+              Todos os tipos
+            </option>
+
+            {
+              tipos.map(
+                item => (
+                  <option
+                    key={
+                      item
+                    }
+                    value={
+                      item
+                    }
+                  >
+                    {
+                      item
+                    }
+                  </option>
+                )
+              )
+            }
+          </select>
+
+          <select
+            value={
+              status
+            }
+            onChange={
+              event =>
+                setStatus(
+                  event.target.value
+                )
+            }
+            style={
+              inputStyle
+            }
+          >
+            <option value="">
+              Todos os status
+            </option>
+
+            {
+              statusDisponiveis.map(
+                item => (
+                  <option
+                    key={
+                      item
+                    }
+                    value={
+                      item
+                    }
+                  >
+                    {
+                      item
+                    }
+                  </option>
+                )
+              )
+            }
+          </select>
+        </div>
+
+        {
+          erro &&
+          (
+            <div
+              style={{
+                marginTop:
+                  '12px',
+
+                padding:
+                  '12px 14px',
+
+                borderRadius:
+                  '8px',
+
+                background:
+                  '#FDE7E9',
+
+                color:
+                  '#A4262C',
+
+                fontSize:
+                  '13px'
+              }}
+            >
+              {
+                erro
+              }
+            </div>
+          )
+        }
+
+        {/* PRINCIPAL */}
+
+        <div
+          style={{
+            display:
+              'grid',
+
+            gridTemplateColumns:
+              'minmax(0,1fr) 230px',
+
+            gap:
+              '12px',
+
+            marginTop:
+              '12px',
+
+            alignItems:
+              'start'
+          }}
+        >
+
+          <div
+            style={{
+              display:
+                'grid',
+
+              gap:
+                '12px'
+            }}
+          >
+
+            <article
+              style={{
+                background:
+                  C.branco,
+
+                border:
+                  `1px solid ${C.borda}`,
+
+                borderRadius:
+                  '12px',
+
+                overflow:
+                  'hidden'
+              }}
+            >
+              <div
+                style={{
+                  padding:
+                    '12px 14px',
+
+                  display:
+                    'flex',
+
+                  justifyContent:
+                    'space-between',
+
+                  alignItems:
+                    'center',
+
+                  borderBottom:
+                    '1px solid #E6EDF3'
+                }}
+              >
+                <strong
+                  style={{
+                    fontSize:
+                      '14px',
+
+                    color:
+                      C.azulEscuro
+                  }}
+                >
+                  📄 Documentos recentes
+                </strong>
+
+                <span
+                  style={{
+                    color:
+                      '#0867D7',
+
+                    fontSize:
+                      '11px',
+
+                    fontWeight:
+                      700
+                  }}
+                >
+                  {
+                    filtrados.length
+                  } encontrado(s)
+                </span>
+              </div>
+
+              {
+                carregando
+                  ? (
+                    <div
+                      style={{
+                        padding:
+                          '28px',
+
+                        textAlign:
+                          'center',
+
+                        color:
+                          C.secundario
+                      }}
+                    >
+                      Carregando documentos...
+                    </div>
+                  )
+                  : filtrados.length ===
+                      0
+                    ? (
+                      <div
+                        style={{
+                          padding:
+                            '20px'
+                        }}
+                      >
+                        <EmptyState
+                          titulo="Nenhum documento encontrado"
+                          descricao="Ajuste os filtros ou a pesquisa."
+                        />
+                      </div>
+                    )
+                    : (
+                      <div
+                        style={{
+                          overflowX:
+                            'auto'
+                        }}
+                      >
+                        <table
+                          style={{
+                            width:
+                              '100%',
+
+                            borderCollapse:
+                              'collapse'
+                          }}
+                        >
+                          <thead>
+                            <tr
+                              style={{
+                                background:
+                                  '#F1F5F8'
+                              }}
+                            >
+                              <th style={th}>
+                                Nome
+                              </th>
+
+                              <th style={th}>
+                                Código
+                              </th>
+
+                              <th style={th}>
+                                Tipo
+                              </th>
+
+                              <th style={th}>
+                                Área
+                              </th>
+
+                              <th style={th}>
+                                Revisão
+                              </th>
+
+                              <th style={th}>
+                                Status
+                              </th>
+
+                              <th style={th}>
+                                Ações
+                              </th>
+                            </tr>
+                          </thead>
+
+                          <tbody>
+                            {
+                              filtrados.map(
+                                documento => (
+                                  <tr
+                                    key={
+                                      documento.id
+                                    }
+                                    style={{
+                                      borderTop:
+                                        '1px solid #EDF1F5'
+                                    }}
+                                  >
+                                    <td style={td}>
+                                      <div
+                                        style={{
+                                          display:
+                                            'flex',
+
+                                          gap:
+                                            '9px',
+
+                                          alignItems:
+                                            'center'
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            width:
+                                              '30px',
+
+                                            height:
+                                              '30px',
+
+                                            display:
+                                              'flex',
+
+                                            alignItems:
+                                              'center',
+
+                                            justifyContent:
+                                              'center',
+
+                                            borderRadius:
+                                              '7px',
+
+                                            background:
+                                              '#EEF5FB',
+
+                                            fontSize:
+                                              '15px'
+                                          }}
+                                        >
+                                          📄
+                                        </div>
+
+                                        <strong
+                                          style={{
+                                            color:
+                                              C.azulEscuro,
+
+                                            fontSize:
+                                              '13px'
+                                          }}
+                                        >
+                                          {
+                                            documento.titulo
+                                          }
+                                        </strong>
+                                      </div>
+                                    </td>
+
+                                    <td style={td}>
+                                      {
+                                        documento.codigo ||
+                                        '-'
+                                      }
+                                    </td>
+
+                                    <td style={td}>
+                                      {
+                                        documento.tipo ||
+                                        '-'
+                                      }
+                                    </td>
+
+                                    <td style={td}>
+                                      {
+                                        documento.categoria ||
+                                        '-'
+                                      }
+                                    </td>
+
+                                    <td style={td}>
+                                      {
+                                        documento.revisaoAtual ||
+                                        '-'
+                                      }
+                                    </td>
+
+                                    <td style={td}>
+                                      <span
+                                        style={{
+                                          display:
+                                            'inline-block',
+
+                                          padding:
+                                            '5px 11px',
+
+                                          borderRadius:
+                                            '999px',
+
+                                          background:
+                                            documento.status
+                                              .toLowerCase()
+                                              .indexOf(
+                                                'vigente'
+                                              ) >=
+                                                0
+                                                ? C.verdeClaro
+                                                : '#EEF2F6',
+
+                                          color:
+                                            documento.status
+                                              .toLowerCase()
+                                              .indexOf(
+                                                'vigente'
+                                              ) >=
+                                                0
+                                                ? C.verde
+                                                : '#53697D',
+
+                                          fontWeight:
+                                            700,
+
+                                          fontSize:
+                                            '11px'
+                                        }}
+                                      >
+                                        {
+                                          documento.status ||
+                                          '-'
+                                        }
+                                      </span>
+                                    </td>
+
+                                    <td style={td}>
+                                      {
+                                        onAbrirDocumento
+                                          ? (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                onAbrirDocumento(
+                                                  documento
+                                                )
+                                              }
+                                              style={{
+                                                border:
+                                                  0,
+
+                                                background:
+                                                  'transparent',
+
+                                                color:
+                                                  C.azul,
+
+                                                fontWeight:
+                                                  800,
+
+                                                cursor:
+                                                  'pointer',
+
+                                                fontSize:
+                                                  '17px'
+                                              }}
+                                            >
+                                              ⋯
+                                            </button>
+                                          )
+                                          : '-'
+                                      }
+                                    </td>
+                                  </tr>
+                                )
+                              )
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+              }
+            </article>
+
+            {/* TIPO DE DOCUMENTO */}
+
+            <article
+              style={{
+                padding:
+                  '12px',
+
+                border:
+                  `1px solid ${C.borda}`,
+
+                borderRadius:
+                  '12px',
+
+                background:
+                  C.branco
+              }}
+            >
+              <strong
+                style={{
+                  display:
+                    'block',
+
+                  marginBottom:
+                    '10px',
+
+                  color:
+                    C.azulEscuro,
+
+                  fontSize:
+                    '14px'
+                }}
+              >
+                ▰ Navegar por tipo de documento
+              </strong>
+
+              <div
+                style={{
+                  display:
+                    'grid',
+
+                  gridTemplateColumns:
+                    'repeat(6,minmax(120px,1fr))',
+
+                  gap:
+                    '8px'
+                }}
+              >
+                {
+                  tiposNavegacao.map(
+                    item => (
+                      <button
+                        key={
+                          item.titulo
+                        }
+                        type="button"
+                        onClick={() =>
+                          setTipo(
+                            item.titulo
+                          )
+                        }
+                        style={{
+                          minHeight:
+                            '86px',
+
+                          display:
+                            'grid',
+
+                          gridTemplateColumns:
+                            '34px 1fr',
+
+                          gap:
+                            '8px',
+
+                          alignItems:
+                            'start',
+
+                          padding:
+                            '11px',
+
+                          border:
+                            `1px solid ${C.borda}`,
+
+                          borderRadius:
+                            '9px',
+
+                          background:
+                            '#FAFCFE',
+
+                          textAlign:
+                            'left',
+
+                          cursor:
+                            'pointer'
+                        }}
+                      >
+                        <div
+                          style={{
+                            width:
+                              '34px',
+
+                            height:
+                              '34px',
+
+                            display:
+                              'flex',
+
+                            alignItems:
+                              'center',
+
+                            justifyContent:
+                              'center',
+
+                            borderRadius:
+                              '8px',
+
+                            background:
+                              '#EEF5FB',
+
+                            fontSize:
+                              '17px'
+                          }}
+                        >
+                          {
+                            item.icone
+                          }
+                        </div>
+
+                        <div>
+                          <strong
+                            style={{
+                              display:
+                                'block',
+
+                              color:
+                                C.azulEscuro,
+
+                              fontSize:
+                                '12px',
+
+                              lineHeight:
+                                1.2
+                            }}
+                          >
+                            {
+                              item.titulo
+                            }
+                          </strong>
+
+                          <small
+                            style={{
+                              display:
+                                'block',
+
+                              marginTop:
+                                '3px',
+
+                              color:
+                                C.secundario,
+
+                              fontSize:
+                                '9px',
+
+                              lineHeight:
+                                1.3
+                            }}
+                          >
+                            {
+                              item.descricao
+                            }
+                          </small>
+                        </div>
+                      </button>
+                    )
+                  )
+                }
+              </div>
+            </article>
+
+          </div>
+
+          {/* LATERAL */}
+
+          <aside
+            style={{
+              display:
+                'grid',
+
+              gap:
+                '12px'
+            }}
+          >
+
+            <article
+              style={{
+                padding:
+                  '13px',
+
+                border:
+                  `1px solid ${C.borda}`,
+
+                borderRadius:
+                  '12px',
+
+                background:
+                  C.branco
+              }}
+            >
+              <strong
+                style={{
+                  display:
+                    'block',
+
+                  marginBottom:
+                    '7px',
+
+                  color:
+                    C.azulEscuro,
+
+                  fontSize:
+                    '13px'
+                }}
+              >
+                ⭐ Meus documentos favoritos
+              </strong>
+
+              {
+                documentos
+                  .slice(
+                    0,
+                    3
+                  )
+                  .map(
+                    item => (
+                      <button
+                        key={
+                          item.id
+                        }
+                        type="button"
+                        onClick={() => {
+
+                          if (
+                            onAbrirDocumento
+                          ) {
+                            onAbrirDocumento(
+                              item
+                            );
+                          }
+
+                        }}
+                        style={{
+                          width:
+                            '100%',
+
+                          padding:
+                            '10px 0',
+
+                          border:
+                            0,
+
+                          borderBottom:
+                            '1px solid #EDF1F5',
+
+                          background:
+                            'transparent',
+
+                          textAlign:
+                            'left',
+
+                          cursor:
+                            onAbrirDocumento
+                              ? 'pointer'
+                              : 'default'
+                        }}
+                      >
+                        <strong
+                          style={{
+                            display:
+                              'block',
+
+                            color:
+                              C.azulEscuro,
+
+                            fontSize:
+                              '12px',
+
+                            lineHeight:
+                              1.3
+                          }}
+                        >
+                          {
+                            item.titulo
+                          }
+                        </strong>
+
+                        <small
+                          style={{
+                            display:
+                              'block',
+
+                            marginTop:
+                              '3px',
+
+                            color:
+                              C.secundario,
+
+                            fontSize:
+                              '10px'
+                          }}
+                        >
+                          {
+                            item.codigo
+                          } · {
+                            item.revisaoAtual ||
+                            '-'
+                          }
+                        </small>
+                      </button>
+                    )
+                  )
+              }
+            </article>
+
+            <article
+              style={{
+                padding:
+                  '13px',
+
+                border:
+                  `1px solid ${C.borda}`,
+
+                borderRadius:
+                  '12px',
+
+                background:
+                  C.branco
+              }}
+            >
+              <strong
+                style={{
+                  display:
+                    'block',
+
+                  color:
+                    C.azulEscuro,
+
+                  fontSize:
+                    '13px'
+                }}
+              >
+                🔗 Links úteis
+              </strong>
+
+              {
+                [
+                  'Biblioteca de Templates',
+                  'Formulários e Modelos',
+                  'Normas e Legislações',
+                  'Solicitar nova revisão'
+                ].map(
+                  item => (
+                    <div
+                      key={
+                        item
+                      }
+                      style={{
+                        padding:
+                          '9px 0',
+
+                        borderBottom:
+                          '1px solid #EDF1F5',
+
+                        color:
+                          '#38536D',
+
+                        fontSize:
+                          '11px',
+
+                        lineHeight:
+                          1.3
+                      }}
+                    >
+                      {
+                        item
+                      }
+                    </div>
+                  )
+                )
+              }
+            </article>
+
+          </aside>
+        </div>
+
+      </section>
+    );
+  };
+
+export default DocumentosHomePage;

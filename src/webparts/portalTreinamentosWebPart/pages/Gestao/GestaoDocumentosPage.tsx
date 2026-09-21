@@ -5,7 +5,7 @@ import PageHeader from
 
 import {
   IDocumentoAdmin,
-  INovaRevisaoDocumento,
+  INovaRevisaoDocumentoArquivo,
   IRevisaoAdmin
 } from '../../services/DocumentoAdminService';
 
@@ -20,6 +20,18 @@ import PublicarRevisaoModal from
 import ResultadoPublicacaoRevisaoCard from
   './ResultadoPublicacaoRevisaoCard';
 
+import DocumentoTreinamentosCard from
+  './DocumentoTreinamentosCard';
+
+import {
+  ITreinamentoDocumentoAdmin
+} from '../../services/TreinamentoDocumentoAdminService';
+
+import {
+  ITreinamentoAdmin
+} from '../../services/TreinamentoAdminService';
+import DocumentoWorkflowCard from
+  './DocumentoWorkflowCard';
 export interface IGestaoDocumentosPageProps {
   documentos:
     IDocumentoAdmin[];
@@ -29,6 +41,35 @@ export interface IGestaoDocumentosPageProps {
 
   revisoes:
     IRevisaoAdmin[];
+  vinculosTreinamentos:
+    ITreinamentoDocumentoAdmin[];
+
+  treinamentosDisponiveis:
+    ITreinamentoAdmin[];
+
+  carregandoTreinamentos:
+    boolean;
+
+  processandoTreinamentos:
+    boolean;
+
+  erroTreinamentos:
+    string;
+
+  onVincularTreinamento:
+    (
+      documentoId: string,
+      treinamentoId: string,
+      obrigatorio: boolean,
+      ordem: number,
+      observacao: string
+    ) => Promise<void>;
+
+  onDesativarTreinamento:
+    (
+      documentoId: string,
+      relacaoId: string
+    ) => Promise<void>;
 
   carregando:
     boolean;
@@ -60,7 +101,7 @@ export interface IGestaoDocumentosPageProps {
   onCriarRevisao:
     (
       dados:
-        INovaRevisaoDocumento
+        INovaRevisaoDocumentoArquivo
     ) => Promise<void>;
 
   onLimparSelecao:
@@ -74,7 +115,60 @@ export interface IGestaoDocumentosPageProps {
 
   onLimparResultadoPublicacao:
     () => void;
+  onEnviarRevisao:
+    (
+      revisao:
+        IRevisaoAdmin
+    ) => Promise<void>;
+
+  onEnviarAprovacao:
+    (
+      revisao:
+        IRevisaoAdmin
+    ) => Promise<void>;
+
+  onDevolverElaboracao:
+    (
+      revisao:
+        IRevisaoAdmin
+    ) => Promise<void>;
 }
+
+const input:
+  React.CSSProperties = {
+    width:
+      '100%',
+
+    boxSizing:
+      'border-box',
+
+    padding:
+      '10px 12px',
+
+    border:
+      '1px solid #CBD5E1',
+
+    borderRadius:
+      '8px',
+
+    background:
+      '#FFFFFF'
+  };
+
+const card:
+  React.CSSProperties = {
+    padding:
+      '18px',
+
+    border:
+      '1px solid #E2E8F0',
+
+    borderRadius:
+      '12px',
+
+    background:
+      '#FFFFFF'
+  };
 
 const GestaoDocumentosPage:
   React.FC<IGestaoDocumentosPageProps> = (
@@ -108,23 +202,71 @@ const GestaoDocumentosPage:
       React.useState('');
 
     const [
-      requerRetreinamento,
-      setRequerRetreinamento
+      arquivo,
+      setArquivo
     ] =
-      React.useState(false);
+      React.useState<
+        File | undefined
+      >(undefined);
 
     const [
-      justificativa,
-      setJustificativa
+      erroLocal,
+      setErroLocal
     ] =
       React.useState('');
 
     const criarRevisao =
       async (): Promise<void> => {
 
+        setErroLocal('');
+
         if (
           !props.documentoSelecionado
         ) {
+          return;
+        }
+
+        if (
+          !revisao.trim()
+        ) {
+
+          setErroLocal(
+            'Informe a nova revisão.'
+          );
+
+          return;
+        }
+
+        if (
+          !motivoAlteracao.trim()
+        ) {
+
+          setErroLocal(
+            'Informe o motivo da alteração.'
+          );
+
+          return;
+        }
+
+        if (
+          !descricaoAlteracoes.trim()
+        ) {
+
+          setErroLocal(
+            'Descreva as alterações realizadas.'
+          );
+
+          return;
+        }
+
+        if (
+          !arquivo
+        ) {
+
+          setErroLocal(
+            'Selecione o arquivo da nova revisão.'
+          );
+
           return;
         }
 
@@ -141,24 +283,33 @@ const GestaoDocumentosPage:
           descricaoAlteracoes:
             descricaoAlteracoes.trim(),
 
-          requerRetreinamento,
+          requerRetreinamento:
+            false,
 
           justificativa:
-            justificativa.trim()
+            'Definido na publicação da revisão.',
+
+          responsavel:
+            props
+              .documentoSelecionado
+              .responsavel,
+
+          arquivo
         });
 
         setRevisao('');
         setMotivoAlteracao('');
         setDescricaoAlteracoes('');
-        setRequerRetreinamento(false);
-        setJustificativa('');
+        setArquivo(
+          undefined
+        );
       };
 
     return (
       <section>
         <PageHeader
           titulo="Gestão documental"
-          subtitulo="Documentos, revisões, vigência e retreinamentos."
+          subtitulo="Documentos, revisões, arquivos, vigência e retreinamentos."
         />
 
         <button
@@ -166,407 +317,741 @@ const GestaoDocumentosPage:
           onClick={
             props.onVoltar
           }
+          style={{
+            padding:
+              '8px 12px',
+
+            border:
+              '1px solid #CBD5E1',
+
+            borderRadius:
+              '8px',
+
+            background:
+              '#FFFFFF',
+
+            cursor:
+              'pointer'
+          }}
         >
           ← Voltar
         </button>
 
-        {props.erro && (
-          <div
-            style={{
-              marginTop: '16px',
-              padding: '12px',
-              borderRadius: '8px',
-              background: '#fde7e9',
-              color: '#a4262c'
-            }}
-          >
-            {props.erro}
-          </div>
-        )}
+        {
+          (
+            props.erro ||
+            erroLocal
+          ) &&
+          (
+            <div
+              style={{
+                marginTop:
+                  '16px',
 
-        {props.erroPublicacao && (
-          <div
-            style={{
-              marginTop: '16px',
-              padding: '12px',
-              borderRadius: '8px',
-              background: '#fff4ce',
-              color: '#8a6116'
-            }}
-          >
-            {props.erroPublicacao}
-          </div>
-        )}
+                padding:
+                  '12px',
+
+                borderRadius:
+                  '8px',
+
+                background:
+                  '#FDE7E9',
+
+                color:
+                  '#A4262C'
+              }}
+            >
+              {
+                erroLocal ||
+                props.erro
+              }
+            </div>
+          )
+        }
+
+        {
+          props.erroPublicacao &&
+          (
+            <div
+              style={{
+                marginTop:
+                  '16px',
+
+                padding:
+                  '12px',
+
+                borderRadius:
+                  '8px',
+
+                background:
+                  '#FFF4CE',
+
+                color:
+                  '#8A6116'
+              }}
+            >
+              {
+                props.erroPublicacao
+              }
+            </div>
+          )
+        }
 
         <div
           style={{
-            display: 'grid',
+            display:
+              'grid',
+
             gridTemplateColumns:
               'minmax(280px, 360px) 1fr',
-            gap: '18px',
-            marginTop: '20px'
+
+            gap:
+              '18px',
+
+            marginTop:
+              '20px'
           }}
         >
           <div
-            style={{
-              border: '1px solid #e5e7eb',
-              borderRadius: '12px',
-              background: '#fff',
-              padding: '14px'
-            }}
+            style={
+              card
+            }
           >
             <strong>
               Documentos
             </strong>
 
-            {props.carregando ? (
-              <p>
-                Carregando...
-              </p>
-            ) : (
-              props.documentos.map(
-                item => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      props
-                        .onSelecionarDocumento(
-                          item
-                        )
-                        .catch(
-                          (
-                            error:
-                              unknown
-                          ) =>
-                            console.error(
-                              error
-                            )
-                        );
-                    }}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      marginTop: '10px',
-                      padding: '12px',
-                      textAlign: 'left',
-                      border:
-                        '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      background:
-                        props
-                          .documentoSelecionado
-                          ?.id ===
-                        item.id
-                          ? '#eff6ff'
-                          : '#fff',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <strong>
-                      {item.codigo || '-'}
-                    </strong>
-
-                    <div>
-                      {item.titulo}
-                    </div>
-                  </button>
+            {
+              props.carregando
+                ? (
+                  <p>
+                    Carregando...
+                  </p>
                 )
-              )
-            )}
-          </div>
+                : props.documentos.map(
+                  item => (
+                    <button
+                      key={
+                        item.id
+                      }
+                      type="button"
+                      onClick={() => {
 
-          <div>
-            {!props.documentoSelecionado ? (
-              <div
-                style={{
-                  padding: '28px',
-                  border:
-                    '1px solid #e5e7eb',
-                  borderRadius: '12px',
-                  background: '#fff'
-                }}
-              >
-                Selecione um documento.
-              </div>
-            ) : (
-              <>
-                <div
-                  style={{
-                    padding: '18px',
-                    border:
-                      '1px solid #e5e7eb',
-                    borderRadius: '12px',
-                    background: '#fff'
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent:
-                        'space-between',
-                      gap: '12px'
-                    }}
-                  >
-                    <div>
-                      <strong>
-                        {
+                        props
+                          .onSelecionarDocumento(
+                            item
+                          )
+                          .catch(
+                            (
+                              error:
+                                unknown
+                            ) =>
+                              console.error(
+                                error
+                              )
+                          );
+
+                      }}
+                      style={{
+                        display:
+                          'block',
+
+                        width:
+                          '100%',
+
+                        marginTop:
+                          '10px',
+
+                        padding:
+                          '12px',
+
+                        textAlign:
+                          'left',
+
+                        border:
+                          '1px solid #E2E8F0',
+
+                        borderRadius:
+                          '8px',
+
+                        background:
                           props
                             .documentoSelecionado
-                            .titulo
+                            ?.id ===
+                            item.id
+                            ? '#EFF6FF'
+                            : '#FFFFFF',
+
+                        cursor:
+                          'pointer'
+                      }}
+                    >
+                      <strong>
+                        {
+                          item.codigo ||
+                          '-'
                         }
                       </strong>
 
                       <div>
                         {
-                          props
-                            .documentoSelecionado
-                            .codigo
+                          item.titulo
                         }
+                      </div>
+
+                      {
+                        item.area &&
+                        (
+                          <small
+                            style={{
+                              display:
+                                'block',
+
+                              marginTop:
+                                '4px',
+
+                              color:
+                                '#64748B'
+                            }}
+                          >
+                            Área: {
+                              item.area
+                            }
+                          </small>
+                        )
+                      }
+                    </button>
+                  )
+                )
+            }
+          </div>
+
+          <div>
+            {
+              !props.documentoSelecionado
+                ? (
+                  <div
+                    style={
+                      card
+                    }
+                  >
+                    Selecione um documento.
+                  </div>
+                )
+                : (
+                  <>
+                    <div
+                      style={
+                        card
+                      }
+                    >
+                      <div
+                        style={{
+                          display:
+                            'flex',
+
+                          justifyContent:
+                            'space-between',
+
+                          gap:
+                            '12px'
+                        }}
+                      >
+                        <div>
+                          <strong
+                            style={{
+                              fontSize:
+                                '18px'
+                            }}
+                          >
+                            {
+                              props
+                                .documentoSelecionado
+                                .titulo
+                            }
+                          </strong>
+
+                          <div
+                            style={{
+                              marginTop:
+                                '4px',
+
+                              color:
+                                '#64748B'
+                            }}
+                          >
+                            {
+                              props
+                                .documentoSelecionado
+                                .codigo
+                            }
+
+                            {
+                              props
+                                .documentoSelecionado
+                                .area
+                                ? ` • ${props.documentoSelecionado.area}`
+                                : ''
+                            }
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={
+                            props.onLimparSelecao
+                          }
+                        >
+                          Fechar
+                        </button>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={
-                        props.onLimparSelecao
-                      }
+                    <div
+                      style={{
+                        ...card,
+                        marginTop:
+                          '16px'
+                      }}
                     >
-                      Fechar
-                    </button>
-                  </div>
-                </div>
+                      <strong>
+                        Revisões
+                      </strong>
 
-                <div
-                  style={{
-                    marginTop: '16px',
-                    padding: '18px',
-                    border:
-                      '1px solid #e5e7eb',
-                    borderRadius: '12px',
-                    background: '#fff'
-                  }}
-                >
-                  <strong>
-                    Revisões
-                  </strong>
+                      {
+                        props.revisoes.length ===
+                          0 &&
+                        (
+                          <p>
+                            Nenhuma revisão cadastrada.
+                          </p>
+                        )
+                      }
 
-                  {props.revisoes.length === 0 && (
-                    <p>
-                      Nenhuma revisão cadastrada.
-                    </p>
-                  )}
+                      {
+                        props.revisoes.map(
+                          item => (
+                            <div
+                              key={
+                                item.id
+                              }
+                              style={{
+                                marginTop:
+                                  '12px',
 
-                  {props.revisoes.map(
-                    item => (
-                      <div
-                        key={item.id}
+                                padding:
+                                  '12px',
+
+                                border:
+                                  '1px solid #E2E8F0',
+
+                                borderRadius:
+                                  '8px'
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display:
+                                    'flex',
+
+                                  alignItems:
+                                    'center',
+
+                                  justifyContent:
+                                    'space-between',
+
+                                  gap:
+                                    '12px'
+                                }}
+                              >
+                                <div>
+                                  <strong>
+                                    Revisão {
+                                      item.revisao
+                                    }
+                                  </strong>
+
+                                  <div
+                                    style={{
+                                      marginTop:
+                                        '4px',
+
+                                      color:
+                                        '#64748B',
+
+                                      fontSize:
+                                        '12px'
+                                    }}
+                                  >
+                                    {
+                                      item.status ||
+                                      'Em elaboração'
+                                    }
+                                  </div>
+
+                                  {
+                                    item.arquivoUrl &&
+                                    (
+                                      <a
+                                        href={
+                                          item.arquivoUrl
+                                        }
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        style={{
+                                          display:
+                                            'inline-block',
+
+                                          marginTop:
+                                            '5px',
+
+                                          color:
+                                            '#0867D7',
+
+                                          fontSize:
+                                            '12px'
+                                        }}
+                                      >
+                                        Abrir arquivo
+                                      </a>
+                                    )
+                                  }
+                                </div>
+
+                                <DocumentoWorkflowCard
+                            revisao={
+                              item
+                            }
+                            processando={
+                              props.processando
+                            }
+                            onEnviarRevisao={
+                              props.onEnviarRevisao
+                            }
+                            onEnviarAprovacao={
+                              props.onEnviarAprovacao
+                            }
+                            onDevolverElaboracao={
+                              props.onDevolverElaboracao
+                            }
+                            onPublicar={
+                              revisaoSelecionada =>
+                                setRevisaoParaPublicar(
+                                  revisaoSelecionada
+                                )
+                            }
+                          />
+                              </div>
+                            </div>
+                          )
+                        )
+                      }
+                    </div>
+
+                    <div
+                      style={{
+                        ...card,
+                        marginTop:
+                          '16px'
+                      }}
+                    >
+                      <strong
                         style={{
-                          marginTop: '12px',
-                          padding: '12px',
-                          border:
-                            '1px solid #e5e7eb',
-                          borderRadius: '8px'
+                          fontSize:
+                            '17px'
                         }}
                       >
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems:
-                              'center',
-                            justifyContent:
-                              'space-between',
-                            gap: '12px'
-                          }}
-                        >
-                          <div>
-                            <strong>
-                              Revisão {
-                                item.revisao
-                              }
-                            </strong>
+                        + Nova revisão
+                      </strong>
 
-                            <div>
-                              {
-                                item
-                                  .requerRetreinamento
-                                  ? 'Exige retreinamento'
-                                  : 'Sem retreinamento'
-                              }
-                            </div>
-                          </div>
+                      <p
+                        style={{
+                          color:
+                            '#64748B',
 
-                          <button
-                            type="button"
-                            disabled={
-                              props
-                                .processandoPublicacao
-                            }
-                            onClick={() =>
-                              setRevisaoParaPublicar(
-                                item
-                              )
-                            }
-                          >
-                            Publicar revisão
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  )}
-                </div>
+                          fontSize:
+                            '12px',
 
-                <div
-                  style={{
-                    marginTop: '16px',
-                    padding: '18px',
-                    border:
-                      '1px solid #e5e7eb',
-                    borderRadius: '12px',
-                    background: '#fff'
-                  }}
-                >
-                  <strong>
-                    Nova revisão
-                  </strong>
+                          lineHeight:
+                            1.5
+                        }}
+                      >
+                        A revisão será criada como rascunho. A decisão sobre retreinamento será realizada somente no momento da publicação.
+                      </p>
 
-                  <input
-                    value={revisao}
-                    placeholder="Ex.: 04"
-                    onChange={
-                      event =>
-                        setRevisao(
-                          event.target.value
-                        )
-                    }
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      boxSizing:
-                        'border-box',
-                      marginTop: '12px',
-                      padding: '10px'
-                    }}
-                  />
+                      <label>
+                        Nova revisão *
+                      </label>
 
-                  <input
-                    value={motivoAlteracao}
-                    placeholder="Motivo da alteração"
-                    onChange={
-                      event =>
-                        setMotivoAlteracao(
-                          event.target.value
-                        )
-                    }
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      boxSizing:
-                        'border-box',
-                      marginTop: '10px',
-                      padding: '10px'
-                    }}
-                  />
-
-                  <textarea
-                    value={
-                      descricaoAlteracoes
-                    }
-                    placeholder="Descrição das alterações"
-                    onChange={
-                      event =>
-                        setDescricaoAlteracoes(
-                          event.target.value
-                        )
-                    }
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      boxSizing:
-                        'border-box',
-                      marginTop: '10px',
-                      padding: '10px',
-                      minHeight: '90px'
-                    }}
-                  />
-
-                  <label
-                    style={{
-                      display: 'block',
-                      marginTop: '12px'
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        requerRetreinamento
-                      }
-                      onChange={
-                        event =>
-                          setRequerRetreinamento(
-                            event.target
-                              .checked
-                          )
-                      }
-                    />{' '}
-                    Esta revisão exige retreinamento
-                  </label>
-
-                  {!requerRetreinamento && (
-                    <textarea
-                      value={justificativa}
-                      placeholder="Justificativa para não exigir retreinamento"
-                      onChange={
-                        event =>
-                          setJustificativa(
-                            event.target.value
-                          )
-                      }
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        boxSizing:
-                          'border-box',
-                        marginTop: '10px',
-                        padding: '10px',
-                        minHeight: '80px'
-                      }}
-                    />
-                  )}
-
-                  <button
-                    type="button"
-                    disabled={
-                      props.processando
-                    }
-                    onClick={() => {
-                      criarRevisao()
-                        .catch(
-                          (
-                            error:
-                              unknown
-                          ) =>
-                            console.error(
-                              error
+                      <input
+                        value={
+                          revisao
+                        }
+                        placeholder="Ex.: Rev.02"
+                        onChange={
+                          event =>
+                            setRevisao(
+                              event.target.value
                             )
-                        );
-                    }}
-                    style={{
-                      marginTop: '12px'
-                    }}
-                  >
-                    {
-                      props.processando
-                        ? 'Salvando...'
-                        : 'Criar revisão'
-                    }
-                  </button>
-                </div>
-              </>
-            )}
+                        }
+                        style={{
+                          ...input,
+                          marginTop:
+                            '6px'
+                        }}
+                      />
+
+                      <div
+                        style={{
+                          height:
+                            '12px'
+                        }}
+                      />
+
+                      <label>
+                        Motivo da alteração *
+                      </label>
+
+                      <input
+                        value={
+                          motivoAlteracao
+                        }
+                        placeholder="Ex.: Atualização do processo operacional"
+                        onChange={
+                          event =>
+                            setMotivoAlteracao(
+                              event.target.value
+                            )
+                        }
+                        style={{
+                          ...input,
+                          marginTop:
+                            '6px'
+                        }}
+                      />
+
+                      <div
+                        style={{
+                          height:
+                            '12px'
+                        }}
+                      />
+
+                      <label>
+                        Descrição das alterações *
+                      </label>
+
+                      <textarea
+                        value={
+                          descricaoAlteracoes
+                        }
+                        placeholder="Descreva claramente o que foi alterado nesta revisão."
+                        onChange={
+                          event =>
+                            setDescricaoAlteracoes(
+                              event.target.value
+                            )
+                        }
+                        style={{
+                          ...input,
+
+                          marginTop:
+                            '6px',
+
+                          minHeight:
+                            '100px',
+
+                          resize:
+                            'vertical'
+                        }}
+                      />
+
+                      <div
+                        style={{
+                          height:
+                            '12px'
+                        }}
+                      />
+
+                      <label>
+                        Arquivo da nova revisão *
+                      </label>
+
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                        onChange={
+                          event => {
+
+                            const item =
+                              event.target.files &&
+                              event.target.files[
+                                0
+                              ];
+
+                            setArquivo(
+                              item ||
+                              undefined
+                            );
+                          }
+                        }
+                        style={{
+                          ...input,
+                          marginTop:
+                            '6px'
+                        }}
+                      />
+
+                      {
+                        arquivo &&
+                        (
+                          <div
+                            style={{
+                              marginTop:
+                                '8px',
+
+                              padding:
+                                '10px',
+
+                              borderRadius:
+                                '8px',
+
+                              background:
+                                '#EFF6FF',
+
+                              color:
+                                '#334155',
+
+                              fontSize:
+                                '12px'
+                            }}
+                          >
+                            Arquivo selecionado: <strong>{
+                              arquivo.name
+                            }</strong>
+                          </div>
+                        )
+                      }
+
+                      <button
+                        type="button"
+                        disabled={
+                          props.processando
+                        }
+                        onClick={() => {
+
+                          criarRevisao()
+                            .catch(
+                              (
+                                error:
+                                  unknown
+                              ) =>
+                                console.error(
+                                  error
+                                )
+                            );
+
+                        }}
+                        style={{
+                          marginTop:
+                            '14px',
+
+                          padding:
+                            '10px 14px',
+
+                          border:
+                            0,
+
+                          borderRadius:
+                            '8px',
+
+                          background:
+                            '#0867D7',
+
+                          color:
+                            '#FFFFFF',
+
+                          fontWeight:
+                            700,
+
+                          cursor:
+                            props.processando
+                              ? 'not-allowed'
+                              : 'pointer'
+                        }}
+                      >
+                        {
+                          props.processando
+                            ? 'Salvando...'
+                            : 'Criar nova revisão'
+                        }
+                      </button>
+                    </div>
+                  </>
+                )
+            }
           </div>
         </div>
 
+        {
+          props.documentoSelecionado &&
+          (
+            <DocumentoTreinamentosCard
+              vinculos={
+                props.vinculosTreinamentos
+              }
+              treinamentos={
+                props.treinamentosDisponiveis
+              }
+              processando={
+                props.processandoTreinamentos
+              }
+              erro={
+                props.erroTreinamentos
+              }
+              onVincular={
+                async (
+                  treinamentoId,
+                  obrigatorio,
+                  ordem,
+                  observacao
+                ) => {
+
+                  if (
+                    !props.documentoSelecionado
+                  ) {
+                    return;
+                  }
+
+                  await props
+                    .onVincularTreinamento(
+                      props.documentoSelecionado.id,
+                      treinamentoId,
+                      obrigatorio,
+                      ordem,
+                      observacao
+                    );
+                }
+              }
+              onDesativar={
+                async relacaoId => {
+
+                  if (
+                    !props.documentoSelecionado
+                  ) {
+                    return;
+                  }
+
+                  await props
+                    .onDesativarTreinamento(
+                      props.documentoSelecionado.id,
+                      relacaoId
+                    );
+                }
+              }
+            />
+          )
+        }
         <PublicarRevisaoModal
           aberto={
             !!revisaoParaPublicar
@@ -596,6 +1081,7 @@ const GestaoDocumentosPage:
           }
           onPublicar={
             async dados => {
+
               const resultado =
                 await props
                   .onPublicarRevisao(
@@ -606,24 +1092,40 @@ const GestaoDocumentosPage:
                 undefined
               );
 
+              if (
+                props.documentoSelecionado
+              ) {
+
+                await props
+                  .onSelecionarDocumento(
+                    props.documentoSelecionado
+                  );
+              }
+
               return resultado;
             }
           }
         />
 
-        {props.resultadoPublicacao && (
-          <ResultadoPublicacaoRevisaoCard
-            resultado={
-              props.resultadoPublicacao
-            }
-            onFechar={
-              props
-                .onLimparResultadoPublicacao
-            }
-          />
-        )}
+        {
+          props.resultadoPublicacao &&
+          (
+            <ResultadoPublicacaoRevisaoCard
+              resultado={
+                props.resultadoPublicacao
+              }
+              onFechar={
+                props
+                  .onLimparResultadoPublicacao
+              }
+            />
+          )
+        }
       </section>
     );
   };
 
 export default GestaoDocumentosPage;
+
+
+

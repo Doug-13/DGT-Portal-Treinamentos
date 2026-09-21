@@ -1,0 +1,178 @@
+import {
+  DataverseService
+} from './DataverseService';
+
+export type StatusFluxoDocumento =
+  | 'Elaboração'
+  | 'Revisão'
+  | 'Aprovação'
+  | 'Vigente';
+
+export class DocumentoWorkflowService {
+
+  private readonly dataverse:
+    DataverseService;
+
+  public constructor(
+    dataverse:
+      DataverseService
+  ) {
+    this.dataverse =
+      dataverse;
+  }
+
+  public async enviarParaRevisao(
+    documentoRevisaoId:
+      string,
+
+    statusAtual:
+      string
+  ): Promise<void> {
+
+    this.validarTransicao(
+      statusAtual,
+      'Revisão'
+    );
+
+    await this.dataverse
+      .alterarStatusDocumentoRevisao(
+        documentoRevisaoId,
+        'Revisão'
+      );
+  }
+
+  public async enviarParaAprovacao(
+    documentoRevisaoId:
+      string,
+
+    statusAtual:
+      string
+  ): Promise<void> {
+
+    this.validarTransicao(
+      statusAtual,
+      'Aprovação'
+    );
+
+    await this.dataverse
+      .alterarStatusDocumentoRevisao(
+        documentoRevisaoId,
+        'Aprovação'
+      );
+  }
+
+  public async devolverParaElaboracao(
+    documentoRevisaoId:
+      string,
+
+    statusAtual:
+      string
+  ): Promise<void> {
+
+    this.validarTransicao(
+      statusAtual,
+      'Elaboração'
+    );
+
+    await this.dataverse
+      .alterarStatusDocumentoRevisao(
+        documentoRevisaoId,
+        'Elaboração'
+      );
+  }
+
+  public podePublicar(
+    statusAtual:
+      string
+  ): boolean {
+
+    return this.normalizar(
+      statusAtual
+    ) ===
+      this.normalizar(
+        'Aprovação'
+      );
+  }
+
+  private validarTransicao(
+    statusAtual:
+      string,
+
+    statusDestino:
+      StatusFluxoDocumento
+  ): void {
+
+    const atual =
+      this.normalizar(
+        statusAtual
+      );
+
+    const destino =
+      this.normalizar(
+        statusDestino
+      );
+
+    const permitidas:
+      Record<
+        string,
+        string[]
+      > = {
+
+      elaboracao:
+        [
+          'revisao'
+        ],
+
+      revisao:
+        [
+          'elaboracao',
+          'aprovacao'
+        ],
+
+      aprovacao:
+        [
+          'revisao'
+        ],
+
+      vigente:
+        []
+    };
+
+    const destinos =
+      permitidas[
+        atual
+      ] ||
+      [];
+
+    if (
+      destinos.indexOf(
+        destino
+      ) < 0
+    ) {
+      throw new Error(
+        `Transição inválida: ${statusAtual || 'Sem status'} → ${statusDestino}.`
+      );
+    }
+  }
+
+  private normalizar(
+    valor:
+      string
+  ): string {
+
+    return (
+      valor ||
+      ''
+    )
+      .toLowerCase()
+      .normalize(
+        'NFD'
+      )
+      .replace(
+        /[̀-ͯ]/g,
+        ''
+      )
+      .trim();
+  }
+}
+

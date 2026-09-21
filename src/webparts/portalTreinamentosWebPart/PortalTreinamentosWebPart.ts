@@ -3,7 +3,7 @@ import * as ReactDom from 'react-dom';
 
 import { Version } from '@microsoft/sp-core-library';
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
-import { AadHttpClient } from '@microsoft/sp-http';
+import { AadHttpClient, MSGraphClientV3 } from '@microsoft/sp-http';
 
 import PortalTreinamentos from './components/PortalTreinamentos';
 import { IPortalTreinamentosProps } from './components/IPortalTreinamentosProps';
@@ -39,6 +39,13 @@ export default class PortalTreinamentosWebPart
           dataverseResource
         );
 
+      const graphClient:
+        MSGraphClientV3 =
+        await this.context
+          .msGraphClientFactory
+          .getClient(
+            '3'
+          );
       const element: React.ReactElement<IPortalTreinamentosProps> =
         React.createElement(
           PortalTreinamentos,
@@ -46,8 +53,10 @@ export default class PortalTreinamentosWebPart
             userName: this.context.pageContext.user.displayName,
             userEmail: this.context.pageContext.user.email,
             siteUrl: this.context.pageContext.web.absoluteUrl,
+            spHttpClient: this.context.spHttpClient,
             dataverseClient,
-            dataverseApiUrl
+            dataverseApiUrl,
+            graphClient
           }
         );
 
@@ -90,3 +99,6 @@ export default class PortalTreinamentosWebPart
     return Version.parse('1.0');
   }
 }
+
+
+

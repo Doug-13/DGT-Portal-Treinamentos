@@ -4,6 +4,8 @@ import {
 
 export interface IPublicarRevisao {
   documentoRevisaoId: string;
+  requerRetreinamento: boolean;
+  justificativa: string;
   dataVigencia?: string;
   dataLimite?: string;
 }
@@ -47,6 +49,38 @@ export class RevisaoDocumentoAdminService {
       );
     }
 
+    if (
+      !dados.requerRetreinamento &&
+      !dados.justificativa.trim()
+    ) {
+      throw new Error(
+        'Informe a justificativa para publicar sem retreinamento.'
+      );
+    }
+
+    if (
+      dados.requerRetreinamento &&
+      !dados.dataLimite
+    ) {
+      throw new Error(
+        'Informe o prazo para conclusão do retreinamento.'
+      );
+    }
+
+    await this.dataverse
+      .atualizarDocumentoRevisao(
+        dados.documentoRevisaoId,
+        {
+          dgt_requerretreinamento:
+            dados.requerRetreinamento,
+
+          dgt_justificativa:
+            dados.requerRetreinamento
+              ? ''
+              : dados.justificativa.trim()
+        }
+      );
+
     const resposta =
       await this.dataverse
         .processarRevisaoDocumento({
@@ -66,3 +100,4 @@ export class RevisaoDocumentoAdminService {
       IResultadoPublicacaoRevisao;
   }
 }
+
