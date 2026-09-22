@@ -33,3 +33,7 @@ obj
 
 # Resx Generated Code
 *.resx.ts
+
+
+backup-*/
+*.bak-*
