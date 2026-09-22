@@ -1,4 +1,3 @@
-
 :global {
   .CanvasZone,
   .CanvasZone > div,
@@ -227,8 +226,16 @@
 }
 
 .heroIcon {
-  font-size: 54px;
-  line-height: 1;
+  width: 58px;
+  height: 58px;
+  min-width: 58px;
+  border-radius: 14px;
+  background: #202A44;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(9,46,80,.18);
 }
 
 .heroText h1 {

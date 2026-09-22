@@ -10,10 +10,17 @@ import {
   podeAcessarRota
 } from './RoutePermissionService';
 
+import {
+  IconeChave
+} from '../components/common/Icones';
+
 export interface IItemMenuTreinamento {
   pagina: Pagina;
   label: string;
-  icon: string;
+  // Chave de um ícone SVG (ver components/common/Icones.tsx),
+  // não mais um caractere Unicode — glifos como ⌂ ▰ ◷ ♟ dependem
+  // da fonte carregada e ficam invisíveis/monocromáticos.
+  icon: IconeChave;
 }
 
 const todosItens:
@@ -21,42 +28,42 @@ const todosItens:
     {
       pagina: 'treinamentosVisaoGeral',
       label: 'Visão geral',
-      icon: '⌂'
+      icon: 'home'
     },
     {
       pagina: 'treinamentos',
       label: 'Meus treinamentos',
-      icon: '▶'
+      icon: 'play'
     },
     {
       pagina: 'trilhas',
       label: 'Trilhas',
-      icon: '▰'
+      icon: 'layers'
     },
     {
       pagina: 'historico',
       label: 'Histórico',
-      icon: '◷'
+      icon: 'clock'
     },
     {
       pagina: 'certificados',
       label: 'Certificados',
-      icon: '▣'
+      icon: 'award'
     },
     {
       pagina: 'equipe',
       label: 'Minha equipe',
-      icon: '♟'
+      icon: 'users'
     },
     {
       pagina: 'gestaoConformidade',
       label: 'Conformidade',
-      icon: '◉'
+      icon: 'checkCircle'
     },
     {
       pagina: 'gestao',
       label: 'Gestão',
-      icon: '⚙'
+      icon: 'settings'
     }
   ];
 

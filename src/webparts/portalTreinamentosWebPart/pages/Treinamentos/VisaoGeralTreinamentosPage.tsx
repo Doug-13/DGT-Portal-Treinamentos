@@ -20,6 +20,12 @@ import ErrorMessage from
 import TreinamentoCard from
   '../../components/treinamentos/TreinamentoCard';
 
+import {
+  Icones,
+  IconeChave
+} from
+  '../../components/common/Icones';
+
 export interface IVisaoGeralTreinamentosPageProps {
 
   primeiroNome?:
@@ -216,7 +222,15 @@ const VisaoGeralTreinamentosPage:
       )
         .trim();
 
-    const resumo = [
+    const resumo:
+      Array<{
+        titulo: string;
+        valor: number;
+        icone: IconeChave;
+        fundo: string;
+        corIcone: string;
+        detalhe: string;
+      }> = [
       {
         titulo:
           'Concluídos',
@@ -225,10 +239,13 @@ const VisaoGeralTreinamentosPage:
           concluidos.length,
 
         icone:
-          '🎓',
+          'graduationCap',
 
         fundo:
           '#E8F8F1',
+
+        corIcone:
+          '#15803D',
 
         detalhe:
           ''
@@ -241,10 +258,13 @@ const VisaoGeralTreinamentosPage:
           emAndamento.length,
 
         icone:
-          '▶',
+          'play',
 
         fundo:
           '#FFF3DE',
+
+        corIcone:
+          '#C2760C',
 
         detalhe:
           ''
@@ -257,10 +277,13 @@ const VisaoGeralTreinamentosPage:
           pendentes.length,
 
         icone:
-          '◷',
+          'hourglass',
 
         fundo:
           '#FFE9EE',
+
+        corIcone:
+          '#C0392B',
 
         detalhe:
           'prazo próximo'
@@ -273,10 +296,13 @@ const VisaoGeralTreinamentosPage:
           vencidos.length,
 
         icone:
-          '▣',
+          'alertTriangle',
 
         fundo:
           '#EAF4FF',
+
+        corIcone:
+          '#1D4ED8',
 
         detalhe:
           'requer atenção'
@@ -289,10 +315,13 @@ const VisaoGeralTreinamentosPage:
           props.quantidadeTrilhas,
 
         icone:
-          '▰',
+          'layers',
 
         fundo:
           '#F0ECFF',
+
+        corIcone:
+          '#6D5BD0',
 
         detalhe:
           'inscritas'
@@ -424,7 +453,12 @@ const VisaoGeralTreinamentosPage:
         >
           {
             resumo.map(
-              item => (
+              item => {
+
+                const IconeItem =
+                  Icones[item.icone];
+
+                return (
                 <div
                   key={
                     item.titulo
@@ -479,15 +513,13 @@ const VisaoGeralTreinamentosPage:
                         '10px',
 
                       background:
-                        'rgba(255,255,255,.62)',
+                        'rgba(255,255,255,.72)',
 
-                      fontSize:
-                        '24px'
+                      color:
+                        item.corIcone
                     }}
                   >
-                    {
-                      item.icone
-                    }
+                    <IconeItem />
                   </div>
 
                   <div>
@@ -548,7 +580,8 @@ const VisaoGeralTreinamentosPage:
                     }
                   </div>
                 </div>
-              )
+                );
+              }
             )
           }
         </div>
@@ -1625,4 +1658,3 @@ const VisaoGeralTreinamentosPage:
   };
 
 export default VisaoGeralTreinamentosPage;
-

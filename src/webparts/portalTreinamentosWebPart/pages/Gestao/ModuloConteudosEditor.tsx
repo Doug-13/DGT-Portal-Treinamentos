@@ -10,6 +10,12 @@ import {
 
 export interface IModuloConteudosEditorProps {
 
+  // Modo em que o editor deve abrir: 'preview' (somente visualização,
+  // como o colaborador verá) ou 'edicao' (lista administrativa, com
+  // botões de adicionar/editar/mover). Padrão: 'edicao'.
+  modoInicial?:
+    'edicao' | 'preview';
+
   moduloId:
     string;
 
@@ -332,6 +338,21 @@ const ModuloConteudosEditor:
     ] =
       React.useState('');
 
+    const [
+      revisandoConteudo,
+      setRevisandoConteudo
+    ] =
+      React.useState(false);
+
+    const [
+      modoPreview,
+      setModoPreview
+    ] =
+      React.useState(
+        props.modoInicial ===
+          'preview'
+      );
+
     const precisaTexto =
       tipo ===
         'Texto' ||
@@ -394,6 +415,7 @@ const ModuloConteudosEditor:
         );
 
         setErroLocal('');
+        setRevisandoConteudo(false);
 
         setFormulario(
           true
@@ -459,14 +481,15 @@ const ModuloConteudosEditor:
         );
 
         setErroLocal('');
+        setRevisandoConteudo(false);
 
         setFormulario(
           true
         );
       };
 
-    const salvar =
-      async (): Promise<void> => {
+    const validarFormularioConteudo =
+      (): boolean => {
 
         setErroLocal('');
 
@@ -486,7 +509,7 @@ const ModuloConteudosEditor:
             'Informe uma ordem válida.'
           );
 
-          return;
+          return false;
         }
 
         if (
@@ -497,7 +520,7 @@ const ModuloConteudosEditor:
             'Informe o texto do conteúdo.'
           );
 
-          return;
+          return false;
         }
 
         if (
@@ -508,8 +531,61 @@ const ModuloConteudosEditor:
             'Informe a URL do conteúdo.'
           );
 
+          return false;
+        }
+
+        if (
+          tipo ===
+            'Cards' &&
+          cards.some(
+            card =>
+              !card.titulo.trim() ||
+              !card.descricao.trim()
+          )
+        ) {
+          setErroLocal(
+            'Preencha título e descrição de todos os cards.'
+          );
+
+          return false;
+        }
+
+        return true;
+      };
+
+    // Passo 1: valida e abre a revisão. Nada é gravado ainda.
+    const abrirRevisaoConteudo =
+      (): void => {
+
+        if (
+          !validarFormularioConteudo()
+        ) {
           return;
         }
+
+        setRevisandoConteudo(
+          true
+        );
+      };
+
+    // Passo 2: chamado a partir da revisão — só então o bloco de
+    // conteúdo é efetivamente criado/atualizado no Dataverse.
+    const salvar =
+      async (): Promise<void> => {
+
+        if (
+          !validarFormularioConteudo()
+        ) {
+          setRevisandoConteudo(
+            false
+          );
+          return;
+        }
+
+        const ordemNumero =
+          Number(
+            ordem
+          );
 
         try {
 
@@ -567,7 +643,17 @@ const ModuloConteudosEditor:
             false
           );
 
+          setRevisandoConteudo(
+            false
+          );
+
         } catch (e) {
+
+          // Volta para a edição (não a revisão) para mostrar o erro
+          // junto dos campos.
+          setRevisandoConteudo(
+            false
+          );
 
           setErroLocal(
             e instanceof Error
@@ -636,6 +722,180 @@ const ModuloConteudosEditor:
               'URL não informada'
             }
           </span>
+        );
+      };
+
+    // Renderiza o bloco como ele vai aparecer de fato para o
+    // colaborador (não a visão compacta de administração).
+    const renderPreviewItem =
+      (
+        item:
+          IModuloConteudoAdmin
+      ): React.ReactNode => {
+
+        const cardStyle:
+          React.CSSProperties = {
+          border: '1px solid #E2E8F0',
+          borderRadius: '12px',
+          padding: '18px',
+          marginBottom: '14px',
+          background: '#FFFFFF',
+          opacity: item.ativo ? 1 : 0.5
+        };
+
+        const badgeInativo =
+          !item.ativo && (
+            <span
+              style={{
+                display: 'inline-block',
+                marginBottom: '8px',
+                padding: '2px 8px',
+                fontSize: '11px',
+                fontWeight: 700,
+                color: '#A4262C',
+                background: '#FDE7E9',
+                borderRadius: '999px'
+              }}
+            >
+              Inativo — não aparece para o colaborador
+            </span>
+          );
+
+        if (item.tipo === 'Cards') {
+          const quantidade = item.cards?.length || 0;
+          return (
+            <div key={item.id} style={cardStyle}>
+              {badgeInativo}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${Math.max(quantidade, 1)}, 1fr)`,
+                  gap: '12px'
+                }}
+              >
+                {(item.cards || []).map((card, indice) => (
+                  <div
+                    key={indice}
+                    style={{
+                      border: '1px solid #CFE0F0',
+                      borderRadius: '10px',
+                      padding: '14px',
+                      background: '#F7FBFF'
+                    }}
+                  >
+                    <strong style={{ display: 'block', color: '#0B2D4D', marginBottom: '6px' }}>
+                      {card.titulo || '—'}
+                    </strong>
+                    <span style={{ fontSize: '13px', color: '#334155' }}>
+                      {card.descricao || '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        if (item.tipo === 'Destaque') {
+          return (
+            <div
+              key={item.id}
+              style={{
+                ...cardStyle,
+                background: '#FFF8E6',
+                border: '1px solid #F2C94C'
+              }}
+            >
+              {badgeInativo}
+              {item.titulo && (
+                <strong style={{ display: 'block', marginBottom: '6px', color: '#6A4B00' }}>
+                  ⚠ {item.titulo}
+                </strong>
+              )}
+              <span style={{ whiteSpace: 'pre-wrap', color: '#6A4B00' }}>
+                {item.conteudo || '—'}
+              </span>
+            </div>
+          );
+        }
+
+        if (item.tipo === 'Texto') {
+          return (
+            <div key={item.id} style={cardStyle}>
+              {badgeInativo}
+              {item.titulo && (
+                <strong style={{ display: 'block', marginBottom: '8px', color: '#0B2D4D', fontSize: '17px' }}>
+                  {item.titulo}
+                </strong>
+              )}
+              {item.conteudo ? (
+                // O conteúdo é HTML (o mesmo formato usado na execução real
+                // do treinamento) — renderiza de fato, em vez de mostrar as tags.
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: item.conteudo
+                  }}
+                  style={{ color: '#334155', lineHeight: 1.7, fontSize: '15px' }}
+                />
+              ) : (
+                <span style={{ color: '#94A3B8' }}>—</span>
+              )}
+            </div>
+          );
+        }
+
+        if (item.tipo === 'Pergunta rápida') {
+          return (
+            <div key={item.id} style={cardStyle}>
+              {badgeInativo}
+              <strong style={{ display: 'block', marginBottom: '10px', color: '#0B2D4D' }}>
+                ❓ {item.titulo || 'Pergunta rápida'}
+              </strong>
+              <span style={{ fontSize: '13px', color: '#64748B' }}>
+                O conteúdo desta pergunta é gerenciado separadamente (pergunta e alternativas).
+              </span>
+            </div>
+          );
+        }
+
+        // Vídeo, Material, Link, Imagem
+        const rotulo:
+          Record<string, string> = {
+          'Vídeo': '▶ Abrir vídeo',
+          'Video': '▶ Abrir vídeo',
+          'Material': '▤ Baixar material',
+          'Link': '↗ Abrir link',
+          'Imagem': '▧ Ver imagem'
+        };
+
+        return (
+          <div key={item.id} style={cardStyle}>
+            {badgeInativo}
+            {item.titulo && (
+              <strong style={{ display: 'block', marginBottom: '8px', color: '#0B2D4D' }}>
+                {item.titulo}
+              </strong>
+            )}
+            {item.tipo === 'Imagem' && item.url && (
+              <img
+                src={item.url}
+                alt={item.titulo || 'Imagem do conteúdo'}
+                style={{ maxWidth: '100%', borderRadius: '8px', marginBottom: '10px', display: 'block' }}
+              />
+            )}
+            {item.url ? (
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ ...secondary, textDecoration: 'none', display: 'inline-block' }}
+              >
+                {rotulo[item.tipo] || 'Abrir'}
+              </a>
+            ) : (
+              <span style={{ color: '#A4262C', fontSize: '13px' }}>URL não informada</span>
+            )}
+          </div>
         );
       };
 
@@ -732,17 +992,27 @@ const ModuloConteudosEditor:
 
           </div>
 
-          <button
-            type="button"
-            onClick={
-              props.onFechar
-            }
-            style={
-              secondary
-            }
-          >
-            Fechar conteúdo
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setModoPreview(!modoPreview)}
+              style={modoPreview ? primary : secondary}
+            >
+              {modoPreview ? '✎ Voltar para edição' : '👁 Pré-visualizar módulo'}
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                props.onFechar
+              }
+              style={
+                secondary
+              }
+            >
+              Fechar conteúdo
+            </button>
+          </div>
 
         </div>
 
@@ -876,6 +1146,42 @@ const ModuloConteudosEditor:
                 }}
               >
                 Carregando conteúdos...
+              </div>
+            )
+            : modoPreview
+            ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '4px',
+                  padding: '16px',
+                  background: '#F1F5F9',
+                  borderRadius: '12px'
+                }}
+              >
+                <span style={{ fontSize: '12px', color: '#64748B', marginBottom: '8px' }}>
+                  Assim o colaborador verá este módulo:
+                </span>
+
+                {props.conteudos.length === 0 && (
+                  <div
+                    style={{
+                      padding: '28px',
+                      border: '1px dashed #B8C9D9',
+                      borderRadius: '10px',
+                      textAlign: 'center',
+                      color: '#64748B',
+                      background: '#FFFFFF'
+                    }}
+                  >
+                    Este módulo ainda não possui conteúdo.
+                  </div>
+                )}
+
+                {props.conteudos
+                  .slice()
+                  .sort((a, b) => a.ordem - b.ordem)
+                  .map(item => renderPreviewItem(item))}
               </div>
             )
             : (
@@ -1262,6 +1568,9 @@ const ModuloConteudosEditor:
                     </div>
                   )
                 }
+
+                {!revisandoConteudo && (
+                <>
 
                 <label>
                   Tipo
@@ -1848,6 +2157,99 @@ const ModuloConteudosEditor:
 
                 </div>
 
+                </>
+                )}
+
+                {revisandoConteudo && (
+                  <div
+                    style={{
+                      padding: '14px 16px',
+                      background: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: '10px',
+                      color: '#0B2D4D'
+                    }}
+                  >
+                    <strong style={{ display: 'block', marginBottom: '10px' }}>
+                      Confira antes de salvar
+                    </strong>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', rowGap: '8px', fontSize: '14px' }}>
+                      <span style={{ color: '#64748B' }}>Tipo</span>
+                      <span>{tipo}</span>
+
+                      <span style={{ color: '#64748B' }}>Título</span>
+                      <span>{titulo.trim() || '—'}</span>
+
+                      <span style={{ color: '#64748B' }}>Ordem</span>
+                      <span>{ordem}</span>
+
+                      <span style={{ color: '#64748B' }}>Obrigatório</span>
+                      <span>{obrigatorio ? 'Sim' : 'Não'}</span>
+
+                      <span style={{ color: '#64748B' }}>Ativo</span>
+                      <span>{ativo ? 'Sim' : 'Não'}</span>
+                    </div>
+
+                    {precisaTexto && (
+                      <>
+                        <div style={{ height: '10px' }} />
+                        <span style={{ color: '#64748B', fontSize: '13px' }}>Texto</span>
+                        <div
+                          style={{
+                            marginTop: '4px',
+                            padding: '10px',
+                            background: '#FFFFFF',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '8px',
+                            fontSize: '14px',
+                            whiteSpace: 'pre-wrap'
+                          }}
+                        >
+                          {conteudo.trim() || '—'}
+                        </div>
+                      </>
+                    )}
+
+                    {precisaUrl && (
+                      <>
+                        <div style={{ height: '10px' }} />
+                        <span style={{ color: '#64748B', fontSize: '13px' }}>URL</span>
+                        <div style={{ marginTop: '4px', fontSize: '14px', wordBreak: 'break-all' }}>
+                          {url.trim() || '—'}
+                        </div>
+                      </>
+                    )}
+
+                    {tipo === 'Cards' && (
+                      <>
+                        <div style={{ height: '10px' }} />
+                        <span style={{ color: '#64748B', fontSize: '13px' }}>Cards</span>
+                        {cards.map((card, indiceCard) => (
+                          <div
+                            key={indiceCard}
+                            style={{
+                              marginTop: '6px',
+                              padding: '8px 10px',
+                              background: '#FFFFFF',
+                              border: '1px solid #E2E8F0',
+                              borderRadius: '8px'
+                            }}
+                          >
+                            <strong style={{ fontSize: '13px' }}>{card.titulo || '—'}</strong>
+                            <div style={{ fontSize: '13px', color: '#334155' }}>{card.descricao || '—'}</div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    <p style={{ marginTop: '12px', marginBottom: 0, fontSize: '13px', color: '#64748B', lineHeight: 1.5 }}>
+                      Nada foi salvo ainda. Se algo estiver errado, clique em
+                      &quot;Voltar e editar&quot;.
+                    </p>
+                  </div>
+                )}
+
                 <div
                   style={{
                     display:
@@ -1866,16 +2268,20 @@ const ModuloConteudosEditor:
 
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      if (revisandoConteudo) {
+                        setRevisandoConteudo(false);
+                        return;
+                      }
                       setFormulario(
                         false
-                      )
-                    }
+                      );
+                    }}
                     style={
                       secondary
                     }
                   >
-                    Cancelar
+                    {revisandoConteudo ? 'Voltar e editar' : 'Cancelar'}
                   </button>
 
                   <button
@@ -1884,6 +2290,11 @@ const ModuloConteudosEditor:
                       props.processando
                     }
                     onClick={() => {
+
+                      if (!revisandoConteudo) {
+                        abrirRevisaoConteudo();
+                        return;
+                      }
 
                       salvar()
                         .catch(
@@ -1901,9 +2312,9 @@ const ModuloConteudosEditor:
                     }
                   >
                     {
-                      props.processando
-                        ? 'Salvando...'
-                        : 'Salvar conteúdo'
+                      revisandoConteudo
+                        ? (props.processando ? 'Salvando...' : 'Confirmar e salvar conteúdo')
+                        : 'Revisar antes de salvar'
                     }
                   </button>
 
@@ -1920,5 +2331,3 @@ const ModuloConteudosEditor:
   };
 
 export default ModuloConteudosEditor;
-
-

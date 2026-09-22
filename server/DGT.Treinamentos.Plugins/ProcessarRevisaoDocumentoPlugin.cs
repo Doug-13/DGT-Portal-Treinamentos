@@ -645,19 +645,125 @@ namespace DGT.Treinamentos.Plugins
             string targetLogicalName,
             Guid targetId)
         {
-            if (ObterAtributo(
+            var metadata =
+                ObterAtributo(
                     service,
                     entity.LogicalName,
                     atributo)
-                is LookupAttributeMetadata)
+                as LookupAttributeMetadata;
+
+            if (metadata == null)
+            {
+                return;
+            }
+
+            var targets =
+                metadata.Targets ??
+                new string[0];
+
+            // Respeita o alvo real do lookup no Dataverse.
+            // O mesmo GUID NAO identifica registros de systemuser e dgt_usuario.
+            if (targets.Contains(
+                    targetLogicalName,
+                    StringComparer.OrdinalIgnoreCase))
             {
                 entity[atributo] =
                     new EntityReference(
                         targetLogicalName,
                         targetId);
+
+                return;
             }
+
+            if (string.Equals(
+                    targetLogicalName,
+                    "systemuser",
+                    StringComparison.OrdinalIgnoreCase) &&
+                targets.Contains(
+                    "dgt_usuario",
+                    StringComparer.OrdinalIgnoreCase))
+            {
+                var usuarioInternoId =
+                    ResolverUsuarioInternoPorEmail(
+                        service,
+                        targetId);
+
+                entity[atributo] =
+                    new EntityReference(
+                        "dgt_usuario",
+                        usuarioInternoId);
+
+                return;
+            }
+
+            throw new InvalidPluginExecutionException(
+                "O lookup " +
+                entity.LogicalName +
+                "." +
+                atributo +
+                " não aceita " +
+                targetLogicalName +
+                ". Alvos permitidos: " +
+                string.Join(", ", targets) +
+                ".");
         }
 
+        private static Guid ResolverUsuarioInternoPorEmail(
+            IOrganizationService service,
+            Guid systemUserId)
+        {
+            // Procura o cadastro interno pelo email, nunca pelo systemuserid.
+            var usuarioSistema =
+                service.Retrieve(
+                    "systemuser",
+                    systemUserId,
+                    new ColumnSet("internalemailaddress"));
+
+            var email =
+                usuarioSistema.GetAttributeValue<string>(
+                    "internalemailaddress");
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                throw new InvalidPluginExecutionException(
+                    "O usuário de execução não possui e-mail cadastrado no Dataverse.");
+            }
+
+            var consulta =
+                new QueryExpression("dgt_usuario")
+                {
+                    ColumnSet =
+                        new ColumnSet("dgt_usuarioid"),
+                    TopCount = 2
+                };
+
+            consulta.Criteria.AddCondition(
+                "dgt_email",
+                ConditionOperator.Equal,
+                email.Trim());
+
+            var correspondentes =
+                service.RetrieveMultiple(consulta)
+                    .Entities;
+
+            if (correspondentes.Count == 0)
+            {
+                throw new InvalidPluginExecutionException(
+                    "Não existe cadastro na tabela dgt_usuario para o e-mail " +
+                    email +
+                    ". Cadastre ou sincronize o usuário antes de publicar a revisão.");
+            }
+
+            if (correspondentes.Count > 1)
+            {
+                throw new InvalidPluginExecutionException(
+                    "Há mais de um registro dgt_usuario com o e-mail " +
+                    email +
+                    ". Corrija as duplicidades antes de publicar a revisão.");
+            }
+
+            return correspondentes[0].Id;
+        }
         private static void TrySetOpcaoPorRotulo(
             IOrganizationService service,
             Entity entity,

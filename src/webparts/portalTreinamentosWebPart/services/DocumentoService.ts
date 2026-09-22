@@ -210,6 +210,14 @@ export class DocumentoService {
           categoria:
             tipo || '-',
 
+          areaId:
+            this.guid(
+              this.texto(
+                registro,
+                '_dgt_area_value'
+              )
+            ),
+
           tipo:
             tipo || '-',
 
@@ -403,8 +411,14 @@ export class DocumentoService {
               'dgt_justificativa'
             ),
 
+          // Importante: NÃO usar "-" aqui. Este campo alimenta o
+          // fluxo de aprovação (DocumentoWorkflowService), que trata
+          // status vazio como "Elaboração" — um "-" literal quebra
+          // essa lógica (não é reconhecido como vazio nem como um
+          // status válido). O traço de exibição é responsabilidade
+          // de quem renderiza a tela, não deste serviço.
           status:
-            status || '-',
+            status || '',
 
           ativa:
             this.booleano(

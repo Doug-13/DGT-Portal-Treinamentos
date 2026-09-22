@@ -125,7 +125,13 @@ const cores = {
     '#B42318',
 
   vermelhoClaro:
-    '#FDECEC'
+    '#FDECEC',
+
+  ambar:
+    '#B45309',
+
+  ambarClaro:
+    '#FFF4E5'
 };
 
 const inputStyle:
@@ -303,6 +309,17 @@ const badgeInativo:
     cores.vermelho
 };
 
+const badgeAlerta:
+  React.CSSProperties = {
+  ...badgeAtivo,
+
+  background:
+    cores.ambarClaro,
+
+  color:
+    cores.ambar
+};
+
 const badgeSemArea:
   React.CSSProperties = {
   ...badgeAtivo,
@@ -471,6 +488,52 @@ const GestaoAreasPage:
         [
           areas,
           pesquisa
+        ]
+      );
+
+    // Gestores ativos por área — usado para mostrar quem é o
+    // responsável (aprovador de documentos) e para alertar quando
+    // uma área ficou com mais de um Gestor (ou nenhum) por engano.
+    const gestoresPorArea =
+      React.useMemo(
+        () => {
+
+          const mapa =
+            new Map<
+              string,
+              IUsuarioAreaAdmin[]
+            >();
+
+          usuariosAreas
+            .filter(
+              vinculo =>
+                vinculo.perfil === 'Gestor' &&
+                vinculo.ativo
+            )
+            .forEach(
+              vinculo => {
+
+                const lista =
+                  mapa.get(
+                    vinculo.areaId
+                  ) ||
+                  [];
+
+                lista.push(
+                  vinculo
+                );
+
+                mapa.set(
+                  vinculo.areaId,
+                  lista
+                );
+              }
+            );
+
+          return mapa;
+        },
+        [
+          usuariosAreas
         ]
       );
 
@@ -1078,6 +1141,52 @@ const GestaoAreasPage:
 
         </div>
 
+        {
+          (() => {
+
+            const areasComMultiplosGestores =
+              areas.filter(
+                area =>
+                  (gestoresPorArea.get(area.id) || []).length > 1
+              );
+
+            if (
+              areasComMultiplosGestores.length === 0
+            ) {
+              return null;
+            }
+
+            return (
+              <div
+                style={{
+                  marginBottom: '18px',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  background: cores.ambarClaro,
+                  color: cores.ambar,
+                  fontSize: '13px',
+                  lineHeight: 1.5
+                }}
+              >
+                <strong>⚠ Atenção:</strong> {areasComMultiplosGestores.length === 1
+                  ? 'a área abaixo possui mais de um Gestor ativo'
+                  : `${areasComMultiplosGestores.length} áreas abaixo possuem mais de um Gestor ativo`}.
+                {' '}
+                Isso é normal durante uma transição de cargo, mas confira se não sobrou um vínculo antigo
+                — o Gestor da área é quem aprova os documentos dela.
+                {' '}
+                <strong>
+                  {
+                    areasComMultiplosGestores
+                      .map(a => a.nome)
+                      .join(', ')
+                  }
+                </strong>
+              </div>
+            );
+          })()
+        }
+
         <div
           style={{
             display:
@@ -1335,6 +1444,10 @@ const GestaoAreasPage:
                   </th>
 
                   <th style={th}>
+                    Gestor
+                  </th>
+
+                  <th style={th}>
                     Ações
                   </th>
                 </tr>
@@ -1349,7 +1462,7 @@ const GestaoAreasPage:
                   <tr>
                     <td
                       colSpan={
-                        4
+                        5
                       }
                       style={{
                         ...td,
@@ -1404,6 +1517,68 @@ const GestaoAreasPage:
                                 : 'Inativa'
                             }
                           </span>
+                        </td>
+
+                        <td style={td}>
+                          {
+                            (() => {
+
+                              const gestores =
+                                gestoresPorArea.get(
+                                  area.id
+                                ) ||
+                                [];
+
+                              if (
+                                gestores.length === 0
+                              ) {
+                                return (
+                                  <span style={badgeInativo}>
+                                    Sem gestor
+                                  </span>
+                                );
+                              }
+
+                              if (
+                                gestores.length === 1
+                              ) {
+                                return (
+                                  <span style={{ color: cores.texto, fontSize: '13px' }}>
+                                    {gestores[0].usuarioNome}
+                                  </span>
+                                );
+                              }
+
+                              return (
+                                <div>
+                                  <span
+                                    style={badgeAlerta}
+                                    title={
+                                      gestores
+                                        .map(g => g.usuarioNome)
+                                        .join(', ')
+                                    }
+                                  >
+                                    ⚠ {gestores.length} gestores
+                                  </span>
+                                  <div
+                                    style={{
+                                      marginTop: '4px',
+                                      fontSize: '11px',
+                                      color: cores.textoSecundario,
+                                      lineHeight: 1.4
+                                    }}
+                                  >
+                                    {
+                                      gestores
+                                        .map(g => g.usuarioNome)
+                                        .join(', ')
+                                    }
+                                  </div>
+                                </div>
+                              );
+                            })()
+                          }
                         </td>
 
                         <td style={td}>

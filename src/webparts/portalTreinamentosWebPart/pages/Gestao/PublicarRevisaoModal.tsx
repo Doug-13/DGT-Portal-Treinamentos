@@ -15,6 +15,12 @@ export interface IPublicarRevisaoModalProps {
   revisao:
     string;
 
+  // Rev.00 (criação inicial do documento): ainda não existe nenhum
+  // treinamento vinculado para retreinar, então a pergunta não faz
+  // sentido — publica direto, sem perguntar.
+  ehPrimeiraRevisao?:
+    boolean;
+
   requerRetreinamento?:
     boolean;
 
@@ -57,6 +63,7 @@ const PublicarRevisaoModal:
     aberto,
     documentoRevisaoId,
     revisao,
+    ehPrimeiraRevisao,
     processando,
     onCancelar,
     onPublicar
@@ -121,6 +128,35 @@ const PublicarRevisaoModal:
       async (): Promise<void> => {
 
         setErroLocal('');
+
+        // Rev.00 (criação inicial): ainda não há treinamento vinculado
+        // para retreinar, então publica direto com esses valores fixos.
+        if (
+          ehPrimeiraRevisao
+        ) {
+
+          await onPublicar({
+            documentoRevisaoId,
+
+            requerRetreinamento:
+              false,
+
+            justificativa:
+              'Criação inicial do documento — ainda não há treinamentos vinculados.',
+
+            dataVigencia:
+              dataVigencia
+                ? new Date(
+                  `${dataVigencia}T12:00:00`
+                ).toISOString()
+                : '',
+
+            dataLimite:
+              ''
+          });
+
+          return;
+        }
 
         if (
           requerRetreinamento ===
@@ -319,6 +355,31 @@ const PublicarRevisaoModal:
             }}
           />
 
+          {
+            ehPrimeiraRevisao &&
+            (
+              <div
+                style={{
+                  marginTop: '20px',
+                  padding: '14px 16px',
+                  border: '1px solid #D9E4EF',
+                  borderRadius: '12px',
+                  background: '#F8FBFE',
+                  color: '#0A2845',
+                  fontSize: '13px',
+                  lineHeight: 1.5
+                }}
+              >
+                Esta é a primeira revisão do documento — ainda não há
+                treinamentos vinculados a ele, então não se aplica
+                pergunta de retreinamento.
+              </div>
+            )
+          }
+
+          {
+            !ehPrimeiraRevisao &&
+            (
           <div
             style={{
               marginTop:
@@ -547,6 +608,8 @@ const PublicarRevisaoModal:
               )
             }
           </div>
+            )
+          }
 
           <div
             style={{

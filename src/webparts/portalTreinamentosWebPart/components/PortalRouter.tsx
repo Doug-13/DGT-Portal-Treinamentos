@@ -1,4 +1,5 @@
 import { ITreinamentoDocumentoAdmin } from '../services/TreinamentoDocumentoAdminService';
+import { IModuloImportJson } from '../services/ImportacaoJsonEtapasService';
 import * as React from 'react';
 
 import {
@@ -776,6 +777,33 @@ export interface IPortalRouterProps {
       IDocumento
   ) => void;
 
+  processandoFluxoDocumento:
+  boolean;
+
+  onEnviarRevisaoDocumento:
+  (
+    revisao:
+      IDocumentoRevisao
+  ) => Promise<void>;
+
+  onEnviarAprovacaoDocumento:
+  (
+    revisao:
+      IDocumentoRevisao
+  ) => Promise<void>;
+
+  onDevolverElaboracaoDocumento:
+  (
+    revisao:
+      IDocumentoRevisao
+  ) => Promise<void>;
+
+  onPublicarRevisaoDocumento:
+  (
+    dados:
+      IPublicarRevisao
+  ) => Promise<IResultadoPublicacaoRevisao>;
+
   // ============================================================
   // HISTÓRICO
   // ============================================================
@@ -892,10 +920,16 @@ export interface IPortalRouterProps {
       boolean
   ) => Promise<void>;
 
-  importarModulosJson:
+  analisarModulosJson:
   (
     arquivo:
       File
+  ) => Promise<IModuloImportJson>;
+
+  confirmarImportacaoModulosJson:
+  (
+    dados:
+      IModuloImportJson
   ) => Promise<string>;
 
   moduloConteudoSelecionadoId:
@@ -1434,6 +1468,10 @@ const PortalRouter:
               props.areasAdministrativas
             }
 
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
             documentosExistentes={
               props.documentosAdministrativos
             }
@@ -1513,6 +1551,50 @@ const PortalRouter:
 
             erro={
               props.erroRevisoes
+            }
+
+            contexto={
+              props.contextoAcesso
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
+            processando={
+              props.processandoFluxoDocumento
+            }
+
+            onEnviarRevisao={
+              props.onEnviarRevisaoDocumento
+            }
+
+            onEnviarAprovacao={
+              props.onEnviarAprovacaoDocumento
+            }
+
+            onDevolverElaboracao={
+              props.onDevolverElaboracaoDocumento
+            }
+
+            processandoPublicacao={
+              props.processandoPublicacao
+            }
+
+            erroPublicacao={
+              props.erroPublicacao
+            }
+
+            resultadoPublicacao={
+              props.resultadoPublicacao
+            }
+
+            onPublicarRevisao={
+              props.onPublicarRevisaoDocumento
+            }
+
+            onLimparResultadoPublicacao={
+              props.limparResultadoPublicacao
             }
 
             onVoltar={() =>
@@ -2112,9 +2194,14 @@ const PortalRouter:
                 .definirModuloAtivo
             }
 
-            onImportarJson={
+            onAnalisarJson={
               props
-                .importarModulosJson
+                .analisarModulosJson
+            }
+
+            onConfirmarImportacaoJson={
+              props
+                .confirmarImportacaoModulosJson
             }
 
             onEtapaClick={
@@ -2294,6 +2381,16 @@ const PortalRouter:
             resultadoPublicacao={
               props
                 .resultadoPublicacao
+            }
+
+            contexto={
+              props
+                .contextoAcesso
+            }
+
+            usuariosAreas={
+              props
+                .usuariosAreasAdministrativos
             }
 
             onVoltar={() =>
@@ -2491,15 +2588,3 @@ const PortalRouter:
   };
 
 export default PortalRouter;
-
-
-
-
-
-
-
-
-
-
-
-

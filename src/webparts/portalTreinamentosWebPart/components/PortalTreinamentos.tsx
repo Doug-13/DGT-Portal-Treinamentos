@@ -6,6 +6,7 @@ import { DataverseService, IDataverseRecord } from '../services/DataverseService
 import { UsuarioService } from '../services/UsuarioService';
 import { TrilhaService } from '../services/TrilhaService';
 import PortalRouter from './PortalRouter';
+import { Icones } from './common/Icones';
 import { Pagina } from '../constants/routes';
 import {
   obterModuloPagina,
@@ -14,6 +15,8 @@ import {
 import { ITreinamento, IHistorico, ICertificado } from '../models/Treinamento';
 import { IDocumento, IDocumentoRevisao } from '../models/Documento';
 import { DocumentoService } from '../services/DocumentoService';
+import { DocumentoWorkflowService } from '../services/DocumentoWorkflowService';
+import { IPublicarRevisao, IResultadoPublicacaoRevisao } from '../services/RevisaoDocumentoAdminService';
 import { IColaborador } from '../models/Usuario';
 import { ITrilha } from '../models/Trilha';
 import { useModulos } from '../hooks/useModulos';
@@ -40,7 +43,7 @@ import { useDocumentoTreinamentos } from '../hooks/useDocumentoTreinamentos';
 import { useGestaoAreas } from '../hooks/useGestaoAreas';
 import { useConformidade } from '../hooks/useConformidade';
 import { obterMenuTreinamento } from '../services/MenuPermissionService';
-import { ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
+import { IModuloImportJson, ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
 import { SharePointDocumentoService } from '../services/sharepoint/SharePointDocumentoService';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
 
@@ -449,6 +452,20 @@ const PortalTreinamentos:
       React.useMemo(
         () =>
           new DocumentoService(
+            dataverseService
+          ),
+        [
+          dataverseService
+        ]
+      );
+
+    // Usado pela tela de detalhe do documento (colaborador/gestor) para
+    // as transições Elaboração → Revisão → Aprovação, sem depender do
+    // hook de administração (que atualiza uma lista de revisões diferente).
+    const documentoWorkflowService =
+      React.useMemo(
+        () =>
+          new DocumentoWorkflowService(
             dataverseService
           ),
         [
@@ -1383,11 +1400,41 @@ const gestaoAreas =
     // IMPORTAÇÃO JSON POR ETAPA
     // ==========================================================
 
-    const importarModulosJson =
+    // Só lê e valida o arquivo (não grava nada). Usado para abrir
+    // a tela de prévia, onde o usuário revisa e ajusta antes de salvar.
+    const analisarModulosJson =
       React.useCallback(
         async (
           arquivo:
             File
+        ): Promise<IModuloImportJson> => {
+
+          if (
+            !gestaoModulos.treinamentoId
+          ) {
+            throw new Error(
+              'Treinamento não selecionado.'
+            );
+          }
+
+          return importacaoJsonEtapasService
+            .analisarModulosArquivo(
+              arquivo
+            );
+        },
+        [
+          gestaoModulos,
+          importacaoJsonEtapasService
+        ]
+      );
+
+    // Chamado a partir da tela de prévia, com os dados já
+    // revisados/ajustados pelo usuário. Só aqui é gravado no Dataverse.
+    const confirmarImportacaoModulosJson =
+      React.useCallback(
+        async (
+          dados:
+            IModuloImportJson
         ): Promise<string> => {
 
           if (
@@ -1400,9 +1447,9 @@ const gestaoAreas =
 
           const mensagem =
             await importacaoJsonEtapasService
-              .importarModulosArquivo(
+              .importarModulosDados(
                 gestaoModulos.treinamentoId,
-                arquivo
+                dados
               );
 
           await gestaoModulos
@@ -1922,7 +1969,118 @@ const gestaoAreas =
         ]
       );
 
+    // ==========================================================
+    // FLUXO DE APROVAÇÃO — tela de detalhe do documento
+    // (Elaboração → Revisão → Aprovação → Vigente)
+    // ==========================================================
 
+    const recarregarRevisoesDoDocumentoSelecionado =
+      React.useCallback(
+        async (): Promise<void> => {
+
+          if (
+            !documentoSelecionado
+          ) {
+            return;
+          }
+
+          setRevisoesDocumento(
+            await documentoService
+              .getRevisoesDocumento(
+                documentoSelecionado.id
+              )
+          );
+        },
+        [
+          documentoSelecionado,
+          documentoService
+        ]
+      );
+
+    const enviarRevisaoDocumentoParaRevisao =
+      React.useCallback(
+        async (
+          revisao:
+            IDocumentoRevisao
+        ): Promise<void> => {
+
+          await documentoWorkflowService
+            .enviarParaRevisao(
+              revisao.id,
+              revisao.status
+            );
+
+          await recarregarRevisoesDoDocumentoSelecionado();
+        },
+        [
+          documentoWorkflowService,
+          recarregarRevisoesDoDocumentoSelecionado
+        ]
+      );
+
+    const enviarRevisaoDocumentoParaAprovacao =
+      React.useCallback(
+        async (
+          revisao:
+            IDocumentoRevisao
+        ): Promise<void> => {
+
+          await documentoWorkflowService
+            .enviarParaAprovacao(
+              revisao.id,
+              revisao.status
+            );
+
+          await recarregarRevisoesDoDocumentoSelecionado();
+        },
+        [
+          documentoWorkflowService,
+          recarregarRevisoesDoDocumentoSelecionado
+        ]
+      );
+
+    const devolverRevisaoDocumentoParaElaboracao =
+      React.useCallback(
+        async (
+          revisao:
+            IDocumentoRevisao
+        ): Promise<void> => {
+
+          await documentoWorkflowService
+            .devolverParaElaboracao(
+              revisao.id,
+              revisao.status
+            );
+
+          await recarregarRevisoesDoDocumentoSelecionado();
+        },
+        [
+          documentoWorkflowService,
+          recarregarRevisoesDoDocumentoSelecionado
+        ]
+      );
+
+    const publicarRevisaoDocumentoSelecionado =
+      React.useCallback(
+        async (
+          dados:
+            IPublicarRevisao
+        ): Promise<IResultadoPublicacaoRevisao> => {
+
+          const resultado =
+            await revisaoDocumento.publicar(
+              dados
+            );
+
+          await recarregarRevisoesDoDocumentoSelecionado();
+
+          return resultado;
+        },
+        [
+          revisaoDocumento,
+          recarregarRevisoesDoDocumentoSelecionado
+        ]
+      );
 
     // ==========================================================
     // ABRIR MÓDULO
@@ -2580,7 +2738,7 @@ const gestaoAreas =
                         styles.heroIcon
                       }
                     >
-                      ▰
+                      <Icones.layers />
                     </div>
 
                     <div
@@ -2682,9 +2840,17 @@ const gestaoAreas =
                               }
                             >
 
-                              <span>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  color: ativo ? '#0874ce' : '#5C7287'
+                                }}
+                              >
                                 {
-                                  aba.icon
+                                  (() => {
+                                    const IconeAba = Icones[aba.icon];
+                                    return <IconeAba />;
+                                  })()
                                 }
                               </span>
 
@@ -2750,6 +2916,26 @@ const gestaoAreas =
 
                 erroRevisoes={
                   erroRevisoes
+                }
+
+                processandoFluxoDocumento={
+                  revisaoDocumento.processando
+                }
+
+                onEnviarRevisaoDocumento={
+                  enviarRevisaoDocumentoParaRevisao
+                }
+
+                onEnviarAprovacaoDocumento={
+                  enviarRevisaoDocumentoParaAprovacao
+                }
+
+                onDevolverElaboracaoDocumento={
+                  devolverRevisaoDocumentoParaElaboracao
+                }
+
+                onPublicarRevisaoDocumento={
+                  publicarRevisaoDocumentoSelecionado
                 }
 
                 abrirDocumento={documento => {
@@ -3147,8 +3333,12 @@ const gestaoAreas =
                   gestaoModulos.definirAtivo
                 }
 
-                importarModulosJson={
-                  importarModulosJson
+                analisarModulosJson={
+                  analisarModulosJson
+                }
+
+                confirmarImportacaoModulosJson={
+                  confirmarImportacaoModulosJson
                 }
 
                 moduloConteudoSelecionadoId={
@@ -3548,15 +3738,3 @@ const gestaoAreas =
   };
 
 export default PortalTreinamentos;
-
-
-
-
-
-
-
-
-
-
-
-

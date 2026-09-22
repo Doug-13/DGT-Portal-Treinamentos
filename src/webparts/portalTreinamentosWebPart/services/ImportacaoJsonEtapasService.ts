@@ -461,6 +461,92 @@ const mapearTipoAvaliacao =
     }
   };
 
+// ==========================================================
+// Validação de um bloco de conteúdo do módulo, reaproveitada
+// tanto na análise (pré-visualização, sem gravar nada) quanto
+// na gravação efetiva no Dataverse.
+// ==========================================================
+const validarConteudoModuloJson =
+  (
+    modulo:
+      Pick<IModuloJson, 'titulo'>,
+    conteudo:
+      IConteudoModuloJson,
+    indiceConteudo:
+      number
+  ): void => {
+
+    if (
+      !conteudo.tipo
+    ) {
+      throw new Error(
+        `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: tipo obrigatório.`
+      );
+    }
+
+    if (
+      conteudo.tipo ===
+        'PerguntaRapida'
+    ) {
+
+      if (
+        !conteudo.pergunta
+      ) {
+        throw new Error(
+          `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: pergunta obrigatória.`
+        );
+      }
+
+      textoObrigatorio(
+        conteudo.pergunta.enunciado,
+        `Módulo "${modulo.titulo}", pergunta rápida`
+      );
+
+      validarAlternativas(
+        conteudo.pergunta.alternativas,
+        conteudo.pergunta.tipo,
+        `Módulo "${modulo.titulo}", pergunta rápida`
+      );
+    }
+
+    if (
+      conteudo.tipo ===
+        'Cards'
+    ) {
+
+      if (
+        !Array.isArray(
+          conteudo.cards
+        ) ||
+        conteudo.cards.length <
+          1 ||
+        conteudo.cards.length >
+          3
+      ) {
+        throw new Error(
+          `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: o bloco Cards deve possuir de 1 a 3 cards.`
+        );
+      }
+
+      const cardIncompleto =
+        conteudo.cards.some(
+          card =>
+            !card.titulo
+              ?.trim() ||
+            !card.descricao
+              ?.trim()
+        );
+
+      if (
+        cardIncompleto
+      ) {
+        throw new Error(
+          `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: preencha título e descrição de todos os cards.`
+        );
+      }
+    }
+  };
+
 export class ImportacaoJsonEtapasService {
 
   private readonly moduloService:
@@ -501,20 +587,15 @@ export class ImportacaoJsonEtapasService {
       );
   }
 
-  public async importarModulosArquivo(
-    treinamentoId:
-      string,
+  // ==========================================================
+  // ANÁLISE (NÃO GRAVA NADA): lê e valida o arquivo, devolvendo
+  // os módulos para pré-visualização. Usado pela tela de revisão,
+  // que permite pequenos ajustes antes da gravação definitiva.
+  // ==========================================================
+  public async analisarModulosArquivo(
     arquivo:
       File
-  ): Promise<string> {
-
-    if (
-      !treinamentoId
-    ) {
-      throw new Error(
-        'Treinamento não selecionado.'
-      );
-    }
+  ): Promise<IModuloImportJson> {
 
     const bruto =
       await lerArquivoJson(
@@ -534,6 +615,93 @@ export class ImportacaoJsonEtapasService {
     ) {
       throw new Error(
         'O JSON precisa possuir a propriedade "modulos" com pelo menos um módulo.'
+      );
+    }
+
+    for (
+      let indiceModulo = 0;
+      indiceModulo <
+        dados.modulos.length;
+      indiceModulo += 1
+    ) {
+
+      const moduloValidar =
+        dados.modulos[
+          indiceModulo
+        ];
+
+      textoObrigatorio(
+        moduloValidar.titulo,
+        `Módulo ${indiceModulo + 1}: titulo`
+      );
+
+      if (
+        !Array.isArray(
+          moduloValidar.conteudos
+        )
+      ) {
+        throw new Error(
+          `Módulo ${indiceModulo + 1}: "conteudos" deve ser uma lista.`
+        );
+      }
+
+      for (
+        let indiceConteudo = 0;
+        indiceConteudo <
+          moduloValidar.conteudos.length;
+        indiceConteudo += 1
+      ) {
+        validarConteudoModuloJson(
+          moduloValidar,
+          moduloValidar.conteudos[
+            indiceConteudo
+          ],
+          indiceConteudo
+        );
+      }
+    }
+
+    // Devolve uma cópia independente, para que edições feitas
+    // na tela de pré-visualização nunca alterem o objeto original.
+    return JSON.parse(
+      JSON.stringify({
+        versao:
+          dados.versao,
+        modulos:
+          dados.modulos
+      })
+    ) as IModuloImportJson;
+  }
+
+  // ==========================================================
+  // GRAVAÇÃO: recebe dados já validados (normalmente vindos de
+  // analisarModulosArquivo e revisados/ajustados pelo usuário na
+  // tela de pré-visualização) e grava tudo no Dataverse.
+  // ==========================================================
+  public async importarModulosDados(
+    treinamentoId:
+      string,
+    dados:
+      IModuloImportJson
+  ): Promise<string> {
+
+    if (
+      !treinamentoId
+    ) {
+      throw new Error(
+        'Treinamento não selecionado.'
+      );
+    }
+
+    if (
+      !Array.isArray(
+        dados.modulos
+      ) ||
+      dados.modulos.length ===
+        0
+    ) {
+      throw new Error(
+        'Nenhum módulo para importar.'
       );
     }
 
@@ -798,75 +966,12 @@ export class ImportacaoJsonEtapasService {
             indiceConteudo
           ];
 
-        if (
-          !conteudo.tipo
-        ) {
-          throw new Error(
-            `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: tipo obrigatório.`
-          );
-        }
+        validarConteudoModuloJson(
+          modulo,
+          conteudo,
+          indiceConteudo
+        );
 
-        if (
-          conteudo.tipo ===
-            'PerguntaRapida'
-        ) {
-
-          if (
-            !conteudo.pergunta
-          ) {
-            throw new Error(
-              `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: pergunta obrigatória.`
-            );
-          }
-
-          textoObrigatorio(
-            conteudo.pergunta.enunciado,
-            `Módulo "${modulo.titulo}", pergunta rápida`
-          );
-
-          validarAlternativas(
-            conteudo.pergunta.alternativas,
-            conteudo.pergunta.tipo,
-            `Módulo "${modulo.titulo}", pergunta rápida`
-          );
-        }
-
-        if (
-          conteudo.tipo ===
-            'Cards'
-        ) {
-
-          if (
-            !Array.isArray(
-              conteudo.cards
-            ) ||
-            conteudo.cards.length <
-              1 ||
-            conteudo.cards.length >
-              3
-          ) {
-            throw new Error(
-              `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: o bloco Cards deve possuir de 1 a 3 cards.`
-            );
-          }
-
-          const cardIncompleto =
-            conteudo.cards.some(
-              card =>
-                !card.titulo
-                  ?.trim() ||
-                !card.descricao
-                  ?.trim()
-            );
-
-          if (
-            cardIncompleto
-          ) {
-            throw new Error(
-              `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: preencha título e descrição de todos os cards.`
-            );
-          }
-        }
         await this.conteudoService
           .criar({
             moduloId:
@@ -1025,6 +1130,30 @@ export class ImportacaoJsonEtapasService {
       `${quantidadeModulos} módulo(s), ` +
       `${quantidadeConteudos} conteúdo(s) e ` +
       `${quantidadePerguntas} pergunta(s) rápida(s) importados.`
+    );
+  }
+
+  // ==========================================================
+  // COMPATIBILIDADE: mantém o comportamento antigo (lê o arquivo
+  // e já grava tudo, sem tela de pré-visualização). Não é mais
+  // usado pela tela de importação, mas fica disponível caso algum
+  // outro ponto do sistema ainda precise do fluxo em um passo só.
+  // ==========================================================
+  public async importarModulosArquivo(
+    treinamentoId:
+      string,
+    arquivo:
+      File
+  ): Promise<string> {
+
+    const dados =
+      await this.analisarModulosArquivo(
+        arquivo
+      );
+
+    return this.importarModulosDados(
+      treinamentoId,
+      dados
     );
   }
 
@@ -1240,5 +1369,3 @@ export class ImportacaoJsonEtapasService {
     );
   }
 }
-
-

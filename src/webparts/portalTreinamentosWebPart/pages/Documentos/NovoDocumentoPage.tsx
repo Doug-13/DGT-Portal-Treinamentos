@@ -1,7 +1,8 @@
 import * as React from 'react';
 
 import {
-  IAreaAdmin
+  IAreaAdmin,
+  IUsuarioAreaAdmin
 } from '../../services/AreaAdminService';
 
 import {
@@ -21,6 +22,12 @@ export interface INovoDocumentoPageProps {
 
   areas:
     IAreaAdmin[];
+
+  // Vínculos usuário/área (tela "Áreas e acessos"). Usado para
+  // derivar o Aprovador automaticamente a partir do Gestor da
+  // área selecionada — o aprovador não é mais digitado à mão.
+  usuariosAreas:
+    IUsuarioAreaAdmin[];
 
   documentosExistentes:
     IDocumentoAdmin[];
@@ -303,9 +310,12 @@ const NovoDocumentoPage:
     ] =
       React.useState('');
 
+    // O aprovador deixou de ser texto livre: agora é sempre o
+    // Gestor cadastrado para a área selecionada, em
+    // "Áreas e acessos" (vínculo usuário/área com perfil "Gestor").
     const [
-      aprovador,
-      setAprovador
+      aprovadorEscolhidoId,
+      setAprovadorEscolhidoId
     ] =
       React.useState('');
 
@@ -317,6 +327,10 @@ const NovoDocumentoPage:
         'Rev.00'
       );
 
+    // O status inicial NUNCA é escolhido pelo usuário: todo documento
+    // novo nasce "Em elaboração" e só chega a "Vigente" passando pelo
+    // fluxo de revisão/aprovação do Gestor da área (DocumentoWorkflowCard).
+    // Isso evita que alguém cadastre um documento já como Aprovação/Vigente.
     const [
       status,
       setStatus
@@ -325,35 +339,30 @@ const NovoDocumentoPage:
         'Em elaboração'
       );
 
-
     React.useEffect(
       () => {
 
         if (
-          props.statusDocumentos.length ===
-            0
+          props.statusDocumentos.length === 0
         ) {
           return;
         }
 
-        const existe =
-          props.statusDocumentos.some(
+        const opcaoElaboracao =
+          props.statusDocumentos.find(
             item =>
-              item.label ===
-              status
+              item.label
+                .toLowerCase()
+                .indexOf('elabora') >= 0
           );
 
-        if (
-          !existe
-        ) {
-          setStatus(
-            props.statusDocumentos[0].label
-          );
-        }
+        setStatus(
+          opcaoElaboracao?.label ||
+          props.statusDocumentos[0].label
+        );
       },
       [
-        props.statusDocumentos,
-        status
+        props.statusDocumentos
       ]
     );
     const [
@@ -371,6 +380,14 @@ const NovoDocumentoPage:
       setErroLocal
     ] =
       React.useState('');
+
+    // Aviso mostrado antes de gravar: reforça que o documento não
+    // nasce Vigente — ele vai para validação do Gestor da área.
+    const [
+      mostrarAvisoValidacao,
+      setMostrarAvisoValidacao
+    ] =
+      React.useState(false);
 
     const areaSelecionada =
       React.useMemo(
@@ -396,6 +413,53 @@ const NovoDocumentoPage:
           ),
         [
           tipo
+        ]
+      );
+
+    // Gestores ativos vinculados à área selecionada — são os únicos
+    // elegíveis a aprovador. Definidos em "Áreas e acessos".
+    const gestoresDaArea =
+      React.useMemo(
+        () =>
+          props.usuariosAreas.filter(
+            vinculo =>
+              vinculo.areaId === areaId &&
+              vinculo.perfil === 'Gestor' &&
+              vinculo.ativo
+          ),
+        [
+          props.usuariosAreas,
+          areaId
+        ]
+      );
+
+    // Ao trocar de área, o gestor escolhido anteriormente não vale mais.
+    React.useEffect(
+      () => {
+        setAprovadorEscolhidoId('');
+      },
+      [
+        areaId
+      ]
+    );
+
+    const aprovadorSelecionado =
+      React.useMemo(
+        () => {
+          if (
+            gestoresDaArea.length === 1
+          ) {
+            return gestoresDaArea[0];
+          }
+
+          return gestoresDaArea.find(
+            vinculo =>
+              vinculo.usuarioId === aprovadorEscolhidoId
+          );
+        },
+        [
+          gestoresDaArea,
+          aprovadorEscolhidoId
         ]
       );
 
@@ -497,6 +561,18 @@ const NovoDocumentoPage:
           return;
         }
 
+        if (
+          !aprovadorSelecionado
+        ) {
+          setErroLocal(
+            gestoresDaArea.length === 0
+              ? `A área "${areaSelecionada.nome}" não possui um Gestor definido. Cadastre um Gestor em "Áreas e acessos" antes de criar o documento.`
+              : 'Selecione o Gestor responsável pela aprovação.'
+          );
+
+          return;
+        }
+
         try {
           await props
             .onSalvar({
@@ -510,7 +586,8 @@ const NovoDocumentoPage:
               area:
                 areaSelecionada.nome,
               responsavel:
-                aprovador.trim(),
+                aprovadorSelecionado.usuarioEmail ||
+                aprovadorSelecionado.usuarioNome,
               revisaoInicial:
                 revisaoInicial.trim() ||
                 'Rev.00',
@@ -521,6 +598,13 @@ const NovoDocumentoPage:
                 arquivo as File
             });
         } catch (e) {
+
+          // Volta para o formulário (não o aviso) para que o erro
+          // fique visível junto dos campos.
+          setMostrarAvisoValidacao(
+            false
+          );
+
           setErroLocal(
             e instanceof Error
               ? e.message
@@ -828,21 +912,144 @@ const NovoDocumentoPage:
                   Aprovador
                 </label>
 
-                <input
-                  value={
-                    aprovador
-                  }
-                  placeholder="Nome ou e-mail do aprovador"
-                  onChange={
-                    event =>
-                      setAprovador(
-                        event.target.value
-                      )
-                  }
-                  style={
-                    input
-                  }
-                />
+                {
+                  // Sem área selecionada ainda: nada a mostrar.
+                  !areaId && (
+                    <input
+                      value=""
+                      placeholder="Selecione a área primeiro"
+                      readOnly
+                      disabled
+                      style={
+                        inputSomenteLeitura
+                      }
+                    />
+                  )
+                }
+
+                {
+                  // Área sem Gestor cadastrado: bloqueia com orientação
+                  // clara, em vez de deixar digitar um nome qualquer.
+                  areaId &&
+                  gestoresDaArea.length === 0 && (
+                    <>
+                      <input
+                        value="Nenhum Gestor definido para esta área"
+                        readOnly
+                        disabled
+                        style={{
+                          ...inputSomenteLeitura,
+                          color: C.vermelho,
+                          background: C.vermelhoClaro
+                        }}
+                      />
+                      <div
+                        style={{
+                          marginTop: '5px',
+                          color: C.vermelho,
+                          fontSize: '11px',
+                          lineHeight: 1.4
+                        }}
+                      >
+                        Cadastre um Gestor para esta área em
+                        {' '}
+                        <strong>Gestão → Áreas e acessos</strong>
+                        {' '}
+                        (perfil &quot;Gestor&quot;) antes de criar o documento.
+                      </div>
+                    </>
+                  )
+                }
+
+                {
+                  // Exatamente um Gestor: preenchido automaticamente,
+                  // sem edição — é sempre o responsável pela área/processo.
+                  areaId &&
+                  gestoresDaArea.length === 1 && (
+                    <>
+                      <input
+                        value={
+                          `${gestoresDaArea[0].usuarioNome} — ${gestoresDaArea[0].usuarioEmail}`
+                        }
+                        readOnly
+                        aria-readonly="true"
+                        style={
+                          inputSomenteLeitura
+                        }
+                      />
+                      <div
+                        style={{
+                          marginTop: '5px',
+                          color: C.secundario,
+                          fontSize: '11px',
+                          lineHeight: 1.4
+                        }}
+                      >
+                        Definido automaticamente: é o Gestor cadastrado
+                        para esta área.
+                      </div>
+                    </>
+                  )
+                }
+
+                {
+                  // Mais de um Gestor ativo na área: escolha entre eles
+                  // (nunca texto livre — continua restrito aos Gestores).
+                  areaId &&
+                  gestoresDaArea.length > 1 && (
+                    <>
+                      <select
+                        value={
+                          aprovadorEscolhidoId
+                        }
+                        onChange={
+                          event =>
+                            setAprovadorEscolhidoId(
+                              event.target.value
+                            )
+                        }
+                        style={
+                          input
+                        }
+                      >
+                        <option value="">
+                          Selecione o Gestor responsável
+                        </option>
+
+                        {
+                          gestoresDaArea.map(
+                            vinculo => (
+                              <option
+                                key={
+                                  vinculo.usuarioId
+                                }
+                                value={
+                                  vinculo.usuarioId
+                                }
+                              >
+                                {
+                                  `${vinculo.usuarioNome} — ${vinculo.usuarioEmail}`
+                                }
+                              </option>
+                            )
+                          )
+                        }
+                      </select>
+
+                      <div
+                        style={{
+                          marginTop: '5px',
+                          color: C.secundario,
+                          fontSize: '11px',
+                          lineHeight: 1.4
+                        }}
+                      >
+                        Esta área tem mais de um Gestor cadastrado;
+                        selecione quem vai aprovar este documento.
+                      </div>
+                    </>
+                  )
+                }
               </div>
             </div>
 
@@ -881,50 +1088,30 @@ const NovoDocumentoPage:
                   Status
                 </label>
 
-                <select
+                <input
                   value={
-                    status
+                    status ||
+                    'Em elaboração'
                   }
-                  onChange={
-                    event =>
-                      setStatus(
-                        event.target.value
-                      )
-                  }
+                  readOnly
+                  aria-readonly="true"
                   style={
-                    input
+                    inputSomenteLeitura
                   }
-                  disabled={
-                    props.statusDocumentos.length ===
-                      0
-                  }
+                />
+
+                <div
+                  style={{
+                    marginTop: '5px',
+                    color: C.secundario,
+                    fontSize: '11px',
+                    lineHeight: 1.4
+                  }}
                 >
-                  {
-                    props.statusDocumentos.length ===
-                      0
-                      ? (
-                        <option value="">
-                          Carregando status...
-                        </option>
-                      )
-                      : props.statusDocumentos.map(
-                        item => (
-                          <option
-                            key={
-                              item.value
-                            }
-                            value={
-                              item.label
-                            }
-                          >
-                            {
-                              item.label
-                            }
-                          </option>
-                        )
-                      )
-                  }
-                </select>
+                  Todo documento nasce &quot;Em elaboração&quot;. Ele só se
+                  torna <strong>Vigente</strong> depois de passar pelo fluxo
+                  de revisão e ser aprovado pelo Gestor da área.
+                </div>
               </div>
 
               <div
@@ -1163,15 +1350,14 @@ const NovoDocumentoPage:
                   !areaSelecionada ||
                   !codigoGerado ||
                   !titulo.trim() ||
-                  !arquivo
+                  !arquivo ||
+                  !aprovadorSelecionado
                 }
                 onClick={
-                  () => {
-                    salvar()
-                      .catch(
-                        () => undefined
-                      );
-                  }
+                  () =>
+                    setMostrarAvisoValidacao(
+                      true
+                    )
                 }
                 style={{
                   width: '100%',
@@ -1200,10 +1386,141 @@ const NovoDocumentoPage:
             </div>
           </aside>
         </div>
+
+        {
+          mostrarAvisoValidacao &&
+          aprovadorSelecionado &&
+          (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 10500,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px',
+                background: 'rgba(15,23,42,.55)'
+              }}
+            >
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: '420px',
+                  padding: '24px',
+                  background: C.branco,
+                  borderRadius: '16px'
+                }}
+              >
+                <div
+                  style={{
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '14px',
+                    background: '#FFF4E5',
+                    fontSize: '22px'
+                  }}
+                >
+                  ⚠
+                </div>
+
+                <h2
+                  style={{
+                    margin: '0 0 8px',
+                    color: C.azulEscuro,
+                    fontSize: '18px'
+                  }}
+                >
+                  Este documento irá para validação do Gestor!
+                </h2>
+
+                <p
+                  style={{
+                    margin: 0,
+                    color: C.secundario,
+                    fontSize: '13px',
+                    lineHeight: 1.5
+                  }}
+                >
+                  Ele será criado como <strong>Em elaboração</strong> e só
+                  se torna <strong>Vigente</strong> depois de ser revisado
+                  e aprovado por{' '}
+                  <strong>
+                    {aprovadorSelecionado.usuarioNome}
+                  </strong>
+                  , Gestor da área {areaSelecionada?.nome}.
+                </p>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: '10px',
+                    marginTop: '22px'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMostrarAvisoValidacao(false)
+                    }
+                    style={{
+                      padding: '10px 16px',
+                      border: `1px solid ${C.borda}`,
+                      borderRadius: '8px',
+                      background: C.branco,
+                      color: C.texto,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Voltar
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      props.processando
+                    }
+                    onClick={() => {
+                      salvar()
+                        .catch(
+                          () => undefined
+                        );
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      border: 0,
+                      borderRadius: '8px',
+                      background:
+                        props.processando
+                          ? '#97BCE7'
+                          : C.azul,
+                      color: C.branco,
+                      fontWeight: 700,
+                      cursor:
+                        props.processando
+                          ? 'wait'
+                          : 'pointer'
+                    }}
+                  >
+                    {
+                      props.processando
+                        ? 'Enviando...'
+                        : 'Confirmar e enviar'
+                    }
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
       </section>
     );
   };
 
 export default NovoDocumentoPage;
-
-

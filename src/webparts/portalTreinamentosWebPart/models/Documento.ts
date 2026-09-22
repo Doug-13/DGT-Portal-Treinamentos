@@ -11,6 +11,10 @@ export interface IDocumento {
 
   categoria: string;
 
+  // Necessário para localizar o Gestor da área (quem aprova este
+  // documento) em "Áreas e acessos".
+  areaId?: string;
+
   tipo: string;
 
   status: string;

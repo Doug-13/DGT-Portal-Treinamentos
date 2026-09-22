@@ -102,16 +102,39 @@ export class DocumentoWorkflowService {
       StatusFluxoDocumento
   ): void {
 
-    const atual =
+    const atualNormalizado =
       this.normalizar(
         statusAtual
       );
+
+    // Qualquer valor não reconhecido (vazio, ou um status legado de
+    // antes deste fluxo existir) é tratado como "elaboracao" — mesma
+    // tolerância já aplicada na exibição das telas de documento. Sem
+    // isso, um documento com status em branco nunca conseguia sair
+    // da Elaboração, mesmo a tela mostrando o botão certo.
+    const atual =
+      [
+        'elaboracao',
+        'revisao',
+        'aprovacao',
+        'vigente'
+      ].indexOf(
+        atualNormalizado
+      ) >= 0
+        ? atualNormalizado
+        : 'elaboracao';
 
     const destino =
       this.normalizar(
         statusDestino
       );
 
+    // Fluxo (ver diagrama do processo):
+    //   Elaboração → Gestor avalia (Aprovação)
+    //   Aprovação: Aprovado → Vigente (via publicar, fora deste mapa)
+    //              Reprovado → volta para Elaboração
+    //   Vigente → reaberto direto para o Gestor avaliar (Aprovação),
+    //             sem passar por Elaboração de novo.
     const permitidas:
       Record<
         string,
@@ -120,9 +143,12 @@ export class DocumentoWorkflowService {
 
       elaboracao:
         [
-          'revisao'
+          'aprovacao'
         ],
 
+      // "Revisão" não existe mais como etapa própria do fluxo atual,
+      // mas o mapa é mantido por compatibilidade com revisões antigas
+      // que porventura já estejam nesse status.
       revisao:
         [
           'elaboracao',
@@ -131,11 +157,13 @@ export class DocumentoWorkflowService {
 
       aprovacao:
         [
-          'revisao'
+          'elaboracao'
         ],
 
       vigente:
-        []
+        [
+          'aprovacao'
+        ]
     };
 
     const destinos =
@@ -175,4 +203,3 @@ export class DocumentoWorkflowService {
       .trim();
   }
 }
-

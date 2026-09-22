@@ -1484,7 +1484,8 @@ export class DataverseService {
         'dgt_status',
         'dgt_revisaoatual',
         'dgt_ativo',
-        '_dgt_responsavel_value'
+        '_dgt_responsavel_value',
+        '_dgt_area_value'
       ].join(',') +
       '&$filter=dgt_ativo eq true' +
       '&$orderby=dgt_codigo asc'
@@ -1580,11 +1581,20 @@ export class DataverseService {
         )
         .trim();
 
+    // dgt_status é um Picklist: o Dataverse espera o valor numérico
+    // da opção, não o rótulo em texto (ex.: "Aprovação").
+    const statusValor =
+      await this.getChoiceOptionValue(
+        'dgt_documentorevisao',
+        'dgt_status',
+        status.trim()
+      );
+
     await this.patch(
       `${entitySet}(${id})`,
       {
         dgt_status:
-          status.trim()
+          statusValor
       }
     );
   }
@@ -3557,22 +3567,3 @@ export class DataverseService {
   }
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

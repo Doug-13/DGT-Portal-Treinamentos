@@ -7,11 +7,13 @@ export interface IDocumentoAdmin {
   id: string;
   codigo: string;
   titulo: string;
+  descricao: string;
   area: string;
   areaId: string;
   tipo: string;
   revisaoAtual: string;
   responsavel: string;
+  responsavelId: string;
   status: string;
   ativo: boolean;
 }
@@ -258,6 +260,10 @@ export class DocumentoAdminService {
               'Documento'
             )
           ),
+          descricao: texto(
+            registro,
+            'dgt_descricao'
+          ),
           area: textoRelacionado(
             registro,
             'dgt_Area',
@@ -267,22 +273,33 @@ export class DocumentoAdminService {
             registro,
             '_dgt_area_value'
           ),
-          tipo: texto(
-            registro,
-            'dgt_tipo'
-          ),
+          // dgt_tipo é um Picklist: o valor cru é um número. O rótulo
+          // vem pela anotação FormattedValue (o Dataverse já a inclui
+          // automaticamente, via o header Prefer enviado por este
+          // serviço) — "dgt_tiponame" não existe como propriedade
+          // consultável neste ambiente.
+          tipo:
+            formatado(registro, 'dgt_tipo') ||
+            texto(registro, 'dgt_tipo'),
+
           revisaoAtual: texto(
             registro,
             'dgt_revisaoatual'
           ),
-          responsavel: texto(
+          // dgt_responsavel é um Lookup: o valor cru é o GUID
+          // (_dgt_responsavel_value); o nome vem pela mesma anotação
+          // FormattedValue, no valor do lookup.
+          responsavel:
+            formatado(registro, '_dgt_responsavel_value'),
+
+          responsavelId: texto(
             registro,
-            'dgt_responsavel'
+            '_dgt_responsavel_value'
           ),
-          status: texto(
-            registro,
-            'dgt_status'
-          ),
+          // dgt_status é um Picklist: mesma lógica de dgt_tipo.
+          status:
+            formatado(registro, 'dgt_status') ||
+            texto(registro, 'dgt_status'),
           ativo: booleano(
             registro,
             'dgt_ativo',
@@ -726,6 +743,9 @@ export class DocumentoAdminService {
       titulo:
         dados.titulo.trim(),
 
+      descricao:
+        dados.descricao.trim(),
+
       area:
         dados.area.trim(),
 
@@ -740,6 +760,9 @@ export class DocumentoAdminService {
       responsavel:
         dados.responsavel.trim(),
 
+      responsavelId:
+        aprovadorId,
+
       status:
         dados.status.trim(),
 
@@ -748,5 +771,3 @@ export class DocumentoAdminService {
     };
   }
 }
-
-

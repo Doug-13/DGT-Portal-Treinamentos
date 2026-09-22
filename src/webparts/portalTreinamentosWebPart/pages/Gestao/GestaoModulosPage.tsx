@@ -25,6 +25,12 @@ import {
   INovoModulo
 } from '../../services/ModuloAdminService';
 
+import {
+  IConteudoModuloJson,
+  IModuloImportJson,
+  IModuloJson
+} from '../../services/ImportacaoJsonEtapasService';
+
 export interface IGestaoModulosPageProps {
 
   treinamentos:
@@ -136,10 +142,16 @@ export interface IGestaoModulosPageProps {
   onAvancar?:
     () => Promise<void>;
 
-  onImportarJson:
+  onAnalisarJson:
     (
       arquivo:
         File
+    ) => Promise<IModuloImportJson>;
+
+  onConfirmarImportacaoJson:
+    (
+      dados:
+        IModuloImportJson
     ) => Promise<string>;
 
   onEtapaClick?:
@@ -282,6 +294,109 @@ const GestaoModulosPage:
     ] =
       React.useState('');
 
+    const [
+      previaImportacao,
+      setPreviaImportacao
+    ] =
+      React.useState<
+        IModuloImportJson | null
+      >(null);
+
+    const [
+      confirmandoImportacao,
+      setConfirmandoImportacao
+    ] =
+      React.useState(false);
+
+    const [
+      erroPreviaImportacao,
+      setErroPreviaImportacao
+    ] =
+      React.useState('');
+
+    // Controla em qual modo o editor de conteúdo do módulo selecionado
+    // deve abrir: 'preview' (botão "Pré-visualizar" da lista) ou
+    // 'edicao' (botão "Editar módulo", dentro do próprio modal, ou
+    // após criar/importar um módulo).
+    const [
+      modoConteudoSelecionado,
+      setModoConteudoSelecionado
+    ] =
+      React.useState<
+        'preview' | 'edicao'
+      >('preview');
+
+    // Guarda o título do primeiro módulo importado para, assim que ele
+    // aparecer em props.modulos (após o recarregamento), abrir o editor
+    // de conteúdo automaticamente e permitir adicionar novos itens.
+    const [
+      moduloImportadoAguardandoConteudo,
+      setModuloImportadoAguardandoConteudo
+    ] =
+      React.useState<{
+        treinamentoId: string;
+        titulo: string;
+      } | null>(null);
+
+    React.useEffect(
+      () => {
+
+        if (
+          !moduloImportadoAguardandoConteudo
+        ) {
+          return;
+        }
+
+        const moduloEncontrado =
+          props.modulos
+            .filter(
+              modulo =>
+                modulo.treinamentoId ===
+                  moduloImportadoAguardandoConteudo.treinamentoId &&
+                modulo.titulo
+                  .trim()
+                  .toLowerCase() ===
+                moduloImportadoAguardandoConteudo.titulo
+                  .trim()
+                  .toLowerCase()
+            )
+            .slice()
+            .reverse()[0];
+
+        if (
+          !moduloEncontrado?.id
+        ) {
+          return;
+        }
+
+        setModuloImportadoAguardandoConteudo(
+          null
+        );
+
+        setModoConteudoSelecionado(
+          'edicao'
+        );
+
+        props
+          .onSelecionarModuloConteudo(
+            moduloEncontrado.id
+          )
+          .catch(
+            (
+              error:
+                unknown
+            ) =>
+              console.error(
+                error
+              )
+          );
+      },
+      [
+        moduloImportadoAguardandoConteudo,
+        props.modulos
+      ]
+    );
+
 
     const [
       editando,
@@ -344,6 +459,12 @@ const GestaoModulosPage:
       setErroLocal
     ] =
       React.useState('');
+
+    const [
+      revisandoModulo,
+      setRevisandoModulo
+    ] =
+      React.useState(false);
 
     const [
       moduloAguardandoConteudo,
@@ -416,6 +537,7 @@ const GestaoModulosPage:
         setObrigatorio(true);
         setAtivo(true);
         setErroLocal('');
+        setRevisandoModulo(false);
 
         setMostrarFormulario(
           true
@@ -460,10 +582,36 @@ const GestaoModulosPage:
       );
 
       setErroLocal('');
+      setRevisandoModulo(false);
 
       setMostrarFormulario(
         true
       );
+
+      // Já seleciona o conteúdo deste módulo, para que o editor de
+      // blocos apareça junto — na mesma tela, sem passo extra.
+      setModoConteudoSelecionado(
+        'edicao'
+      );
+
+      if (
+        props.moduloConteudoSelecionadoId !==
+          modulo.id
+      ) {
+        props
+          .onSelecionarModuloConteudo(
+            modulo.id
+          )
+          .catch(
+            (
+              error:
+                unknown
+            ) =>
+              console.error(
+                error
+              )
+          );
+      }
     };
 
     React.useEffect(
@@ -503,6 +651,10 @@ const GestaoModulosPage:
           null
         );
 
+        setModoConteudoSelecionado(
+          'edicao'
+        );
+
         props
           .onSelecionarModuloConteudo(
             moduloCriado.id
@@ -525,8 +677,8 @@ const GestaoModulosPage:
       ]
     );
 
-    const salvar =
-      async (): Promise<void> => {
+    const validarFormularioModulo =
+      (): boolean => {
 
         setErroLocal('');
 
@@ -537,7 +689,7 @@ const GestaoModulosPage:
             'Selecione um treinamento.'
           );
 
-          return;
+          return false;
         }
 
         if (
@@ -547,7 +699,7 @@ const GestaoModulosPage:
             'Informe o título do módulo.'
           );
 
-          return;
+          return false;
         }
 
         const ordemNumero =
@@ -569,7 +721,7 @@ const GestaoModulosPage:
           setErroLocal(
             'Informe uma ordem válida.'
           );
-          return;
+          return false;
         }
 
         if (
@@ -581,8 +733,51 @@ const GestaoModulosPage:
           setErroLocal(
             'Informe uma duração válida.'
           );
+          return false;
+        }
+
+        return true;
+      };
+
+    // Passo 1: valida os campos e abre a revisão (nada é gravado
+    // ainda). O usuário confirma na revisão ou volta para ajustar.
+    const abrirRevisaoModulo =
+      (): void => {
+
+        if (
+          !validarFormularioModulo()
+        ) {
           return;
         }
+
+        setRevisandoModulo(
+          true
+        );
+      };
+
+    // Passo 2: chamado a partir da tela de revisão. Só então o
+    // módulo é efetivamente criado/atualizado no Dataverse.
+    const salvar =
+      async (): Promise<void> => {
+
+        if (
+          !validarFormularioModulo()
+        ) {
+          setRevisandoModulo(
+            false
+          );
+          return;
+        }
+
+        const ordemNumero =
+          Number(
+            ordem
+          );
+
+        const duracaoNumero =
+          Number(
+            duracao
+          );
 
         try {
 
@@ -669,6 +864,10 @@ const GestaoModulosPage:
             false
           );
 
+          setRevisandoModulo(
+            false
+          );
+
         } catch (e) {
 
           if (
@@ -679,6 +878,12 @@ const GestaoModulosPage:
             );
           }
 
+          // Volta para a tela de edição (não a de revisão) para
+          // que o usuário veja o erro junto dos campos editáveis.
+          setRevisandoModulo(
+            false
+          );
+
           setErroLocal(
             e instanceof Error
               ? e.message
@@ -686,6 +891,141 @@ const GestaoModulosPage:
           );
         }
       };
+
+    // ==========================================================
+    // PRÉVIA DE IMPORTAÇÃO POR JSON — nada foi gravado ainda.
+    // As funções abaixo só alteram o estado local (previaImportacao).
+    // ==========================================================
+
+    const atualizarModuloPrevia = (
+      indiceModulo: number,
+      alteracoes: Partial<IModuloJson>
+    ): void => {
+
+      setPreviaImportacao(atual => {
+        if (!atual) { return atual; }
+
+        const modulos = atual.modulos.map((modulo, indice) =>
+          indice === indiceModulo
+            ? { ...modulo, ...alteracoes }
+            : modulo
+        );
+
+        return { ...atual, modulos };
+      });
+    };
+
+    const removerModuloPrevia = (
+      indiceModulo: number
+    ): void => {
+
+      setPreviaImportacao(atual => {
+        if (!atual) { return atual; }
+
+        return {
+          ...atual,
+          modulos: atual.modulos.filter((_, indice) => indice !== indiceModulo)
+        };
+      });
+    };
+
+    const atualizarConteudoPrevia = (
+      indiceModulo: number,
+      indiceConteudo: number,
+      alteracoes: Partial<IConteudoModuloJson>
+    ): void => {
+
+      setPreviaImportacao(atual => {
+        if (!atual) { return atual; }
+
+        const modulos = atual.modulos.map((modulo, im) => {
+          if (im !== indiceModulo) { return modulo; }
+
+          const conteudos = modulo.conteudos.map((conteudo, ic) =>
+            ic === indiceConteudo
+              ? { ...conteudo, ...alteracoes }
+              : conteudo
+          );
+
+          return { ...modulo, conteudos };
+        });
+
+        return { ...atual, modulos };
+      });
+    };
+
+    const removerConteudoPrevia = (
+      indiceModulo: number,
+      indiceConteudo: number
+    ): void => {
+
+      setPreviaImportacao(atual => {
+        if (!atual) { return atual; }
+
+        const modulos = atual.modulos.map((modulo, im) => {
+          if (im !== indiceModulo) { return modulo; }
+
+          return {
+            ...modulo,
+            conteudos: modulo.conteudos.filter((_, ic) => ic !== indiceConteudo)
+          };
+        });
+
+        return { ...atual, modulos };
+      });
+    };
+
+    const confirmarImportacao = async (): Promise<void> => {
+
+      if (!previaImportacao) { return; }
+
+      if (previaImportacao.modulos.length === 0) {
+        setErroPreviaImportacao(
+          'Não há módulos para importar — todos foram removidos da prévia.'
+        );
+        return;
+      }
+
+      setConfirmandoImportacao(true);
+      setErroPreviaImportacao('');
+
+      try {
+
+        // Guarda o título do primeiro módulo importado antes de limpar
+        // a prévia, para localizá-lo assim que a lista for recarregada.
+        const primeiroModuloImportado =
+          previaImportacao.modulos[0]?.titulo;
+
+        const mensagem = await props.onConfirmarImportacaoJson(previaImportacao);
+
+        setMensagemImportacao(
+          `${mensagem} Você já pode adicionar novos itens ao módulo abaixo.`
+        );
+        setErroImportacao('');
+        setPreviaImportacao(null);
+
+        await props.onSelecionarTreinamento(props.treinamentoId);
+
+        if (primeiroModuloImportado) {
+          setModuloImportadoAguardandoConteudo({
+            treinamentoId: props.treinamentoId,
+            titulo: primeiroModuloImportado
+          });
+        }
+
+      } catch (error: unknown) {
+
+        setErroPreviaImportacao(
+          error instanceof Error
+            ? error.message
+            : 'Erro ao gravar os módulos importados.'
+        );
+
+      } finally {
+
+        setConfirmandoImportacao(false);
+      }
+    };
 
     const avancar =
       async (): Promise<void> => {
@@ -732,6 +1072,79 @@ const GestaoModulosPage:
           );
         }
       };
+
+    const editorConteudoSelecionado:
+      React.ReactNode =
+        props.moduloConteudoSelecionadoId
+          ? (
+            <ModuloConteudosEditor
+              // A key força o componente a reiniciar (e reaplicar o modo
+              // inicial correto) sempre que o módulo ou o modo mudarem.
+              key={
+                `${props.moduloConteudoSelecionadoId}-${modoConteudoSelecionado}`
+              }
+
+              modoInicial={
+                modoConteudoSelecionado
+              }
+
+              moduloId={
+                props.moduloConteudoSelecionadoId
+              }
+
+              moduloTitulo={
+                props.modulos
+                  .find(
+                    item =>
+                      item.id ===
+                      props.moduloConteudoSelecionadoId
+                  )
+                  ?.titulo ||
+                'Módulo'
+              }
+
+              conteudos={
+                props.conteudosModulo
+              }
+
+              carregando={
+                props.carregandoConteudosModulo
+              }
+
+              processando={
+                props.processandoConteudosModulo
+              }
+
+              erro={
+                props.erroConteudosModulo
+              }
+
+              onFechar={
+                props.onLimparModuloConteudo
+              }
+
+              onCriar={
+                props.onCriarConteudoModulo
+              }
+
+              onEditar={
+                props.onEditarConteudoModulo
+              }
+
+              onDefinirAtivo={
+                props.onDefinirConteudoModuloAtivo
+              }
+
+              onMoverAcima={
+                props.onMoverConteudoModuloAcima
+              }
+
+              onMoverAbaixo={
+                props.onMoverConteudoModuloAbaixo
+              }
+            />
+          )
+          : null;
 
     return (
       <section>
@@ -795,22 +1208,19 @@ const GestaoModulosPage:
 
               setMensagemImportacao('');
               setErroImportacao('');
+              setErroPreviaImportacao('');
 
               void props
-                .onImportarJson(
+                .onAnalisarJson(
                   arquivo
                 )
                 .then(
-                  mensagem => {
-
-                    setMensagemImportacao(
-                      mensagem
+                  dados => {
+                    // Não grava nada ainda: apenas abre a prévia
+                    // para o usuário revisar e ajustar antes de salvar.
+                    setPreviaImportacao(
+                      dados
                     );
-
-                    return props
-                      .onSelecionarTreinamento(
-                        props.treinamentoId
-                      );
                   }
                 )
                 .catch(
@@ -822,7 +1232,7 @@ const GestaoModulosPage:
                     setErroImportacao(
                       error instanceof Error
                         ? error.message
-                        : 'Erro ao importar JSON.'
+                        : 'Erro ao ler o arquivo JSON.'
                     );
                   }
                 )
@@ -879,7 +1289,7 @@ const GestaoModulosPage:
           >
             {
               importandoJson
-                ? 'Importando JSON...'
+                ? 'Lendo arquivo...'
                 : '⬆ Importar módulos por JSON'
             }
           </button>
@@ -1331,9 +1741,14 @@ const GestaoModulosPage:
                       type="button"
                       onClick={() => {
 
-                        if (
+                        const jaEstaEmPreview =
                           props.moduloConteudoSelecionadoId ===
-                          modulo.id
+                            modulo.id &&
+                          modoConteudoSelecionado ===
+                            'preview';
+
+                        if (
+                          jaEstaEmPreview
                         ) {
                           props
                             .onLimparModuloConteudo();
@@ -1341,32 +1756,45 @@ const GestaoModulosPage:
                           return;
                         }
 
-                        props
-                          .onSelecionarModuloConteudo(
+                        setModoConteudoSelecionado(
+                          'preview'
+                        );
+
+                        if (
+                          props.moduloConteudoSelecionadoId !==
                             modulo.id
-                          )
-                          .catch(
-                            (
-                              error:
-                                unknown
-                            ) =>
-                              console.error(
-                                error
-                              )
-                          );
+                        ) {
+                          props
+                            .onSelecionarModuloConteudo(
+                              modulo.id
+                            )
+                            .catch(
+                              (
+                                error:
+                                  unknown
+                              ) =>
+                                console.error(
+                                  error
+                                )
+                            );
+                        }
                       }}
                       style={
                         props.moduloConteudoSelecionadoId ===
-                          modulo.id
+                          modulo.id &&
+                        modoConteudoSelecionado ===
+                          'preview'
                           ? buttonPrimary
                           : buttonSecondary
                       }
                     >
                       {
                         props.moduloConteudoSelecionadoId ===
-                          modulo.id
-                          ? 'Fechar conteúdo'
-                          : 'Gerenciar conteúdo'
+                          modulo.id &&
+                        modoConteudoSelecionado ===
+                          'preview'
+                          ? 'Fechar pré-visualização'
+                          : '👁 Pré-visualizar'
                       }
                     </button>
 
@@ -1429,64 +1857,47 @@ const GestaoModulosPage:
         )}
 
         {
+          // Quando está editando um módulo existente, o editor de
+          // conteúdo aparece DENTRO do próprio modal (ver mais abaixo).
+          // Fora do modal, ele continua aparecendo aqui embaixo, como
+          // antes — inclusive após criar um módulo novo ou importar por JSON.
+          // A pré-visualização (modo 'preview') NÃO aparece aqui: ela abre
+          // em tela própria (modal), veja mais abaixo — assim não fica
+          // escondida lá embaixo quando há muitos módulos na lista.
+          !(mostrarFormulario && editando) &&
+          modoConteudoSelecionado === 'edicao' &&
+          editorConteudoSelecionado
+        }
+
+        {
+          // Pré-visualização em tela própria (modal), para não depender
+          // da posição do módulo na lista.
           props.moduloConteudoSelecionadoId &&
+          modoConteudoSelecionado === 'preview' &&
           (
-            <ModuloConteudosEditor
-              moduloId={
-                props.moduloConteudoSelecionadoId
-              }
-
-              moduloTitulo={
-                props.modulos
-                  .find(
-                    item =>
-                      item.id ===
-                      props.moduloConteudoSelecionadoId
-                  )
-                  ?.titulo ||
-                'Módulo'
-              }
-
-              conteudos={
-                props.conteudosModulo
-              }
-
-              carregando={
-                props.carregandoConteudosModulo
-              }
-
-              processando={
-                props.processandoConteudosModulo
-              }
-
-              erro={
-                props.erroConteudosModulo
-              }
-
-              onFechar={
-                props.onLimparModuloConteudo
-              }
-
-              onCriar={
-                props.onCriarConteudoModulo
-              }
-
-              onEditar={
-                props.onEditarConteudoModulo
-              }
-
-              onDefinirAtivo={
-                props.onDefinirConteudoModuloAtivo
-              }
-
-              onMoverAcima={
-                props.onMoverConteudoModuloAcima
-              }
-
-              onMoverAbaixo={
-                props.onMoverConteudoModuloAbaixo
-              }
-            />
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 10002,
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'flex-start',
+                padding: '20px',
+                overflowY: 'auto',
+                background: 'rgba(15,23,42,.55)'
+              }}
+            >
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: '1000px',
+                  marginBottom: '40px'
+                }}
+              >
+                {editorConteudoSelecionado}
+              </div>
+            </div>
           )
         }
 
@@ -1587,8 +1998,12 @@ const GestaoModulosPage:
                 width:
                   '100%',
 
+                // Editando um módulo existente: o modal também mostra o
+                // editor de conteúdo completo, então precisa de mais espaço.
                 maxWidth:
-                  '760px',
+                  editando
+                    ? '1180px'
+                    : '760px',
 
                 maxHeight:
                   '90vh',
@@ -1642,6 +2057,24 @@ const GestaoModulosPage:
                 Os materiais e conteúdos serão adicionados em blocos,
                 permitindo combinar texto, vídeo, PDF, links e imagens.
               </p>
+
+              {erroLocal && (
+                <div
+                  style={{
+                    marginBottom: '14px',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    background: '#FDE7E9',
+                    color: '#A4262C',
+                    fontSize: '13px'
+                  }}
+                >
+                  {erroLocal}
+                </div>
+              )}
+
+              {!revisandoModulo && (
+              <>
 
               <label>
                 Título
@@ -1854,6 +2287,69 @@ const GestaoModulosPage:
                 Ativo
               </label>
 
+              </>
+              )}
+
+              {revisandoModulo && (
+                <div
+                  style={{
+                    padding:
+                      '14px 16px',
+                    background:
+                      '#F8FAFC',
+                    border:
+                      '1px solid #E2E8F0',
+                    borderRadius:
+                      '10px',
+                    color:
+                      '#0B2D4D'
+                  }}
+                >
+                  <strong
+                    style={{
+                      display:
+                        'block',
+                      marginBottom:
+                        '10px'
+                    }}
+                  >
+                    Confira antes de salvar
+                  </strong>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', rowGap: '8px', fontSize: '14px' }}>
+                    <span style={{ color: '#64748B' }}>Título</span>
+                    <span>{titulo.trim() || '—'}</span>
+
+                    <span style={{ color: '#64748B' }}>Descrição</span>
+                    <span>{descricao.trim() || '—'}</span>
+
+                    <span style={{ color: '#64748B' }}>Ordem</span>
+                    <span>{ordem}</span>
+
+                    <span style={{ color: '#64748B' }}>Duração estimada</span>
+                    <span>{duracao} min</span>
+
+                    <span style={{ color: '#64748B' }}>Obrigatório</span>
+                    <span>{obrigatorio ? 'Sim' : 'Não'}</span>
+
+                    <span style={{ color: '#64748B' }}>Ativo</span>
+                    <span>{ativo ? 'Sim' : 'Não'}</span>
+                  </div>
+
+                  <p style={{ marginTop: '12px', marginBottom: 0, fontSize: '13px', color: '#64748B', lineHeight: 1.5 }}>
+                    Nada foi salvo ainda. Se algo estiver errado, clique em
+                    &quot;Voltar e editar&quot;. Ao confirmar, o módulo será
+                    {editando ? ' atualizado' : ' criado'} no Dataverse{!editando ? ' e o editor de conteúdo será aberto em seguida' : ''}.
+                  </p>
+                </div>
+              )}
+
+              {editando && (
+                <div style={{ marginTop: '20px' }}>
+                  {editorConteudoSelecionado}
+                </div>
+              )}
+
               <div
                 style={{
                   display:
@@ -1872,16 +2368,20 @@ const GestaoModulosPage:
 
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    if (revisandoModulo) {
+                      setRevisandoModulo(false);
+                      return;
+                    }
                     setMostrarFormulario(
                       false
-                    )
-                  }
+                    );
+                  }}
                   style={
                     buttonSecondary
                   }
                 >
-                  Cancelar
+                  {revisandoModulo ? 'Voltar e editar' : 'Cancelar'}
                 </button>
 
                 <button
@@ -1890,6 +2390,11 @@ const GestaoModulosPage:
                     props.processando
                   }
                   onClick={() => {
+
+                    if (!revisandoModulo) {
+                      abrirRevisaoModulo();
+                      return;
+                    }
 
                     salvar()
                       .catch(
@@ -1907,9 +2412,9 @@ const GestaoModulosPage:
                   }
                 >
                   {
-                    props.processando
-                      ? 'Salvando...'
-                      : 'Salvar módulo'
+                    revisandoModulo
+                      ? (props.processando ? 'Salvando...' : 'Confirmar e salvar módulo')
+                      : 'Revisar antes de salvar'
                   }
                 </button>
 
@@ -1920,9 +2425,319 @@ const GestaoModulosPage:
           </div>
         )}
 
+        {previaImportacao && (
+
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 10001,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'flex-start',
+              padding: '20px',
+              overflowY: 'auto',
+              background: 'rgba(15,23,42,.55)'
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: '860px',
+                padding: '24px',
+                background: '#ffffff',
+                borderRadius: '16px',
+                marginBottom: '40px'
+              }}
+            >
+              <h2 style={{ marginBottom: '6px', color: '#0B2D4D' }}>
+                Revisar importação por JSON
+              </h2>
+
+              <p style={{ marginTop: 0, marginBottom: '18px', color: '#64748B', lineHeight: 1.5 }}>
+                Nada foi gravado ainda. Ajuste títulos, descrições e
+                conteúdos abaixo, remova o que não for necessário e só
+                então confirme para salvar no Dataverse.
+              </p>
+
+              {erroPreviaImportacao && (
+                <div
+                  style={{
+                    marginBottom: '14px',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    background: '#FDE7E9',
+                    color: '#A4262C',
+                    fontSize: '13px'
+                  }}
+                >
+                  {erroPreviaImportacao}
+                </div>
+              )}
+
+              {previaImportacao.modulos.map((modulo, indiceModulo) => (
+                <div
+                  key={indiceModulo}
+                  style={{
+                    border: '1px solid #E2E8F0',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    marginBottom: '14px',
+                    background: '#F8FAFC'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                    <strong style={{ color: '#0B2D4D' }}>
+                      Módulo #{indiceModulo + 1}
+                    </strong>
+
+                    <button
+                      type="button"
+                      onClick={() => removerModuloPrevia(indiceModulo)}
+                      style={{ ...buttonDanger, padding: '4px 10px', fontSize: '12px' }}
+                    >
+                      Remover módulo
+                    </button>
+                  </div>
+
+                  <div style={{ height: '10px' }} />
+
+                  <label style={{ fontSize: '13px' }}>Título</label>
+                  <input
+                    value={modulo.titulo}
+                    onChange={event =>
+                      atualizarModuloPrevia(indiceModulo, { titulo: event.target.value })
+                    }
+                    style={inputStyle}
+                  />
+
+                  <div style={{ height: '10px' }} />
+
+                  <label style={{ fontSize: '13px' }}>Descrição</label>
+                  <textarea
+                    rows={2}
+                    value={modulo.descricao || ''}
+                    onChange={event =>
+                      atualizarModuloPrevia(indiceModulo, { descricao: event.target.value })
+                    }
+                    style={{ ...inputStyle, resize: 'vertical' }}
+                  />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '13px' }}>Ordem</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={modulo.ordem}
+                        onChange={event =>
+                          atualizarModuloPrevia(indiceModulo, { ordem: Number(event.target.value) })
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '13px' }}>Duração (min)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={modulo.duracaoMin || 0}
+                        onChange={event =>
+                          atualizarModuloPrevia(indiceModulo, { duracaoMin: Number(event.target.value) })
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '20px' }}>
+                        <input
+                          type="checkbox"
+                          checked={modulo.obrigatorio ?? true}
+                          onChange={event =>
+                            atualizarModuloPrevia(indiceModulo, { obrigatorio: event.target.checked })
+                          }
+                        />
+                        Obrigatório
+                      </label>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '14px' }}>
+                    <strong style={{ fontSize: '13px', color: '#0B2D4D' }}>
+                      Conteúdos ({modulo.conteudos.length})
+                    </strong>
+
+                    {modulo.conteudos.map((conteudo, indiceConteudo) => (
+                      <div
+                        key={indiceConteudo}
+                        style={{
+                          border: '1px solid #E2E8F0',
+                          borderRadius: '10px',
+                          padding: '12px',
+                          marginTop: '10px',
+                          background: '#ffffff'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#0B5CAB' }}>
+                            #{indiceConteudo + 1} — {conteudo.tipo}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => removerConteudoPrevia(indiceModulo, indiceConteudo)}
+                            style={{ ...buttonDanger, padding: '3px 8px', fontSize: '11px' }}
+                          >
+                            Remover
+                          </button>
+                        </div>
+
+                        {conteudo.tipo !== 'Cards' && conteudo.tipo !== 'PerguntaRapida' && (
+                          <>
+                            <div style={{ height: '8px' }} />
+                            <label style={{ fontSize: '12px' }}>Título do bloco</label>
+                            <input
+                              value={conteudo.titulo || ''}
+                              onChange={event =>
+                                atualizarConteudoPrevia(indiceModulo, indiceConteudo, { titulo: event.target.value })
+                              }
+                              style={inputStyle}
+                            />
+
+                            <div style={{ height: '8px' }} />
+                            <label style={{ fontSize: '12px' }}>
+                              {conteudo.tipo === 'Video' || conteudo.tipo === 'Link' || conteudo.tipo === 'Material' || conteudo.tipo === 'Imagem'
+                                ? 'URL / conteúdo'
+                                : 'Texto'}
+                            </label>
+                            <textarea
+                              rows={3}
+                              value={conteudo.conteudo || conteudo.conteudoHtml || conteudo.url || ''}
+                              onChange={event =>
+                                atualizarConteudoPrevia(indiceModulo, indiceConteudo,
+                                  conteudo.url !== undefined && conteudo.conteudo === undefined
+                                    ? { url: event.target.value }
+                                    : { conteudo: event.target.value }
+                                )
+                              }
+                              style={{ ...inputStyle, resize: 'vertical' }}
+                            />
+                          </>
+                        )}
+
+                        {conteudo.tipo === 'Cards' && (
+                          <>
+                            <div style={{ height: '8px' }} />
+                            {(conteudo.cards || []).map((card, indiceCard) => (
+                              <div key={indiceCard} style={{ marginTop: '6px', paddingTop: '6px', borderTop: indiceCard > 0 ? '1px dashed #E2E8F0' : undefined }}>
+                                <label style={{ fontSize: '12px' }}>Card {indiceCard + 1} — título</label>
+                                <input
+                                  value={card.titulo}
+                                  onChange={event => {
+                                    const novosCards = (conteudo.cards || []).map((c, i) =>
+                                      i === indiceCard ? { ...c, titulo: event.target.value } : c
+                                    );
+                                    atualizarConteudoPrevia(indiceModulo, indiceConteudo, { cards: novosCards });
+                                  }}
+                                  style={inputStyle}
+                                />
+                                <label style={{ fontSize: '12px' }}>Card {indiceCard + 1} — descrição</label>
+                                <textarea
+                                  rows={2}
+                                  value={card.descricao}
+                                  onChange={event => {
+                                    const novosCards = (conteudo.cards || []).map((c, i) =>
+                                      i === indiceCard ? { ...c, descricao: event.target.value } : c
+                                    );
+                                    atualizarConteudoPrevia(indiceModulo, indiceConteudo, { cards: novosCards });
+                                  }}
+                                  style={{ ...inputStyle, resize: 'vertical' }}
+                                />
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {conteudo.tipo === 'PerguntaRapida' && conteudo.pergunta && (
+                          <>
+                            <div style={{ height: '8px' }} />
+                            <label style={{ fontSize: '12px' }}>Enunciado</label>
+                            <textarea
+                              rows={2}
+                              value={conteudo.pergunta.enunciado}
+                              onChange={event =>
+                                atualizarConteudoPrevia(indiceModulo, indiceConteudo, {
+                                  pergunta: { ...conteudo.pergunta!, enunciado: event.target.value }
+                                })
+                              }
+                              style={{ ...inputStyle, resize: 'vertical' }}
+                            />
+
+                            {conteudo.pergunta.alternativas.map((alternativa, indiceAlternativa) => (
+                              <div key={indiceAlternativa} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={alternativa.correta}
+                                  onChange={event => {
+                                    const novasAlternativas = conteudo.pergunta!.alternativas.map((a, i) =>
+                                      i === indiceAlternativa ? { ...a, correta: event.target.checked } : a
+                                    );
+                                    atualizarConteudoPrevia(indiceModulo, indiceConteudo, {
+                                      pergunta: { ...conteudo.pergunta!, alternativas: novasAlternativas }
+                                    });
+                                  }}
+                                />
+                                <input
+                                  value={alternativa.texto}
+                                  onChange={event => {
+                                    const novasAlternativas = conteudo.pergunta!.alternativas.map((a, i) =>
+                                      i === indiceAlternativa ? { ...a, texto: event.target.value } : a
+                                    );
+                                    atualizarConteudoPrevia(indiceModulo, indiceConteudo, {
+                                      pergunta: { ...conteudo.pergunta!, alternativas: novasAlternativas }
+                                    });
+                                  }}
+                                  style={{ ...inputStyle, flex: 1 }}
+                                />
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  disabled={confirmandoImportacao}
+                  onClick={() => setPreviaImportacao(null)}
+                  style={{ ...buttonSecondary, opacity: confirmandoImportacao ? 0.55 : 1 }}
+                >
+                  Cancelar importação
+                </button>
+
+                <button
+                  type="button"
+                  disabled={confirmandoImportacao}
+                  onClick={() => {
+                    confirmarImportacao().catch((error: unknown) => console.error(error));
+                  }}
+                  style={{ ...buttonPrimary, opacity: confirmandoImportacao ? 0.55 : 1 }}
+                >
+                  {confirmandoImportacao ? 'Salvando...' : 'Confirmar e importar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </section>
     );
   };
 
 export default GestaoModulosPage;
-

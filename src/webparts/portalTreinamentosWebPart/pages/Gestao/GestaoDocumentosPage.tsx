@@ -32,9 +32,26 @@ import {
 } from '../../services/TreinamentoAdminService';
 import DocumentoWorkflowCard from
   './DocumentoWorkflowCard';
+
+import {
+  IContextoAcesso
+} from '../../services/AutorizacaoService';
+
+import {
+  IUsuarioAreaAdmin
+} from '../../services/AreaAdminService';
+
 export interface IGestaoDocumentosPageProps {
   documentos:
     IDocumentoAdmin[];
+
+  // Usados para decidir quem pode aprovar/publicar: só o Gestor
+  // da área do documento, ou um Administrador.
+  contexto?:
+    IContextoAcesso;
+
+  usuariosAreas:
+    IUsuarioAreaAdmin[];
 
   documentoSelecionado?:
     IDocumentoAdmin;
@@ -174,6 +191,50 @@ const GestaoDocumentosPage:
   React.FC<IGestaoDocumentosPageProps> = (
     props
   ) => {
+
+    // Só o Gestor ativo da área do documento (ou um Administrador)
+    // pode aprovar e publicar a revisão.
+    const podeAprovarDocumentoSelecionado =
+      React.useMemo(
+        () => {
+
+          if (
+            !props.documentoSelecionado
+          ) {
+            return false;
+          }
+
+          if (
+            props.contexto?.perfil === 'Administrador'
+          ) {
+            return true;
+          }
+
+          const email =
+            (props.contexto?.email || '')
+              .trim()
+              .toLowerCase();
+
+          if (
+            !email
+          ) {
+            return false;
+          }
+
+          return props.usuariosAreas.some(
+            vinculo =>
+              vinculo.areaId === props.documentoSelecionado!.areaId &&
+              vinculo.perfil === 'Gestor' &&
+              vinculo.ativo &&
+              vinculo.usuarioEmail.trim().toLowerCase() === email
+          );
+        },
+        [
+          props.documentoSelecionado,
+          props.contexto,
+          props.usuariosAreas
+        ]
+      );
 
     const [
       revisaoParaPublicar,
@@ -593,6 +654,14 @@ const GestaoDocumentosPage:
                                 ? ` • ${props.documentoSelecionado.area}`
                                 : ''
                             }
+
+                            {
+                              props
+                                .documentoSelecionado
+                                .tipo
+                                ? ` • ${props.documentoSelecionado.tipo}`
+                                : ''
+                            }
                           </div>
                         </div>
 
@@ -605,6 +674,137 @@ const GestaoDocumentosPage:
                           Fechar
                         </button>
                       </div>
+
+                      <div
+                        style={{
+                          marginTop: '14px',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))',
+                          gap: '10px',
+                          fontSize: '13px'
+                        }}
+                      >
+                        <div>
+                          <span style={{ display: 'block', color: '#64748B', fontSize: '11px' }}>
+                            Status
+                          </span>
+                          <strong>
+                            {
+                              props.documentoSelecionado.status ||
+                              'Em elaboração'
+                            }
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span style={{ display: 'block', color: '#64748B', fontSize: '11px' }}>
+                            Aprovador / Responsável
+                          </span>
+                          <strong>
+                            {
+                              props.documentoSelecionado.responsavel ||
+                              '—'
+                            }
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span style={{ display: 'block', color: '#64748B', fontSize: '11px' }}>
+                            Revisão atual
+                          </span>
+                          <strong>
+                            {
+                              props.documentoSelecionado.revisaoAtual ||
+                              '—'
+                            }
+                          </strong>
+                        </div>
+                      </div>
+
+                      {
+                        props.documentoSelecionado.descricao &&
+                        (
+                          <div
+                            style={{
+                              marginTop: '12px',
+                              paddingTop: '12px',
+                              borderTop: '1px solid #E2E8F0',
+                              color: '#475569',
+                              fontSize: '13px',
+                              lineHeight: 1.5
+                            }}
+                          >
+                            {
+                              props.documentoSelecionado.descricao
+                            }
+                          </div>
+                        )
+                      }
+
+                      {
+                        // Diagnóstico: por que o botão de aprovar aparece
+                        // (ou não) para o usuário logado. Evita dúvida do
+                        // tipo "sou o responsável e não consigo aprovar".
+                        (() => {
+
+                          const gestoresDaAreaDocumento =
+                            props.documentoSelecionado
+                              ? props.usuariosAreas.filter(
+                                v =>
+                                  v.areaId === props.documentoSelecionado!.areaId &&
+                                  v.perfil === 'Gestor' &&
+                                  v.ativo
+                              )
+                              : [];
+
+                          return (
+                            <div
+                              style={{
+                                marginTop: '12px',
+                                paddingTop: '12px',
+                                borderTop: '1px solid #E2E8F0',
+                                fontSize: '12px',
+                                color: '#64748B',
+                                lineHeight: 1.6
+                              }}
+                            >
+                              Você está logado como{' '}
+                              <strong>
+                                {props.contexto?.email || 'usuário não identificado'}
+                              </strong>
+                              {
+                                props.contexto?.perfil === 'Administrador'
+                                  ? ' — perfil Administrador, pode aprovar qualquer documento.'
+                                  : gestoresDaAreaDocumento.length === 0
+                                    ? (
+                                      <>
+                                        {' '}— esta área não tem nenhum Gestor cadastrado em
+                                        {' '}<strong>Áreas e acessos</strong>, então ninguém
+                                        consegue aprovar este documento ainda.
+                                      </>
+                                    )
+                                    : (
+                                      <>
+                                        {' '}— Gestor(es) desta área:{' '}
+                                        <strong>
+                                          {
+                                            gestoresDaAreaDocumento
+                                              .map(g => `${g.usuarioNome} (${g.usuarioEmail})`)
+                                              .join(', ')
+                                          }
+                                        </strong>.
+                                        {
+                                          podeAprovarDocumentoSelecionado
+                                            ? ' Você é um deles: o botão de aprovar aparece na revisão abaixo.'
+                                            : ' Seu e-mail não bate com nenhum deles, por isso o botão de aprovar não aparece.'
+                                        }
+                                      </>
+                                    )
+                              }
+                            </div>
+                          );
+                        })()
+                      }
                     </div>
 
                     <div
@@ -739,6 +939,9 @@ const GestaoDocumentosPage:
                                 setRevisaoParaPublicar(
                                   revisaoSelecionada
                                 )
+                            }
+                            podeAprovar={
+                              podeAprovarDocumentoSelecionado
                             }
                           />
                               </div>
@@ -1066,6 +1269,9 @@ const GestaoDocumentosPage:
               ?.revisao ||
             ''
           }
+          ehPrimeiraRevisao={
+            props.revisoes.length <= 1
+          }
           requerRetreinamento={
             revisaoParaPublicar
               ?.requerRetreinamento ||
@@ -1126,6 +1332,3 @@ const GestaoDocumentosPage:
   };
 
 export default GestaoDocumentosPage;
-
-
-
