@@ -3383,6 +3383,10 @@ const gestaoAreas =
                   gestaoAreas.definirUsuarioAreaAtivo
                 }
 
+                statusDocumentos={
+                  gestaoDocumentos.statusDocumentos
+                }
+
                 documentosAdministrativos={
                   gestaoDocumentos.documentos
                 }
@@ -3544,6 +3548,7 @@ const gestaoAreas =
   };
 
 export default PortalTreinamentos;
+
 
 
 

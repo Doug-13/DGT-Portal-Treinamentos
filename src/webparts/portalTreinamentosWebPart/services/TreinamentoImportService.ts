@@ -59,6 +59,48 @@ export interface IResultadoImportacaoTreinamento {
     number;
 }
 
+
+const serializarCardsImportacaoCompleta =
+  (
+    cards:
+      IConteudoModuloImport['cards']
+  ): string =>
+    '__DGT_CARDS__:' +
+    JSON.stringify(
+      (
+        cards ||
+        []
+      )
+        .slice(
+          0,
+          3
+        )
+        .map(
+          (
+            item,
+            indice
+          ) => ({
+            numero:
+              item.numero ||
+              (
+                '00' +
+                String(
+                  indice + 1
+                )
+              ).slice(
+                -2
+              ),
+
+            titulo:
+              item.titulo
+                .trim(),
+
+            descricao:
+              item.descricao
+                .trim()
+          })
+        )
+    );
 const aguardar =
   (
     ms:
@@ -398,7 +440,40 @@ export class TreinamentoImportService {
               true,
 
             ativo:
-              true
+              true,
+
+            cards:
+              conteudoImport.tipo ===
+                'Cards'
+                ? (
+                    conteudoImport.cards ||
+                    []
+                  ).map(
+                    (
+                      card,
+                      indice
+                    ) => ({
+                      numero:
+                        card.numero ||
+                        (
+                          '00' +
+                          String(
+                            indice + 1
+                          )
+                        ).slice(
+                          -2
+                        ),
+
+                      titulo:
+                        card.titulo
+                          .trim(),
+
+                      descricao:
+                        card.descricao
+                          .trim()
+                    })
+                  )
+                : undefined
           });
 
         conteudosCriados +=
@@ -633,3 +708,5 @@ export class TreinamentoImportService {
     };
   }
 }
+
+

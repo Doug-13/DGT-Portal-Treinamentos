@@ -10,8 +10,19 @@ export type TipoConteudoModulo =
   | 'Link'
   | 'Imagem'
   | 'Destaque'
+  | 'Cards'
   | 'Pergunta rápida';
 
+export interface IModuloCardItem {
+  numero:
+    string;
+
+  titulo:
+    string;
+
+  descricao:
+    string;
+}
 export interface IModuloConteudoAdmin {
   id:
     string;
@@ -39,6 +50,8 @@ export interface IModuloConteudoAdmin {
 
   ativo:
     boolean;
+  cards?:
+    IModuloCardItem[];
 }
 
 export interface INovoModuloConteudo {
@@ -65,6 +78,8 @@ export interface INovoModuloConteudo {
 
   ativo:
     boolean;
+  cards?:
+    IModuloCardItem[];
 }
 
 export interface IEditarModuloConteudo
@@ -74,6 +89,95 @@ export interface IEditarModuloConteudo
     string;
 }
 
+const MARCADOR_CARDS =
+  '__DGT_CARDS__:';
+
+const lerCards = (
+  conteudo:
+    string
+): IModuloCardItem[] => {
+
+  if (
+    !conteudo ||
+    conteudo.indexOf(
+      MARCADOR_CARDS
+    ) !==
+      0
+  ) {
+    return [];
+  }
+
+  try {
+
+    const dados =
+      JSON.parse(
+        conteudo.substring(
+          MARCADOR_CARDS.length
+        )
+      ) as IModuloCardItem[];
+
+    return Array.isArray(
+      dados
+    )
+      ? dados.slice(
+          0,
+          3
+        )
+      : [];
+
+  } catch {
+
+    return [];
+  }
+};
+
+const serializarCards = (
+  cards:
+    IModuloCardItem[] | undefined
+): string => {
+
+  const lista =
+    (
+      cards ||
+      []
+    )
+      .slice(
+        0,
+        3
+      )
+      .map(
+        (
+          item,
+          indice
+        ) => ({
+          numero:
+            item.numero ||
+            (
+              '00' +
+              String(
+                indice + 1
+              )
+            ).slice(
+              -2
+            ),
+
+          titulo:
+            item.titulo
+              .trim(),
+
+          descricao:
+            item.descricao
+              .trim()
+        })
+      );
+
+  return (
+    MARCADOR_CARDS +
+    JSON.stringify(
+      lista
+    )
+  );
+};
 const TIPO_VALORES:
   Record<
     TipoConteudoModulo,
@@ -81,6 +185,9 @@ const TIPO_VALORES:
   > = {
 
   Texto:
+    100000000,
+
+  Cards:
     100000000,
 
   Vídeo:
@@ -243,6 +350,21 @@ const obterTipo = (
   registro:
     IDataverseRecord
 ): TipoConteudoModulo => {
+  const conteudoCards =
+    texto(
+      registro,
+      'dgt_conteudo'
+    );
+
+  if (
+    conteudoCards.indexOf(
+      MARCADOR_CARDS
+    ) ===
+      0
+  ) {
+    return 'Cards';
+  }
+
 
   const formatado =
     texto(
@@ -398,8 +520,15 @@ export class ModuloConteudoAdminService {
               registro,
               'dgt_ativo',
               true
-            )
-        })
+            ),
+
+          cards:
+            lerCards(
+              texto(
+                registro,
+                'dgt_conteudo'
+              )
+            )        })
       )
       .sort(
         (
@@ -439,8 +568,13 @@ export class ModuloConteudoAdminService {
               .trim(),
 
           dgt_conteudo:
-            dados.conteudo
-              .trim(),
+            dados.tipo ===
+              'Cards'
+              ? serializarCards(
+                  dados.cards
+                )
+              : dados.conteudo
+                  .trim(),
 
           dgt_url:
             dados.url
@@ -494,8 +628,13 @@ export class ModuloConteudoAdminService {
               .trim(),
 
           dgt_conteudo:
-            dados.conteudo
-              .trim(),
+            dados.tipo ===
+              'Cards'
+              ? serializarCards(
+                  dados.cards
+                )
+              : dados.conteudo
+                  .trim(),
 
           dgt_url:
             dados.url
@@ -592,6 +731,44 @@ export class ModuloConteudoAdminService {
       );
     }
 
+
+    if (
+      dados.tipo ===
+        'Cards'
+    ) {
+
+      const cards =
+        dados.cards ||
+        [];
+
+      if (
+        cards.length <
+          1 ||
+        cards.length >
+          3
+      ) {
+        throw new Error(
+          'O bloco Cards deve possuir de 1 a 3 cards.'
+        );
+      }
+
+      const incompleto =
+        cards.some(
+          item =>
+            !item.titulo
+              .trim() ||
+            !item.descricao
+              .trim()
+        );
+
+      if (
+        incompleto
+      ) {
+        throw new Error(
+          'Preencha o título e a descrição de todos os cards.'
+        );
+      }
+    }
     if (
       (
         dados.tipo ===
@@ -627,3 +804,5 @@ export class ModuloConteudoAdminService {
     }
   }
 }
+
+

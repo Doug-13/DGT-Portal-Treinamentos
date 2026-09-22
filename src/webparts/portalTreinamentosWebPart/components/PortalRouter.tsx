@@ -409,6 +409,12 @@ export interface IPortalRouterProps {
   // GESTÃO DOCUMENTAL ADMINISTRATIVA
   // ============================================================
 
+  statusDocumentos:
+  Array<{
+    value: number;
+    label: string;
+  }>;
+
   documentosAdministrativos:
   IDocumentoAdmin[];
 
@@ -1416,6 +1422,22 @@ const PortalRouter:
 
         return (
           <NovoDocumentoPage
+            statusDocumentos={
+              props.statusDocumentos
+            }
+
+            usuarioCriador={
+              props.primeiroNome
+            }
+
+            areas={
+              props.areasAdministrativas
+            }
+
+            documentosExistentes={
+              props.documentosAdministrativos
+            }
+
             processando={
               props.processandoGestaoDocumentos
             }
@@ -2469,6 +2491,9 @@ const PortalRouter:
   };
 
 export default PortalRouter;
+
+
+
 
 
 

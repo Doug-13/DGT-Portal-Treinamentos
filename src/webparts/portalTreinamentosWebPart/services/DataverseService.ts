@@ -555,6 +555,218 @@ export class DataverseService {
   }
 
   // ==========================================================
+  // CHOICE / PICKLIST - RESOLVER LABEL PARA VALOR INTEIRO
+  // ==========================================================
+
+
+  public async getChoiceOptions(
+    entityLogicalName:
+      string,
+    attributeLogicalName:
+      string
+  ): Promise<Array<{
+    value: number;
+    label: string;
+  }>> {
+
+    const endpoint =
+      `EntityDefinitions(LogicalName='${entityLogicalName}')/` +
+      `Attributes(LogicalName='${attributeLogicalName}')/` +
+      'Microsoft.Dynamics.CRM.PicklistAttributeMetadata' +
+      '?$select=LogicalName&$expand=OptionSet';
+
+    const metadata =
+      await this.getObject(
+        endpoint
+      );
+
+    const optionSet =
+      metadata.OptionSet as
+        Record<string, unknown> |
+        undefined;
+
+    const options =
+      optionSet &&
+      Array.isArray(
+        optionSet.Options
+      )
+        ? optionSet.Options as
+          Array<Record<string, unknown>>
+        : [];
+
+    return options
+      .map(
+        option => {
+
+          const rotulo =
+            option.Label as
+              Record<string, unknown> |
+              undefined;
+
+          const userLocalized =
+            rotulo?.UserLocalizedLabel as
+              Record<string, unknown> |
+              undefined;
+
+          const localizedLabels =
+            Array.isArray(
+              rotulo?.LocalizedLabels
+            )
+              ? rotulo?.LocalizedLabels as
+                Array<Record<string, unknown>>
+              : [];
+
+          let label =
+            userLocalized?.Label
+              ? String(
+                  userLocalized.Label
+                )
+              : '';
+
+          if (
+            !label &&
+            localizedLabels.length >
+              0 &&
+            localizedLabels[0].Label
+          ) {
+            label =
+              String(
+                localizedLabels[0].Label
+              );
+          }
+
+          return {
+            value:
+              Number(
+                option.Value
+              ),
+            label
+          };
+        }
+      )
+      .filter(
+        item =>
+          item.label &&
+          Number.isFinite(
+            item.value
+          )
+      );
+  }
+  public async getChoiceOptionValue(
+    entityLogicalName:
+      string,
+    attributeLogicalName:
+      string,
+    label:
+      string
+  ): Promise<number> {
+
+    const endpoint =
+      `EntityDefinitions(LogicalName='${entityLogicalName}')/` +
+      `Attributes(LogicalName='${attributeLogicalName}')/` +
+      'Microsoft.Dynamics.CRM.PicklistAttributeMetadata' +
+      '?$select=LogicalName&$expand=OptionSet';
+
+    const metadata =
+      await this.getObject(
+        endpoint
+      );
+
+    const optionSet =
+      metadata.OptionSet as
+        Record<string, unknown> |
+        undefined;
+
+    const options =
+      optionSet &&
+      Array.isArray(
+        optionSet.Options
+      )
+        ? optionSet.Options as
+          Array<Record<string, unknown>>
+        : [];
+
+    const procurado =
+      label
+        .trim()
+        .toLocaleLowerCase();
+
+    const encontrado =
+      options.find(
+        option => {
+
+          const rotulo =
+            option.Label as
+              Record<string, unknown> |
+              undefined;
+
+          const userLocalized =
+            rotulo?.UserLocalizedLabel as
+              Record<string, unknown> |
+              undefined;
+
+          const localizedLabels =
+            Array.isArray(
+              rotulo?.LocalizedLabels
+            )
+              ? rotulo?.LocalizedLabels as
+                Array<Record<string, unknown>>
+              : [];
+
+          const candidatos:
+            string[] = [];
+
+          if (
+            userLocalized?.Label
+          ) {
+            candidatos.push(
+              String(
+                userLocalized.Label
+              )
+            );
+          }
+
+          localizedLabels.forEach(
+            item => {
+              if (
+                item.Label
+              ) {
+                candidatos.push(
+                  String(
+                    item.Label
+                  )
+                );
+              }
+            }
+          );
+
+          return candidatos.some(
+            item =>
+              item
+                .trim()
+                .toLocaleLowerCase() ===
+              procurado
+          );
+        }
+      );
+
+    if (
+      !encontrado ||
+      encontrado.Value ===
+        undefined ||
+      encontrado.Value ===
+        null
+    ) {
+      throw new Error(
+        `A opção "${label}" não existe no campo ${entityLogicalName}.${attributeLogicalName} do Dataverse.`
+      );
+    }
+
+    return Number(
+      encontrado.Value
+    );
+  }
+  // ==========================================================
   // TREINAMENTOS
   // ==========================================================
 
@@ -2220,7 +2432,7 @@ export class DataverseService {
           'dgt_sigla',
           'dgt_ativo'
         ].join(',') +
-        `&$filter=dgt_name eq '${nomeSeguro}'` +
+        `&$filter=dgt_name eq '${nomeSeguro}' and dgt_ativo eq true` +
         '&$top=1'
       );
 
@@ -2229,6 +2441,81 @@ export class DataverseService {
       : undefined;
   }
 
+  public async criarDocumentoAdminComAreaEAprovador(
+    areaId:
+      string,
+
+    aprovadorId:
+      string,
+
+    dados:
+      Record<string, unknown>
+  ): Promise<IDataverseRecord> {
+
+    if (
+      !areaId
+    ) {
+      throw new Error(
+        'Área não informada para o documento.'
+      );
+    }
+
+    if (
+      !aprovadorId
+    ) {
+      throw new Error(
+        'Aprovador não informado para o documento.'
+      );
+    }
+
+    const [
+      documentoSet,
+      areaSet,
+      usuarioSet
+    ] =
+      await Promise.all([
+        this.getEntitySetName(
+          'dgt_documento'
+        ),
+
+        this.getEntitySetName(
+          'dgt_area'
+        ),
+
+        this.getEntitySetName(
+          'dgt_usuario'
+        )
+      ]);
+
+    const area =
+      areaId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    const aprovador =
+      aprovadorId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    return this.postObject(
+      documentoSet,
+      {
+        ...dados,
+
+        'dgt_Area@odata.bind':
+          `/${areaSet}(${area})`,
+
+        'dgt_Responsavel@odata.bind':
+          `/${usuarioSet}(${aprovador})`
+      }
+    );
+  }
   public async criarDocumentoAdminComArea(
     areaId:
       string,
@@ -2444,6 +2731,7 @@ export class DataverseService {
         'dgt_sigla',
         'dgt_ativo'
       ].join(',') +
+      '&$filter=dgt_ativo eq true' +
       '&$orderby=dgt_name asc'
     );
   }
@@ -3269,6 +3557,11 @@ export class DataverseService {
   }
 
 }
+
+
+
+
+
 
 
 

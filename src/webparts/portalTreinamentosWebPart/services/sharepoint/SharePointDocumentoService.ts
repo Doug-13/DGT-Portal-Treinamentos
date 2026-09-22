@@ -146,6 +146,56 @@ export class SharePointDocumentoService {
       biblioteca;
   }
 
+
+  private async criarBibliotecaDocumentos():
+    Promise<void> {
+
+    const url =
+      `${this.siteUrl}/_api/web/lists`;
+
+    const response:
+      SPHttpClientResponse =
+      await this.client.post(
+        url,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            Accept:
+              'application/json;odata=nometadata',
+
+            'Content-Type':
+              'application/json;odata=nometadata'
+          },
+
+          body:
+            JSON.stringify({
+              BaseTemplate:
+                101,
+
+              Title:
+                this.biblioteca,
+
+              Description:
+                'Biblioteca de documentos controlados do Portal DGT.'
+            })
+        }
+      );
+
+    if (
+      !response.ok &&
+      response.status !==
+        409
+    ) {
+
+      const detalhe =
+        await response.text();
+
+      throw new Error(
+        `A biblioteca "${this.biblioteca}" não existe e não foi possível criá-la automaticamente. ` +
+        `SharePoint retornou ${response.status}. ${detalhe}`
+      );
+    }
+  }
   private async obterRootFolder():
     Promise<string> {
 
@@ -173,6 +223,57 @@ export class SharePointDocumentoService {
     if (
       !response.ok
     ) {
+
+      if (
+        response.status ===
+          404
+      ) {
+
+        await this
+          .criarBibliotecaDocumentos();
+
+        const novaResposta:
+          SPHttpClientResponse =
+          await this.client.get(
+            url,
+            SPHttpClient.configurations.v1,
+            {
+              headers: {
+                Accept:
+                  'application/json;odata=nometadata'
+              }
+            }
+          );
+
+        if (
+          !novaResposta.ok
+        ) {
+
+          const detalheNovaResposta =
+            await novaResposta.text();
+
+          throw new Error(
+            `A biblioteca "${this.biblioteca}" foi solicitada, mas ainda não pôde ser localizada. ` +
+            `SharePoint retornou ${novaResposta.status}. ${detalheNovaResposta}`
+          );
+        }
+
+        const novosDados =
+          (
+            await novaResposta.json()
+          ) as IRootFolderResponse;
+
+        if (
+          !novosDados.ServerRelativeUrl
+        ) {
+          throw new Error(
+            `A biblioteca "${this.biblioteca}" foi criada, mas não retornou ServerRelativeUrl.`
+          );
+        }
+
+        return novosDados
+          .ServerRelativeUrl;
+      }
 
       const detalhe =
         await response.text();
@@ -471,6 +572,8 @@ export class SharePointDocumentoService {
     };
   }
 }
+
+
 
 
 

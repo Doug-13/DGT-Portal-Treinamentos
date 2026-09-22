@@ -20,7 +20,12 @@ import {
   SharePointDocumentoService
 } from '../services/sharepoint/SharePointDocumentoService';
 
+export interface IStatusDocumentoChoice {
+  value: number;
+  label: string;
+}
 export interface IUseGestaoDocumentos {
+  statusDocumentos: IStatusDocumentoChoice[];
   documentos: IDocumentoAdmin[];
   documentoSelecionado?: IDocumentoAdmin;
   revisoes: IRevisaoAdmin[];
@@ -76,6 +81,51 @@ export const useGestaoDocumentos = (
   sharePoint: SharePointDocumentoService
 ): IUseGestaoDocumentos => {
 
+
+  const [
+    statusDocumentos,
+    setStatusDocumentos
+  ] =
+    React.useState<
+      IStatusDocumentoChoice[]
+    >([]);
+
+  React.useEffect(
+    () => {
+
+      const carregarStatus =
+        async (): Promise<void> => {
+
+          try {
+
+            const opcoes =
+              await dataverse
+                .getChoiceOptions(
+                  'dgt_documento',
+                  'dgt_status'
+                );
+
+            setStatusDocumentos(
+              opcoes
+            );
+
+          } catch {
+
+            setStatusDocumentos(
+              []
+            );
+          }
+        };
+
+      carregarStatus()
+        .catch(
+          () => undefined
+        );
+    },
+    [
+      dataverse
+    ]
+  );
   const [
     documentos,
     setDocumentos
@@ -660,6 +710,7 @@ export const useGestaoDocumentos = (
   );
 
   return {
+    statusDocumentos,
     documentos,
     criarRevisaoComArquivo,
     criarDocumentoCompleto,
@@ -677,6 +728,7 @@ export const useGestaoDocumentos = (
     limparSelecao
   };
 };
+
 
 
 

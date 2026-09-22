@@ -3,6 +3,7 @@ import * as React from 'react';
 import {
   IEditarModuloConteudo,
   IModuloConteudoAdmin,
+  IModuloCardItem,
   INovoModuloConteudo,
   TipoConteudoModulo
 } from '../../services/ModuloConteudoAdminService';
@@ -125,6 +126,15 @@ const tipos:
         'Imagem ou ilustração de apoio.'
     },
     {
+      tipo:
+        'Cards',
+
+      icon:
+        '▦',
+
+      descricao:
+        'De 1 a 3 cards distribuídos horizontalmente.'
+    },    {
       tipo:
         'Destaque',
 
@@ -275,6 +285,25 @@ const ModuloConteudosEditor:
     ] =
       React.useState('');
 
+
+    const [
+      cards,
+      setCards
+    ] =
+      React.useState<
+        IModuloCardItem[]
+      >([
+        {
+          numero:
+            '01',
+
+          titulo:
+            '',
+
+          descricao:
+            ''
+        }
+      ]);
     const [
       ordem,
       setOrdem
@@ -336,6 +365,18 @@ const ModuloConteudosEditor:
         setTitulo('');
         setConteudo('');
         setUrl('');
+        setCards([
+          {
+            numero:
+              '01',
+
+            titulo:
+              '',
+
+            descricao:
+              ''
+          }
+        ]);
 
         setOrdem(
           String(
@@ -383,6 +424,24 @@ const ModuloConteudosEditor:
 
         setUrl(
           item.url
+        );
+        setCards(
+          item.cards &&
+          item.cards.length >
+            0
+            ? item.cards
+            : [
+                {
+                  numero:
+                    '01',
+
+                  titulo:
+                    '',
+
+                  descricao:
+                    ''
+                }
+              ]
         );
 
         setOrdem(
@@ -476,8 +535,13 @@ const ModuloConteudosEditor:
 
             obrigatorio,
 
-            ativo
-          };
+            ativo,
+
+            cards:
+              tipo ===
+                'Cards'
+                ? cards
+                : undefined          };
 
           if (
             editando
@@ -519,6 +583,23 @@ const ModuloConteudosEditor:
           IModuloConteudoAdmin
       ): React.ReactNode => {
 
+        if (
+          item.tipo ===
+            'Cards'
+        ) {
+
+          const quantidade =
+            item.cards?.length ||
+            0;
+
+          return (
+            <span>
+              {
+                `${quantidade} card${quantidade === 1 ? '' : 's'}`
+              }
+            </span>
+          );
+        }
         if (
           item.tipo ===
             'Texto' ||
@@ -646,7 +727,7 @@ const ModuloConteudosEditor:
                   '#64748B'
               }}
             >
-              Adicione textos, vídeos, materiais, links, imagens e destaques na ordem em que o funcionário deverá visualizar.
+              Adicione textos, vídeos, materiais, links, imagens, cards e destaques na ordem em que o funcionário deverá visualizar.
             </p>
 
           </div>
@@ -1391,6 +1472,266 @@ const ModuloConteudosEditor:
                   )
                 }
 
+
+                {
+                  tipo ===
+                    'Cards' &&
+                  (
+                    <>
+                      <div
+                        style={{
+                          height:
+                            '13px'
+                        }}
+                      />
+
+                      <label>
+                        Quantidade de cards
+                      </label>
+
+                      <select
+                        value={
+                          cards.length
+                        }
+                        onChange={
+                          event => {
+
+                            const quantidade =
+                              Number(
+                                event.target.value
+                              );
+
+                            setCards(
+                              atuais => {
+
+                                const nova =
+                                  atuais.slice(
+                                    0,
+                                    quantidade
+                                  );
+
+                                while (
+                                  nova.length <
+                                  quantidade
+                                ) {
+
+                                  const indice =
+                                    nova.length;
+
+                                  nova.push({
+                                    numero:
+                                      (
+                                        '00' +
+                                        String(
+                                          indice + 1
+                                        )
+                                      ).slice(
+                                        -2
+                                      ),
+
+                                    titulo:
+                                      '',
+
+                                    descricao:
+                                      ''
+                                  });
+                                }
+
+                                return nova;
+                              }
+                            );
+                          }
+                        }
+                        style={{
+                          ...inputStyle,
+
+                          marginTop:
+                            '6px'
+                        }}
+                      >
+                        <option value={1}>
+                          1 card
+                        </option>
+
+                        <option value={2}>
+                          2 cards
+                        </option>
+
+                        <option value={3}>
+                          3 cards
+                        </option>
+                      </select>
+
+                      <div
+                        style={{
+                          display:
+                            'grid',
+
+                          gridTemplateColumns:
+                            `repeat(${cards.length}, minmax(0, 1fr))`,
+
+                          gap:
+                            '12px',
+
+                          marginTop:
+                            '14px'
+                        }}
+                      >
+                        {
+                          cards.map(
+                            (
+                              cardItem,
+                              indice
+                            ) => (
+                              <div
+                                key={
+                                  indice
+                                }
+                                style={{
+                                  padding:
+                                    '14px',
+
+                                  border:
+                                    '1px solid #D8E2EC',
+
+                                  borderRadius:
+                                    '10px',
+
+                                  background:
+                                    '#F8FAFC'
+                                }}
+                              >
+                                <label>
+                                  Número
+                                </label>
+
+                                <input
+                                  value={
+                                    cardItem.numero
+                                  }
+                                  onChange={
+                                    event => {
+
+                                      const nova =
+                                        [...cards];
+
+                                      nova[indice] = {
+                                        ...cardItem,
+
+                                        numero:
+                                          event.target.value
+                                      };
+
+                                      setCards(
+                                        nova
+                                      );
+                                    }
+                                  }
+                                  style={{
+                                    ...inputStyle,
+
+                                    marginTop:
+                                      '6px'
+                                  }}
+                                />
+
+                                <div
+                                  style={{
+                                    height:
+                                      '10px'
+                                  }}
+                                />
+
+                                <label>
+                                  Título *
+                                </label>
+
+                                <input
+                                  value={
+                                    cardItem.titulo
+                                  }
+                                  onChange={
+                                    event => {
+
+                                      const nova =
+                                        [...cards];
+
+                                      nova[indice] = {
+                                        ...cardItem,
+
+                                        titulo:
+                                          event.target.value
+                                      };
+
+                                      setCards(
+                                        nova
+                                      );
+                                    }
+                                  }
+                                  placeholder="Ex.: O que é"
+                                  style={{
+                                    ...inputStyle,
+
+                                    marginTop:
+                                      '6px'
+                                  }}
+                                />
+
+                                <div
+                                  style={{
+                                    height:
+                                      '10px'
+                                  }}
+                                />
+
+                                <label>
+                                  Descrição *
+                                </label>
+
+                                <textarea
+                                  rows={
+                                    6
+                                  }
+                                  value={
+                                    cardItem.descricao
+                                  }
+                                  onChange={
+                                    event => {
+
+                                      const nova =
+                                        [...cards];
+
+                                      nova[indice] = {
+                                        ...cardItem,
+
+                                        descricao:
+                                          event.target.value
+                                      };
+
+                                      setCards(
+                                        nova
+                                      );
+                                    }
+                                  }
+                                  placeholder="Texto do card..."
+                                  style={{
+                                    ...inputStyle,
+
+                                    marginTop:
+                                      '6px',
+
+                                    resize:
+                                      'vertical'
+                                  }}
+                                />
+                              </div>
+                            )
+                          )
+                        }
+                      </div>
+                    </>
+                  )
+                }
                 <div
                   style={{
                     display:
@@ -1579,3 +1920,5 @@ const ModuloConteudosEditor:
   };
 
 export default ModuloConteudosEditor;
+
+

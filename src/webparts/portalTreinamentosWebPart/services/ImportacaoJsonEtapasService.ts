@@ -58,6 +58,16 @@ export interface IPerguntaRapidaJson {
     IAlternativaJson[];
 }
 
+export interface ICardModuloJson {
+  numero?:
+    string;
+
+  titulo:
+    string;
+
+  descricao:
+    string;
+}
 export interface IConteudoModuloJson {
   tipo:
     | 'Texto'
@@ -66,6 +76,7 @@ export interface IConteudoModuloJson {
     | 'Link'
     | 'Imagem'
     | 'Destaque'
+    | 'Cards'
     | 'PerguntaRapida';
 
   titulo?:
@@ -85,6 +96,8 @@ export interface IConteudoModuloJson {
 
   pergunta?:
     IPerguntaRapidaJson;
+  cards?:
+    ICardModuloJson[];
 }
 
 export interface IModuloJson {
@@ -175,6 +188,48 @@ export interface IAvaliacaoImportJson {
     IAvaliacaoJson;
 }
 
+
+const serializarCardsImportacao =
+  (
+    cards:
+      ICardModuloJson[] | undefined
+  ): string =>
+    '__DGT_CARDS__:' +
+    JSON.stringify(
+      (
+        cards ||
+        []
+      )
+        .slice(
+          0,
+          3
+        )
+        .map(
+          (
+            item,
+            indice
+          ) => ({
+            numero:
+              item.numero ||
+              (
+                '00' +
+                String(
+                  indice + 1
+                )
+              ).slice(
+                -2
+              ),
+
+            titulo:
+              item.titulo
+                .trim(),
+
+            descricao:
+              item.descricao
+                .trim()
+          })
+        )
+    );
 const aguardar =
   (
     ms:
@@ -482,6 +537,134 @@ export class ImportacaoJsonEtapasService {
       );
     }
 
+    // REPARO_SEGURO_CARDS_EXISTENTES
+    // Antes de criar qualquer registro, detectar se este modulo ja foi importado.
+    const modulosExistentes =
+      await this.moduloService
+        .listarPorTreinamento(treinamentoId);
+
+    const modulosCorrespondentes =
+      dados.modulos.map(
+        moduloImport =>
+          modulosExistentes.filter(
+            registro =>
+              registro.titulo.trim().toLowerCase() ===
+                moduloImport.titulo.trim().toLowerCase()
+          )
+      );
+
+    const encontrouExistentes =
+      modulosCorrespondentes.some(lista => lista.length > 0);
+
+    if (encontrouExistentes) {
+      if (modulosCorrespondentes.some(lista => lista.length !== 1)) {
+        throw new Error(
+          'Existem modulos ausentes ou duplicados para este JSON. ' +
+          'Nenhum registro foi modificado; revise o treinamento selecionado.'
+        );
+      }
+
+      const planos: {
+        id: string;
+        moduloId: string;
+        titulo: string;
+        conteudo: string;
+        url: string;
+        ordem: number;
+        obrigatorio: boolean;
+        ativo: boolean;
+        cards: {
+          numero: string;
+          titulo: string;
+          descricao: string;
+        }[];
+      }[] = [];
+
+      for (let indiceModulo = 0;
+        indiceModulo < dados.modulos.length;
+        indiceModulo += 1) {
+
+        const moduloImport = dados.modulos[indiceModulo];
+        const moduloExistente = modulosCorrespondentes[indiceModulo][0];
+        const conteudosExistentes =
+          await this.conteudoService.listar(moduloExistente.id);
+
+        for (let indiceConteudo = 0;
+          indiceConteudo < moduloImport.conteudos.length;
+          indiceConteudo += 1) {
+
+          const bloco = moduloImport.conteudos[indiceConteudo];
+          if (bloco.tipo !== 'Cards') { continue; }
+
+          if (!Array.isArray(bloco.cards) ||
+              bloco.cards.length < 1 || bloco.cards.length > 3 ||
+              bloco.cards.some(card =>
+                !card.titulo?.trim() || !card.descricao?.trim())) {
+            throw new Error(
+              `Bloco Cards ${indiceConteudo + 1} do modulo ` +
+              `"${moduloImport.titulo}" invalido. Nada foi modificado.`
+            );
+          }
+
+          const candidatos = conteudosExistentes.filter(item =>
+            item.ordem === indiceConteudo + 1 &&
+            item.titulo.trim().toLowerCase() ===
+              (bloco.titulo || '').trim().toLowerCase()
+          );
+
+          if (candidatos.length !== 1) {
+            throw new Error(
+              `Bloco "${bloco.titulo}" nao encontrado de forma unica ` +
+              `no modulo "${moduloImport.titulo}". Nenhum registro foi modificado.`
+            );
+          }
+
+          const existente = candidatos[0];
+          if (existente.tipo !== 'Cards' &&
+              (existente.tipo !== 'Texto' || existente.conteudo.trim())) {
+            throw new Error(
+              `O registro "${bloco.titulo}" possui outro tipo/conteudo. ` +
+              'Nenhum registro foi modificado.'
+            );
+          }
+
+          planos.push({
+            id: existente.id,
+            moduloId: existente.moduloId,
+            titulo: existente.titulo,
+            conteudo: existente.conteudo,
+            url: existente.url,
+            ordem: existente.ordem,
+            obrigatorio: existente.obrigatorio,
+            ativo: existente.ativo,
+            cards: bloco.cards.map((card, indice) => ({
+              numero: String(card.numero || ('00' + (indice + 1)).slice(-2)),
+              titulo: card.titulo.trim(),
+              descricao: card.descricao.trim()
+            }))
+          });
+        }
+      }
+
+      if (planos.length === 0) {
+        throw new Error(
+          'Este modulo ja existe e o JSON nao contem blocos Cards para reparar. ' +
+          'Importacao interrompida para evitar duplicidade.'
+        );
+      }
+
+      // Todas as correspondencias foram verificadas antes da primeira gravacao.
+      for (const plano of planos) {
+        await this.conteudoService.editar({
+          ...plano,
+          tipo: 'Cards'
+        });
+      }
+
+      return `${planos.length} bloco(s) Cards atualizado(s) no modulo existente. ` +
+        'Nenhum modulo ou conteudo foi duplicado.';
+    }
+
     let quantidadeModulos =
       0;
 
@@ -518,6 +701,18 @@ export class ImportacaoJsonEtapasService {
         );
       }
 
+      // MODULOS_SEM_TRAVA: curso diferente pode importar o mesmo titulo;
+      // no mesmo curso, uma ordem ocupada e remanejada para a proxima livre.
+      const modulosAntesDaCriacao =
+        await this.moduloService.listarPorTreinamento(treinamentoId);
+
+      const ordemSolicitada = Number(modulo.ordem || indiceModulo + 1);
+      const ordemLivre = modulosAntesDaCriacao.some(
+        item => item.ordem === ordemSolicitada
+      )
+        ? Math.max(0, ...modulosAntesDaCriacao.map(item => item.ordem)) + 1
+        : ordemSolicitada;
+
       await this.moduloService
         .criar({
           treinamentoId,
@@ -530,11 +725,7 @@ export class ImportacaoJsonEtapasService {
             '',
 
           ordem:
-            Number(
-              modulo.ordem ||
-              indiceModulo +
-              1
-            ),
+            ordemLivre,
 
           duracaoMin:
             Number(
@@ -569,12 +760,7 @@ export class ImportacaoJsonEtapasService {
             treinamentoId
           );
 
-      const ordem =
-        Number(
-          modulo.ordem ||
-          indiceModulo +
-          1
-        );
+      const ordem = ordemLivre;
 
       const moduloCriado =
         modulosAtuais
@@ -645,6 +831,42 @@ export class ImportacaoJsonEtapasService {
           );
         }
 
+        if (
+          conteudo.tipo ===
+            'Cards'
+        ) {
+
+          if (
+            !Array.isArray(
+              conteudo.cards
+            ) ||
+            conteudo.cards.length <
+              1 ||
+            conteudo.cards.length >
+              3
+          ) {
+            throw new Error(
+              `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: o bloco Cards deve possuir de 1 a 3 cards.`
+            );
+          }
+
+          const cardIncompleto =
+            conteudo.cards.some(
+              card =>
+                !card.titulo
+                  ?.trim() ||
+                !card.descricao
+                  ?.trim()
+            );
+
+          if (
+            cardIncompleto
+          ) {
+            throw new Error(
+              `Módulo "${modulo.titulo}", conteúdo ${indiceConteudo + 1}: preencha título e descrição de todos os cards.`
+            );
+          }
+        }
         await this.conteudoService
           .criar({
             moduloId:
@@ -677,7 +899,40 @@ export class ImportacaoJsonEtapasService {
               true,
 
             ativo:
-              true
+              true,
+
+            cards:
+              conteudo.tipo ===
+                'Cards'
+                ? (
+                    conteudo.cards ||
+                    []
+                  ).map(
+                    (
+                      card,
+                      indice
+                    ) => ({
+                      numero:
+                        card.numero ||
+                        (
+                          '00' +
+                          String(
+                            indice + 1
+                          )
+                        ).slice(
+                          -2
+                        ),
+
+                      titulo:
+                        card.titulo
+                          .trim(),
+
+                      descricao:
+                        card.descricao
+                          .trim()
+                    })
+                  )
+                : undefined
           });
 
         quantidadeConteudos +=
@@ -985,3 +1240,5 @@ export class ImportacaoJsonEtapasService {
     );
   }
 }
+
+

@@ -171,6 +171,55 @@ const booleano = (
   return padrao;
 };
 
+
+const normalizarDataDataverse = (
+  valor:
+    string | undefined | null
+): string | null => {
+
+  if (
+    !valor
+  ) {
+    return null;
+  }
+
+  const textoData =
+    String(
+      valor
+    )
+      .trim();
+
+  if (
+    !textoData
+  ) {
+    return null;
+  }
+
+  // Dataverse Edm.Date espera somente YYYY-MM-DD.
+  // Remove horario/timezone de valores como:
+  // 2026-09-21T19:32:34.495Z
+  if (
+    textoData.length >=
+      10
+  ) {
+    return textoData
+      .substring(
+        0,
+        10
+      );
+  }
+
+  return textoData;
+};
+
+const dataHojeDataverse =
+  (): string =>
+    new Date()
+      .toISOString()
+      .substring(
+        0,
+        10
+      );
 export class DocumentoAdminService {
 
   private readonly dataverse:
@@ -355,6 +404,129 @@ export class DocumentoAdminService {
     );
   }
 
+
+  private async resolverAprovadorId(
+    valor:
+      string
+  ): Promise<string> {
+
+    const termo =
+      valor
+        .trim()
+        .toLocaleLowerCase();
+
+    if (
+      !termo
+    ) {
+      throw new Error(
+        'Informe o aprovador do documento.'
+      );
+    }
+
+    const usuarios =
+      await this.dataverse
+        .getUsuarios();
+
+    const candidatosExatos =
+      usuarios.filter(
+        registro => {
+
+          const nome =
+            texto(
+              registro,
+              'dgt_name'
+            )
+              .trim()
+              .toLocaleLowerCase();
+
+          const email =
+            texto(
+              registro,
+              'dgt_email'
+            )
+              .trim()
+              .toLocaleLowerCase();
+
+          return (
+            nome === termo ||
+            email === termo
+          );
+        }
+      );
+
+    let candidatos =
+      candidatosExatos;
+
+    if (
+      candidatos.length ===
+      0
+    ) {
+      candidatos =
+        usuarios.filter(
+          registro => {
+
+            const nome =
+              texto(
+                registro,
+                'dgt_name'
+              )
+                .trim()
+                .toLocaleLowerCase();
+
+            const email =
+              texto(
+                registro,
+                'dgt_email'
+              )
+                .trim()
+                .toLocaleLowerCase();
+
+            return (
+              nome.startsWith(
+                termo
+              ) ||
+              email.startsWith(
+                termo
+              )
+            );
+          }
+        );
+    }
+
+    if (
+      candidatos.length ===
+      0
+    ) {
+      throw new Error(
+        `O aprovador "${valor}" não foi encontrado entre os usuários cadastrados. Informe o nome completo ou e-mail.`
+      );
+    }
+
+    if (
+      candidatos.length >
+      1
+    ) {
+      throw new Error(
+        `Mais de um usuário corresponde a "${valor}". Informe o e-mail completo do aprovador.`
+      );
+    }
+
+    const id =
+      texto(
+        candidatos[0],
+        'dgt_usuarioid'
+      );
+
+    if (
+      !id
+    ) {
+      throw new Error(
+        'O usuário selecionado como aprovador não possui identificador válido.'
+      );
+    }
+
+    return id;
+  }
   public async criarRevisao(
     dados: INovaRevisaoDocumento
   ): Promise<void> {
@@ -391,19 +563,18 @@ export class DocumentoAdminService {
             dados.revisao.trim(),
 
           dgt_datarevisao:
-            dados.dataRevisao ||
-            new Date().toISOString(),
+            normalizarDataDataverse(
+              dados.dataRevisao
+            ) ||
+            dataHojeDataverse(),
 
           dgt_datavigencia:
-            dados.dataVigencia ||
-            null,
+            normalizarDataDataverse(
+              dados.dataVigencia
+            ),
 
           dgt_arquivourl:
             dados.arquivoUrl?.trim() ||
-            '',
-
-          dgt_responsavel:
-            dados.responsavel?.trim() ||
             '',
 
           dgt_motivoalteracao:
@@ -423,7 +594,6 @@ export class DocumentoAdminService {
         }
       );
   }
-
   public async criarDocumento(
     dados:
       INovoDocumentoAdmin
@@ -445,6 +615,14 @@ export class DocumentoAdminService {
       );
     }
 
+    if (
+      !dados.responsavel.trim()
+    ) {
+      throw new Error(
+        'Informe o aprovador do documento.'
+      );
+    }
+
     const areaRegistro =
       await this.dataverse
         .getAreaAdminPorNome(
@@ -455,7 +633,7 @@ export class DocumentoAdminService {
       !areaRegistro
     ) {
       throw new Error(
-        `A área "${dados.area}" não está cadastrada no Dataverse.`
+        `A área "${dados.area}" não está cadastrada ou está inativa no Dataverse.`
       );
     }
 
@@ -473,39 +651,63 @@ export class DocumentoAdminService {
       );
     }
 
+    const aprovadorId =
+      await this
+        .resolverAprovadorId(
+          dados.responsavel
+        );
+
+    const [
+      tipoDataverse,
+      statusDataverse
+    ] =
+      await Promise.all([
+        this.dataverse
+          .getChoiceOptionValue(
+            'dgt_documento',
+            'dgt_tipo',
+            dados.tipo
+          ),
+
+        this.dataverse
+          .getChoiceOptionValue(
+            'dgt_documento',
+            'dgt_status',
+            dados.status
+          )
+      ]);
+
     const criado =
       await this.dataverse
-        .criarDocumentoAdminComArea(
+        .criarDocumentoAdminComAreaEAprovador(
           areaId,
+          aprovadorId,
           {
-          dgt_name:
-            dados.titulo.trim(),
+            dgt_name:
+              dados.titulo.trim(),
 
-          dgt_codigo:
-            dados.codigo
-              .trim()
-              .toUpperCase(),
+            dgt_codigo:
+              dados.codigo
+                .trim()
+                .toUpperCase(),
 
-          dgt_titulo:
-            dados.titulo.trim(),
+            dgt_titulo:
+              dados.titulo.trim(),
 
-          dgt_descricao:
-            dados.descricao.trim(),
+            dgt_descricao:
+              dados.descricao.trim(),
 
-          dgt_tipo:
-            dados.tipo.trim(),
+            dgt_tipo:
+              tipoDataverse,
 
-          dgt_responsavel:
-            dados.responsavel.trim(),
+            dgt_revisaoatual:
+              dados.revisaoInicial.trim(),
 
-          dgt_revisaoatual:
-            dados.revisaoInicial.trim(),
+            dgt_status:
+              statusDataverse,
 
-          dgt_status:
-            dados.status.trim(),
-
-          dgt_ativo:
-            dados.ativo
+            dgt_ativo:
+              true
           }
         );
 
@@ -527,8 +729,7 @@ export class DocumentoAdminService {
       area:
         dados.area.trim(),
 
-      areaId:
-        areaId,
+      areaId,
 
       tipo:
         dados.tipo.trim(),
@@ -543,16 +744,9 @@ export class DocumentoAdminService {
         dados.status.trim(),
 
       ativo:
-        dados.ativo
+        true
     };
   }
 }
-
-
-
-
-
-
-
 
 

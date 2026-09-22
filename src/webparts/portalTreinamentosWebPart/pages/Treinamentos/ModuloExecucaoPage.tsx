@@ -463,6 +463,177 @@ const ModuloExecucaoPage:
               />
             );
 
+          case 'Cards': {
+
+            let cardsDoConteudo =
+              item.cards ||
+              [];
+
+            if (
+              cardsDoConteudo.length ===
+                0 &&
+              item.conteudo &&
+              item.conteudo.indexOf(
+                '__DGT_CARDS__:'
+              ) ===
+                0
+            ) {
+
+              try {
+
+                const parseados =
+                  JSON.parse(
+                    item.conteudo.substring(
+                      '__DGT_CARDS__:'.length
+                    )
+                  ) as {
+                    numero: string;
+                    titulo: string;
+                    descricao: string;
+                  }[];
+
+                if (
+                  Array.isArray(
+                    parseados
+                  )
+                ) {
+                  cardsDoConteudo =
+                    parseados;
+                }
+
+              } catch {
+
+                cardsDoConteudo =
+                  [];
+              }
+            }
+
+            const cards =
+              cardsDoConteudo
+                .slice(
+                  0,
+                  3
+                );
+            const quantidade =
+              Math.max(
+                1,
+                cards.length
+              );
+
+            return (
+              <div
+                style={{
+                  display:
+                    'grid',
+
+                  gridTemplateColumns:
+                    `repeat(${quantidade}, minmax(0, 1fr))`,
+
+                  gap:
+                    '22px'
+                }}
+              >
+                {
+                  cards.map(
+                    (
+                      cardItem,
+                      indice
+                    ) => (
+                      <div
+                        key={
+                          indice
+                        }
+                        style={{
+                          minHeight:
+                            '210px',
+
+                          padding:
+                            '20px',
+
+                          border:
+                            '1px solid #E2E8F0',
+
+                          background:
+                            '#FFFFFF',
+
+                          boxShadow:
+                            '0 3px 12px rgba(15,23,42,.08)'
+                        }}
+                      >
+                        <div
+                          style={{
+                            marginBottom:
+                              '14px',
+
+                            color:
+                              '#7C8594',
+
+                            fontSize:
+                              '14px',
+
+                            letterSpacing:
+                              '0.08em'
+                          }}
+                        >
+                          {
+                            cardItem.numero ||
+                            (
+                              '00' +
+                              String(
+                                indice + 1
+                              )
+                            ).slice(
+                              -2
+                            )
+                          }
+                        </div>
+
+                        <h3
+                          style={{
+                            margin:
+                              '0 0 24px',
+
+                            color:
+                              '#20283F',
+
+                            fontSize:
+                              '20px',
+
+                            lineHeight:
+                              1.2,
+
+                            textTransform:
+                              'uppercase'
+                          }}
+                        >
+                          {
+                            cardItem.titulo
+                          }
+                        </h3>
+
+                        <div
+                          style={{
+                            color:
+                              '#273248',
+
+                            fontSize:
+                              '15px',
+
+                            lineHeight:
+                              1.5
+                          }}
+                        >
+                          {
+                            cardItem.descricao
+                          }
+                        </div>
+                      </div>
+                    )
+                  )
+                }
+              </div>
+            );
+          }
           case 'Destaque':
 
             return (
@@ -1466,3 +1637,5 @@ const ModuloExecucaoPage:
   };
 
 export default ModuloExecucaoPage;
+
+

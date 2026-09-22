@@ -5,6 +5,7 @@ export type TipoConteudoImport =
   | 'Link'
   | 'Imagem'
   | 'Destaque'
+  | 'Cards'
   | 'PerguntaRapida';
 
 export type TipoQuestaoImport =
@@ -28,6 +29,16 @@ export interface IPerguntaRapidaImport {
   alternativas: IAlternativaImport[];
 }
 
+export interface ICardModuloImport {
+  numero?:
+    string;
+
+  titulo:
+    string;
+
+  descricao:
+    string;
+}
 export interface IConteudoModuloImport {
   tipo: TipoConteudoImport;
   titulo?: string;
@@ -36,6 +47,8 @@ export interface IConteudoModuloImport {
   url?: string;
   obrigatorio?: boolean;
   pergunta?: IPerguntaRapidaImport;
+  cards?:
+    ICardModuloImport[];
 }
 
 export interface IModuloImport {
@@ -93,6 +106,7 @@ const TIPOS_CONTEUDO:
   'Link',
   'Imagem',
   'Destaque',
+  'Cards',
   'PerguntaRapida'
 ];
 
@@ -350,6 +364,44 @@ export const validarDgtTrainingJsonV1 =
 
               if (
                 conteudo.tipo ===
+                  'Cards'
+              ) {
+
+                if (
+                  !Array.isArray(
+                    conteudo.cards
+                  ) ||
+                  conteudo.cards.length <
+                    1 ||
+                  conteudo.cards.length >
+                    3
+                ) {
+                  erros.push(
+                    `${contexto}: o bloco Cards deve possuir de 1 a 3 cards.`
+                  );
+
+                  return;
+                }
+
+                const cardIncompleto =
+                  conteudo.cards.some(
+                    card =>
+                      !card.titulo
+                        ?.trim() ||
+                      !card.descricao
+                        ?.trim()
+                  );
+
+                if (
+                  cardIncompleto
+                ) {
+                  erros.push(
+                    `${contexto}: preencha título e descrição de todos os cards.`
+                  );
+                }
+              }
+              if (
+                conteudo.tipo ===
                   'PerguntaRapida'
               ) {
 
@@ -467,3 +519,4 @@ export const validarDgtTrainingJsonV1 =
       }
     };
   };
+
