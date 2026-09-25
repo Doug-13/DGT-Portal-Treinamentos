@@ -20,11 +20,9 @@ import ErrorMessage from
 import TreinamentoCard from
   '../../components/treinamentos/TreinamentoCard';
 
-import {
-  Icones,
-  IconeChave
-} from
-  '../../components/common/Icones';
+import ResumoModulo, {
+  IIndicadorResumo
+} from '../../components/common/ResumoModulo';
 
 export interface IVisaoGeralTreinamentosPageProps {
 
@@ -199,38 +197,8 @@ const VisaoGeralTreinamentosPage:
           3
         );
 
-    const dataHoje =
-      new Date()
-        .toLocaleDateString(
-          'pt-BR',
-          {
-            day:
-              '2-digit',
-
-            month:
-              'long',
-
-            year:
-              'numeric'
-          }
-        );
-
-    const nome =
-      (
-        props.primeiroNome ||
-        ''
-      )
-        .trim();
-
     const resumo:
-      Array<{
-        titulo: string;
-        valor: number;
-        icone: IconeChave;
-        fundo: string;
-        corIcone: string;
-        detalhe: string;
-      }> = [
+      IIndicadorResumo[] = [
       {
         titulo:
           'Concluídos',
@@ -360,231 +328,13 @@ const VisaoGeralTreinamentosPage:
           )
         }
 
-        {/* CABEÇALHO DA VISÃO GERAL */}
+        {/* SAUDAÇÃO + INDICADORES (componente padrão do portal) */}
 
-        <div
-          style={{
-            display:
-              'flex',
-
-            alignItems:
-              'flex-end',
-
-            justifyContent:
-              'space-between',
-
-            gap:
-              '20px',
-
-            flexWrap:
-              'wrap'
-          }}
-        >
-          <div>
-            <h1
-              style={{
-                margin:
-                  0,
-
-                color:
-                  '#0A2845',
-
-                fontSize:
-                  '29px',
-
-                lineHeight:
-                  1.15
-              }}
-            >
-              Olá{
-                nome
-                  ? `, ${nome}`
-                  : ''
-              }! 👋
-            </h1>
-
-            <p
-              style={{
-                margin:
-                  '4px 0 0',
-
-                color:
-                  '#5C7287',
-
-                fontSize:
-                  '14px'
-              }}
-            >
-              Aqui está um resumo da sua jornada de aprendizado.
-            </p>
-          </div>
-
-          <div
-            style={{
-              color:
-                '#64748B',
-
-              fontSize:
-                '13px'
-            }}
-          >
-            Data de hoje: {
-              dataHoje
-            }
-          </div>
-        </div>
-
-        {/* INDICADORES */}
-
-        <div
-          style={{
-            display:
-              'grid',
-
-            gridTemplateColumns:
-              'repeat(5,minmax(150px,1fr))',
-
-            gap:
-              '14px',
-
-            marginTop:
-              '16px'
-          }}
-        >
-          {
-            resumo.map(
-              item => {
-
-                const IconeItem =
-                  Icones[item.icone];
-
-                return (
-                <div
-                  key={
-                    item.titulo
-                  }
-                  style={{
-                    minHeight:
-                      '92px',
-
-                    display:
-                      'grid',
-
-                    gridTemplateColumns:
-                      '54px 1fr',
-
-                    alignItems:
-                      'center',
-
-                    gap:
-                      '12px',
-
-                    padding:
-                      '14px',
-
-                    borderRadius:
-                      '12px',
-
-                    background:
-                      item.fundo,
-
-                    border:
-                      '1px solid rgba(15,35,55,.04)'
-                  }}
-                >
-                  <div
-                    style={{
-                      width:
-                        '48px',
-
-                      height:
-                        '48px',
-
-                      display:
-                        'flex',
-
-                      alignItems:
-                        'center',
-
-                      justifyContent:
-                        'center',
-
-                      borderRadius:
-                        '10px',
-
-                      background:
-                        'rgba(255,255,255,.72)',
-
-                      color:
-                        item.corIcone
-                    }}
-                  >
-                    <IconeItem />
-                  </div>
-
-                  <div>
-                    <strong
-                      style={{
-                        display:
-                          'block',
-
-                        fontSize:
-                          '27px',
-
-                        color:
-                          '#0B2D4D',
-
-                        lineHeight:
-                          1
-                      }}
-                    >
-                      {
-                        item.valor
-                      }
-                    </strong>
-
-                    <span
-                      style={{
-                        display:
-                          'block',
-
-                        marginTop:
-                          '5px',
-
-                        color:
-                          '#173B5D',
-
-                        fontSize:
-                          '13px'
-                      }}
-                    >
-                      {
-                        item.titulo
-                      }
-                    </span>
-
-                    {
-                      item.detalhe &&
-                      (
-                        <small
-                          style={{
-                            color:
-                              '#5C7287'
-                          }}
-                        >
-                          ({
-                            item.detalhe
-                          })
-                        </small>
-                      )
-                    }
-                  </div>
-                </div>
-                );
-              }
-            )
-          }
-        </div>
+        <ResumoModulo
+          primeiroNome={props.primeiroNome}
+          mensagem="Aqui está um resumo da sua jornada de aprendizado."
+          indicadores={resumo}
+        />
 
         {/* CONTEÚDO PRINCIPAL */}
 

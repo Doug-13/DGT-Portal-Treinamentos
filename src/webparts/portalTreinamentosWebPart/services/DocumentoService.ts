@@ -119,6 +119,19 @@ export class DocumentoService {
       .toLowerCase();
   }
 
+  private numeroRevisao(
+    revisao: string
+  ): number {
+
+    const encontrado =
+      (revisao || '')
+        .match(/(\d+)(?!.*\d)/);
+
+    return encontrado
+      ? Number(encontrado[1])
+      : -1;
+  }
+
   private formatado(
     registro: IDataverseRecord,
     campo: string
@@ -217,6 +230,18 @@ export class DocumentoService {
                 '_dgt_area_value'
               )
             ),
+
+          area:
+            this.formatado(
+              registro,
+              '_dgt_area_value'
+            ),
+
+          prazoRevisao:
+            this.texto(
+              registro,
+              'dgt_prazorevisao'
+            ).substring(0, 10),
 
           tipo:
             tipo || '-',
@@ -425,25 +450,60 @@ export class DocumentoService {
               registro,
               'dgt_ativa',
               true
+            ),
+
+          dataAprovacao:
+            this.texto(
+              registro,
+              'dgt_dataaprovacao'
+            ),
+
+          criadoEm:
+            this.texto(
+              registro,
+              'createdon'
+            ),
+
+          criadoPor:
+            this.formatado(
+              registro,
+              '_createdby_value'
             )
         };
       })
+      // Ordena pelo NÚMERO da revisão (Rev.01 antes de Rev.00). Duas
+      // revisões criadas no mesmo dia empatavam quando a ordenação era
+      // só pela data. Empate de número → a criada por último primeiro.
       .sort(
         (a, b) => {
 
+          const numeroA =
+            this.numeroRevisao(
+              a.revisao
+            );
+
+          const numeroB =
+            this.numeroRevisao(
+              b.revisao
+            );
+
+          if (numeroA !== numeroB) {
+            return numeroB - numeroA;
+          }
+
           const dataA =
-            a.dataRevisao
-              ? new Date(
-                  a.dataRevisao
-                ).getTime()
-              : 0;
+            new Date(
+              a.criadoEm ||
+              a.dataRevisao ||
+              0
+            ).getTime() || 0;
 
           const dataB =
-            b.dataRevisao
-              ? new Date(
-                  b.dataRevisao
-                ).getTime()
-              : 0;
+            new Date(
+              b.criadoEm ||
+              b.dataRevisao ||
+              0
+            ).getTime() || 0;
 
           return dataB - dataA;
         }

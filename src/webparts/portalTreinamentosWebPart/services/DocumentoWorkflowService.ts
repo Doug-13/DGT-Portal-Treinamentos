@@ -133,8 +133,7 @@ export class DocumentoWorkflowService {
     //   Elaboração → Gestor avalia (Aprovação)
     //   Aprovação: Aprovado → Vigente (via publicar, fora deste mapa)
     //              Reprovado → volta para Elaboração
-    //   Vigente → reaberto direto para o Gestor avaliar (Aprovação),
-    //             sem passar por Elaboração de novo.
+    //   Vigente → final. Alterações geram uma nova revisão.
     const permitidas:
       Record<
         string,
@@ -160,10 +159,12 @@ export class DocumentoWorkflowService {
           'elaboracao'
         ],
 
+      // Vigente é estado final da revisão: para alterar o documento
+      // cria-se uma NOVA revisão (ex.: Rev.00 → Rev.01) em Elaboração.
+      // A revisão vigente nunca volta para o fluxo, preservando o
+      // histórico e a evidência de treinamento naquela revisão.
       vigente:
-        [
-          'aprovacao'
-        ]
+        []
     };
 
     const destinos =
@@ -171,6 +172,15 @@ export class DocumentoWorkflowService {
         atual
       ] ||
       [];
+
+    if (
+      atual === 'vigente'
+    ) {
+      throw new Error(
+        'Esta revisão já está vigente e não pode voltar para o fluxo. ' +
+        'Para alterar o documento, crie uma nova revisão.'
+      );
+    }
 
     if (
       destinos.indexOf(

@@ -77,3 +77,37 @@ export const obterMenuTreinamento = (
         contexto
       )
   );
+
+// ============================================================
+// MENU (ABAS) DO MÓDULO DOCUMENTOS — mesmo padrão de Treinamentos
+// ============================================================
+
+const itensDocumentos:
+  IItemMenuTreinamento[] = [
+    {
+      pagina: 'documentos',
+      label: 'Visão geral',
+      icon: 'home'
+    },
+    {
+      pagina: 'novoDocumento',
+      label: 'Novo documento',
+      icon: 'filePlus'
+    },
+    {
+      pagina: 'gestaoDocumentos',
+      label: 'Gestão',
+      icon: 'settings'
+    }
+  ];
+
+export const obterMenuDocumentos = (
+  contexto?: IContextoAcesso
+): IItemMenuTreinamento[] =>
+  itensDocumentos.filter(
+    item =>
+      podeAcessarRota(
+        item.pagina,
+        contexto
+      )
+  );

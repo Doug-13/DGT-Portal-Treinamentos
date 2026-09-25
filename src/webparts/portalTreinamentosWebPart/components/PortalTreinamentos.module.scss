@@ -350,6 +350,15 @@
   font-weight: 600;
 }
 
+/* CONTRASTE: botão que define o PRÓPRIO fundo (style inline) e não
+   define a cor do texto herdava o branco acima → texto branco em fundo
+   branco (ex.: lista da Gestão documental, botões "Voltar").
+   Estes passam a usar texto escuro. A cor inline, quando existe,
+   continua valendo; botões sem fundo próprio mantêm o azul/branco. */
+.content button[style*="background"] {
+  color: #1F2937;
+}
+
 .content button:disabled {
   color: #748493;
   background: #dce4ea;

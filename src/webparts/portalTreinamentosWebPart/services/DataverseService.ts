@@ -1463,6 +1463,12 @@ export class DataverseService {
   // DOCUMENTOS
   // ==========================================================
 
+  // Coluna opcional "Prazo da revisão" (dgt_prazorevisao). Enquanto
+  // ela não existir no ambiente, a consulta é refeita sem ela para a
+  // tela não quebrar. undefined = ainda não testado.
+  private colunaPrazoRevisaoExiste?:
+    boolean;
+
   public async getDocumentos():
     Promise<IDataverseRecord[]> {
 
@@ -1471,25 +1477,112 @@ export class DataverseService {
         'dgt_documento'
       );
 
-    return this.get(
-      `${entitySet}` +
-      '?$select=' +
-      [
-        'dgt_documentoid',
-        'dgt_name',
-        'dgt_codigo',
-        'dgt_titulo',
-        'dgt_descricao',
-        'dgt_tipo',
-        'dgt_status',
-        'dgt_revisaoatual',
-        'dgt_ativo',
-        '_dgt_responsavel_value',
-        '_dgt_area_value'
-      ].join(',') +
-      '&$filter=dgt_ativo eq true' +
-      '&$orderby=dgt_codigo asc'
-    );
+    const campos = [
+      'dgt_documentoid',
+      'dgt_name',
+      'dgt_codigo',
+      'dgt_titulo',
+      'dgt_descricao',
+      'dgt_tipo',
+      'dgt_status',
+      'dgt_revisaoatual',
+      'dgt_ativo',
+      '_dgt_responsavel_value',
+      '_dgt_area_value'
+    ];
+
+    const consultar = (
+      lista: string[]
+    ): Promise<IDataverseRecord[]> =>
+      this.get(
+        `${entitySet}` +
+        '?$select=' +
+        lista.join(',') +
+        '&$filter=dgt_ativo eq true' +
+        '&$orderby=dgt_codigo asc'
+      );
+
+    if (this.colunaPrazoRevisaoExiste === false) {
+      return consultar(campos);
+    }
+
+    try {
+      const registros =
+        await consultar([
+          ...campos,
+          'dgt_prazorevisao'
+        ]);
+
+      this.colunaPrazoRevisaoExiste = true;
+
+      return registros;
+    } catch (error) {
+
+      const mensagem =
+        error instanceof Error
+          ? error.message
+          : '';
+
+      if (mensagem.indexOf('dgt_prazorevisao') < 0) {
+        throw error;
+      }
+
+      console.warn(
+        'Coluna dgt_prazorevisao não existe em dgt_documento. A coluna Prazo ficará vazia até ser criada.'
+      );
+
+      this.colunaPrazoRevisaoExiste = false;
+
+      return consultar(campos);
+    }
+  }
+
+  // Grava o prazo da próxima revisão (somente data: AAAA-MM-DD).
+  // Retorna false, sem erro, se a coluna ainda não existir.
+  public async atualizarPrazoRevisaoDocumento(
+    documentoId: string,
+    prazo: string
+  ): Promise<boolean> {
+
+    if (this.colunaPrazoRevisaoExiste === false) {
+      return false;
+    }
+
+    try {
+      const entitySet =
+        await this.getEntitySetName(
+          'dgt_documento'
+        );
+
+      const id =
+        (documentoId || '')
+          .replace(/[{}]/g, '')
+          .trim();
+
+      await this.patch(
+        `${entitySet}(${id})`,
+        {
+          dgt_prazorevisao: prazo
+        }
+      );
+
+      this.colunaPrazoRevisaoExiste = true;
+
+      return true;
+    } catch (error) {
+
+      const mensagem =
+        error instanceof Error
+          ? error.message
+          : '';
+
+      if (mensagem.indexOf('dgt_prazorevisao') >= 0) {
+        this.colunaPrazoRevisaoExiste = false;
+        return false;
+      }
+
+      throw error;
+    }
   }
 
   // ==========================================================
@@ -1535,6 +1628,9 @@ export class DataverseService {
         'dgt_justificativa',
         'dgt_status',
         'dgt_ativa',
+        'dgt_dataaprovacao',
+        'createdon',
+        '_createdby_value',
         '_dgt_documento_value',
         '_dgt_responsavel_value',
         '_dgt_aprovadopor_value'
@@ -3563,6 +3659,227 @@ export class DataverseService {
     await this.patch(
       `${entitySet}(${id})`,
       dados
+    );
+  }
+
+  // ============================================================
+  // FLUXO DE NOVA REVISÃO (tela de detalhe do documento)
+  // ============================================================
+
+  // Cria uma revisão vinculando o Responsável (dgt_usuario). Se o
+  // lookup não aceitar a tabela dgt_usuario, cria sem o vínculo em
+  // vez de travar o fluxo.
+  public async criarDocumentoRevisaoComResponsavel(
+    documentoId: string,
+    responsavelId: string,
+    dados: Record<string, unknown>
+  ): Promise<IDataverseRecord> {
+
+    const responsavel =
+      (responsavelId || '')
+        .replace(/[{}]/g, '')
+        .trim();
+
+    if (!responsavel) {
+      return this.criarDocumentoRevisao(
+        documentoId,
+        dados
+      );
+    }
+
+    const usuarioSet =
+      await this.getEntitySetName(
+        'dgt_usuario'
+      );
+
+    try {
+      return await this.criarDocumentoRevisao(
+        documentoId,
+        {
+          ...dados,
+          'dgt_Responsavel@odata.bind':
+            `/${usuarioSet}(${responsavel})`
+        }
+      );
+    } catch (error) {
+      console.warn(
+        'Não foi possível vincular o responsável à revisão. Criando sem o vínculo.',
+        error
+      );
+
+      return this.criarDocumentoRevisao(
+        documentoId,
+        dados
+      );
+    }
+  }
+
+  // ============================================================
+  // AUDITORIA DE NEGÓCIO (dgt_auditorianegocio)
+  // Usada como histórico do documento — nunca é apagada.
+  // ============================================================
+
+  public async criarAuditoriaNegocio(
+    dados: Record<string, unknown>,
+    usuarioId?: string
+  ): Promise<void> {
+
+    const [
+      auditoriaSet,
+      usuarioSet
+    ] =
+      await Promise.all([
+        this.getEntitySetName(
+          'dgt_auditorianegocio'
+        ),
+        this.getEntitySetName(
+          'dgt_usuario'
+        )
+      ]);
+
+    const usuario =
+      (usuarioId || '')
+        .replace(/[{}]/g, '')
+        .trim();
+
+    if (usuario) {
+      try {
+        await this.postObject(
+          auditoriaSet,
+          {
+            ...dados,
+            'dgt_Usuario@odata.bind':
+              `/${usuarioSet}(${usuario})`
+          }
+        );
+        return;
+      } catch (error) {
+        console.warn(
+          'Auditoria: não foi possível vincular o usuário. Gravando sem o vínculo.',
+          error
+        );
+      }
+    }
+
+    await this.postObject(
+      auditoriaSet,
+      dados
+    );
+  }
+
+  public async getAuditoriaNegocioPorRegistro(
+    entidade: string,
+    registroId: string
+  ): Promise<IDataverseRecord[]> {
+
+    if (!entidade || !registroId) {
+      return [];
+    }
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_auditorianegocio'
+      );
+
+    const entidadeSegura =
+      entidade.replace(/'/g, "''");
+
+    const registroSeguro =
+      registroId
+        .replace(/[{}]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/'/g, "''");
+
+    return this.get(
+      `${entitySet}?$select=` +
+      [
+        'dgt_auditorianegocioid',
+        'dgt_name',
+        'dgt_acao',
+        'dgt_descricao',
+        'dgt_dadosanteriores',
+        'dgt_dadosnovos',
+        'dgt_dataevento',
+        'dgt_entidade',
+        'dgt_origem',
+        'dgt_registroid',
+        '_dgt_usuario_value',
+        '_createdby_value'
+      ].join(',') +
+      `&$filter=dgt_entidade eq '${entidadeSegura}'` +
+      ` and dgt_registroid eq '${registroSeguro}'` +
+      '&$orderby=dgt_dataevento desc' +
+      '&$top=500'
+    );
+  }
+
+  // ============================================================
+  // REVISÕES EM ANDAMENTO (todas as que não estão Vigentes)
+  // Usada no painel "Minhas pendências" da tela de Documentos.
+  // ============================================================
+
+  public async getDocumentoRevisoesEmAndamento():
+    Promise<IDataverseRecord[]> {
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_documentorevisao'
+      );
+
+    const vigente =
+      await this.getChoiceOptionValue(
+        'dgt_documentorevisao',
+        'dgt_status',
+        'Vigente'
+      );
+
+    return this.get(
+      `${entitySet}?$select=` +
+      [
+        'dgt_documentorevisaoid',
+        'dgt_revisao',
+        'dgt_status',
+        'dgt_datarevisao',
+        'dgt_arquivourl',
+        'dgt_motivoalteracao',
+        'createdon',
+        'modifiedon',
+        '_dgt_documento_value',
+        '_dgt_responsavel_value'
+      ].join(',') +
+      `&$filter=dgt_status ne ${vigente} or dgt_status eq null` +
+      '&$orderby=modifiedon asc' +
+      '&$top=500'
+    );
+  }
+
+  // ============================================================
+  // ARQUIVOS DAS REVISÕES (para abrir o documento pela lista)
+  // Uma única consulta traz o arquivo de todas as revisões; a tela
+  // escolhe a vigente de cada documento.
+  // ============================================================
+
+  public async getArquivosRevisoesDocumentos():
+    Promise<IDataverseRecord[]> {
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_documentorevisao'
+      );
+
+    return this.get(
+      `${entitySet}?$select=` +
+      [
+        'dgt_documentorevisaoid',
+        'dgt_revisao',
+        'dgt_status',
+        'dgt_ativa',
+        'dgt_arquivourl',
+        '_dgt_documento_value'
+      ].join(',') +
+      '&$filter=dgt_arquivourl ne null' +
+      '&$top=5000'
     );
   }
 

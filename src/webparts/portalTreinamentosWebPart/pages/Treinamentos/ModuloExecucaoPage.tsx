@@ -724,6 +724,8 @@ const ModuloExecucaoPage:
                       'hidden',
                     background:
                       '#0B2D4D',
+                    color:
+                      '#FFFFFF',
                     cursor:
                       'pointer',
                     textAlign:

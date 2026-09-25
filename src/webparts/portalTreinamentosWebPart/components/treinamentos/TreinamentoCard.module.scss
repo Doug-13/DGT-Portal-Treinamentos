@@ -47,7 +47,9 @@
 }
 
 .cardCompleto {
-  min-height: 430px;
+  // Antes: 430px fixos, que deixavam um vão vazio no meio do card.
+  // A grade da página já iguala a altura dos cards de uma mesma linha.
+  min-height: 0;
 }
 
 // ============================================================
@@ -98,7 +100,7 @@
 }
 
 .imagemCompleta {
-  height: 120px;
+  height: 92px;
 }
 
 .imagem {
@@ -330,8 +332,8 @@
 .descricao {
   width: 100%;
 
-  min-height: 48px;
-  max-height: 48px;
+  min-height: 32px;
+  max-height: 32px;
 
   margin:
     0
@@ -359,7 +361,7 @@
   display: -webkit-box;
 
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 
   text-overflow: ellipsis;
 }
@@ -404,9 +406,9 @@
   width: 100%;
 
   margin:
-    12px
+    8px
     0
-    10px;
+    8px;
 }
 
 .progressoCabecalho {
@@ -576,4 +578,27 @@
   color: #758695 !important;
 
   cursor: not-allowed;
+}
+
+// ============================================================
+// LINHA DE STATUS + CARGA HORÁRIA (economiza uma linha do card)
+// ============================================================
+
+.statusLinha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.statusLinha .statusArea {
+  margin-bottom: 0;
+}
+
+.statusLinha .cargaHoraria {
+  min-height: 0;
+  white-space: nowrap;
+  color: #52687d;
+  font-weight: 600;
 }

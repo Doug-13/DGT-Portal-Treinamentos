@@ -6,12 +6,15 @@ import { DataverseService, IDataverseRecord } from '../services/DataverseService
 import { UsuarioService } from '../services/UsuarioService';
 import { TrilhaService } from '../services/TrilhaService';
 import PortalRouter from './PortalRouter';
-import { Icones } from './common/Icones';
 import { Pagina } from '../constants/routes';
 import {
   obterModuloPagina,
-  paginaEhTreinamentos
+  paginaEhTreinamentos,
+  paginaEhDocumentos
 } from '../constants/moduleRoutes';
+import ModuloCabecalho, {
+  CABECALHOS_MODULO
+} from './layout/ModuloCabecalho';
 import { ITreinamento, IHistorico, ICertificado } from '../models/Treinamento';
 import { IDocumento, IDocumentoRevisao } from '../models/Documento';
 import { DocumentoService } from '../services/DocumentoService';
@@ -42,7 +45,7 @@ import { useGestaoDocumentos } from '../hooks/useGestaoDocumentos';
 import { useDocumentoTreinamentos } from '../hooks/useDocumentoTreinamentos';
 import { useGestaoAreas } from '../hooks/useGestaoAreas';
 import { useConformidade } from '../hooks/useConformidade';
-import { obterMenuTreinamento } from '../services/MenuPermissionService';
+import { obterMenuTreinamento, obterMenuDocumentos } from '../services/MenuPermissionService';
 import { IModuloImportJson, ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
 import { SharePointDocumentoService } from '../services/sharepoint/SharePointDocumentoService';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
@@ -2308,6 +2311,17 @@ const gestaoAreas =
         ]
       );
 
+    const abasDocumentos =
+      React.useMemo(
+        () =>
+          obterMenuDocumentos(
+            autorizacao.contexto
+          ),
+        [
+          autorizacao.contexto
+        ]
+      );
+
     // ==========================================================
     // MENU INTRANET
     // ==========================================================
@@ -2721,153 +2735,41 @@ const gestaoAreas =
               styles.page
             }
           >
+            {/* CABEÇALHO PADRÃO DO MÓDULO (hero + abas) */}
+
             {
               paginaEhTreinamentos(
                 paginaAtual
               ) &&
               (
-                <>
-                  <section
-                    className={
-                      styles.trainingHero
-                    }
-                  >
+                <ModuloCabecalho
+                  config={CABECALHOS_MODULO.treinamentos}
+                  abas={abasTreinamento}
+                  paginaAtual={paginaAtual}
+                  navegar={navegar}
+                  paginasFilhas={{
+                    executarTreinamento: 'treinamentos',
+                    executarModulo: 'treinamentos',
+                    avaliacao: 'treinamentos'
+                  }}
+                />
+              )
+            }
 
-                    <div
-                      className={
-                        styles.heroIcon
-                      }
-                    >
-                      <Icones.layers />
-                    </div>
-
-                    <div
-                      className={
-                        styles.heroText
-                      }
-                    >
-
-                      <h1>
-                        Treinamentos
-                      </h1>
-
-                      <h2>
-                        Desenvolva seu conhecimento. Construa resultados.
-                      </h2>
-
-                      <p>
-                        Trilhas, cursos, avaliações e certificações em um só lugar.
-                      </p>
-
-                    </div>
-
-                    <div
-                      className={
-                        styles.heroQuote
-                      }
-                    >
-
-                      <p>
-                        “Pessoa que aprende hoje, constrói um amanhã melhor.”
-                      </p>
-
-                      <strong>
-                        DGT
-                      </strong>
-
-                    </div>
-
-                  </section>
-
-                  <nav
-                    className={
-                      styles.trainingTabs
-                    }
-                  >
-
-                    {
-                      abasTreinamento.map(
-                        (
-                          aba,
-                          indice
-                        ) => {
-
-                          const ativo =
-                            paginaAtual ===
-                            aba.pagina ||
-
-                            (
-                              paginaAtual ===
-                              'executarTreinamento' &&
-                              aba.label ===
-                              'Meus treinamentos'
-                            ) ||
-
-                            (
-                              paginaAtual ===
-                              'executarModulo' &&
-                              aba.label ===
-                              'Meus treinamentos'
-                            ) ||
-
-                            (
-                              paginaAtual ===
-                              'avaliacao' &&
-                              aba.label ===
-                              'Meus treinamentos'
-                            );
-
-                          return (
-                            <button
-                              key={
-                                `${aba.label}-${indice}`
-                              }
-                              type="button"
-                              className={
-                                ativo
-                                  ? styles.trainingTabActive
-                                  : styles.trainingTab
-                              }
-                              onClick={() =>
-                                navegar(
-                                  aba.pagina
-                                )
-                              }
-                              aria-current={
-                                ativo
-                                  ? 'page'
-                                  : undefined
-                              }
-                            >
-
-                              <span
-                                style={{
-                                  display: 'inline-flex',
-                                  color: ativo ? '#0874ce' : '#5C7287'
-                                }}
-                              >
-                                {
-                                  (() => {
-                                    const IconeAba = Icones[aba.icon];
-                                    return <IconeAba />;
-                                  })()
-                                }
-                              </span>
-
-                              <strong>
-                                {
-                                  aba.label
-                                }
-                              </strong>
-
-                            </button>
-                          );
-                        }
-                      )
-                    }
-
-                  </nav>
-                </>
+            {
+              paginaEhDocumentos(
+                paginaAtual
+              ) &&
+              (
+                <ModuloCabecalho
+                  config={CABECALHOS_MODULO.documentos}
+                  abas={abasDocumentos}
+                  paginaAtual={paginaAtual}
+                  navegar={navegar}
+                  paginasFilhas={{
+                    documentoDetalhe: 'documentos'
+                  }}
+                />
               )
             }
 
@@ -2936,6 +2838,18 @@ const gestaoAreas =
 
                 onPublicarRevisaoDocumento={
                   publicarRevisaoDocumentoSelecionado
+                }
+
+                dataverseService={
+                  dataverseService
+                }
+
+                sharePointDocumentoService={
+                  sharePointDocumentoService
+                }
+
+                onRecarregarRevisoesDocumento={
+                  recarregarRevisoesDoDocumentoSelecionado
                 }
 
                 abrirDocumento={documento => {

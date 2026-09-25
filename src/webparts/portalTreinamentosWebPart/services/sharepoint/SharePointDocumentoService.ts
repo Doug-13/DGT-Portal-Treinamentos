@@ -147,6 +147,12 @@ export class SharePointDocumentoService {
   }
 
 
+  // Endereço do site onde os documentos ficam — usado para montar a
+  // pré-visualização (Doc.aspx) dos arquivos do Office.
+  public get urlSite(): string {
+    return this.siteUrl;
+  }
+
   private async criarBibliotecaDocumentos():
     Promise<void> {
 
@@ -386,7 +392,13 @@ export class SharePointDocumentoService {
       string,
 
     arquivo:
-      File
+      File,
+
+    // true = substitui o arquivo da MESMA revisão (usado ao editar
+    // uma revisão ainda em Elaboração). Revisões publicadas nunca são
+    // sobrescritas porque cada revisão tem a sua própria pasta.
+    sobrescrever:
+      boolean = false
   ):
     Promise<IUploadDocumentoResultado> {
 
@@ -505,7 +517,7 @@ export class SharePointDocumentoService {
 
     const uploadUrl =
       `${this.siteUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${pastaEscapada}')` +
-      `/Files/AddUsingPath(decodedurl='${arquivoEscapado}',overwrite=false)`;
+      `/Files/AddUsingPath(decodedurl='${arquivoEscapado}',overwrite=${sobrescrever ? 'true' : 'false'})`;
 
     const conteudo =
       await lerArquivo(

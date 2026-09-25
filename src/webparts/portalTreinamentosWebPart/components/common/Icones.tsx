@@ -33,6 +33,9 @@ export type IconeChave =
   | 'graduationCap'
   | 'alertTriangle'
   | 'fileText'
+  | 'filePlus'
+  | 'folder'
+  | 'bell'
   | 'barChart';
 
 export const Icones:
@@ -135,6 +138,28 @@ export const Icones:
       <polyline points="14 3 14 7 18 7" />
       <line x1="9.5" y1="12" x2="15.5" y2="12" />
       <line x1="9.5" y1="15.5" x2="15.5" y2="15.5" />
+    </svg>
+  ),
+
+  filePlus: () => (
+    <svg {...base}>
+      <path d="M7 3h7l4 4v14H7z" />
+      <polyline points="14 3 14 7 18 7" />
+      <line x1="12.5" y1="11" x2="12.5" y2="17" />
+      <line x1="9.5" y1="14" x2="15.5" y2="14" />
+    </svg>
+  ),
+
+  folder: () => (
+    <svg {...base}>
+      <path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5H12L10 5H4.5A1.5 1.5 0 0 0 3 6.5z" />
+    </svg>
+  ),
+
+  bell: () => (
+    <svg {...base}>
+      <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
+      <path d="M10 20.5a2 2 0 0 0 4 0" />
     </svg>
   ),
 

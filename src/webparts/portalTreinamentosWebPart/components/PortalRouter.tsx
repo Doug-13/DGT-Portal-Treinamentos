@@ -166,6 +166,14 @@ import {
   IUsuarioAtribuicao
 } from '../services/AtribuicaoAdminService';
 
+import {
+  DataverseService
+} from '../services/DataverseService';
+
+import {
+  SharePointDocumentoService
+} from '../services/sharepoint/SharePointDocumentoService';
+
 import AcessoNegadoPage from
   '../pages/AcessoNegadoPage';
 
@@ -804,6 +812,16 @@ export interface IPortalRouterProps {
       IPublicarRevisao
   ) => Promise<IResultadoPublicacaoRevisao>;
 
+  // Tela de detalhe do documento: criar/editar revisões e histórico.
+  dataverseService?:
+  DataverseService;
+
+  sharePointDocumentoService?:
+  SharePointDocumentoService;
+
+  onRecarregarRevisoesDocumento?:
+  () => Promise<void>;
+
   // ============================================================
   // HISTÓRICO
   // ============================================================
@@ -1104,6 +1122,10 @@ const PortalRouter:
               )
             }
           
+            onAbrirDocumento={
+              props.abrirDocumento
+            }
+
             eventosCalendario={
               props.eventosCalendario
             }
@@ -1511,6 +1533,10 @@ const PortalRouter:
               props.documentos
             }
 
+            primeiroNome={
+              props.primeiroNome
+            }
+
             carregando={
               props.carregandoDataverse
             }
@@ -1525,6 +1551,22 @@ const PortalRouter:
           
             onNovoDocumento={() =>
               props.navegar('novoDocumento')
+            }
+
+            contexto={
+              props.contextoAcesso
+            }
+
+            areas={
+              props.areasAdministrativas
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
+            dataverseService={
+              props.dataverseService
             }
           />
         );
@@ -1563,6 +1605,18 @@ const PortalRouter:
 
             processando={
               props.processandoFluxoDocumento
+            }
+
+            dataverseService={
+              props.dataverseService
+            }
+
+            sharePointDocumentoService={
+              props.sharePointDocumentoService
+            }
+
+            onRecarregarRevisoes={
+              props.onRecarregarRevisoesDocumento
             }
 
             onEnviarRevisao={

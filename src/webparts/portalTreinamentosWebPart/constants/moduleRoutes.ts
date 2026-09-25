@@ -33,6 +33,7 @@ const paginasDocumentos:
   Pagina[] = [
     'documentos',
     'documentoDetalhe',
+    'novoDocumento',
     'gestaoDocumentos'
   ];
 
@@ -82,3 +83,13 @@ export const paginaEhTreinamentos =
       pagina
     ) ===
     'treinamentos';
+
+export const paginaEhDocumentos =
+  (
+    pagina:
+      Pagina
+  ): boolean =>
+    obterModuloPagina(
+      pagina
+    ) ===
+    'documentos';

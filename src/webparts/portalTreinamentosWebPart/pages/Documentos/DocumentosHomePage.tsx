@@ -7,6 +7,50 @@ import {
 import EmptyState from
   '../../components/common/EmptyState';
 
+import {
+  IContextoAcesso
+} from '../../services/AutorizacaoService';
+
+import {
+  IAreaAdmin,
+  IUsuarioAreaAdmin
+} from '../../services/AreaAdminService';
+
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import {
+  ehAdministrador,
+  filtrarDocumentosVisiveis,
+  obterAreasVisiveis
+} from '../../services/DocumentoVisibilidade';
+
+import {
+  useDocumentosPendencias
+} from '../../hooks/useDocumentosPendencias';
+
+import MinhasPendenciasDocumentos from
+  './MinhasPendenciasDocumentos';
+
+import AreasDocumentosCards from
+  './AreasDocumentosCards';
+
+import {
+  IconeArquivo,
+  PrazoCelula,
+  ResponsavelCelula
+} from './DocumentosTabelaCelulas';
+
+import {
+  useArquivosDocumentos
+} from '../../hooks/useArquivosDocumentos';
+
+import ResumoModulo, {
+  CORES_INDICADOR,
+  IIndicadorResumo
+} from '../../components/common/ResumoModulo';
+
 export interface IDocumentosHomePageProps {
 
   documentos:
@@ -24,29 +68,90 @@ export interface IDocumentosHomePageProps {
         IDocumento
     ) => void;
 
+  // Mantido por compatibilidade — "Novo documento" agora é uma aba
+  // do módulo (mesmo padrão de Treinamentos).
   onNovoDocumento?:
     () => void;
+
+  primeiroNome?:
+    string;
+
+  // Perfil do usuário logado: define quais áreas e documentos aparecem.
+  contexto?:
+    IContextoAcesso;
+
+  // Tabela de Áreas (dgt_area) — gera os cartões.
+  areas?:
+    IAreaAdmin[];
+
+  // Vínculos usuário × área — define as áreas de cada usuário e quem
+  // é Gestor (aprovador).
+  usuariosAreas?:
+    IUsuarioAreaAdmin[];
+
+  // Usado para buscar as revisões em andamento (Minhas pendências).
+  dataverseService?:
+    DataverseService;
 }
 
-interface ICategoriaCard {
-  titulo:
-    string;
+const guidTela = (
+  valor?: string
+): string =>
+  (valor || '')
+    .replace(/[{}]/g, '')
+    .trim()
+    .toLowerCase();
 
-  subtitulo:
-    string;
+// Filtros acionados pelos cartões de indicador.
+type FiltroIndicadorDocumento =
+  | ''
+  | 'vigentes'
+  | 'emRevisao'
+  | 'pendencias'
+  | 'responsavel';
 
-  icone:
-    string;
+const ROTULO_FILTRO_INDICADOR:
+  Record<Exclude<FiltroIndicadorDocumento, ''>, string> = {
+  vigentes: 'Vigentes',
+  emRevisao: 'Em revisão',
+  pendencias: 'Minhas pendências',
+  responsavel: 'Sob minha responsabilidade'
+};
 
-  valor:
-    string;
+const statusEhVigente = (
+  status: string
+): boolean =>
+  (status || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim() === 'vigente';
 
-  fundoIcone:
-    string;
+const atendeFiltroIndicador = (
+  documento: IDocumento,
+  filtro: FiltroIndicadorDocumento,
+  idsPendentes: string[],
+  meuId: string
+): boolean => {
 
-  corIcone:
-    string;
-}
+  switch (filtro) {
+
+    case 'vigentes':
+      return statusEhVigente(documento.status);
+
+    case 'emRevisao':
+      return !statusEhVigente(documento.status);
+
+    case 'pendencias':
+      return idsPendentes.indexOf(guidTela(documento.id)) >= 0;
+
+    case 'responsavel':
+      return !!meuId && guidTela(documento.responsavelId) === meuId;
+
+    default:
+      return true;
+  }
+};
 
 const C = {
   azul:
@@ -76,124 +181,6 @@ const C = {
   verdeClaro:
     '#DDF7EC'
 };
-
-const categorias:
-  ICategoriaCard[] = [
-    {
-      titulo:
-        'Todos os documentos',
-
-      subtitulo:
-        'Acesse todo o acervo disponível.',
-
-      icone:
-        '📁',
-
-      valor:
-        '',
-
-      fundoIcone:
-        '#FFF1CF',
-
-      corIcone:
-        '#D98A00'
-    },
-    {
-      titulo:
-        'Qualidade',
-
-      subtitulo:
-        'POPs, normas e procedimentos.',
-
-      icone:
-        '⚙',
-
-      valor:
-        'Qualidade',
-
-      fundoIcone:
-        '#E6F2FF',
-
-      corIcone:
-        '#0B67D1'
-    },
-    {
-      titulo:
-        'Segurança',
-
-      subtitulo:
-        'NRs, instruções e diretrizes.',
-
-      icone:
-        '⛑',
-
-      valor:
-        'Segurança',
-
-      fundoIcone:
-        '#FFF0D5',
-
-      corIcone:
-        '#D98200'
-    },
-    {
-      titulo:
-        'Engenharia',
-
-      subtitulo:
-        'Projetos, manuais e especificações.',
-
-      icone:
-        '🔧',
-
-      valor:
-        'Engenharia',
-
-      fundoIcone:
-        '#E7F3FF',
-
-      corIcone:
-        '#0A6DD8'
-    },
-    {
-      titulo:
-        'RH',
-
-      subtitulo:
-        'Políticas, formulários e orientações.',
-
-      icone:
-        '👥',
-
-      valor:
-        'RH',
-
-      fundoIcone:
-        '#FFE9F0',
-
-      corIcone:
-        '#C41C55'
-    },
-    {
-      titulo:
-        'Administrativo',
-
-      subtitulo:
-        'Processos e documentos gerais.',
-
-      icone:
-        '🏢',
-
-      valor:
-        'Administrativo',
-
-      fundoIcone:
-        '#EEEAFE',
-
-      corIcone:
-        '#5B43D6'
-    }
-  ];
 
 const tiposNavegacao = [
   {
@@ -327,6 +314,70 @@ const td:
     'middle'
 };
 
+// Nome do documento: ícone pelo tipo de arquivo + link que abre a
+// TELA DO DOCUMENTO (dados, revisões, histórico e botões de ação).
+// Para ver o arquivo, use "Pré-visualizar" ou "Abrir documento" lá.
+const NomeDocumentoCelula:
+  React.FC<{
+    documento: IDocumento;
+    arquivo?: {
+      url: string;
+      revisao: string;
+      vigente: boolean;
+    };
+    onAbrirDetalhe?: (documento: IDocumento) => void;
+  }> = ({
+    documento,
+    arquivo,
+    onAbrirDetalhe
+  }) => {
+
+    const [emFoco, setEmFoco] =
+      React.useState(false);
+
+    return (
+      <div
+        style={{
+          display: 'flex',
+          gap: '9px',
+          alignItems: 'center'
+        }}
+      >
+        <IconeArquivo url={arquivo?.url} />
+
+        <button
+          type="button"
+          title={`Abrir os dados de ${documento.codigo}`}
+          onClick={() => {
+            if (onAbrirDetalhe) {
+              onAbrirDetalhe(documento);
+            }
+          }}
+          onMouseEnter={() => setEmFoco(true)}
+          onMouseLeave={() => setEmFoco(false)}
+          onFocus={() => setEmFoco(true)}
+          onBlur={() => setEmFoco(false)}
+          style={{
+            padding: 0,
+            border: 0,
+            background: 'transparent',
+            color: emFoco ? '#0867D7' : '#0A2845',
+            textDecoration: emFoco ? 'underline' : 'none',
+            textAlign: 'left',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            fontFamily: 'inherit'
+          }}
+        >
+          <strong style={{ fontSize: '13px' }}>
+            {documento.titulo}
+          </strong>
+        </button>
+      </div>
+    );
+  };
+
 const DocumentosHomePage:
   React.FC<
     IDocumentosHomePageProps
@@ -335,8 +386,67 @@ const DocumentosHomePage:
     carregando = false,
     erro = '',
     onAbrirDocumento,
-    onNovoDocumento
+    primeiroNome,
+    contexto,
+    areas: areasCadastradas = [],
+    usuariosAreas = [],
+    dataverseService
   }) => {
+
+    // ==========================================================
+    // VISIBILIDADE POR PERFIL / ÁREA
+    // ==========================================================
+
+    const administrador =
+      ehAdministrador(contexto);
+
+    const areasVisiveis =
+      React.useMemo(
+        () =>
+          obterAreasVisiveis(
+            contexto,
+            areasCadastradas,
+            usuariosAreas
+          ),
+        [
+          contexto,
+          areasCadastradas,
+          usuariosAreas
+        ]
+      );
+
+    const documentosVisiveis =
+      React.useMemo(
+        () =>
+          filtrarDocumentosVisiveis(
+            documentos,
+            contexto,
+            areasVisiveis,
+            usuariosAreas
+          ),
+        [
+          documentos,
+          contexto,
+          areasVisiveis,
+          usuariosAreas
+        ]
+      );
+
+    // Arquivo atual (revisão vigente) de cada documento: define o ícone
+    // e o que abre ao clicar no nome.
+    const arquivos =
+      useArquivosDocumentos(
+        dataverseService,
+        documentos
+      );
+
+    const pendencias =
+      useDocumentosPendencias(
+        dataverseService,
+        documentos,
+        contexto,
+        usuariosAreas
+      );
 
     const [
       pesquisa,
@@ -362,42 +472,246 @@ const DocumentosHomePage:
     ] =
       React.useState('');
 
-    const areas =
+    // ==========================================================
+    // FILTRO PELOS CARTÕES DE INDICADOR
+    // Clicar num cartão filtra a lista; clicar de novo (ou no ✕)
+    // remove o filtro. Combina com pesquisa, área, tipo e status.
+    // ==========================================================
+
+    const [
+      filtroIndicador,
+      setFiltroIndicador
+    ] =
+      React.useState<FiltroIndicadorDocumento>('');
+
+    const alternarFiltro =
+      (
+        filtro: FiltroIndicadorDocumento
+      ): void =>
+        setFiltroIndicador(
+          atual =>
+            atual === filtro
+              ? ''
+              : filtro
+        );
+
+    const idsPendentes =
+      React.useMemo(
+        () =>
+          pendencias.pendencias.map(
+            pendencia => guidTela(pendencia.documento.id)
+          ),
+        [
+          pendencias.pendencias
+        ]
+      );
+
+    // Lista com pesquisa + área + tipo + status. É a base tanto da
+    // tabela quanto dos NÚMEROS dos cards — assim o número do card é
+    // sempre igual à quantidade que aparece ao clicar nele.
+    const baseFiltrada =
       React.useMemo(
         () => {
 
-          const valores:
-            string[] = [];
+          const termo =
+            pesquisa
+              .trim()
+              .toLowerCase();
 
-          documentos.forEach(
+          return documentosVisiveis.filter(
             item => {
 
-              const valor =
-                (
-                  item.categoria ||
-                  ''
-                ).trim();
+              const texto =
+                [
+                  item.codigo,
+                  item.titulo,
+                  item.tipo,
+                  item.area,
+                  item.status,
+                  item.revisaoAtual
+                ]
+                  .join(
+                    ' '
+                  )
+                  .toLowerCase();
 
-              if (
-                valor &&
-                valores.indexOf(
-                  valor
-                ) <
-                0
-              ) {
-                valores.push(
-                  valor
-                );
-              }
+              return (
+                (
+                  !termo ||
+                  texto.indexOf(
+                    termo
+                  ) >=
+                  0
+                ) &&
+                (
+                  !area ||
+                  guidTela(item.areaId) ===
+                  guidTela(area)
+                ) &&
+                (
+                  !tipo ||
+                  item.tipo ===
+                  tipo
+                ) &&
+                (
+                  !status ||
+                  item.status ===
+                  status
+                )
+              );
             }
           );
-
-          return valores.sort();
         },
         [
-          documentos
+          documentosVisiveis,
+          pesquisa,
+          area,
+          tipo,
+          status
         ]
       );
+
+    const indicadores =
+      React.useMemo(
+        (): IIndicadorResumo[] => {
+
+          const normalizarStatus = (
+            valor: string
+          ): string =>
+            (valor || '')
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .trim();
+
+          const vigentes =
+            baseFiltrada.filter(
+              documento =>
+                normalizarStatus(documento.status) === 'vigente'
+            ).length;
+
+          const emRevisao =
+            baseFiltrada.length - vigentes;
+
+          const comPendencia =
+            baseFiltrada.filter(
+              documento =>
+                idsPendentes.indexOf(guidTela(documento.id)) >= 0
+            ).length;
+
+          const meuId =
+            guidTela(contexto?.usuarioId);
+
+          const minhaResponsabilidade =
+            meuId
+              ? baseFiltrada.filter(
+                documento =>
+                  guidTela(documento.responsavelId) === meuId
+              ).length
+              : 0;
+
+          return [
+            {
+              titulo: 'Vigentes',
+              valor: vigentes,
+              icone: 'fileText',
+              ...CORES_INDICADOR.verde,
+              detalhe: 'disponíveis para consulta',
+              ativo: filtroIndicador === 'vigentes',
+              onClick: () => alternarFiltro('vigentes')
+            },
+            {
+              titulo: 'Em revisão',
+              valor: emRevisao,
+              icone: 'play',
+              ...CORES_INDICADOR.laranja,
+              detalhe: 'elaboração ou aprovação',
+              ativo: filtroIndicador === 'emRevisao',
+              onClick: () => alternarFiltro('emRevisao')
+            },
+            {
+              titulo: 'Minhas pendências',
+              valor: comPendencia,
+              icone: 'hourglass',
+              ...CORES_INDICADOR.vermelho,
+              detalhe: 'elaborar ou aprovar',
+              ativo: filtroIndicador === 'pendencias',
+              onClick: () => alternarFiltro('pendencias')
+            },
+            {
+              titulo: 'Sob minha responsabilidade',
+              valor: minhaResponsabilidade,
+              icone: 'checkCircle',
+              ...CORES_INDICADOR.azul,
+              detalhe: 'documentos',
+              ativo: filtroIndicador === 'responsavel',
+              onClick: () => alternarFiltro('responsavel')
+            },
+            {
+              // Mostra tudo o que o usuário pode ver: limpa o filtro do
+              // indicador e da área (quando ele tem mais de uma).
+              titulo: administrador ? 'Áreas' : 'Minhas áreas',
+              valor: areasVisiveis.length,
+              icone: 'folder',
+              ...CORES_INDICADOR.roxo,
+              detalhe: administrador ? 'ver todas' : 'ver todos os documentos',
+              ativo: !filtroIndicador && (!area || areasVisiveis.length === 1),
+              onClick: () => {
+                setFiltroIndicador('');
+
+                if (administrador || areasVisiveis.length !== 1) {
+                  setArea('');
+                }
+              }
+            }
+          ];
+        },
+        [
+          baseFiltrada,
+          idsPendentes,
+          contexto,
+          administrador,
+          areasVisiveis,
+          filtroIndicador,
+          area
+        ]
+      );
+
+    const filtrados =
+      React.useMemo(
+        () =>
+          baseFiltrada.filter(
+            item =>
+              atendeFiltroIndicador(
+                item,
+                filtroIndicador,
+                idsPendentes,
+                guidTela(contexto?.usuarioId)
+              )
+          ),
+        [
+          baseFiltrada,
+          filtroIndicador,
+          idsPendentes,
+          contexto
+        ]
+      );
+
+    React.useEffect(
+      () => {
+        if (
+          !administrador &&
+          areasVisiveis.length === 1 &&
+          !area
+        ) {
+          setArea(areasVisiveis[0].id);
+        }
+      },
+      [
+        administrador,
+        areasVisiveis
+      ]
+    );
 
     const tipos =
       React.useMemo(
@@ -406,7 +720,7 @@ const DocumentosHomePage:
           const valores:
             string[] = [];
 
-          documentos.forEach(
+          documentosVisiveis.forEach(
             item => {
 
               const valor =
@@ -432,7 +746,7 @@ const DocumentosHomePage:
           return valores.sort();
         },
         [
-          documentos
+          documentosVisiveis
         ]
       );
 
@@ -443,7 +757,7 @@ const DocumentosHomePage:
           const valores:
             string[] = [];
 
-          documentos.forEach(
+          documentosVisiveis.forEach(
             item => {
 
               const valor =
@@ -469,69 +783,7 @@ const DocumentosHomePage:
           return valores.sort();
         },
         [
-          documentos
-        ]
-      );
-
-    const filtrados =
-      React.useMemo(
-        () => {
-
-          const termo =
-            pesquisa
-              .trim()
-              .toLowerCase();
-
-          return documentos.filter(
-            item => {
-
-              const texto =
-                [
-                  item.codigo,
-                  item.titulo,
-                  item.tipo,
-                  item.categoria,
-                  item.status,
-                  item.revisaoAtual
-                ]
-                  .join(
-                    ' '
-                  )
-                  .toLowerCase();
-
-              return (
-                (
-                  !termo ||
-                  texto.indexOf(
-                    termo
-                  ) >=
-                  0
-                ) &&
-                (
-                  !area ||
-                  item.categoria ===
-                  area
-                ) &&
-                (
-                  !tipo ||
-                  item.tipo ===
-                  tipo
-                ) &&
-                (
-                  !status ||
-                  item.status ===
-                  status
-                )
-              );
-            }
-          );
-        },
-        [
-          documentos,
-          pesquisa,
-          area,
-          tipo,
-          status
+          documentosVisiveis
         ]
       );
 
@@ -543,370 +795,32 @@ const DocumentosHomePage:
         }}
       >
 
-        <div
-          style={{
-            display:
-              'flex',
-
-            justifyContent:
-              'flex-end',
-
-            marginBottom:
-              '10px'
-          }}
-        >
-          {
-            onNovoDocumento &&
-            (
-              <button
-                type="button"
-                onClick={
-                  onNovoDocumento
-                }
-                style={{
-                  padding:
-                    '10px 15px',
-
-                  border:
-                    0,
-
-                  borderRadius:
-                    '8px',
-
-                  background:
-                    '#0B67D1',
-
-                  color:
-                    '#FFFFFF',
-
-                  fontWeight:
-                    800,
-
-                  cursor:
-                    'pointer'
-                }}
-              >
-                + Novo documento
-              </button>
-            )
-          }
-        </div>
-
-        {/* HERO */}
-
-        <div
-          style={{
-            minHeight:
-              '125px',
-
-            display:
-              'grid',
-
-            gridTemplateColumns:
-              '76px minmax(0,1fr) 230px',
-
-            gap:
-              '20px',
-
-            alignItems:
-              'center',
-
-            padding:
-              '22px 26px',
-
-            borderRadius:
-              '16px',
-
-            background:
-              'linear-gradient(105deg,#DDEFFF 0%,#C6E0F5 58%,#9EC3DF 100%)',
-
-            overflow:
-              'hidden'
-          }}
-        >
-          <div
-            style={{
-              width:
-                '58px',
-
-              height:
-                '58px',
-
-              display:
-                'flex',
-
-              alignItems:
-                'center',
-
-              justifyContent:
-                'center',
-
-              borderRadius:
-                '12px',
-
-              background:
-                '#2F8DEB',
-
-              fontSize:
-                '29px'
-            }}
-          >
-            📄
-          </div>
-
-          <div>
-            <h1
-              style={{
-                margin:
-                  0,
-
-                fontSize:
-                  '30px',
-
-                lineHeight:
-                  1.05,
-
-                color:
-                  C.azulEscuro
-              }}
-            >
-              Documentos
-            </h1>
-
-            <p
-              style={{
-                margin:
-                  '7px 0 0',
-
-                fontSize:
-                  '16px',
-
-                fontWeight:
-                  600,
-
-                color:
-                  '#234A6C'
-              }}
-            >
-              Procedimentos, políticas, instruções e muito mais.
-            </p>
-
-            <p
-              style={{
-                margin:
-                  '5px 0 0',
-
-                color:
-                  '#496A86',
-
-                fontSize:
-                  '12px'
-              }}
-            >
-              Acesse os documentos da sua área ou navegue por todas as categorias.
-            </p>
-          </div>
-
-          <div
-            style={{
-              padding:
-                '13px 15px',
-
-              borderRadius:
-                '11px',
-
-              background:
-                'rgba(7,54,89,.82)',
-
-              color:
-                '#FFFFFF',
-
-              lineHeight:
-                1.45,
-
-              fontSize:
-                '12px'
-            }}
-          >
-            “Informação organizada gera segurança e melhores resultados.”
-
-            <div
-              style={{
-                marginTop:
-                  '8px',
-
-                textAlign:
-                  'right',
-
-                fontWeight:
-                  800
-              }}
-            >
-              DGT
-            </div>
-          </div>
-        </div>
-
-        {/* CARDS CATEGORIAS */}
-
-        <div
-          style={{
-            display:
-              'grid',
-
-            gridTemplateColumns:
-              'repeat(6,minmax(150px,1fr))',
-
-            gap:
-              '10px',
-
-            marginTop:
-              '12px'
-          }}
-        >
-          {
-            categorias.map(
-              item => {
-
-                const ativo =
-                  area ===
-                  item.valor;
-
-                return (
-                  <button
-                    key={
-                      item.titulo
-                    }
-                    type="button"
-                    onClick={() =>
-                      setArea(
-                        item.valor
-                      )
-                    }
-                    style={{
-                      minHeight:
-                        '122px',
-
-                      display:
-                        'grid',
-
-                      gridTemplateRows:
-                        '42px auto 1fr',
-
-                      alignContent:
-                        'start',
-
-                      gap:
-                        '7px',
-
-                      padding:
-                        '14px',
-
-                      border:
-                        ativo
-                          ? '2px solid #1677FF'
-                          : `1px solid ${C.borda}`,
-
-                      borderRadius:
-                        '12px',
-
-                      background:
-                        ativo
-                          ? '#F5FAFF'
-                          : C.branco,
-
-                      textAlign:
-                        'left',
-
-                      cursor:
-                        'pointer',
-
-                      boxShadow:
-                        ativo
-                          ? '0 3px 10px rgba(22,119,255,.08)'
-                          : 'none'
-                    }}
-                  >
-                    <div
-                      style={{
-                        width:
-                          '42px',
-
-                        height:
-                          '42px',
-
-                        display:
-                          'flex',
-
-                        alignItems:
-                          'center',
-
-                        justifyContent:
-                          'center',
-
-                        borderRadius:
-                          '9px',
-
-                        background:
-                          item.fundoIcone,
-
-                        color:
-                          item.corIcone,
-
-                        fontSize:
-                          '22px'
-                      }}
-                    >
-                      {
-                        item.icone
-                      }
-                    </div>
-
-                    <strong
-                      style={{
-                        display:
-                          'block',
-
-                        color:
-                          C.azulEscuro,
-
-                        fontSize:
-                          '14px',
-
-                        lineHeight:
-                          1.25
-                      }}
-                    >
-                      {
-                        item.titulo
-                      }
-                    </strong>
-
-                    <span
-                      style={{
-                        display:
-                          'block',
-
-                        color:
-                          C.secundario,
-
-                        fontSize:
-                          '11px',
-
-                        lineHeight:
-                          1.35
-                      }}
-                    >
-                      {
-                        item.subtitulo
-                      }
-                    </span>
-                  </button>
-                );
-              }
-            )
-          }
-        </div>
+        {/* SAUDAÇÃO + INDICADORES (mesmo padrão da Visão geral de Treinamentos) */}
+
+        <ResumoModulo
+          primeiroNome={primeiroNome}
+          mensagem="Aqui está um resumo dos documentos disponíveis para você."
+          indicadores={indicadores}
+        />
+
+        {/* MINHAS PENDÊNCIAS (só aparece quando existe alguma) */}
+
+        <MinhasPendenciasDocumentos
+          pendencias={pendencias.pendencias}
+          carregando={pendencias.carregando}
+          erro={pendencias.erro}
+          onAbrirDocumento={onAbrirDocumento}
+        />
+
+        {/* CARTÕES DE ÁREA */}
+
+        <AreasDocumentosCards
+          areas={areasVisiveis}
+          documentos={documentosVisiveis}
+          mostrarTodas={administrador || !contexto}
+          areaSelecionadaId={area}
+          onSelecionar={setArea}
+        />
 
         {/* FILTROS */}
 
@@ -956,23 +870,28 @@ const DocumentosHomePage:
               inputStyle
             }
           >
-            <option value="">
-              Todas as áreas
-            </option>
+            {
+              (administrador || areasVisiveis.length !== 1) &&
+              (
+                <option value="">
+                  {administrador || !contexto ? 'Todas as áreas' : 'Minhas áreas'}
+                </option>
+              )
+            }
 
             {
-              areas.map(
+              areasVisiveis.map(
                 item => (
                   <option
                     key={
-                      item
+                      item.id
                     }
                     value={
-                      item
+                      item.id
                     }
                   >
                     {
-                      item
+                      item.nome
                     }
                   </option>
                 )
@@ -1161,7 +1080,35 @@ const DocumentosHomePage:
                       C.azulEscuro
                   }}
                 >
-                  📄 Documentos recentes
+                  📄 {
+                    filtroIndicador
+                      ? `Documentos · ${ROTULO_FILTRO_INDICADOR[filtroIndicador]}`
+                      : 'Documentos recentes'
+                  }
+
+                  {
+                    filtroIndicador &&
+                    (
+                      <button
+                        type="button"
+                        onClick={() => setFiltroIndicador('')}
+                        title="Remover filtro"
+                        style={{
+                          marginLeft: '10px',
+                          padding: '2px 10px',
+                          border: '1px solid #CBD5E1',
+                          borderRadius: '12px',
+                          background: '#FFFFFF',
+                          color: '#475569',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✕ Limpar filtro
+                      </button>
+                    )
+                  }
                 </strong>
 
                 <span
@@ -1211,7 +1158,11 @@ const DocumentosHomePage:
                       >
                         <EmptyState
                           titulo="Nenhum documento encontrado"
-                          descricao="Ajuste os filtros ou a pesquisa."
+                          descricao={
+                            filtroIndicador === 'pendencias'
+                              ? 'Você não tem pendências de documentos no momento. 🎉'
+                              : 'Ajuste os filtros ou a pesquisa.'
+                          }
                         />
                       </div>
                     )
@@ -1255,7 +1206,18 @@ const DocumentosHomePage:
                               </th>
 
                               <th style={th}>
+                                Responsável
+                              </th>
+
+                              <th style={th}>
                                 Revisão
+                              </th>
+
+                              <th
+                                style={th}
+                                title="Prazo da próxima revisão periódica do documento"
+                              >
+                                Prazo
                               </th>
 
                               <th style={th}>
@@ -1282,62 +1244,11 @@ const DocumentosHomePage:
                                     }}
                                   >
                                     <td style={td}>
-                                      <div
-                                        style={{
-                                          display:
-                                            'flex',
-
-                                          gap:
-                                            '9px',
-
-                                          alignItems:
-                                            'center'
-                                        }}
-                                      >
-                                        <div
-                                          style={{
-                                            width:
-                                              '30px',
-
-                                            height:
-                                              '30px',
-
-                                            display:
-                                              'flex',
-
-                                            alignItems:
-                                              'center',
-
-                                            justifyContent:
-                                              'center',
-
-                                            borderRadius:
-                                              '7px',
-
-                                            background:
-                                              '#EEF5FB',
-
-                                            fontSize:
-                                              '15px'
-                                          }}
-                                        >
-                                          📄
-                                        </div>
-
-                                        <strong
-                                          style={{
-                                            color:
-                                              C.azulEscuro,
-
-                                            fontSize:
-                                              '13px'
-                                          }}
-                                        >
-                                          {
-                                            documento.titulo
-                                          }
-                                        </strong>
-                                      </div>
+                                      <NomeDocumentoCelula
+                                        documento={documento}
+                                        arquivo={arquivos[guidTela(documento.id)]}
+                                        onAbrirDetalhe={onAbrirDocumento}
+                                      />
                                     </td>
 
                                     <td style={td}>
@@ -1356,9 +1267,20 @@ const DocumentosHomePage:
 
                                     <td style={td}>
                                       {
-                                        documento.categoria ||
+                                        documento.area ||
                                         '-'
                                       }
+                                    </td>
+
+                                    <td style={td}>
+                                      <ResponsavelCelula
+                                        nome={documento.responsavel}
+                                        souEu={
+                                          !!contexto?.usuarioId &&
+                                          guidTela(documento.responsavelId) ===
+                                          guidTela(contexto.usuarioId)
+                                        }
+                                      />
                                     </td>
 
                                     <td style={td}>
@@ -1366,6 +1288,13 @@ const DocumentosHomePage:
                                         documento.revisaoAtual ||
                                         '-'
                                       }
+                                    </td>
+
+                                    <td style={td}>
+                                      <PrazoCelula
+                                        prazo={documento.prazoRevisao}
+                                        publicado={statusEhVigente(documento.status)}
+                                      />
                                     </td>
 
                                     <td style={td}>
@@ -1688,7 +1617,7 @@ const DocumentosHomePage:
               </strong>
 
               {
-                documentos
+                documentosVisiveis
                   .slice(
                     0,
                     3

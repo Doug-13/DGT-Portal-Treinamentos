@@ -391,6 +391,15 @@ const GestaoDocumentosPage:
             background:
               '#FFFFFF',
 
+            color:
+              '#202A44',
+
+            fontSize:
+              '12.5px',
+
+            fontWeight:
+              700,
+
             cursor:
               'pointer'
           }}
@@ -530,7 +539,20 @@ const GestaoDocumentosPage:
                           'left',
 
                         border:
-                          '1px solid #E2E8F0',
+                          props
+                            .documentoSelecionado
+                            ?.id ===
+                            item.id
+                            ? '1px solid #05C3DD'
+                            : '1px solid #E2E8F0',
+
+                        borderLeft:
+                          props
+                            .documentoSelecionado
+                            ?.id ===
+                            item.id
+                            ? '4px solid #05C3DD'
+                            : '1px solid #E2E8F0',
 
                         borderRadius:
                           '8px',
@@ -540,21 +562,61 @@ const GestaoDocumentosPage:
                             .documentoSelecionado
                             ?.id ===
                             item.id
-                            ? '#EFF6FF'
+                            ? '#E6F9FC'
                             : '#FFFFFF',
+
+                        color:
+                          '#1F2937',
+
+                        fontSize:
+                          '13px',
+
+                        fontWeight:
+                          400,
 
                         cursor:
                           'pointer'
                       }}
                     >
-                      <strong>
+                      <strong
+                        style={{
+                          display:
+                            'block',
+
+                          color:
+                            '#202A44',
+
+                          fontSize:
+                            '12px',
+
+                          letterSpacing:
+                            '.2px'
+                        }}
+                      >
                         {
                           item.codigo ||
                           '-'
                         }
                       </strong>
 
-                      <div>
+                      <div
+                        style={{
+                          marginTop:
+                            '2px',
+
+                          color:
+                            '#1F2937',
+
+                          fontSize:
+                            '13px',
+
+                          fontWeight:
+                            600,
+
+                          lineHeight:
+                            1.35
+                        }}
+                      >
                         {
                           item.titulo
                         }

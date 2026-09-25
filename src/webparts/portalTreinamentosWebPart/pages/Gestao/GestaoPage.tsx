@@ -281,6 +281,7 @@ const Acao:
             : `1px solid ${DGT.cinzaClaro}`,
           borderRadius: '14px',
           background: destaque ? DGT.azul : '#FFFFFF',
+          color: destaque ? '#FFFFFF' : '#1F2937',
           cursor: 'pointer',
           transition: 'box-shadow .15s, transform .15s'
         }}

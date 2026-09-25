@@ -28,6 +28,9 @@ const regras:
     { rota: 'trilhas', nivel: 'Funcionario' },
     { rota: 'documentos', nivel: 'Funcionario' },
     { rota: 'documentoDetalhe', nivel: 'Funcionario' },
+    // Mantido no nível Funcionário (comportamento anterior, em que o
+    // botão aparecia para todos). Para restringir, troque para 'Gestor'.
+    { rota: 'novoDocumento', nivel: 'Funcionario' },
     { rota: 'historico', nivel: 'Funcionario' },
     { rota: 'certificados', nivel: 'Funcionario' },
     { rota: 'executarTreinamento', nivel: 'Funcionario' },

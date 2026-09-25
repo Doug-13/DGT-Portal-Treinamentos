@@ -2,6 +2,10 @@ import {
   MSGraphClientV3
 } from '@microsoft/sp-http';
 
+import {
+  normalizarDataGraph
+} from '../../utils/fusoHorario';
+
 export interface IEventoCalendario {
   id: string;
   titulo: string;
@@ -103,6 +107,11 @@ export class CalendarService {
         .api(
           '/me/calendar/calendarView'
         )
+        // Garante as datas em UTC; a tela converte para Brasília.
+        .header(
+          'Prefer',
+          'outlook.timezone="UTC"'
+        )
         .query({
           startDateTime:
             inicio.toISOString(),
@@ -161,16 +170,19 @@ export class CalendarService {
               ) ||
               'Evento',
 
+            // ISO em UTC real (com "Z") — ver utils/fusoHorario.ts
             inicio:
-              texto(
-                item.start
-                  ?.dateTime
+              normalizarDataGraph(
+                item.start?.dateTime,
+                item.start?.timeZone,
+                item.isAllDay
               ),
 
             fim:
-              texto(
-                item.end
-                  ?.dateTime
+              normalizarDataGraph(
+                item.end?.dateTime,
+                item.end?.timeZone,
+                item.isAllDay
               ),
 
             diaInteiro:

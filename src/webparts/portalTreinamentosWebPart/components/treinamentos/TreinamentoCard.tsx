@@ -294,26 +294,42 @@ const TreinamentoCard:
         }
       >
 
-        {/* STATUS */}
+        {/* STATUS + CARGA HORÁRIA (mesma linha) */}
 
         <div
           className={
-            styles.statusArea
+            styles.statusLinha
           }
         >
+          <div
+            className={
+              styles.statusArea
+            }
+          >
+            <span
+              className={
+                `${styles.status} ${
+                  obterClasseStatus()
+                }`
+              }
+            >
+              {
+                treinamento.status
+              }
+            </span>
+          </div>
 
           <span
             className={
-              `${styles.status} ${
-                obterClasseStatus()
-              }`
+              styles.cargaHoraria
             }
+            title="Carga horária"
           >
-            {
-              treinamento.status
+            ◷ {
+              treinamento.cargaHoraria ||
+              '—'
             }
           </span>
-
         </div>
 
         {/* TÍTULO */}
@@ -354,19 +370,6 @@ const TreinamentoCard:
 
           )
         }
-
-        {/* CARGA HORÁRIA */}
-
-        <div
-          className={
-            styles.cargaHoraria
-          }
-        >
-          {
-            treinamento.cargaHoraria ||
-            'Carga horária não informada'
-          }
-        </div>
 
         {/* ====================================================
             RODAPÉ

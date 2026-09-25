@@ -293,22 +293,23 @@ const DocumentoWorkflowCard:
             }
 
             {
-              // Vigente: reabrir manda direto para o Gestor avaliar
-              // de novo — não volta para Elaboração.
+              // Vigente é estado final: para alterar o documento é
+              // preciso criar uma NOVA revisão (botão "+ Nova revisão"
+              // desta tela, ou "Criar nova revisão" no detalhe do
+              // documento). A revisão vigente não volta para o fluxo.
               estagio === 'vigente' && (
-                <button
-                  type="button"
-                  disabled={props.processando}
-                  style={botaoBase}
-                  onClick={() =>
-                    executar(
-                      () =>
-                        props.onEnviarAprovacao(props.revisao)
-                    )
-                  }
+                <span
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: '8px',
+                    background: '#E6F9FC',
+                    color: '#202A44',
+                    fontSize: '12px',
+                    fontWeight: 600
+                  }}
                 >
-                  Enviar para revisão
-                </button>
+                  Para alterar, crie uma nova revisão.
+                </span>
               )
             }
 
