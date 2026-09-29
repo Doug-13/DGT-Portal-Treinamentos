@@ -3883,4 +3883,150 @@ export class DataverseService {
     );
   }
 
+  // ============================================================
+  // DIAGNÓSTICO DE CONEXÃO
+  // Chamadas simples e isoladas, usadas pelo "Teste de conexão" da
+  // tela de erro. Não usam cache de metadados de propósito.
+  // ============================================================
+
+  public get urlApi(): string {
+    return this.apiUrl;
+  }
+
+  // GET bruto que devolve o JSON inteiro (WhoAmI não tem "value").
+  public async getJsonDiagnostico(
+    endpoint: string
+  ): Promise<Record<string, unknown>> {
+
+    const response:
+      AadHttpClientResponse =
+      await this.client.get(
+        `${this.apiUrl}/${endpoint}`,
+        AadHttpClient.configurations.v1,
+        {
+          headers: {
+            Accept: 'application/json',
+            'OData-MaxVersion': '4.0',
+            'OData-Version': '4.0'
+          }
+        }
+      );
+
+    if (!response.ok) {
+      const detalhe =
+        await response.text();
+
+      throw new Error(
+        `Dataverse retornou ${response.status} ${response.statusText}. ${detalhe}`
+      );
+    }
+
+    return (await response.json()) as Record<string, unknown>;
+  }
+
+  // Quem sou eu no Dataverse? Falha com 0x80072560 quando o usuário
+  // não existe no ambiente.
+  public async whoAmI(): Promise<{
+    UserId: string;
+    BusinessUnitId: string;
+    OrganizationId: string;
+  }> {
+
+    const resultado =
+      await this.getJsonDiagnostico('WhoAmI');
+
+    return {
+      UserId: String(resultado.UserId || ''),
+      BusinessUnitId: String(resultado.BusinessUnitId || ''),
+      OrganizationId: String(resultado.OrganizationId || '')
+    };
+  }
+
+  // Nome, e-mail, status e unidade do usuário do sistema.
+  public async getUsuarioSistemaDiagnostico(
+    systemUserId: string
+  ): Promise<Record<string, unknown>> {
+
+    return this.getJsonDiagnostico(
+      `systemusers(${systemUserId.replace(/[{}]/g, '')})` +
+      '?$select=fullname,internalemailaddress,domainname,isdisabled,accessmode' +
+      '&$expand=businessunitid($select=name)'
+    );
+  }
+
+  // Security Roles diretas e equipes (Group Teams) do usuário.
+  public async getPapeisEquipesDiagnostico(
+    systemUserId: string
+  ): Promise<{ papeis: string[]; equipes: string[] }> {
+
+    const id =
+      systemUserId.replace(/[{}]/g, '');
+
+    const resultado =
+      await this.getJsonDiagnostico(
+        `systemusers(${id})` +
+        '?$select=systemuserid' +
+        '&$expand=systemuserroles_association($select=name),teammembership_association($select=name,teamtype)'
+      );
+
+    const lista = (
+      valor: unknown
+    ): string[] =>
+      Array.isArray(valor)
+        ? valor
+          .map(item => String((item as Record<string, unknown>).name || ''))
+          .filter(nome => !!nome)
+        : [];
+
+    return {
+      papeis: lista(resultado.systemuserroles_association),
+      equipes: lista(resultado.teammembership_association)
+    };
+  }
+
+  // Consegue ler 1 registro da tabela? (testa a Security Role)
+  public async testarLeituraTabela(
+    logicalName: string,
+    campoId: string
+  ): Promise<number> {
+
+    const entitySet =
+      await this.getEntitySetName(logicalName);
+
+    const registros =
+      await this.get(
+        `${entitySet}?$select=${campoId}&$top=1`
+      );
+
+    return registros.length;
+  }
+
+  // Existe cadastro de colaborador (dgt_usuario) com este e-mail?
+  public async testarCadastroPortal(
+    email: string
+  ): Promise<{ encontrado: boolean; ativo: boolean; nome: string }> {
+
+    const entitySet =
+      await this.getEntitySetName('dgt_usuario');
+
+    const emailSeguro =
+      (email || '').trim().toLowerCase().replace(/'/g, "''");
+
+    const registros =
+      await this.get(
+        `${entitySet}?$select=dgt_usuarioid,dgt_name,dgt_ativo` +
+        `&$filter=dgt_email eq '${emailSeguro}'&$top=1`
+      );
+
+    if (registros.length === 0) {
+      return { encontrado: false, ativo: false, nome: '' };
+    }
+
+    return {
+      encontrado: true,
+      ativo: registros[0].dgt_ativo !== false,
+      nome: String(registros[0].dgt_name || '')
+    };
+  }
+
 }

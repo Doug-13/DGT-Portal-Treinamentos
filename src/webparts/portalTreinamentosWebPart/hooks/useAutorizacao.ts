@@ -9,6 +9,11 @@ import {
   IContextoAcesso
 } from '../services/AutorizacaoService';
 
+import {
+  diagnosticarErro,
+  registrarDiagnosticoNoConsole
+} from '../utils/diagnosticoDataverse';
+
 export interface IUseAutorizacao {
   contexto?: IContextoAcesso;
   carregando: boolean;
@@ -96,6 +101,15 @@ export const useAutorizacao = (
           );
 
         } catch (e) {
+
+          // Log agrupado e legível no console (F12 → Console).
+          registrarDiagnosticoNoConsole(
+            diagnosticarErro(e),
+            {
+              email,
+              pagina: 'carregamento de permissões'
+            }
+          );
 
           setContexto(
             undefined

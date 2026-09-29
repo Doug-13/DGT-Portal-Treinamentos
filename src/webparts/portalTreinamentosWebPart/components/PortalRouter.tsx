@@ -177,6 +177,9 @@ import {
 import AcessoNegadoPage from
   '../pages/AcessoNegadoPage';
 
+import DiagnosticoAcessoPanel from
+  './common/DiagnosticoAcessoPanel';
+
 import {
   IContextoAcesso
 } from '../services/AutorizacaoService';
@@ -813,8 +816,17 @@ export interface IPortalRouterProps {
   ) => Promise<IResultadoPublicacaoRevisao>;
 
   // Tela de detalhe do documento: criar/editar revisões e histórico.
+  // Também usado pelo teste de conexão do painel de diagnóstico.
   dataverseService?:
   DataverseService;
+
+  // Diagnóstico de acesso: e-mail do usuário logado e recarga das
+  // permissões depois de o administrador corrigir o problema.
+  usuarioEmail?:
+  string;
+
+  onRecarregarAutorizacao?:
+  () => void;
 
   sharePointDocumentoService?:
   SharePointDocumentoService;
@@ -1031,8 +1043,17 @@ const PortalRouter:
       );
     }
 
+    // Falhou ao carregar as permissões:
+    //   • no Início → mostra a página (agenda funciona sem Dataverse)
+    //     com uma faixa de diagnóstico no topo;
+    //   • nas demais → tela de diagnóstico completa.
+    const falhaAutorizacaoNoInicio =
+      !!props.erroAutorizacao &&
+      props.pagina === 'inicio';
+
     if (
-      props.erroAutorizacao
+      props.erroAutorizacao &&
+      !falhaAutorizacaoNoInicio
     ) {
       return (
         <AcessoNegadoPage
@@ -1044,15 +1065,21 @@ const PortalRouter:
               'inicio'
             )
           }
+          email={props.usuarioEmail}
+          pagina={props.pagina}
+          dataverseService={props.dataverseService}
+          onTentarNovamente={props.onRecarregarAutorizacao}
         />
       );
     }
 
     const permissaoRota =
-      verificarPermissaoRota(
-        props.pagina,
-        props.contextoAcesso
-      );
+      falhaAutorizacaoNoInicio
+        ? { permitido: true, mensagem: '' }
+        : verificarPermissaoRota(
+          props.pagina,
+          props.contextoAcesso
+        );
 
     if (
       !permissaoRota.permitido
@@ -1081,6 +1108,21 @@ const PortalRouter:
       case 'inicio':
 
         return (
+          <>
+            {
+              props.erroAutorizacao &&
+              (
+                <DiagnosticoAcessoPanel
+                  modo="compacto"
+                  erro={props.erroAutorizacao}
+                  email={props.usuarioEmail}
+                  pagina={props.pagina}
+                  dataverseService={props.dataverseService}
+                  onTentarNovamente={props.onRecarregarAutorizacao}
+                />
+              )
+            }
+
           <InicioIntranetPage
             primeiroNome={
               props.primeiroNome
@@ -1138,6 +1180,7 @@ const PortalRouter:
               props.erroCalendario
             }
           />
+          </>
         );
       // ========================================================
       // VISAO GERAL DE TREINAMENTOS

@@ -12,6 +12,9 @@ import {
   paginaEhTreinamentos,
   paginaEhDocumentos
 } from '../constants/moduleRoutes';
+import {
+  diagnosticarErro
+} from '../utils/diagnosticoDataverse';
 import ModuloCabecalho, {
   CABECALHOS_MODULO
 } from './layout/ModuloCabecalho';
@@ -2617,6 +2620,11 @@ const gestaoAreas =
                 className={
                   styles.connection
                 }
+                title={
+                  erroDataverse || autorizacao.erro
+                    ? `${diagnosticarErro(erroDataverse || autorizacao.erro).titulo} — abra qualquer página para ver o diagnóstico completo.`
+                    : undefined
+                }
               >
 
                 {
@@ -3438,6 +3446,18 @@ const gestaoAreas =
                 erroAutorizacao={
                   autorizacao.erro
                 }
+
+                usuarioEmail={
+                  userEmail
+                }
+
+                onRecarregarAutorizacao={() => {
+                  autorizacao.recarregar()
+                    .catch(
+                      (error: unknown) =>
+                        console.error(error)
+                    );
+                }}
 
                 areasAdministrativas={
                   gestaoAreas.areas
