@@ -24,6 +24,14 @@ import {
   TipoQuestaoCriacao
 } from '../../services/AvaliacaoAdminService';
 
+import {
+  IParametrosGeracaoIA,
+  IResultadoGeracaoIA
+} from '../../services/QuestaoIAService';
+
+import GerarQuestoesIAPanel from
+  './GerarQuestoesIAPanel';
+
 export interface IGestaoAvaliacoesPageProps {
 
   treinamentos:
@@ -160,6 +168,14 @@ export interface IGestaoAvaliacoesPageProps {
       etapa:
         1 | 2 | 3
     ) => void;
+
+  // Geração de questões com IA (Claude). Quando informado, a tela
+  // exibe o painel "Gerar questões com IA" acima do banco de questões.
+  onGerarQuestoesIA?:
+    (
+      parametros:
+        IParametrosGeracaoIA
+    ) => Promise<IResultadoGeracaoIA>;
 }
 
 interface IRespostaRascunho {
@@ -2337,6 +2353,38 @@ const GestaoAvaliacoesPage:
                     )
                   }
                 </div>
+
+                {/* GERAR QUESTÕES COM IA */}
+                {
+                  props.onGerarQuestoesIA &&
+                  props.avaliacaoSelecionada &&
+                  (
+                    <GerarQuestoesIAPanel
+                      treinamentoId={
+                        props.treinamentoId
+                      }
+                      avaliacaoId={
+                        props.avaliacaoSelecionada.id
+                      }
+                      quantidadeQuestoesExistentes={
+                        props.questoes.length
+                      }
+                      proximaOrdem={
+                        props.questoes.length + 1
+                      }
+                      gerarAutomaticamente={
+                        !props.carregando &&
+                        !props.processando
+                      }
+                      onGerar={
+                        props.onGerarQuestoesIA
+                      }
+                      onSalvarQuestao={
+                        props.onCriarQuestaoCompleta
+                      }
+                    />
+                  )
+                }
 
                 {/* QUESTÕES */}
                 <div

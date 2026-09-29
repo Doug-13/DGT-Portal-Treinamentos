@@ -60,6 +60,9 @@ export interface INovaQuestaoCompleta {
   peso: number;
   tipo: TipoQuestaoCriacao;
   alternativas: IAlternativaRascunho[];
+
+  // Opcional: explicação do gabarito (ex.: questões geradas pelo Claude).
+  explicacao?: string;
 }
 
 export interface IQuestaoAdmin {
@@ -81,6 +84,9 @@ export interface INovaQuestao {
   peso: number;
   multiplasRespostas: boolean;
   ativa: boolean;
+
+  // Opcional: grava em dgt_explicacao.
+  explicacao?: string;
 }
 
 export interface IEditarQuestao
@@ -495,7 +501,17 @@ export class AvaliacaoAdminService {
             dados.multiplasRespostas,
 
           dgt_ativa:
-            dados.ativa
+            dados.ativa,
+
+          ...(
+            dados.explicacao &&
+            dados.explicacao.trim()
+              ? {
+                dgt_explicacao:
+                  dados.explicacao.trim()
+              }
+              : {}
+          )
         }
       );
   }
@@ -611,7 +627,10 @@ export class AvaliacaoAdminService {
         'Múltipla escolha',
 
       ativa:
-        true
+        true,
+
+      explicacao:
+        dados.explicacao
     });
 
     let questaoCriada:

@@ -14,6 +14,24 @@ import {
   PerfilArea
 } from '../../services/AreaAdminService';
 
+import {
+  PerfilAcesso
+} from '../../services/AutorizacaoService';
+
+const PERFIS_PORTAL: PerfilAcesso[] = [
+  'Funcionario',
+  'Editor',
+  'Gestor',
+  'Administrador'
+];
+
+const ROTULO_PERFIL_PORTAL: Record<PerfilAcesso, string> = {
+  Funcionario: 'Funcionário',
+  Editor: 'Editor',
+  Gestor: 'Gestor',
+  Administrador: 'Administrador'
+};
+
 export interface IGestaoAreasPageProps {
 
   areas:
@@ -76,6 +94,11 @@ export interface IGestaoAreasPageProps {
       ativo:
         boolean
     ) => Promise<void>;
+
+  // E-mail do usuário logado. Usado para impedir que um
+  // Administrador retire o próprio perfil de Administrador.
+  usuarioLogadoEmail?:
+    string;
 }
 
 type Aba =
@@ -449,6 +472,36 @@ const GestaoAreasPage:
       React.useState(
         true
       );
+
+    // Perfil GLOBAL do portal (dgt_usuario.dgt_perfilacesso).
+    // É ele que libera Gestão, Áreas e acessos, Equipe etc.
+    // O "Perfil na área" só vale para a área (ex.: aprovar documentos).
+    const [
+      perfilPortal,
+      setPerfilPortal
+    ] =
+      React.useState<
+        PerfilAcesso
+      >(
+        'Funcionario'
+      );
+
+    const perfilPortalAtual =
+      (
+        id: string
+      ): PerfilAcesso => {
+
+        const usuario =
+          usuarios.find(
+            item =>
+              item.id === id
+          );
+
+        return (
+          usuario?.perfilAcesso ||
+          'Funcionario'
+        );
+      };
 
     const [
       erroLocal,
@@ -828,6 +881,12 @@ const GestaoAreasPage:
           usuarioPreSelecionadoId
         );
 
+        setPerfilPortal(
+          perfilPortalAtual(
+            usuarioPreSelecionadoId
+          )
+        );
+
         setAreaId('');
 
         setPerfilArea(
@@ -857,6 +916,12 @@ const GestaoAreasPage:
 
         setUsuarioId(
           acesso.usuarioId
+        );
+
+        setPerfilPortal(
+          perfilPortalAtual(
+            acesso.usuarioId
+          )
         );
 
         setAreaId(
@@ -922,6 +987,45 @@ const GestaoAreasPage:
           return;
         }
 
+        const perfilPortalAnterior =
+          perfilPortalAtual(
+            usuarioId
+          );
+
+        const perfilPortalAlterado =
+          perfilPortal !==
+          perfilPortalAnterior;
+
+        const usuarioSelecionado =
+          usuarios.find(
+            item =>
+              item.id === usuarioId
+          );
+
+        const ehProprioUsuario =
+          !!props.usuarioLogadoEmail &&
+          !!usuarioSelecionado?.email &&
+          usuarioSelecionado.email
+            .trim()
+            .toLowerCase() ===
+          props.usuarioLogadoEmail
+            .trim()
+            .toLowerCase();
+
+        if (
+          perfilPortalAlterado &&
+          ehProprioUsuario &&
+          perfilPortalAnterior ===
+            'Administrador'
+        ) {
+
+          setErroLocal(
+            'Você não pode retirar o seu próprio perfil de Administrador. Peça a outro administrador.'
+          );
+
+          return;
+        }
+
         try {
 
           if (
@@ -941,7 +1045,12 @@ const GestaoAreasPage:
                   perfilArea,
 
                 ativo:
-                  acessoAtivo
+                  acessoAtivo,
+
+                perfilAcesso:
+                  perfilPortalAlterado
+                    ? perfilPortal
+                    : undefined
               });
 
           } else {
@@ -956,7 +1065,12 @@ const GestaoAreasPage:
                   perfilArea,
 
                 ativo:
-                  acessoAtivo
+                  acessoAtivo,
+
+                perfilAcesso:
+                  perfilPortalAlterado
+                    ? perfilPortal
+                    : undefined
               });
           }
 
@@ -1693,7 +1807,11 @@ const GestaoAreasPage:
                   </th>
 
                   <th style={th}>
-                    Perfil
+                    Perfil na área
+                  </th>
+
+                  <th style={th}>
+                    Perfil no portal
                   </th>
 
                   <th style={th}>
@@ -1715,7 +1833,7 @@ const GestaoAreasPage:
                   <tr>
                     <td
                       colSpan={
-                        5
+                        6
                       }
                       style={{
                         ...td,
@@ -1807,6 +1925,16 @@ const GestaoAreasPage:
                               vinculo
                                 ?.perfil ||
                               '-'
+                            }
+                          </td>
+
+                          <td style={td}>
+                            {
+                              ROTULO_PERFIL_PORTAL[
+                                linha.usuario
+                                  .perfilAcesso
+                              ] ||
+                              'Funcionário'
                             }
                           </td>
 
@@ -2231,10 +2359,18 @@ const GestaoAreasPage:
                   !!acessoEditando
                 }
                 onChange={
-                  event =>
+                  event => {
+
                     setUsuarioId(
                       event.target.value
-                    )
+                    );
+
+                    setPerfilPortal(
+                      perfilPortalAtual(
+                        event.target.value
+                      )
+                    );
+                  }
                 }
                 style={
                   inputStyle
@@ -2367,6 +2503,147 @@ const GestaoAreasPage:
                 </option>
 
               </select>
+
+              <span
+                style={{
+                  display:
+                    'block',
+
+                  marginTop:
+                    '4px',
+
+                  fontSize:
+                    '12px',
+
+                  color:
+                    cores.textoSecundario
+                }}
+              >
+                Vale somente para esta área (ex.: o Gestor da área aprova os documentos dela).
+              </span>
+
+              <div
+                style={{
+                  height:
+                    '14px'
+                }}
+              />
+
+              <label>
+                Perfil no portal
+              </label>
+
+              <select
+                value={
+                  perfilPortal
+                }
+                disabled={
+                  !usuarioId
+                }
+                onChange={
+                  event =>
+                    setPerfilPortal(
+                      event.target
+                        .value as PerfilAcesso
+                    )
+                }
+                style={
+                  inputStyle
+                }
+              >
+                {PERFIS_PORTAL.map(
+                  perfil => (
+                    <option
+                      key={
+                        perfil
+                      }
+                      value={
+                        perfil
+                      }
+                    >
+                      {
+                        ROTULO_PERFIL_PORTAL[
+                          perfil
+                        ]
+                      }
+                    </option>
+                  )
+                )}
+              </select>
+
+              <span
+                style={{
+                  display:
+                    'block',
+
+                  marginTop:
+                    '4px',
+
+                  fontSize:
+                    '12px',
+
+                  color:
+                    cores.textoSecundario
+                }}
+              >
+                Vale para todo o portal e para todas as áreas do usuário.
+                Administrador libera Gestão e Áreas e acessos.
+              </span>
+
+              {
+                usuarioId &&
+                perfilPortal !==
+                  perfilPortalAtual(
+                    usuarioId
+                  ) &&
+                (
+                  <div
+                    style={{
+                      marginTop:
+                        '10px',
+
+                      padding:
+                        '10px 12px',
+
+                      borderRadius:
+                        '8px',
+
+                      background:
+                        cores.ambarClaro,
+
+                      color:
+                        cores.ambar,
+
+                      fontSize:
+                        '12px',
+
+                      lineHeight:
+                        1.5
+                    }}
+                  >
+                    Perfil no portal será alterado de{' '}
+                    <strong>
+                      {
+                        ROTULO_PERFIL_PORTAL[
+                          perfilPortalAtual(
+                            usuarioId
+                          )
+                        ]
+                      }
+                    </strong>{' '}
+                    para{' '}
+                    <strong>
+                      {
+                        ROTULO_PERFIL_PORTAL[
+                          perfilPortal
+                        ]
+                      }
+                    </strong>.
+                    {' '}Confira se o usuário tem a função de segurança correspondente no Dataverse
+                    (DGT - Treinamentos - {perfilPortal}) e peça que ele recarregue o portal.
+                  </div>
+                )
+              }
 
               <label
                 style={{

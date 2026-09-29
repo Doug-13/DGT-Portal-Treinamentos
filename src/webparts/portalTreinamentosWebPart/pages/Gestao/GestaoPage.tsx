@@ -7,6 +7,13 @@ import {
   ITreinamentoAdmin
 } from '../../services/TreinamentoAdminService';
 
+import {
+  IEventoTreinamento
+} from '../../services/TreinamentoHistoricoService';
+
+import HistoricoTreinamentoModal from
+  './HistoricoTreinamentoModal';
+
 export interface IGestaoPageProps {
 
   treinamentos:
@@ -24,16 +31,16 @@ export interface IGestaoPageProps {
   onNovoTreinamento:
     () => void;
 
-  onAtribuirTreinamento:
+  onAtribuirTreinamento?:
     () => void;
 
-  onTrilhas:
+  onTrilhas?:
     () => void;
 
-  onAreas:
+  onAreas?:
     () => void;
 
-  onEquipe:
+  onEquipe?:
     () => void;
 
   onEditarTreinamento:
@@ -61,14 +68,21 @@ export interface IGestaoPageProps {
   onAvaliacoes:
     () => void;
 
-  onDocumentos:
+  onDocumentos?:
     () => void;
 
-  onConformidade:
+  onConformidade?:
     () => void;
 
-  onIndicadores:
+  onIndicadores?:
     () => void;
+
+  // Quando informado, exibe o botão "Histórico" em cada treinamento.
+  onCarregarHistorico?:
+    (
+      treinamentoId:
+        string
+    ) => Promise<IEventoTreinamento[]>;
 }
 
 // ============================================================
@@ -346,6 +360,108 @@ const GestaoPage:
     ] =
       React.useState('');
 
+    // ---------------- Histórico ----------------
+
+    const [
+      historicoDe,
+      setHistoricoDe
+    ] =
+      React.useState<
+        ITreinamentoAdmin | undefined
+      >(
+        undefined
+      );
+
+    const [
+      eventosHistorico,
+      setEventosHistorico
+    ] =
+      React.useState<
+        IEventoTreinamento[]
+      >([]);
+
+    const [
+      carregandoHistorico,
+      setCarregandoHistorico
+    ] =
+      React.useState(
+        false
+      );
+
+    const [
+      erroHistorico,
+      setErroHistorico
+    ] =
+      React.useState('');
+
+    const carregarHistorico =
+      React.useCallback(
+        async (
+          treinamento:
+            ITreinamentoAdmin
+        ): Promise<void> => {
+
+          if (!props.onCarregarHistorico) {
+            return;
+          }
+
+          setCarregandoHistorico(
+            true
+          );
+
+          setErroHistorico('');
+
+          try {
+
+            const eventos =
+              await props
+                .onCarregarHistorico(
+                  treinamento.id
+                );
+
+            setEventosHistorico(
+              eventos
+            );
+
+          } catch (e) {
+
+            setEventosHistorico([]);
+
+            setErroHistorico(
+              e instanceof Error
+                ? e.message
+                : 'Não foi possível carregar o histórico.'
+            );
+
+          } finally {
+
+            setCarregandoHistorico(
+              false
+            );
+          }
+        },
+        [
+          props.onCarregarHistorico
+        ]
+      );
+
+    const abrirHistorico =
+      (
+        treinamento:
+          ITreinamentoAdmin
+      ): void => {
+
+        setHistoricoDe(
+          treinamento
+        );
+
+        setEventosHistorico([]);
+
+        void carregarHistorico(
+          treinamento
+        );
+      };
+
     const filtrados =
       React.useMemo(
         () => {
@@ -424,68 +540,82 @@ const GestaoPage:
             }
           />
 
-          <Acao
-            titulo="Atribuir treinamento"
-            descricao="Atribua treinamentos diretamente."
-            corChave="atribuir"
-            onClick={
-              props.onAtribuirTreinamento
-            }
-          />
+          {props.onAtribuirTreinamento && (
+            <Acao
+              titulo="Atribuir treinamento"
+              descricao="Atribua treinamentos diretamente."
+              corChave="atribuir"
+              onClick={
+                props.onAtribuirTreinamento
+              }
+            />
+          )}
 
-          <Acao
-            titulo="Gerenciar trilhas"
-            descricao="Organize cursos, sequência e pré-requisitos."
-            corChave="trilhas"
-            onClick={
-              props.onTrilhas
-            }
-          />
+          {props.onTrilhas && (
+            <Acao
+              titulo="Gerenciar trilhas"
+              descricao="Organize cursos, sequência e pré-requisitos."
+              corChave="trilhas"
+              onClick={
+                props.onTrilhas
+              }
+            />
+          )}
 
-          <Acao
-            titulo="Áreas e acessos"
-            descricao="Gerencie áreas, usuários e perfis de acesso."
-            corChave="areas"
-            onClick={
-              props.onAreas
-            }
-          />
+          {props.onAreas && (
+            <Acao
+              titulo="Áreas e acessos"
+              descricao="Gerencie áreas, usuários e perfis de acesso."
+              corChave="areas"
+              onClick={
+                props.onAreas
+              }
+            />
+          )}
 
-          <Acao
-            titulo="Minha equipe"
-            descricao="Acompanhe progresso e pendências."
-            corChave="equipe"
-            onClick={
-              props.onEquipe
-            }
-          />
+          {props.onEquipe && (
+            <Acao
+              titulo="Minha equipe"
+              descricao="Acompanhe progresso e pendências."
+              corChave="equipe"
+              onClick={
+                props.onEquipe
+              }
+            />
+          )}
 
-          <Acao
-            titulo="Documentos"
-            descricao="Gerencie documentos, revisões e retreinamentos."
-            corChave="documentos"
-            onClick={
-              props.onDocumentos
-            }
-          />
+          {props.onDocumentos && (
+            <Acao
+              titulo="Documentos"
+              descricao="Gerencie documentos, revisões e retreinamentos."
+              corChave="documentos"
+              onClick={
+                props.onDocumentos
+              }
+            />
+          )}
 
-          <Acao
-            titulo="Conformidade"
-            descricao="Acompanhe concluídos, pendentes e vencidos."
-            corChave="conformidade"
-            onClick={
-              props.onConformidade
-            }
-          />
+          {props.onConformidade && (
+            <Acao
+              titulo="Conformidade"
+              descricao="Acompanhe concluídos, pendentes e vencidos."
+              corChave="conformidade"
+              onClick={
+                props.onConformidade
+              }
+            />
+          )}
 
-          <Acao
-            titulo="Indicadores"
-            descricao="Acompanhe conformidade, vencimentos e desempenho."
-            corChave="indicadores"
-            onClick={
-              props.onIndicadores
-            }
-          />
+          {props.onIndicadores && (
+            <Acao
+              titulo="Indicadores"
+              descricao="Acompanhe conformidade, vencimentos e desempenho."
+              corChave="indicadores"
+              onClick={
+                props.onIndicadores
+              }
+            />
+          )}
 
         </div>
 
@@ -844,6 +974,22 @@ const GestaoPage:
                                 Editar
                               </button>
 
+                              {props.onCarregarHistorico && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    abrirHistorico(
+                                      treinamento
+                                    )
+                                  }
+                                  style={
+                                    botaoEditar
+                                  }
+                                >
+                                  Histórico
+                                </button>
+                              )}
+
                               <button
                                 type="button"
                                 disabled={
@@ -890,6 +1036,39 @@ const GestaoPage:
           )}
 
         </div>  
+
+        <HistoricoTreinamentoModal
+          aberto={
+            !!historicoDe
+          }
+          treinamentoNome={
+            historicoDe?.nome || ''
+          }
+          treinamentoCodigo={
+            historicoDe?.codigo || ''
+          }
+          carregando={
+            carregandoHistorico
+          }
+          erro={
+            erroHistorico
+          }
+          eventos={
+            eventosHistorico
+          }
+          onFechar={() =>
+            setHistoricoDe(
+              undefined
+            )
+          }
+          onRecarregar={() => {
+            if (historicoDe) {
+              void carregarHistorico(
+                historicoDe
+              );
+            }
+          }}
+        />
 
       </section>
     );

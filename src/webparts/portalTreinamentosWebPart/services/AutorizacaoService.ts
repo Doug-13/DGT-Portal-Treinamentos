@@ -3,8 +3,28 @@ import {
   IDataverseRecord
 } from './DataverseService';
 
+// ============================================================
+// PERFIS GLOBAIS DO PORTAL (campo dgt_usuario.dgt_perfilacesso)
+//
+// Funcionario   → realiza os próprios treinamentos e consulta documentos.
+// Editor        → cria e mantém conteúdo: treinamentos, módulos,
+//                 avaliações, trilhas, documentos e revisões (elaboração
+//                 e envio para aprovação). NÃO aprova nem publica
+//                 revisões, NÃO atribui treinamentos, NÃO vê equipe/
+//                 indicadores e NÃO administra áreas e acessos.
+// Gestor        → acompanha equipe, atribui treinamentos, vê
+//                 conformidade/indicadores. A aprovação de documentos
+//                 continua dependendo de ser Gestor DA ÁREA do documento
+//                 (dgt_usuarioarea).
+// Administrador → tudo.
+//
+// IMPORTANTE: isto organiza a TELA. A proteção real dos dados está nas
+// Security Roles do Dataverse (DGT - Treinamentos - <Perfil>).
+// ============================================================
+
 export type PerfilAcesso =
   | 'Funcionario'
+  | 'Editor'
   | 'Gestor'
   | 'Administrador';
 
@@ -18,6 +38,8 @@ export interface IContextoAcesso {
   podeGerenciarTreinamentos: boolean;
   podeGerenciarDocumentos: boolean;
   podeGerenciarUsuarios: boolean;
+  podeGerenciarTrilhas: boolean;
+  podeGerenciarAvaliacoes: boolean;
 
   podeAtribuirTreinamentos: boolean;
   podeVerEquipe: boolean;
@@ -110,7 +132,7 @@ const booleano = (
   return padrao;
 };
 
-const normalizarPerfil = (
+export const normalizarPerfil = (
   valor: string
 ): PerfilAcesso => {
 
@@ -136,6 +158,19 @@ const normalizarPerfil = (
     'gestor'
   ) {
     return 'Gestor';
+  }
+
+  // Aceita "Editor", "Editora" e "Editor de conteúdo".
+  if (
+    perfil ===
+      'editor' ||
+    perfil ===
+      'editora' ||
+    perfil.indexOf(
+      'editor de conteudo'
+    ) === 0
+  ) {
+    return 'Editor';
   }
 
   return 'Funcionario';
@@ -215,6 +250,14 @@ export class AutorizacaoService {
         'Gestor' ||
       admin;
 
+    // Quem mantém conteúdo (treinamentos, trilhas, avaliações,
+    // documentos). O Editor NÃO recebe permissões de gestão de pessoas
+    // nem de aprovação.
+    const editorOuAdmin =
+      perfil ===
+        'Editor' ||
+      admin;
+
     return {
       usuarioId:
         texto(
@@ -239,13 +282,19 @@ export class AutorizacaoService {
       ativo,
 
       podeGerenciarTreinamentos:
-        admin,
+        editorOuAdmin,
 
       podeGerenciarDocumentos:
-        admin,
+        editorOuAdmin,
 
       podeGerenciarUsuarios:
         admin,
+
+      podeGerenciarTrilhas:
+        editorOuAdmin,
+
+      podeGerenciarAvaliacoes:
+        editorOuAdmin,
 
       podeAtribuirTreinamentos:
         gestorOuAdmin,

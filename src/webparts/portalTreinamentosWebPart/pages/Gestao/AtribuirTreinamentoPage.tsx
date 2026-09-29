@@ -15,6 +15,18 @@ import {
   OrigemAtribuicao
 } from '../../services/AtribuicaoAdminService';
 
+import {
+  IAreaAdmin,
+  IUsuarioAreaAdmin
+} from '../../services/AreaAdminService';
+
+import {
+  AtribuicaoAreaService
+} from '../../services/AtribuicaoAreaService';
+
+import AtribuicaoPorAreaPanel from
+  './AtribuicaoPorAreaPanel';
+
 export interface IAtribuirTreinamentoPageProps {
   usuarios: IUsuarioAtribuicao[];
   treinamentos: ITreinamentoAdmin[];
@@ -35,6 +47,17 @@ export interface IAtribuirTreinamentoPageProps {
 
   onLimparResultado:
     () => void;
+
+  // Atribuição por área (opcional). Quando o serviço é informado, a
+  // tela abre no modo "Por área".
+  atribuicaoAreaService?:
+    AtribuicaoAreaService;
+
+  areas?:
+    IAreaAdmin[];
+
+  usuariosAreas?:
+    IUsuarioAreaAdmin[];
 }
 
 const inputStyle:
@@ -87,6 +110,19 @@ const AtribuirTreinamentoPage:
       setUsuarioId
     ] =
       React.useState('');
+
+    // Modo da tela: por área (padrão) ou por pessoa.
+    const [
+      modo,
+      setModo
+    ] =
+      React.useState<
+        'area' | 'pessoa'
+      >(
+        props.atribuicaoAreaService
+          ? 'area'
+          : 'pessoa'
+      );
 
     const [
       treinamentoId,
@@ -198,7 +234,7 @@ const AtribuirTreinamentoPage:
 
         <PageHeader
           titulo="Atribuir treinamento"
-          subtitulo="Crie atribuições individuais preservando regras, histórico e rastreabilidade."
+          subtitulo="Atribua por área (todos os membros, inclusive futuros) ou por pessoa, preservando regras, histórico e rastreabilidade."
         />
 
         <div
@@ -232,6 +268,70 @@ const AtribuirTreinamentoPage:
             Limpar
           </button>
         </div>
+
+        {props.atribuicaoAreaService && (
+          <div
+            role="tablist"
+            style={{
+              display: 'flex',
+              gap: '6px',
+              marginBottom: '16px'
+            }}
+          >
+            {([
+              ['area', 'Por área'],
+              ['pessoa', 'Por pessoa']
+            ] as Array<['area' | 'pessoa', string]>).map(
+              ([valor, rotulo]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  role="tab"
+                  aria-selected={modo === valor}
+                  onClick={() => setModo(valor)}
+                  style={{
+                    ...buttonSecondary,
+                    fontWeight: 700,
+                    background:
+                      modo === valor
+                        ? '#0B2D4D'
+                        : '#fff',
+                    color:
+                      modo === valor
+                        ? '#fff'
+                        : '#18324A',
+                    borderColor:
+                      modo === valor
+                        ? '#0B2D4D'
+                        : '#cbd5e1'
+                  }}
+                >
+                  {rotulo}
+                </button>
+              )
+            )}
+          </div>
+        )}
+
+        {props.atribuicaoAreaService && modo === 'area' && (
+          <AtribuicaoPorAreaPanel
+            service={
+              props.atribuicaoAreaService
+            }
+            treinamentos={
+              props.treinamentos
+            }
+            areas={
+              props.areas || []
+            }
+            usuariosAreas={
+              props.usuariosAreas || []
+            }
+          />
+        )}
+
+        {modo === 'pessoa' && (
+        <>
 
         {(
           props.erro ||
@@ -614,6 +714,8 @@ const AtribuirTreinamentoPage:
           )}
 
         </div>
+        </>
+        )}
 
       </section>
     );

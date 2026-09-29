@@ -1,12 +1,29 @@
 import {
-  IContextoAcesso
+  IContextoAcesso,
+  PerfilAcesso
 } from './AutorizacaoService';
+
+// ============================================================
+// PERMISSÃO DE ROTAS DO PORTAL
+//
+// O modelo anterior usava "peso" (Funcionário < Gestor < Administrador).
+// Com o perfil Editor isso deixou de funcionar, porque o Editor não
+// está "acima" nem "abaixo" do Gestor: ele mantém conteúdo, mas não
+// acompanha equipe nem aprova. Por isso cada rota agora lista
+// explicitamente os perfis que podem acessá-la.
+//
+// Rotas que NÃO estão na lista são tratadas como públicas.
+//
+// IMPORTANTE: isto organiza a TELA. A proteção real dos dados está nas
+// Security Roles do Dataverse.
+// ============================================================
 
 export interface IResultadoPermissaoRota {
   permitido: boolean;
   mensagem?: string;
 }
 
+// Mantido para compatibilidade com código que ainda importe o tipo.
 export type NivelAcessoRota =
   | 'Publica'
   | 'Funcionario'
@@ -15,83 +32,111 @@ export type NivelAcessoRota =
 
 interface IRegraRota {
   rota: string;
-  nivel: NivelAcessoRota;
+  perfis: PerfilAcesso[];
 }
+
+const TODOS: PerfilAcesso[] = [
+  'Funcionario',
+  'Editor',
+  'Gestor',
+  'Administrador'
+];
+
+const CONTEUDO: PerfilAcesso[] = [
+  'Editor',
+  'Administrador'
+];
+
+// Quem pode cadastrar novos documentos.
+const CRIAR_DOCUMENTO: PerfilAcesso[] = [
+  'Editor',
+  'Gestor',
+  'Administrador'
+];
+
+const GESTAO_PESSOAS: PerfilAcesso[] = [
+  'Gestor',
+  'Administrador'
+];
+
+const SOMENTE_ADMIN: PerfilAcesso[] = [
+  'Administrador'
+];
 
 const regras:
   IRegraRota[] = [
 
-    // Funcionário
-    { rota: 'inicio', nivel: 'Funcionario' },
-    { rota: 'treinamentosVisaoGeral', nivel: 'Funcionario' },
-    { rota: 'treinamentos', nivel: 'Funcionario' },
-    { rota: 'trilhas', nivel: 'Funcionario' },
-    { rota: 'documentos', nivel: 'Funcionario' },
-    { rota: 'documentoDetalhe', nivel: 'Funcionario' },
-    // Mantido no nível Funcionário (comportamento anterior, em que o
-    // botão aparecia para todos). Para restringir, troque para 'Gestor'.
-    { rota: 'novoDocumento', nivel: 'Funcionario' },
-    { rota: 'historico', nivel: 'Funcionario' },
-    { rota: 'certificados', nivel: 'Funcionario' },
-    { rota: 'executarTreinamento', nivel: 'Funcionario' },
-    { rota: 'executarModulo', nivel: 'Funcionario' },
-    { rota: 'avaliacao', nivel: 'Funcionario' },
-    { rota: 'suporte', nivel: 'Funcionario' },
+    // Todos os perfis
+    { rota: 'inicio', perfis: TODOS },
+    { rota: 'treinamentosVisaoGeral', perfis: TODOS },
+    { rota: 'treinamentos', perfis: TODOS },
+    { rota: 'trilhas', perfis: TODOS },
+    { rota: 'documentos', perfis: TODOS },
+    { rota: 'documentoDetalhe', perfis: TODOS },
+    { rota: 'historico', perfis: TODOS },
+    { rota: 'certificados', perfis: TODOS },
+    { rota: 'executarTreinamento', perfis: TODOS },
+    { rota: 'executarModulo', perfis: TODOS },
+    { rota: 'avaliacao', perfis: TODOS },
+    { rota: 'suporte', perfis: TODOS },
 
-    // Gestor
-    { rota: 'equipe', nivel: 'Gestor' },
-    { rota: 'atribuirTreinamento', nivel: 'Gestor' },
-    { rota: 'gestaoConformidade', nivel: 'Gestor' },
-    { rota: 'indicadores', nivel: 'Gestor' },
+    // Gestão de pessoas (Gestor e Administrador)
+    { rota: 'equipe', perfis: GESTAO_PESSOAS },
+    { rota: 'atribuirTreinamento', perfis: GESTAO_PESSOAS },
+    { rota: 'gestaoConformidade', perfis: GESTAO_PESSOAS },
+    { rota: 'indicadores', perfis: GESTAO_PESSOAS },
 
-    // Administrador
-    { rota: 'gestao', nivel: 'Administrador' },
-    { rota: 'novoTreinamento', nivel: 'Administrador' },
-    { rota: 'gestaoTrilhas', nivel: 'Administrador' },
-    { rota: 'gestaoModulos', nivel: 'Administrador' },
-    { rota: 'gestaoAvaliacoes', nivel: 'Administrador' },
-    { rota: 'gestaoDocumentos', nivel: 'Administrador' }
+    // Cadastro de documentos (Editor, Gestor e Administrador).
+    // O Funcionário continua consultando documentos, mas não os cria.
+    { rota: 'novoDocumento', perfis: CRIAR_DOCUMENTO },
+
+    // Gestão de conteúdo (Editor e Administrador)
+    { rota: 'gestao', perfis: CONTEUDO },
+    { rota: 'novoTreinamento', perfis: CONTEUDO },
+    { rota: 'gestaoTrilhas', perfis: CONTEUDO },
+    { rota: 'gestaoModulos', perfis: CONTEUDO },
+    { rota: 'gestaoAvaliacoes', perfis: CONTEUDO },
+    { rota: 'gestaoDocumentos', perfis: CONTEUDO },
+
+    // Somente Administrador
+    // (antes não havia regra para esta rota, o que a tornava pública)
+    { rota: 'gestaoAreas', perfis: SOMENTE_ADMIN }
   ];
 
-const pesoPerfil = (
-  perfil:
-    IContextoAcesso['perfil']
-): number => {
+const mensagemNegado = (
+  perfis: PerfilAcesso[]
+): string => {
 
-  switch (perfil) {
-
-    case 'Administrador':
-      return 3;
-
-    case 'Gestor':
-      return 2;
-
-    case 'Funcionario':
-    default:
-      return 1;
+  if (
+    perfis.length === 1 &&
+    perfis[0] === 'Administrador'
+  ) {
+    return 'Esta área é restrita aos administradores do Portal de Treinamentos.';
   }
-};
 
-const pesoNivel = (
-  nivel:
-    NivelAcessoRota
-): number => {
-
-  switch (nivel) {
-
-    case 'Administrador':
-      return 3;
-
-    case 'Gestor':
-      return 2;
-
-    case 'Funcionario':
-      return 1;
-
-    case 'Publica':
-    default:
-      return 0;
+  if (
+    perfis.indexOf('Editor') >= 0 &&
+    perfis.indexOf('Gestor') >= 0 &&
+    perfis.indexOf('Funcionario') < 0
+  ) {
+    return 'Esta área é destinada a editores, gestores e administradores.';
   }
+
+  if (
+    perfis.indexOf('Editor') >= 0 &&
+    perfis.indexOf('Gestor') < 0
+  ) {
+    return 'Esta área é destinada aos editores de conteúdo e administradores.';
+  }
+
+  if (
+    perfis.indexOf('Gestor') >= 0 &&
+    perfis.indexOf('Editor') < 0
+  ) {
+    return 'Esta área é destinada a gestores e administradores.';
+  }
+
+  return 'Seu perfil não possui permissão para acessar esta área.';
 };
 
 export const verificarPermissaoRota = (
@@ -106,11 +151,7 @@ export const verificarPermissaoRota = (
         rota
     );
 
-  if (
-    !regra ||
-    regra.nivel ===
-      'Publica'
-  ) {
+  if (!regra) {
     return {
       permitido: true
     };
@@ -132,15 +173,11 @@ export const verificarPermissaoRota = (
     };
   }
 
-  const permitido =
-    pesoPerfil(
+  if (
+    regra.perfis.indexOf(
       contexto.perfil
-    ) >=
-    pesoNivel(
-      regra.nivel
-    );
-
-  if (permitido) {
+    ) >= 0
+  ) {
     return {
       permitido: true
     };
@@ -149,10 +186,9 @@ export const verificarPermissaoRota = (
   return {
     permitido: false,
     mensagem:
-      regra.nivel ===
-        'Administrador'
-        ? 'Esta área é restrita aos administradores do Portal de Treinamentos.'
-        : 'Esta área é destinada a gestores e administradores.'
+      mensagemNegado(
+        regra.perfis
+      )
   };
 };
 
@@ -164,6 +200,3 @@ export const podeAcessarRota = (
     rota,
     contexto
   ).permitido;
-
-
-

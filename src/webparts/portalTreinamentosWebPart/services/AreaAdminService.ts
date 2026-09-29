@@ -3,6 +3,11 @@ import {
   IDataverseRecord
 } from './DataverseService';
 
+import {
+  normalizarPerfil,
+  PerfilAcesso
+} from './AutorizacaoService';
+
 export type PerfilArea =
   | 'Membro'
   | 'Gestor'
@@ -29,6 +34,8 @@ export interface IUsuarioDisponivelArea {
   id: string;
   nome: string;
   email: string;
+  // Perfil GLOBAL do portal (dgt_usuario.dgt_perfilacesso).
+  perfilAcesso: PerfilAcesso;
 }
 
 export interface IUsuarioAreaAdmin {
@@ -48,6 +55,9 @@ export interface INovoUsuarioArea {
   areaId: string;
   perfil: PerfilArea;
   ativo: boolean;
+  // Opcional: quando informado, atualiza também o perfil GLOBAL do
+  // usuário no portal (dgt_usuario.dgt_perfilacesso).
+  perfilAcesso?: PerfilAcesso;
 }
 
 export interface IEditarUsuarioArea
@@ -233,6 +243,15 @@ export class AreaAdminService {
             texto(
               registro,
               'dgt_email'
+            ),
+
+          perfilAcesso:
+            normalizarPerfil(
+              texto(
+                registro,
+                'dgt_perfilacesso',
+                'Funcionario'
+              )
             )
         })
       )
@@ -456,6 +475,13 @@ export class AreaAdminService {
             dados.ativo
         }
       );
+
+    if (dados.perfilAcesso) {
+      await this.definirPerfilAcesso(
+        dados.usuarioId,
+        dados.perfilAcesso
+      );
+    }
   }
 
   public async editarUsuarioArea(
@@ -484,6 +510,33 @@ export class AreaAdminService {
           dgt_ativo:
             dados.ativo
         }
+      );
+
+    if (dados.perfilAcesso) {
+      await this.definirPerfilAcesso(
+        dados.usuarioId,
+        dados.perfilAcesso
+      );
+    }
+  }
+
+  // Grava o perfil GLOBAL do portal. É este campo que o
+  // AutorizacaoService usa para liberar Gestão, Áreas e acessos etc.
+  public async definirPerfilAcesso(
+    usuarioId: string,
+    perfil: PerfilAcesso
+  ): Promise<void> {
+
+    if (!usuarioId) {
+      throw new Error(
+        'Selecione um usuário.'
+      );
+    }
+
+    await this.dataverse
+      .atualizarUsuarioPerfilAcesso(
+        usuarioId,
+        perfil
       );
   }
 

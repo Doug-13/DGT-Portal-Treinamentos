@@ -810,10 +810,49 @@ export class DataverseService {
         'dgt_name',
         'dgt_email',
         'dgt_upn',
-        'dgt_ativo'
+        'dgt_ativo',
+        'dgt_perfilacesso'
       ].join(',') +
       '&$filter=dgt_ativo eq true' +
       '&$orderby=dgt_name asc'
+    );
+  }
+
+  // Perfil GLOBAL do portal (Funcionario / Editor / Gestor /
+  // Administrador). Não confundir com o perfil NA ÁREA
+  // (dgt_usuarioarea.dgt_perfilarea).
+  public async atualizarUsuarioPerfilAcesso(
+    usuarioId:
+      string,
+    perfil:
+      string
+  ): Promise<void> {
+
+    if (!usuarioId) {
+      throw new Error(
+        'Usuário não informado.'
+      );
+    }
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_usuario'
+      );
+
+    const id =
+      usuarioId
+        .replace(
+          /[{}]/g,
+          ''
+        )
+        .trim();
+
+    await this.patch(
+      `${entitySet}(${id})`,
+      {
+        dgt_perfilacesso:
+          perfil
+      }
     );
   }
 
@@ -2386,6 +2425,121 @@ export class DataverseService {
   // BLOCO B - REVISÃO DOCUMENTAL
   // Adicionar dentro da classe DataverseService
   // ============================================================
+
+  // ============================================================
+  // ATRIBUIÇÃO POR ÁREA (regras em dgt_treinamentoarea)
+  // O plugin AtribuirPorAreaPlugin atribui o treinamento a todos os
+  // membros ativos da área, inclusive a quem entrar depois.
+  // ============================================================
+
+  public async getTreinamentoAreas():
+    Promise<IDataverseRecord[]> {
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_treinamentoarea'
+      );
+
+    return this.get(
+      `${entitySet}?$select=` +
+      [
+        'dgt_treinamentoareaid',
+        'dgt_name',
+        'dgt_prazodias',
+        'dgt_ativo',
+        '_dgt_treinamento_value',
+        '_dgt_area_value',
+        'createdon'
+      ].join(',') +
+      '&$orderby=createdon desc'
+    );
+  }
+
+  public async criarTreinamentoArea(
+    treinamentoId: string,
+    areaId: string,
+    dados: Record<string, unknown>
+  ): Promise<IDataverseRecord> {
+
+    const [
+      entitySet,
+      treinamentoSet,
+      areaSet
+    ] =
+      await Promise.all([
+        this.getEntitySetName('dgt_treinamentoarea'),
+        this.getEntitySetName('dgt_treinamento'),
+        this.getEntitySetName('dgt_area')
+      ]);
+
+    const limpar = (valor: string): string =>
+      (valor || '').replace(/[{}]/g, '').trim();
+
+    return this.postObject(
+      entitySet,
+      {
+        ...dados,
+        'dgt_Treinamento@odata.bind':
+          `/${treinamentoSet}(${limpar(treinamentoId)})`,
+        'dgt_Area@odata.bind':
+          `/${areaSet}(${limpar(areaId)})`
+      }
+    );
+  }
+
+  public async atualizarTreinamentoArea(
+    regraId: string,
+    dados: Record<string, unknown>
+  ): Promise<void> {
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_treinamentoarea'
+      );
+
+    await this.patch(
+      `${entitySet}(${(regraId || '').replace(/[{}]/g, '').trim()})`,
+      dados
+    );
+  }
+
+  // ============================================================
+  // GERAÇÃO DE QUESTÕES COM IA (Custom API dgt_GerarQuestoesIA)
+  // A chamada ao Claude acontece no servidor (plugin). A chave da
+  // API nunca passa pelo navegador.
+  // ============================================================
+
+  public async gerarQuestoesIA(
+    payload: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+
+    const resposta =
+      await this.postObject(
+        'dgt_GerarQuestoesIA',
+        {
+          PayloadJson:
+            JSON.stringify(
+              payload
+            )
+        }
+      );
+
+    const resultadoJson =
+      String(
+        resposta.ResultadoJson ||
+        ''
+      );
+
+    if (!resultadoJson) {
+      throw new Error(
+        'A API de geração de questões não retornou ResultadoJson.'
+      );
+    }
+
+    return JSON.parse(
+      resultadoJson
+    ) as Record<string, unknown>;
+  }
 
   public async processarRevisaoDocumento(
     payload: Record<string, unknown>

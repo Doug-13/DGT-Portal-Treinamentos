@@ -40,11 +40,11 @@ const todosItens:
       label: 'Trilhas',
       icon: 'layers'
     },
-    {
-      pagina: 'historico',
-      label: 'Histórico',
-      icon: 'clock'
-    },
+    // A aba "Histórico" (Meu histórico) foi retirada do menu.
+    // O histórico agora é consultado em cada treinamento, pelo botão
+    // "Histórico" da Gestão. A página e a rota 'historico' continuam
+    // no código: para reexibir a aba, basta restaurar este item:
+    //   { pagina: 'historico', label: 'Histórico', icon: 'clock' },
     {
       pagina: 'certificados',
       label: 'Certificados',

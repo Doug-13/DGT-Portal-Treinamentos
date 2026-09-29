@@ -72,11 +72,21 @@ export interface INovoTreinamento {
 export interface ITreinamentoAdmin
   extends INovoTreinamento {
   id: string;
+
+  // Parte numérica do código (ex.: PRO-TRN-007 → 7).
+  sequencial?:
+    number;
 }
 
 export interface IEditarTreinamento
   extends INovoTreinamento {
   id: string;
+
+  // Somente Administrador. Quando informado, o plugin
+  // GerarCodigoTreinamentoPlugin valida a permissão e a unicidade
+  // e recalcula o código (ÁREA-TRN-SEQUENCIAL).
+  sequencial?:
+    number;
 }
 
 export class TreinamentoAdminService {
@@ -260,7 +270,15 @@ export class TreinamentoAdminService {
       tipoTreinamento:
         this.tipoTreinamento(
           registro
-        )
+        ),
+
+      sequencial:
+        registro.dgt_sequencial === undefined ||
+        registro.dgt_sequencial === null
+          ? undefined
+          : Number(
+            registro.dgt_sequencial
+          )
     };
   }
 
@@ -415,7 +433,20 @@ export class TreinamentoAdminService {
             dados.ativo,
 
           dgt_imagemurl:
-            dados.imagemUrl.trim()
+            dados.imagemUrl.trim(),
+
+          // O código (dgt_codigo) nunca é enviado pelo portal: ele é
+          // recalculado no servidor a partir do sequencial.
+          ...(
+            dados.sequencial !== undefined
+              ? {
+                dgt_sequencial:
+                  Math.round(
+                    dados.sequencial
+                  )
+              }
+              : {}
+          )
         }
       );
   }

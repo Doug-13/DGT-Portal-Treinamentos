@@ -20,12 +20,6 @@ import {
 
 // ============================================================
 // PAINEL DE DIAGNÓSTICO DE ACESSO
-//   • explica o erro em português e diz quem resolve;
-//   • executa o teste de conexão passo a passo;
-//   • copia um relatório completo para o suporte.
-//
-// modo "completo" → tela de acesso restrito
-// modo "compacto" → faixa no topo do Início
 // ============================================================
 
 export interface IDiagnosticoAcessoPanelProps {

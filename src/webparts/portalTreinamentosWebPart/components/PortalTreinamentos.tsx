@@ -1,4 +1,19 @@
 import * as React from 'react';
+
+import {
+  IEventoTreinamento,
+  TreinamentoHistoricoService
+} from '../services/TreinamentoHistoricoService';
+
+import {
+  IParametrosGeracaoIA,
+  IResultadoGeracaoIA,
+  QuestaoIAService
+} from '../services/QuestaoIAService';
+
+import {
+  AtribuicaoAreaService
+} from '../services/AtribuicaoAreaService';
 import styles from './PortalTreinamentos.module.scss';
 import { IPortalTreinamentosProps } from './IPortalTreinamentosProps';
 import logoDgt from '../assets/logo-dgt.png';
@@ -432,6 +447,72 @@ const PortalTreinamentos:
         ]
       );
 
+    // Atribuição por área (regras dgt_treinamentoarea).
+    const atribuicaoAreaService =
+      React.useMemo(
+        () =>
+          new AtribuicaoAreaService(
+            dataverseService
+          ),
+        [
+          dataverseService
+        ]
+      );
+
+    // Geração de questões com IA (Claude, via Custom API).
+    const questaoIAService =
+      React.useMemo(
+        () =>
+          new QuestaoIAService(
+            dataverseService
+          ),
+        [
+          dataverseService
+        ]
+      );
+
+    const gerarQuestoesIA =
+      React.useCallback(
+        (
+          parametros:
+            IParametrosGeracaoIA
+        ): Promise<IResultadoGeracaoIA> =>
+          questaoIAService
+            .gerar(
+              parametros
+            ),
+        [
+          questaoIAService
+        ]
+      );
+
+    // Histórico do treinamento (somente leitura).
+    const treinamentoHistoricoService =
+      React.useMemo(
+        () =>
+          new TreinamentoHistoricoService(
+            dataverseService
+          ),
+        [
+          dataverseService
+        ]
+      );
+
+    const carregarHistoricoTreinamento =
+      React.useCallback(
+        (
+          treinamentoId:
+            string
+        ): Promise<IEventoTreinamento[]> =>
+          treinamentoHistoricoService
+            .listar(
+              treinamentoId
+            ),
+        [
+          treinamentoHistoricoService
+        ]
+      );
+
     const usuarioService =
       React.useMemo(
         () =>
@@ -604,7 +685,10 @@ const gestaoAreas =
         : autorizacao.contexto?.perfil ===
           'Gestor'
           ? 'Gestor'
-          : 'Colaborador';
+          : autorizacao.contexto?.perfil ===
+            'Editor'
+            ? 'Editor'
+            : 'Colaborador';
 
     // ==========================================================
     // CARREGAR PORTAL
@@ -3128,6 +3212,18 @@ const gestaoAreas =
 
                 atualizarTreinamentoFluxo={
                   atualizarTreinamentoFluxo
+                }
+
+                carregarHistoricoTreinamento={
+                  carregarHistoricoTreinamento
+                }
+
+                gerarQuestoesIA={
+                  gerarQuestoesIA
+                }
+
+                atribuicaoAreaService={
+                  atribuicaoAreaService
                 }
 
                 concluirFluxoCriacaoTreinamento={

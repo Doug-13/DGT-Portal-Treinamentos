@@ -45,6 +45,11 @@ export interface INovoTreinamentoPageProps {
       etapa:
         1 | 2 | 3
     ) => void;
+
+  // Somente Administrador: permite alterar o sequencial do código
+  // (ÁREA-TRN-SEQUENCIAL) de um treinamento já criado.
+  podeEditarSequencial?:
+    boolean;
 }
 
 const cores = {
@@ -210,21 +215,6 @@ const buttonSecondary:
     'pointer'
 };
 
-const tiposTreinamento:
-  TipoTreinamentoAdmin[] = [
-  'POP',
-  'IT',
-  'PROC',
-  'POL',
-  'INT',
-  'NR',
-  'MAN',
-  'SIS',
-  'COM',
-  'TEC',
-  'OUT'
-];
-
 const NovoTreinamentoPage:
   React.FC<
     INovoTreinamentoPageProps
@@ -234,7 +224,8 @@ const NovoTreinamentoPage:
     onSalvar,
     treinamentoExistente,
     onAtualizar,
-    onEtapaClick
+    onEtapaClick,
+    podeEditarSequencial
   }) => {
 
     const areasDisponiveis =
@@ -256,6 +247,17 @@ const NovoTreinamentoPage:
 
     const modoEdicao =
       !!treinamentoExistente;
+
+    // Sequencial do código (somente edição por Administrador).
+    const [
+      sequencial,
+      setSequencial
+    ] =
+      React.useState('');
+
+    const sequencialEditavel =
+      modoEdicao &&
+      !!podeEditarSequencial;
 
     const [
       nome,
@@ -358,10 +360,58 @@ const NovoTreinamentoPage:
           areaId
       );
 
+    // Formato: ÁREA-TRN-SEQUENCIAL (ex.: PRO-TRN-001).
+    // O código definitivo é gerado no Dataverse pelo
+    // GerarCodigoTreinamentoPlugin. O tipo não faz parte do código.
     const codigoPreview =
       areaSelecionada
-        ? `TRN-${areaSelecionada.sigla}-${tipoTreinamento}-XXX`
-        : `TRN-AREA-${tipoTreinamento}-XXX`;
+        ? `${areaSelecionada.sigla}-TRN-XXX`
+        : 'AREA-TRN-XXX';
+
+    // Código resultante quando o Administrador altera o sequencial.
+    // Mantém o prefixo do código atual (ÁREA-TRN).
+    const prefixoCodigoAtual =
+      (
+        treinamentoExistente?.codigo ||
+        ''
+      ).replace(
+        /-\d+$/,
+        ''
+      ) ||
+      (
+        areaSelecionada
+          ? `${areaSelecionada.sigla}-TRN`
+          : 'AREA-TRN'
+      );
+
+    const prefixoCodigo =
+      /-TRN$/.test(
+        prefixoCodigoAtual
+      )
+        ? prefixoCodigoAtual
+        : (
+          areaSelecionada
+            ? `${areaSelecionada.sigla}-TRN`
+            : 'AREA-TRN'
+        );
+
+    // Completa com zeros à esquerda (7 → 007). Sem padStart, que
+    // não está disponível na biblioteca ES configurada no SPFx.
+    const sequencialFormatado =
+      sequencial
+        ? (
+          '000' +
+          sequencial
+        ).slice(
+          -Math.max(
+            3,
+            sequencial.length
+          )
+        )
+        : 'XXX';
+
+    const codigoComSequencial =
+      `${prefixoCodigo}-${sequencialFormatado}`;
 
     const limpar =
       (): void => {
@@ -449,6 +499,14 @@ const NovoTreinamentoPage:
 
         setAtivo(
           treinamentoExistente.ativo
+        );
+
+        setSequencial(
+          treinamentoExistente.sequencial !== undefined
+            ? String(
+              treinamentoExistente.sequencial
+            )
+            : ''
         );
 
       },
@@ -565,6 +623,116 @@ const NovoTreinamentoPage:
           setErro(
             'A URL da imagem deve começar com http:// ou https://.'
           );
+
+          return;
+        }
+
+        // Sequencial: só é enviado quando o Administrador o altera.
+        let sequencialAlterado:
+          number | undefined;
+
+        if (
+          sequencialEditavel
+        ) {
+
+          const numeroSequencial =
+            Number(
+              sequencial
+            );
+
+          if (
+            !Number.isInteger(
+              numeroSequencial
+            ) ||
+            numeroSequencial < 1 ||
+            numeroSequencial > 999
+          ) {
+
+            setErro(
+              'O sequencial deve ser um número inteiro entre 1 e 999.'
+            );
+
+            return;
+          }
+
+          if (
+            numeroSequencial !==
+            treinamentoExistente?.sequencial
+          ) {
+            sequencialAlterado =
+              numeroSequencial;
+          }
+        }
+
+        // EDIÇÃO: atualiza o registro existente.
+        // (Antes, o botão chamava onSalvar e criava um NOVO treinamento.)
+        if (
+          modoEdicao &&
+          treinamentoExistente &&
+          onAtualizar
+        ) {
+
+          setSalvando(
+            true
+          );
+
+          try {
+
+            await onAtualizar({
+
+              id:
+                treinamentoExistente.id,
+
+              nome:
+                nome.trim(),
+
+              codigo:
+                treinamentoExistente.codigo,
+
+              areaId:
+                treinamentoExistente.areaId,
+
+              tipoTreinamento,
+
+              descricao:
+                descricao.trim(),
+
+              cargaHorariaMin:
+                Math.round(
+                  carga
+                ),
+
+              notaMinima:
+                nota,
+
+              validadeMeses:
+                Math.round(
+                  validade
+                ),
+
+              ativo,
+
+              imagemUrl:
+                imagemUrl.trim(),
+
+              sequencial:
+                sequencialAlterado
+            });
+
+          } catch (e) {
+
+            setErro(
+              e instanceof Error
+                ? e.message
+                : 'Não foi possível atualizar o treinamento.'
+            );
+
+          } finally {
+
+            setSalvando(
+              false
+            );
+          }
 
           return;
         }
@@ -792,23 +960,75 @@ const NovoTreinamentoPage:
                 Código
               </label>
 
-              <input
-                value={
-                  modoEdicao
-                    ? (
-                      treinamentoExistente
-                        ?.codigo ||
-                      codigoPreview
-                    )
-                    : codigoPreview
-                }
-                readOnly
-                disabled
-                aria-label="Código gerado automaticamente"
-                style={
-                  inputBloqueadoStyle
-                }
-              />
+              {
+                sequencialEditavel
+                  ? (
+                    <div
+                      style={{
+                        display:
+                          'grid',
+
+                        gridTemplateColumns:
+                          '1fr 110px',
+
+                        gap:
+                          '8px'
+                      }}
+                    >
+                      <input
+                        value={
+                          codigoComSequencial
+                        }
+                        readOnly
+                        disabled
+                        aria-label="Código resultante"
+                        style={
+                          inputBloqueadoStyle
+                        }
+                      />
+
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        step={1}
+                        value={
+                          sequencial
+                        }
+                        onChange={
+                          event =>
+                            setSequencial(
+                              event.target.value
+                            )
+                        }
+                        aria-label="Sequencial"
+                        title="Sequencial (somente Administrador)"
+                        style={
+                          inputStyle
+                        }
+                      />
+                    </div>
+                  )
+                  : (
+                    <input
+                      value={
+                        modoEdicao
+                          ? (
+                            treinamentoExistente
+                              ?.codigo ||
+                            codigoPreview
+                          )
+                          : codigoPreview
+                      }
+                      readOnly
+                      disabled
+                      aria-label="Código gerado automaticamente"
+                      style={
+                        inputBloqueadoStyle
+                      }
+                    />
+                  )
+              }
 
               <span
                 style={
@@ -816,9 +1036,11 @@ const NovoTreinamentoPage:
                 }
               >
                 {
-                  modoEdicao
-                    ? 'Código gerado na criação e mantido imutável.'
-                    : 'Gerado automaticamente no formato TRN-ÁREA-TIPO-SEQUENCIAL.'
+                  sequencialEditavel
+                    ? 'Somente administradores alteram o sequencial. O código é recalculado e a alteração fica registrada no histórico.'
+                    : modoEdicao
+                      ? 'Código gerado na criação. Somente administradores podem alterar o sequencial.'
+                      : 'Gerado automaticamente no formato ÁREA-TRN-SEQUENCIAL (ex.: PRO-TRN-001).'
                 }
               </span>
 
@@ -915,49 +1137,29 @@ const NovoTreinamentoPage:
                 Tipo *
               </label>
 
-              <select
-                value={
-                  tipoTreinamento
-                }
-                onChange={
-                  event =>
-                    setTipoTreinamento(
-                      event
-                        .target
-                        .value as TipoTreinamentoAdmin
-                    )
-                }
+              {/*
+                Tipo travado: todo treinamento usa "TRN" no código
+                (ÁREA-TRN-SEQUENCIAL). O valor interno de
+                dgt_tipotreinamento é mantido: "OUT" em novos
+                treinamentos e o valor original na edição.
+              */}
+              <input
+                type="text"
+                value="TRN - Treinamento"
+                readOnly
+                disabled
+                aria-label="Tipo do treinamento (somente leitura)"
                 style={
-                  inputStyle
+                  inputBloqueadoStyle
                 }
-              >
-
-                {tiposTreinamento.map(
-                  tipo => (
-
-                    <option
-                      key={
-                        tipo
-                      }
-                      value={
-                        tipo
-                      }
-                    >
-                      {
-                        tipo
-                      }
-                    </option>
-                  )
-                )}
-
-              </select>
+              />
 
               <span
                 style={
                   helpStyle
                 }
               >
-                POP, IT, processo, política, integração, NR, sistema, técnico etc.
+                Todo treinamento utiliza o tipo TRN no código.
               </span>
 
             </div>

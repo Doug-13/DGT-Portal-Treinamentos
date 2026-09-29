@@ -86,8 +86,6 @@ import NovoDocumentoPage from
 import DocumentoDetalhePage from
   '../pages/Documentos/DocumentoDetalhePage';
 
-import HistoricoPage from
-  '../pages/Historico/HistoricoPage';
 
 import CertificadosPage from
   '../pages/Certificados/CertificadosPage';
@@ -185,6 +183,20 @@ import {
 } from '../services/AutorizacaoService';
 
 import {
+  IEventoTreinamento
+} from '../services/TreinamentoHistoricoService';
+
+import {
+  IParametrosGeracaoIA,
+  IResultadoGeracaoIA
+} from '../services/QuestaoIAService';
+
+import {
+  AtribuicaoAreaService
+} from '../services/AtribuicaoAreaService';
+
+import {
+  podeAcessarRota,
   verificarPermissaoRota
 } from '../services/RoutePermissionService';
 
@@ -695,6 +707,24 @@ export interface IPortalRouterProps {
       IEditarTreinamento
   ) => Promise<void>;
 
+  // Atribuição por área (regras dgt_treinamentoarea).
+  atribuicaoAreaService?:
+    AtribuicaoAreaService;
+
+  // Geração de questões com IA (Custom API dgt_GerarQuestoesIA).
+  gerarQuestoesIA?:
+  (
+    parametros:
+      IParametrosGeracaoIA
+  ) => Promise<IResultadoGeracaoIA>;
+
+  // Histórico do treinamento (dgt_auditorianegocio).
+  carregarHistoricoTreinamento?:
+  (
+    treinamentoId:
+      string
+  ) => Promise<IEventoTreinamento[]>;
+
   concluirFluxoCriacaoTreinamento:
   () => Promise<void>;
 
@@ -1186,6 +1216,11 @@ const PortalRouter:
       // VISAO GERAL DE TREINAMENTOS
       // ========================================================
 
+      // A antiga aba "Meu histórico" foi descontinuada. Se alguém
+      // chegar à rota 'historico' (link salvo, estado anterior),
+      // é levado para a Visão geral. O histórico de alterações fica
+      // em cada treinamento (Gestão > Histórico) e em cada documento.
+      case 'historico':
       case 'treinamentosVisaoGeral':
 
         return (
@@ -1592,8 +1627,14 @@ const PortalRouter:
               props.abrirDocumento
             }
           
-            onNovoDocumento={() =>
-              props.navegar('novoDocumento')
+            onNovoDocumento={
+              podeAcessarRota(
+                'novoDocumento',
+                props.contextoAcesso
+              )
+                ? () =>
+                  props.navegar('novoDocumento')
+                : undefined
             }
 
             contexto={
@@ -1703,20 +1744,6 @@ const PortalRouter:
         );
 
       // ========================================================
-      // HISTÓRICO
-      // ========================================================
-
-      case 'historico':
-
-        return (
-          <HistoricoPage
-            historico={
-              props.historico
-            }
-          />
-        );
-
-      // ========================================================
       // CERTIFICADOS
       // ========================================================
 
@@ -1765,26 +1792,47 @@ const PortalRouter:
               )
             }
 
-            onAtribuirTreinamento={() =>
-              props.navegar(
-                'atribuirTreinamento'
+            // Atalhos exibidos apenas quando o perfil pode acessar
+            // a rota de destino (ex.: o Editor não vê "Atribuir",
+            // "Áreas e acessos" e "Indicadores").
+            //
+            // "Minha equipe", "Documentos" e "Conformidade" NÃO são
+            // passados: já existem como abas do módulo e foram
+            // retirados da tela de Gestão.
+            onAtribuirTreinamento={
+              podeAcessarRota(
+                'atribuirTreinamento',
+                props.contextoAcesso
               )
+                ? () =>
+                  props.navegar(
+                    'atribuirTreinamento'
+                  )
+                : undefined
             }
 
-            onTrilhas={() =>
-              props.navegar(
-                'gestaoTrilhas'
+            onTrilhas={
+              podeAcessarRota(
+                'gestaoTrilhas',
+                props.contextoAcesso
               )
+                ? () =>
+                  props.navegar(
+                    'gestaoTrilhas'
+                  )
+                : undefined
             }
-            onAreas={() =>
-              props.navegar(
-                'gestaoAreas'
+
+            onAreas={
+              podeAcessarRota(
+                'gestaoAreas',
+                props.contextoAcesso
               )
-            }
-            onEquipe={() =>
-              props.navegar(
-                'equipe'
-              )
+                ? () =>
+                  props.navegar(
+                    'gestaoAreas'
+                  )
+                : undefined
             }
 
             onEditarTreinamento={
@@ -1807,21 +1855,20 @@ const PortalRouter:
               )
             }
 
-            onDocumentos={() =>
-              props.navegar(
-                'gestaoDocumentos'
+            onIndicadores={
+              podeAcessarRota(
+                'indicadores',
+                props.contextoAcesso
               )
+                ? () =>
+                  props.navegar(
+                    'indicadores'
+                  )
+                : undefined
             }
 
-            onConformidade={() =>
-              props.navegar(
-                'gestaoConformidade'
-              )
-            }
-            onIndicadores={() =>
-              props.navegar(
-                'indicadores'
-              )
+            onCarregarHistorico={
+              props.carregarHistoricoTreinamento
             }
           />
         );
@@ -1959,6 +2006,14 @@ const PortalRouter:
               props.atualizarTreinamentoFluxo
             }
 
+            // Somente o Administrador altera o sequencial depois da
+            // criação (validado também no servidor pelo plugin).
+            podeEditarSequencial={
+              props.contextoAcesso
+                ?.perfil ===
+              'Administrador'
+            }
+
             onEtapaClick={
               props.navegarEtapaFluxoTreinamento
             }
@@ -2009,6 +2064,18 @@ const PortalRouter:
 
             onAtribuir={
               props.processarAtribuicao
+            }
+
+            atribuicaoAreaService={
+              props.atribuicaoAreaService
+            }
+
+            areas={
+              props.areasAdministrativas
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
             }
 
             onLimparResultado={
@@ -2184,6 +2251,15 @@ const PortalRouter:
 
             onCriarQuestao={
               props.criarQuestaoAdministrativa
+            }
+
+            onGerarQuestoesIA={
+              podeAcessarRota(
+                'gestaoAvaliacoes',
+                props.contextoAcesso
+              )
+                ? props.gerarQuestoesIA
+                : undefined
             }
 
             onCriarQuestaoCompleta={
@@ -2420,6 +2496,11 @@ const PortalRouter:
 
             onEditarUsuarioArea={
               props.editarUsuarioArea
+            }
+
+            usuarioLogadoEmail={
+              props.contextoAcesso
+                ?.email
             }
 
             onDefinirUsuarioAreaAtivo={
