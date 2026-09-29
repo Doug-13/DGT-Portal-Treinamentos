@@ -1,5 +1,9 @@
 import * as React from 'react';
 
+import {
+  converterUrlImagemSharePoint
+} from '../../utils/imagemSharePoint';
+
 import PageHeader from
   '../../components/layout/PageHeader';
 
@@ -247,6 +251,33 @@ const NovoTreinamentoPage:
 
     const modoEdicao =
       !!treinamentoExistente;
+
+    // Aviso sobre o link da imagem (ex.: link de compartilhamento).
+    const [
+      avisoImagem,
+      setAvisoImagem
+    ] =
+      React.useState('');
+
+    // Converte links do SharePoint para o endereço direto da imagem.
+    const normalizarImagem =
+      (
+        valor: string
+      ): string => {
+
+        const resultado =
+          converterUrlImagemSharePoint(
+            valor
+          );
+
+        setAvisoImagem(
+          resultado.convertida
+            ? 'Link convertido automaticamente para o endereço direto da imagem.'
+            : resultado.aviso || ''
+        );
+
+        return resultado.url;
+      };
 
     // Sequencial do código (somente edição por Administrador).
     const [
@@ -613,10 +644,35 @@ const NovoTreinamentoPage:
           return;
         }
 
+        const imagemFinal =
+          converterUrlImagemSharePoint(
+            imagemUrl
+          );
+
         if (
-          imagemUrl.trim() &&
+          imagemFinal.aviso
+        ) {
+
+          setErro(
+            imagemFinal.aviso
+          );
+
+          return;
+        }
+
+        if (
+          imagemFinal.url !==
+          imagemUrl.trim()
+        ) {
+          setImagemUrl(
+            imagemFinal.url
+          );
+        }
+
+        if (
+          imagemFinal.url &&
           !/^https?:\/\//i.test(
-            imagemUrl.trim()
+            imagemFinal.url
           )
         ) {
 
@@ -713,7 +769,7 @@ const NovoTreinamentoPage:
               ativo,
 
               imagemUrl:
-                imagemUrl.trim(),
+                imagemFinal.url,
 
               sequencial:
                 sequencialAlterado
@@ -775,7 +831,7 @@ const NovoTreinamentoPage:
             ativo,
 
             imagemUrl:
-              imagemUrl.trim()
+              imagemFinal.url
           });
 
           limpar();
@@ -1393,6 +1449,16 @@ const NovoTreinamentoPage:
                   );
                 }
               }
+              onBlur={
+                event =>
+                  setImagemUrl(
+                    normalizarImagem(
+                      event
+                        .target
+                        .value
+                    )
+                  )
+              }
               placeholder="https://.../imagem.jpg"
               style={
                 inputStyle
@@ -1404,8 +1470,31 @@ const NovoTreinamentoPage:
                 helpStyle
               }
             >
-              Preferencialmente utilize uma URL do SharePoint.
+              Use o endereço direto do arquivo no SharePoint, em uma biblioteca que todos os colaboradores possam ler.
             </span>
+
+            {
+              avisoImagem &&
+              (
+                <span
+                  style={{
+                    ...helpStyle,
+                    display:
+                      'block',
+
+                    marginTop:
+                      '6px',
+
+                    color:
+                      avisoImagem.indexOf('convertido') >= 0
+                        ? cores.verde
+                        : '#B45309'
+                  }}
+                >
+                  {avisoImagem}
+                </span>
+              )
+            }
 
             {
               imagemUrl &&
