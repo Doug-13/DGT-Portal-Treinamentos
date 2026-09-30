@@ -2504,41 +2504,103 @@ export class DataverseService {
   }
 
   // ============================================================
-  // GERAÇÃO DE QUESTÕES COM IA (Custom API dgt_GerarQuestoesIA)
-  // A chamada ao Claude acontece no servidor (plugin). A chave da
-  // API nunca passa pelo navegador.
+  // REMOÇÃO DE TREINAMENTO (somente Administrador)
+  // Usado pelo TreinamentoRemocaoService para localizar e excluir a
+  // estrutura de um treinamento que nunca foi atribuído.
   // ============================================================
 
-  public async gerarQuestoesIA(
-    payload: Record<string, unknown>
-  ): Promise<Record<string, unknown>> {
+  // Ids dos registros de "tabela" cujo lookup aponta para um dos ids.
+  public async listarIdsPorLookup(
+    tabela: string,
+    lookup: string,
+    ids: string[]
+  ): Promise<string[]> {
 
-    const resposta =
-      await this.postObject(
-        'dgt_GerarQuestoesIA',
+    const limpos =
+      ids
+        .map(id => (id || '').replace(/[{}]/g, '').trim())
+        .filter(id => !!id);
+
+    if (!limpos.length) {
+      return [];
+    }
+
+    const entitySet =
+      await this.getEntitySetName(
+        tabela
+      );
+
+    const resultado: string[] = [];
+
+    // Em lotes, para não exceder o tamanho da URL.
+    for (let i = 0; i < limpos.length; i += 20) {
+
+      const filtro =
+        limpos
+          .slice(i, i + 20)
+          .map(id => `_${lookup}_value eq ${id}`)
+          .join(' or ');
+
+      const registros =
+        await this.get(
+          `${entitySet}?$select=${tabela}id&$filter=${encodeURIComponent(filtro)}`
+        );
+
+      registros.forEach(registro => {
+        const id = registro[`${tabela}id`];
+        if (id) {
+          resultado.push(String(id));
+        }
+      });
+    }
+
+    return resultado;
+  }
+
+  public async excluirRegistro(
+    tabela: string,
+    id: string
+  ): Promise<void> {
+
+    const entitySet =
+      await this.getEntitySetName(
+        tabela
+      );
+
+    const url =
+      `${this.apiUrl}/${entitySet}(${(id || '').replace(/[{}]/g, '').trim()})`;
+
+    const response:
+      AadHttpClientResponse =
+      await this.client.fetch(
+        url,
+        AadHttpClient.configurations.v1,
         {
-          PayloadJson:
-            JSON.stringify(
-              payload
-            )
+          method:
+            'DELETE',
+
+          headers: {
+            Accept:
+              'application/json',
+
+            'OData-MaxVersion':
+              '4.0',
+
+            'OData-Version':
+              '4.0'
+          }
         }
       );
 
-    const resultadoJson =
-      String(
-        resposta.ResultadoJson ||
-        ''
-      );
+    if (!response.ok && response.status !== 404) {
 
-    if (!resultadoJson) {
+      const detalhe =
+        await response.text();
+
       throw new Error(
-        'A API de geração de questões não retornou ResultadoJson.'
+        `Dataverse retornou ${response.status} ao excluir ${tabela}. ${detalhe}`
       );
     }
-
-    return JSON.parse(
-      resultadoJson
-    ) as Record<string, unknown>;
   }
 
   public async processarRevisaoDocumento(

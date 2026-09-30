@@ -24,14 +24,6 @@ import {
   TipoQuestaoCriacao
 } from '../../services/AvaliacaoAdminService';
 
-import {
-  IParametrosGeracaoIA,
-  IResultadoGeracaoIA
-} from '../../services/QuestaoIAService';
-
-import GerarQuestoesIAPanel from
-  './GerarQuestoesIAPanel';
-
 export interface IGestaoAvaliacoesPageProps {
 
   treinamentos:
@@ -168,14 +160,6 @@ export interface IGestaoAvaliacoesPageProps {
       etapa:
         1 | 2 | 3
     ) => void;
-
-  // Geração de questões com IA (Claude). Quando informado, a tela
-  // exibe o painel "Gerar questões com IA" acima do banco de questões.
-  onGerarQuestoesIA?:
-    (
-      parametros:
-        IParametrosGeracaoIA
-    ) => Promise<IResultadoGeracaoIA>;
 }
 
 interface IRespostaRascunho {
@@ -2353,81 +2337,6 @@ const GestaoAvaliacoesPage:
                     )
                   }
                 </div>
-
-                {/* GERAR QUESTÕES COM IA */}
-                {
-                  props.onGerarQuestoesIA &&
-                  props.avaliacaoSelecionada &&
-                  (
-                    <GerarQuestoesIAPanel
-                      treinamentoId={
-                        props.treinamentoId
-                      }
-                      avaliacaoId={
-                        props.avaliacaoSelecionada.id
-                      }
-                      quantidadeQuestoesExistentes={
-                        props.questoes.length
-                      }
-                      proximaOrdem={
-                        props.questoes.length + 1
-                      }
-                      gerarAutomaticamente={
-                        !props.carregando &&
-                        !props.processando
-                      }
-                      onGerar={
-                        props.onGerarQuestoesIA
-                      }
-                      onSalvarQuestao={
-                        props.onCriarQuestaoCompleta
-                      }
-                    />
-                  )
-                }
-
-                {/* IA: orientação quando ainda não há avaliação selecionada */}
-                {
-                  props.onGerarQuestoesIA &&
-                  !props.avaliacaoSelecionada &&
-                  (
-                    <div
-                      style={{
-                        ...card,
-                        borderColor:
-                          '#D9D0FA',
-
-                        background:
-                          '#FBFAFF'
-                      }}
-                    >
-                      <h3
-                        style={{
-                          margin:
-                            '0 0 4px',
-
-                          color:
-                            C.azulEscuro
-                        }}
-                      >
-                        ✨ Gerar questões com IA
-                      </h3>
-
-                      <small
-                        style={{
-                          color:
-                            C.secundario
-                        }}
-                      >
-                        {
-                          props.avaliacoes.length
-                            ? 'Selecione a avaliação ao lado para o Claude gerar as questões a partir dos módulos.'
-                            : 'Crie a avaliação deste treinamento (nome, nota mínima, tentativas) e salve. As questões serão geradas automaticamente a partir dos módulos.'
-                        }
-                      </small>
-                    </div>
-                  )
-                }
 
                 {/* QUESTÕES */}
                 <div

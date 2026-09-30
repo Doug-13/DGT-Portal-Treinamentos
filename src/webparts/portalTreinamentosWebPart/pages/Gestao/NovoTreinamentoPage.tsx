@@ -660,6 +660,24 @@ const NovoTreinamentoPage:
           return;
         }
 
+        // Tamanho máximo da coluna dgt_imagemurl no Dataverse.
+        // Se a coluna for ampliada (ex.: 2000), ajuste este valor.
+        const LIMITE_URL_IMAGEM = 500;
+
+        if (
+          imagemFinal.url.length >
+          LIMITE_URL_IMAGEM
+        ) {
+
+          setErro(
+            `O endereço da imagem tem ${imagemFinal.url.length} caracteres e o limite é ${LIMITE_URL_IMAGEM}. ` +
+            'Use o endereço direto do arquivo (sem parâmetros como ?viewid=...), ' +
+            'ou guarde a imagem em uma pasta com caminho mais curto.'
+          );
+
+          return;
+        }
+
         if (
           imagemFinal.url !==
           imagemUrl.trim()

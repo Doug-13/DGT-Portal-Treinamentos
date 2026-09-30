@@ -185,17 +185,16 @@ import {
 import CatalogoTreinamentosPage from
   '../pages/Treinamentos/CatalogoTreinamentosPage';
 
+import {
+  IImpactoRemocao
+} from '../services/TreinamentoRemocaoService';
+
 import ModoTesteTreinamentoPage from
   '../pages/Treinamentos/ModoTesteTreinamentoPage';
 
 import {
   IEventoTreinamento
 } from '../services/TreinamentoHistoricoService';
-
-import {
-  IParametrosGeracaoIA,
-  IResultadoGeracaoIA
-} from '../services/QuestaoIAService';
 
 import {
   AtribuicaoAreaService
@@ -717,12 +716,20 @@ export interface IPortalRouterProps {
   atribuicaoAreaService?:
     AtribuicaoAreaService;
 
-  // Geração de questões com IA (Custom API dgt_GerarQuestoesIA).
-  gerarQuestoesIA?:
-  (
-    parametros:
-      IParametrosGeracaoIA
-  ) => Promise<IResultadoGeracaoIA>;
+  // Remoção de treinamento (somente Administrador).
+  analisarRemocaoTreinamento?:
+    (
+      treinamento:
+        ITreinamentoAdmin
+    ) => Promise<IImpactoRemocao>;
+
+  removerTreinamento?:
+    (
+      treinamento:
+        ITreinamentoAdmin,
+      aoProgredir:
+        (mensagem: string) => void
+    ) => Promise<void>;
 
   // Modo de teste do treinamento (visão do colaborador, sem registros).
   treinamentoEmTesteId?:
@@ -1986,6 +1993,21 @@ const PortalRouter:
                 ? props.testarTreinamento
                 : undefined
             }
+
+            // Remover: somente Administrador.
+            onAnalisarRemocao={
+              props.contextoAcesso?.perfil ===
+              'Administrador'
+                ? props.analisarRemocaoTreinamento
+                : undefined
+            }
+
+            onRemoverTreinamento={
+              props.contextoAcesso?.perfil ===
+              'Administrador'
+                ? props.removerTreinamento
+                : undefined
+            }
           />
         );
 
@@ -2367,15 +2389,6 @@ const PortalRouter:
 
             onCriarQuestao={
               props.criarQuestaoAdministrativa
-            }
-
-            onGerarQuestoesIA={
-              podeAcessarRota(
-                'gestaoAvaliacoes',
-                props.contextoAcesso
-              )
-                ? props.gerarQuestoesIA
-                : undefined
             }
 
             onCriarQuestaoCompleta={

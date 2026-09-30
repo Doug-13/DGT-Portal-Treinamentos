@@ -14,6 +14,84 @@ import {
 import HistoricoTreinamentoModal from
   './HistoricoTreinamentoModal';
 
+import RemoverTreinamentoModal from
+  './RemoverTreinamentoModal';
+
+import {
+  IImpactoRemocao
+} from '../../services/TreinamentoRemocaoService';
+
+// Miniatura da capa do treinamento (com alternativa quando a imagem
+// não existe ou não pode ser lida pelo usuário).
+const CapaMiniatura: React.FC<{
+  url: string;
+  codigo: string;
+}> = ({ url, codigo }) => {
+
+  const [falhou, setFalhou] = React.useState(false);
+
+  React.useEffect(
+    () => setFalhou(false),
+    [url]
+  );
+
+  const estilo: React.CSSProperties = {
+    width: '88px',
+    height: '56px',
+    borderRadius: '8px',
+    flex: '0 0 auto',
+    objectFit: 'cover',
+    display: 'block'
+  };
+
+  if (url && !falhou) {
+    return (
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        onError={() => setFalhou(true)}
+        style={{
+          ...estilo,
+          border: '1px solid #D8E2EC',
+          background: '#F6F9FC'
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      title={
+        url
+          ? 'Não foi possível carregar a imagem (link inválido ou sem permissão de leitura).'
+          : 'Treinamento sem imagem.'
+      }
+      style={{
+        ...estilo,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: url
+          ? '#FFF4E5'
+          : 'linear-gradient(135deg, #0B2D4D, #0B5CAB)',
+        color: url
+          ? '#B45309'
+          : '#FFFFFF',
+        fontSize: url
+          ? '18px'
+          : '10px',
+        fontWeight: 700,
+        textAlign: 'center',
+        padding: '4px',
+        boxSizing: 'border-box'
+      }}
+    >
+      {url ? '⚠' : (codigo || 'TRN').split('-').slice(0, 2).join('-')}
+    </div>
+  );
+};
+
 export interface IGestaoPageProps {
 
   treinamentos:
@@ -76,6 +154,21 @@ export interface IGestaoPageProps {
 
   onIndicadores?:
     () => void;
+
+  // Somente Administrador: exibe o botão "Remover".
+  onAnalisarRemocao?:
+    (
+      treinamento:
+        ITreinamentoAdmin
+    ) => Promise<IImpactoRemocao>;
+
+  onRemoverTreinamento?:
+    (
+      treinamento:
+        ITreinamentoAdmin,
+      aoProgredir:
+        (mensagem: string) => void
+    ) => Promise<void>;
 
   // Quando informado, exibe o botão "Testar" (modo de teste).
   onTestarTreinamento?:
@@ -366,6 +459,18 @@ const GestaoPage:
       setPesquisa
     ] =
       React.useState('');
+
+    // ---------------- Remoção ----------------
+
+    const [
+      removerDe,
+      setRemoverDe
+    ] =
+      React.useState<
+        ITreinamentoAdmin | undefined
+      >(
+        undefined
+      );
 
     // ---------------- Histórico ----------------
 
@@ -840,6 +945,28 @@ const GestaoPage:
                           </td>
 
                           <td style={tdStyle}>
+                            <div
+                              style={{
+                                display:
+                                  'flex',
+
+                                gap:
+                                  '12px',
+
+                                alignItems:
+                                  'flex-start'
+                              }}
+                            >
+                            <CapaMiniatura
+                              url={
+                                treinamento.imagemUrl
+                              }
+                              codigo={
+                                treinamento.codigo
+                              }
+                            />
+
+                            <div>
                             <strong
                               style={{
                                 color:
@@ -875,6 +1002,8 @@ const GestaoPage:
                                 }
                               </span>
                             )}
+                            </div>
+                            </div>
                           </td>
 
                           <td style={tdStyle}>
@@ -1050,6 +1179,31 @@ const GestaoPage:
                                       : 'Ativar'
                                 }
                               </button>
+
+                              {props.onAnalisarRemocao &&
+                                props.onRemoverTreinamento && (
+                                <button
+                                  type="button"
+                                  disabled={
+                                    processando
+                                  }
+                                  onClick={() =>
+                                    setRemoverDe(
+                                      treinamento
+                                    )
+                                  }
+                                  title="Excluir definitivamente (somente treinamentos nunca atribuídos)"
+                                  style={{
+                                    ...botaoDesativar,
+                                    background: '#B42318',
+                                    borderColor: '#B42318',
+                                    color: '#FFFFFF',
+                                    opacity: processando ? .6 : 1
+                                  }}
+                                >
+                                  Remover
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1062,6 +1216,26 @@ const GestaoPage:
           )}
 
         </div>  
+
+        {props.onAnalisarRemocao &&
+          props.onRemoverTreinamento && (
+          <RemoverTreinamentoModal
+            treinamento={
+              removerDe
+            }
+            onAnalisar={
+              props.onAnalisarRemocao
+            }
+            onRemover={
+              props.onRemoverTreinamento
+            }
+            onFechar={() =>
+              setRemoverDe(
+                undefined
+              )
+            }
+          />
+        )}
 
         <HistoricoTreinamentoModal
           aberto={

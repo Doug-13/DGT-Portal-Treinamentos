@@ -6,10 +6,9 @@ import {
 } from '../services/TreinamentoHistoricoService';
 
 import {
-  IParametrosGeracaoIA,
-  IResultadoGeracaoIA,
-  QuestaoIAService
-} from '../services/QuestaoIAService';
+  IImpactoRemocao,
+  TreinamentoRemocaoService
+} from '../services/TreinamentoRemocaoService';
 
 import {
   AtribuicaoAreaService
@@ -456,33 +455,6 @@ const PortalTreinamentos:
           ),
         [
           dataverseService
-        ]
-      );
-
-    // Geração de questões com IA (Claude, via Custom API).
-    const questaoIAService =
-      React.useMemo(
-        () =>
-          new QuestaoIAService(
-            dataverseService
-          ),
-        [
-          dataverseService
-        ]
-      );
-
-    const gerarQuestoesIA =
-      React.useCallback(
-        (
-          parametros:
-            IParametrosGeracaoIA
-        ): Promise<IResultadoGeracaoIA> =>
-          questaoIAService
-            .gerar(
-              parametros
-            ),
-        [
-          questaoIAService
         ]
       );
 
@@ -1869,6 +1841,60 @@ const gestaoAreas =
           );
         },
         []
+      );
+
+    // ==========================================================
+    // REMOÇÃO DE TREINAMENTO (somente Administrador)
+    // ==========================================================
+
+    const treinamentoRemocaoService =
+      React.useMemo(
+        () =>
+          new TreinamentoRemocaoService(
+            dataverseService
+          ),
+        [
+          dataverseService
+        ]
+      );
+
+    const analisarRemocaoTreinamento =
+      React.useCallback(
+        (
+          treinamento:
+            ITreinamentoAdmin
+        ): Promise<IImpactoRemocao> =>
+          treinamentoRemocaoService
+            .analisar(
+              treinamento.id
+            ),
+        [
+          treinamentoRemocaoService
+        ]
+      );
+
+    const removerTreinamento =
+      React.useCallback(
+        async (
+          treinamento:
+            ITreinamentoAdmin,
+          aoProgredir:
+            (mensagem: string) => void
+        ): Promise<void> => {
+
+          await treinamentoRemocaoService
+            .remover(
+              treinamento.id,
+              aoProgredir
+            );
+
+          await gestaoTreinamentos
+            .carregar();
+        },
+        [
+          gestaoTreinamentos,
+          treinamentoRemocaoService
+        ]
       );
 
     // ==========================================================
@@ -3279,16 +3305,20 @@ const gestaoAreas =
                   treinamentoEmTesteId
                 }
 
+                analisarRemocaoTreinamento={
+                  analisarRemocaoTreinamento
+                }
+
+                removerTreinamento={
+                  removerTreinamento
+                }
+
                 testarTreinamento={
                   testarTreinamento
                 }
 
                 sairModoTeste={
                   sairModoTeste
-                }
-
-                gerarQuestoesIA={
-                  gerarQuestoesIA
                 }
 
                 atribuicaoAreaService={
