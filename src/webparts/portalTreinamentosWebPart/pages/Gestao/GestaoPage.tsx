@@ -77,6 +77,13 @@ export interface IGestaoPageProps {
   onIndicadores?:
     () => void;
 
+  // Quando informado, exibe o botão "Testar" (modo de teste).
+  onTestarTreinamento?:
+    (
+      treinamento:
+        ITreinamentoAdmin
+    ) => void;
+
   // Quando informado, exibe o botão "Histórico" em cada treinamento.
   onCarregarHistorico?:
     (
@@ -973,6 +980,25 @@ const GestaoPage:
                               >
                                 Editar
                               </button>
+
+                              {props.onTestarTreinamento && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (props.onTestarTreinamento) {
+                                      props.onTestarTreinamento(
+                                        treinamento
+                                      );
+                                    }
+                                  }}
+                                  title="Percorrer o treinamento como colaborador, sem gerar registros"
+                                  style={
+                                    botaoEditar
+                                  }
+                                >
+                                  Testar
+                                </button>
+                              )}
 
                               {props.onCarregarHistorico && (
                                 <button

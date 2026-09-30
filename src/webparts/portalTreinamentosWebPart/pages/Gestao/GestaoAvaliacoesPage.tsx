@@ -2386,6 +2386,49 @@ const GestaoAvaliacoesPage:
                   )
                 }
 
+                {/* IA: orientação quando ainda não há avaliação selecionada */}
+                {
+                  props.onGerarQuestoesIA &&
+                  !props.avaliacaoSelecionada &&
+                  (
+                    <div
+                      style={{
+                        ...card,
+                        borderColor:
+                          '#D9D0FA',
+
+                        background:
+                          '#FBFAFF'
+                      }}
+                    >
+                      <h3
+                        style={{
+                          margin:
+                            '0 0 4px',
+
+                          color:
+                            C.azulEscuro
+                        }}
+                      >
+                        ✨ Gerar questões com IA
+                      </h3>
+
+                      <small
+                        style={{
+                          color:
+                            C.secundario
+                        }}
+                      >
+                        {
+                          props.avaliacoes.length
+                            ? 'Selecione a avaliação ao lado para o Claude gerar as questões a partir dos módulos.'
+                            : 'Crie a avaliação deste treinamento (nome, nota mínima, tentativas) e salve. As questões serão geradas automaticamente a partir dos módulos.'
+                        }
+                      </small>
+                    </div>
+                  )
+                }
+
                 {/* QUESTÕES */}
                 <div
                   style={

@@ -182,6 +182,12 @@ import {
   IContextoAcesso
 } from '../services/AutorizacaoService';
 
+import CatalogoTreinamentosPage from
+  '../pages/Treinamentos/CatalogoTreinamentosPage';
+
+import ModoTesteTreinamentoPage from
+  '../pages/Treinamentos/ModoTesteTreinamentoPage';
+
 import {
   IEventoTreinamento
 } from '../services/TreinamentoHistoricoService';
@@ -717,6 +723,19 @@ export interface IPortalRouterProps {
     parametros:
       IParametrosGeracaoIA
   ) => Promise<IResultadoGeracaoIA>;
+
+  // Modo de teste do treinamento (visão do colaborador, sem registros).
+  treinamentoEmTesteId?:
+    string;
+
+  testarTreinamento?:
+    (
+      treinamento:
+        ITreinamentoAdmin
+    ) => void;
+
+  sairModoTeste?:
+    () => void;
 
   // Histórico do treinamento (dgt_auditorianegocio).
   carregarHistoricoTreinamento?:
@@ -1761,6 +1780,94 @@ const PortalRouter:
       // GESTÃO
       // ========================================================
 
+      // ========================================================
+      // CATÁLOGO DE TREINAMENTOS (Editor e Administrador)
+      // ========================================================
+
+      case 'catalogoTreinamentos':
+
+        return (
+          <CatalogoTreinamentosPage
+            treinamentos={
+              props.treinamentosAdministrativos
+            }
+            carregando={
+              props.carregandoGestaoTreinamentos
+            }
+            erro={
+              props.erroGestaoTreinamentos
+            }
+            onTestar={treinamento => {
+              if (props.testarTreinamento) {
+                props.testarTreinamento(
+                  treinamento
+                );
+              }
+            }}
+          />
+        );
+
+      // ========================================================
+      // MODO DE TESTE (visão do colaborador, sem registros)
+      // ========================================================
+
+      case 'testeTreinamento': {
+
+        const emTeste =
+          props.treinamentosAdministrativos
+            .find(
+              item =>
+                item.id ===
+                props.treinamentoEmTesteId
+            );
+
+        if (
+          !emTeste ||
+          !props.dataverseService
+        ) {
+          return (
+            <CatalogoTreinamentosPage
+              treinamentos={
+                props.treinamentosAdministrativos
+              }
+              carregando={
+                props.carregandoGestaoTreinamentos
+              }
+              erro={
+                props.erroGestaoTreinamentos
+              }
+              onTestar={treinamento => {
+                if (props.testarTreinamento) {
+                  props.testarTreinamento(
+                    treinamento
+                  );
+                }
+              }}
+            />
+          );
+        }
+
+        return (
+          <ModoTesteTreinamentoPage
+            dataverse={
+              props.dataverseService
+            }
+            treinamento={
+              emTeste
+            }
+            onSair={() => {
+              if (props.sairModoTeste) {
+                props.sairModoTeste();
+              } else {
+                props.navegar(
+                  'catalogoTreinamentos'
+                );
+              }
+            }}
+          />
+        );
+      }
+
       case 'gestao':
 
         return (
@@ -1869,6 +1976,15 @@ const PortalRouter:
 
             onCarregarHistorico={
               props.carregarHistoricoTreinamento
+            }
+
+            onTestarTreinamento={
+              podeAcessarRota(
+                'testeTreinamento',
+                props.contextoAcesso
+              )
+                ? props.testarTreinamento
+                : undefined
             }
           />
         );

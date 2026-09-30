@@ -166,8 +166,8 @@ namespace DGT.Treinamentos.Plugins
             if (contexto.Texto.Length < 300)
             {
                 throw new InvalidPluginExecutionException(
-                    "Os módulos deste treinamento não têm conteúdo em texto suficiente para gerar questões. " +
-                    "Cadastre textos nos conteúdos dos módulos (vídeos e links não são lidos).");
+                    $"Os módulos deste treinamento têm pouco conteúdo em texto ({contexto.Texto.Length} caracteres; mínimo 300). " +
+                    "Cadastre textos, cards ou destaques nos conteúdos dos módulos (vídeos, PDFs e links não são lidos).");
             }
 
             // 2. Questões já existentes (para não repetir)
@@ -285,7 +285,8 @@ namespace DGT.Treinamentos.Plugins
             var consultaModulos =
                 new QueryExpression("dgt_modulo")
                 {
-                    ColumnSet = new ColumnSet("dgt_name", "dgt_descricao", "dgt_ordem")
+                    // dgt_modulo usa dgt_titulo como coluna de nome (não tem dgt_name).
+                    ColumnSet = new ColumnSet("dgt_titulo", "dgt_descricao", "dgt_ordem")
                 };
 
             consultaModulos.Criteria.AddCondition("dgt_treinamento", ConditionOperator.Equal, treinamentoId);
@@ -309,7 +310,7 @@ namespace DGT.Treinamentos.Plugins
                 numero++;
 
                 sb.AppendLine();
-                sb.AppendLine($"## Módulo {numero}: {modulo.GetAttributeValue<string>("dgt_name")}");
+                sb.AppendLine($"## Módulo {numero}: {modulo.GetAttributeValue<string>("dgt_titulo")}");
 
                 var descricao =
                     LimparTexto(
@@ -337,7 +338,7 @@ namespace DGT.Treinamentos.Plugins
                     }
 
                     var texto =
-                        LimparTexto(
+                        TextoDoConteudo(
                             conteudo.GetAttributeValue<string>("dgt_conteudo"));
 
                     if (string.IsNullOrWhiteSpace(texto))
@@ -391,6 +392,54 @@ namespace DGT.Treinamentos.Plugins
                 Texto = MascararDadosPessoais(textoFinal),
                 Modulos = numero
             };
+        }
+
+        // Conteúdos do tipo "Cards" são gravados pelo portal como
+        //   __DGT_CARDS__:[{"numero":"01","titulo":"...","descricao":"..."}]
+        // Aqui o JSON vira texto legível para o Claude.
+        private const string MarcadorCards = "__DGT_CARDS__:";
+
+        private static string TextoDoConteudo(
+            string valor)
+        {
+            if (string.IsNullOrWhiteSpace(valor))
+            {
+                return string.Empty;
+            }
+
+            if (!valor.StartsWith(MarcadorCards, StringComparison.Ordinal))
+            {
+                return LimparTexto(valor);
+            }
+
+            try
+            {
+                var cards =
+                    Json.Ler<List<CardConteudo>>(
+                        valor.Substring(MarcadorCards.Length));
+
+                var sb = new StringBuilder();
+
+                foreach (var card in cards ?? new List<CardConteudo>())
+                {
+                    var titulo = LimparTexto(card?.titulo);
+                    var descricao = LimparTexto(card?.descricao);
+
+                    if (string.IsNullOrWhiteSpace(titulo) && string.IsNullOrWhiteSpace(descricao))
+                    {
+                        continue;
+                    }
+
+                    sb.AppendLine($"- {titulo}: {descricao}");
+                }
+
+                return sb.ToString().Trim();
+            }
+            catch
+            {
+                // JSON inválido: usa o texto bruto sem o marcador.
+                return LimparTexto(valor.Substring(MarcadorCards.Length));
+            }
         }
 
         // Remove HTML (o editor de conteúdo grava HTML) e normaliza espaços.
@@ -837,6 +886,14 @@ namespace DGT.Treinamentos.Plugins
         // confiança parcial e o DataContractJsonSerializer só
         // serializa tipos públicos nesse modo.
         // ============================================================
+
+        [DataContract]
+        public sealed class CardConteudo
+        {
+            [DataMember] public string numero { get; set; }
+            [DataMember] public string titulo { get; set; }
+            [DataMember] public string descricao { get; set; }
+        }
 
         [DataContract]
         public sealed class PayloadGeracao

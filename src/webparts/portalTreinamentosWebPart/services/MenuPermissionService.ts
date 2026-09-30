@@ -61,6 +61,11 @@ const todosItens:
       icon: 'checkCircle'
     },
     {
+      pagina: 'catalogoTreinamentos',
+      label: 'Catálogo',
+      icon: 'graduationCap'
+    },
+    {
       pagina: 'gestao',
       label: 'Gestão',
       icon: 'settings'

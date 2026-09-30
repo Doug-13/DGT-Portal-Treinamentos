@@ -697,12 +697,26 @@ namespace DGT.Treinamentos.Plugins
                 return null;
             }
 
-            var nome =
-                entidade.GetAttributeValue<string>("dgt_name");
+            // dgt_name na maioria das tabelas; dgt_titulo em Módulo e
+            // Conteúdo do módulo; dgt_enunciado em Questão e Pergunta.
+            foreach (var campo in new[] { "dgt_name", "dgt_titulo", "dgt_enunciado" })
+            {
+                var nome =
+                    entidade.Contains(campo)
+                        ? entidade[campo] as string
+                        : null;
 
-            return string.IsNullOrWhiteSpace(nome)
-                ? null
-                : nome.Trim();
+                if (!string.IsNullOrWhiteSpace(nome))
+                {
+                    nome = nome.Trim();
+
+                    return nome.Length > 80
+                        ? nome.Substring(0, 79) + "…"
+                        : nome;
+                }
+            }
+
+            return null;
         }
 
         private static DateTime DataDoEvento(

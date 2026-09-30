@@ -1872,6 +1872,63 @@ const gestaoAreas =
       );
 
     // ==========================================================
+    // MODO DE TESTE (visão do colaborador, sem registros)
+    // ==========================================================
+
+    const [
+      treinamentoEmTesteId,
+      setTreinamentoEmTesteId
+    ] =
+      React.useState('');
+
+    // Página para onde voltar ao sair do teste (Catálogo ou Gestão).
+    const paginaAntesDoTeste =
+      React.useRef<Pagina>(
+        'catalogoTreinamentos'
+      );
+
+    const testarTreinamento =
+      React.useCallback(
+        (
+          treinamento:
+            ITreinamentoAdmin
+        ): void => {
+
+          paginaAntesDoTeste.current =
+            paginaAtual === 'gestao'
+              ? 'gestao'
+              : 'catalogoTreinamentos';
+
+          setTreinamentoEmTesteId(
+            treinamento.id
+          );
+
+          navegar(
+            'testeTreinamento'
+          );
+        },
+        [
+          navegar,
+          paginaAtual
+        ]
+      );
+
+    const sairModoTeste =
+      React.useCallback(
+        (): void => {
+
+          setTreinamentoEmTesteId('');
+
+          navegar(
+            paginaAntesDoTeste.current
+          );
+        },
+        [
+          navegar
+        ]
+      );
+
+    // ==========================================================
     // ABRIR TREINAMENTO
     // ==========================================================
 
@@ -3216,6 +3273,18 @@ const gestaoAreas =
 
                 carregarHistoricoTreinamento={
                   carregarHistoricoTreinamento
+                }
+
+                treinamentoEmTesteId={
+                  treinamentoEmTesteId
+                }
+
+                testarTreinamento={
+                  testarTreinamento
+                }
+
+                sairModoTeste={
+                  sairModoTeste
                 }
 
                 gerarQuestoesIA={

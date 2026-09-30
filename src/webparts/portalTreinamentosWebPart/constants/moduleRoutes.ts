@@ -26,7 +26,9 @@ const paginasTreinamentos:
     'gestaoModulos',
     'gestaoAvaliacoes',
     'gestaoAreas',
-    'gestaoConformidade'
+    'gestaoConformidade',
+    'catalogoTreinamentos',
+    'testeTreinamento'
   ];
 
 const paginasDocumentos:
