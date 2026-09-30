@@ -9,9 +9,15 @@ import {
 } from '../../services/AreaAdminService';
 
 // ============================================================
-// CARTÕES DE ÁREA — gerados a partir da tabela de Áreas
+// ÁREAS — filtro compacto em "chips"
 //   Administrador → "Todas as áreas" + todas as áreas ativas
 //   Demais        → somente as áreas do usuário
+//
+// Para não poluir a tela quando há muitas áreas:
+//   - áreas com documentos aparecem primeiro (mais documentos antes);
+//   - recolhido, mostra só as áreas com documentos (até LIMITE) e a
+//     área selecionada; o restante fica em "Mostrar todas";
+//   - com muitas áreas, aparece um campo para filtrar pelo nome.
 // ============================================================
 
 export interface IAreasDocumentosCardsProps {
@@ -90,93 +96,21 @@ const visualDaArea = (
     : PALETA[indice % PALETA.length];
 };
 
-const Cartao:
-  React.FC<{
-    titulo: string;
-    subtitulo: string;
-    visual: IVisualArea;
-    ativo: boolean;
-    onClick: () => void;
-  }> = ({
-    titulo,
-    subtitulo,
-    visual,
-    ativo,
-    onClick
-  }) => (
+// Quantidade de chips visíveis com a lista recolhida.
+const LIMITE_RECOLHIDO = 8;
 
-    <button
-      type="button"
-      onClick={onClick}
-      title={titulo}
-      style={{
-        minHeight: '110px',
-        display: 'grid',
-        gridTemplateRows: '42px auto 1fr',
-        alignContent: 'start',
-        gap: '7px',
-        padding: '14px',
-        border: ativo
-          ? '2px solid #05C3DD'
-          : '1px solid #D8E2EC',
-        borderRadius: '12px',
-        background: ativo
-          ? '#F0FCFE'
-          : '#FFFFFF',
-        textAlign: 'left',
-        cursor: 'pointer',
-        boxShadow: ativo
-          ? '0 3px 10px rgba(5,195,221,.15)'
-          : 'none'
-      }}
-    >
-      <div
-        style={{
-          width: '42px',
-          height: '42px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '9px',
-          background: visual.fundo,
-          color: visual.cor,
-          fontSize: '22px'
-        }}
-      >
-        {visual.icone}
-      </div>
+// A partir de quantas áreas aparece o campo de busca.
+const MINIMO_PARA_BUSCA = 10;
 
-      <strong
-        style={{
-          display: 'block',
-          color: '#0A2845',
-          fontSize: '14px',
-          lineHeight: 1.25,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap'
-        }}
-      >
-        {titulo}
-      </strong>
+interface IContagem {
+  total: number;
+  vigentes: number;
+}
 
-      <span
-        style={{
-          display: 'block',
-          color: '#61788E',
-          fontSize: '11px',
-          lineHeight: 1.35
-        }}
-      >
-        {subtitulo}
-      </span>
-    </button>
-  );
-
-const contar = (
+const contarArea = (
   documentos: IDocumento[],
   areaId?: string
-): string => {
+): IContagem => {
 
   const lista =
     areaId === undefined
@@ -185,23 +119,117 @@ const contar = (
         documento => guid(documento.areaId) === guid(areaId)
       );
 
-  const vigentes =
-    lista.filter(
+  return {
+    total: lista.length,
+    vigentes: lista.filter(
       documento => normalizar(documento.status) === 'vigente'
-    ).length;
-
-  const outros =
-    lista.length - vigentes;
-
-  if (lista.length === 0) {
-    return 'Nenhum documento';
-  }
-
-  return (
-    `${vigentes} vigente(s)` +
-    (outros > 0 ? ` · ${outros} em andamento` : '')
-  );
+    ).length
+  };
 };
+
+const descreverContagem = (
+  c: IContagem
+): string =>
+  c.total === 0
+    ? 'Nenhum documento'
+    : `${c.vigentes} vigente(s)` +
+      (c.total - c.vigentes > 0 ? ` · ${c.total - c.vigentes} em andamento` : '');
+
+const Chip:
+  React.FC<{
+    titulo: string;
+    dica: string;
+    quantidade: number;
+    visual: IVisualArea;
+    ativo: boolean;
+    vazio: boolean;
+    onClick: () => void;
+  }> = ({
+    titulo,
+    dica,
+    quantidade,
+    visual,
+    ativo,
+    vazio,
+    onClick
+  }) => (
+
+    <button
+      type="button"
+      onClick={onClick}
+      title={dica}
+      aria-pressed={ativo}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+        maxWidth: '260px',
+        padding: '6px 10px 6px 6px',
+        border: ativo
+          ? '2px solid #05C3DD'
+          : '1px solid #D8E2EC',
+        borderRadius: '999px',
+        background: ativo
+          ? '#F0FCFE'
+          : '#FFFFFF',
+        cursor: 'pointer',
+        opacity: vazio && !ativo ? 0.62 : 1,
+        boxShadow: ativo
+          ? '0 2px 8px rgba(5,195,221,.18)'
+          : 'none'
+      }}
+    >
+      <span
+        style={{
+          width: '26px',
+          height: '26px',
+          flex: '0 0 auto',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '50%',
+          background: visual.fundo,
+          color: visual.cor,
+          fontSize: '14px'
+        }}
+      >
+        {visual.icone}
+      </span>
+
+      <span
+        style={{
+          color: '#0A2845',
+          fontSize: '13px',
+          fontWeight: 600,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {titulo}
+      </span>
+
+      <span
+        style={{
+          flex: '0 0 auto',
+          minWidth: '20px',
+          padding: '1px 7px',
+          borderRadius: '999px',
+          background: quantidade > 0
+            ? '#0B2D4D'
+            : '#EEF2F6',
+          color: quantidade > 0
+            ? '#FFFFFF'
+            : '#61788E',
+          fontSize: '11px',
+          fontWeight: 700,
+          textAlign: 'center'
+        }}
+      >
+        {quantidade}
+      </span>
+    </button>
+  );
 
 const AreasDocumentosCards:
   React.FC<IAreasDocumentosCardsProps> = ({
@@ -211,6 +239,26 @@ const AreasDocumentosCards:
     areaSelecionadaId,
     onSelecionar
   }) => {
+
+    const [expandido, setExpandido] = React.useState(false);
+    const [busca, setBusca] = React.useState('');
+
+    // Áreas com contagem e visual, ordenadas: com documentos primeiro.
+    const itens =
+      React.useMemo(
+        () =>
+          areas
+            .map((area, indice) => ({
+              area,
+              contagem: contarArea(documentos, area.id),
+              visual: visualDaArea(area, indice)
+            }))
+            .sort((a, b) =>
+              b.contagem.total - a.contagem.total ||
+              a.area.nome.localeCompare(b.area.nome, 'pt-BR')
+            ),
+        [areas, documentos]
+      );
 
     if (
       areas.length === 0 &&
@@ -233,45 +281,159 @@ const AreasDocumentosCards:
       );
     }
 
+    const termo = normalizar(busca);
+
+    const comDocumentos =
+      itens.filter(item => item.contagem.total > 0);
+
+    const semDocumentos =
+      itens.length - comDocumentos.length;
+
+    // Lista visível
+    let visiveis = itens;
+
+    if (termo) {
+      visiveis =
+        itens.filter(item =>
+          normalizar(item.area.nome).indexOf(termo) >= 0 ||
+          normalizar(item.area.sigla).indexOf(termo) >= 0
+        );
+    } else if (!expandido) {
+      // Recolhido: áreas com documentos (até o limite). Se nenhuma tiver
+      // documentos, mostra as primeiras áreas para não ficar vazio.
+      const base =
+        comDocumentos.length
+          ? comDocumentos
+          : itens;
+
+      visiveis = base.slice(0, LIMITE_RECOLHIDO);
+
+      // Garante que a área selecionada apareça.
+      const selecionada =
+        itens.find(item => guid(item.area.id) === guid(areaSelecionadaId));
+
+      if (selecionada && visiveis.indexOf(selecionada) < 0) {
+        visiveis = [...visiveis, selecionada];
+      }
+    }
+
+    const ocultas =
+      itens.length - visiveis.length;
+
+    const mostrarChipTodas =
+      mostrarTodas || areas.length > 1;
+
+    const totalGeral =
+      contarArea(documentos);
+
     return (
-      <div
+      <section
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
-          gap: '10px',
-          marginTop: '12px'
+          marginTop: '12px',
+          padding: '14px 16px',
+          border: '1px solid #D8E2EC',
+          borderRadius: '12px',
+          background: '#FFFFFF'
         }}
       >
-        {
-          // "Todas": para o admin é o acervo inteiro; para os demais,
-          // só aparece se ele tiver mais de uma área (junta as dele).
-          (mostrarTodas || areas.length > 1) &&
-          (
-            <Cartao
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px',
+            flexWrap: 'wrap',
+            marginBottom: '10px'
+          }}
+        >
+          <div>
+            <strong style={{ color: '#0A2845', fontSize: '14px' }}>
+              Áreas
+            </strong>
+            <span style={{ marginLeft: '8px', color: '#61788E', fontSize: '12px' }}>
+              {comDocumentos.length} com documentos
+              {semDocumentos > 0 ? ` · ${semDocumentos} sem documentos` : ''}
+            </span>
+          </div>
+
+          {itens.length >= MINIMO_PARA_BUSCA && (
+            <input
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              placeholder="Filtrar áreas..."
+              aria-label="Filtrar áreas"
+              style={{
+                width: '220px',
+                maxWidth: '100%',
+                padding: '7px 11px',
+                border: '1px solid #D8E2EC',
+                borderRadius: '999px',
+                fontSize: '12px'
+              }}
+            />
+          )}
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px',
+            alignItems: 'center'
+          }}
+        >
+          {mostrarChipTodas && !termo && (
+            <Chip
               titulo={mostrarTodas ? 'Todas as áreas' : 'Minhas áreas'}
-              subtitulo={contar(documentos)}
+              dica={descreverContagem(totalGeral)}
+              quantidade={totalGeral.total}
               visual={{ icone: '📁', fundo: '#FFF1CF', cor: '#D98A00' }}
               ativo={!areaSelecionadaId}
+              vazio={false}
               onClick={() => onSelecionar('')}
             />
-          )
-        }
+          )}
 
-        {
-          areas.map(
-            (area, indice) => (
-              <Cartao
-                key={area.id}
-                titulo={area.nome}
-                subtitulo={contar(documentos, area.id)}
-                visual={visualDaArea(area, indice)}
-                ativo={guid(areaSelecionadaId) === guid(area.id)}
-                onClick={() => onSelecionar(area.id)}
-              />
-            )
-          )
-        }
-      </div>
+          {visiveis.map(item => (
+            <Chip
+              key={item.area.id}
+              titulo={item.area.nome}
+              dica={`${item.area.sigla ? item.area.sigla + ' - ' : ''}${item.area.nome}: ${descreverContagem(item.contagem)}`}
+              quantidade={item.contagem.total}
+              visual={item.visual}
+              ativo={guid(areaSelecionadaId) === guid(item.area.id)}
+              vazio={item.contagem.total === 0}
+              onClick={() => onSelecionar(item.area.id)}
+            />
+          ))}
+
+          {termo && visiveis.length === 0 && (
+            <span style={{ color: '#61788E', fontSize: '12px' }}>
+              Nenhuma área encontrada.
+            </span>
+          )}
+
+          {!termo && (ocultas > 0 || expandido) && (
+            <button
+              type="button"
+              onClick={() => setExpandido(!expandido)}
+              style={{
+                padding: '6px 12px',
+                border: 'none',
+                background: 'transparent',
+                color: '#0B5CAB',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              {expandido
+                ? 'Mostrar menos'
+                : `+ ${ocultas} área(s)`}
+            </button>
+          )}
+        </div>
+      </section>
     );
   };
 

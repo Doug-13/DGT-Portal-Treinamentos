@@ -1,5 +1,7 @@
 import * as React from 'react';
 
+import VersaoPortal from './common/VersaoPortal';
+
 import {
   IEventoTreinamento,
   TreinamentoHistoricoService
@@ -2782,6 +2784,9 @@ const gestaoAreas =
                 styles.headerActions
               }
             >
+
+              {/* Versão do portal + Novidades */}
+              <VersaoPortal />
 
               <span
                 className={

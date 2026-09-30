@@ -21,6 +21,68 @@ import {
   IImpactoRemocao
 } from '../../services/TreinamentoRemocaoService';
 
+// Descrição resumida com "Ver mais" / "Ver menos".
+const LIMITE_DESCRICAO = 160;
+
+const DescricaoResumida: React.FC<{
+  texto: string;
+}> = ({ texto }) => {
+
+  const [aberta, setAberta] = React.useState(false);
+
+  const completo = (texto || '').trim();
+
+  if (!completo) {
+    return null;
+  }
+
+  const longo = completo.length > LIMITE_DESCRICAO;
+
+  // Corta no último espaço antes do limite, para não partir palavras.
+  let resumo = completo;
+
+  if (longo) {
+    const corte = completo.lastIndexOf(' ', LIMITE_DESCRICAO);
+    resumo = completo.substring(0, corte > 80 ? corte : LIMITE_DESCRICAO).replace(/[\s,.;:-]+$/, '') + '…';
+  }
+
+  return (
+    <span
+      style={{
+        display: 'block',
+        marginTop: '4px',
+        color: '#66788A',
+        fontSize: '12px',
+        lineHeight: 1.45,
+        maxWidth: '460px'
+      }}
+    >
+      {aberta || !longo ? completo : resumo}
+
+      {longo && (
+        <button
+          type="button"
+          onClick={() => setAberta(!aberta)}
+          aria-expanded={aberta}
+          style={{
+            marginLeft: '6px',
+            padding: 0,
+            border: 'none',
+            background: 'transparent',
+            color: '#0B5CAB',
+            fontSize: '12px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {aberta ? 'Ver menos' : 'Ver mais'}
+        </button>
+      )}
+    </span>
+  );
+};
+
 // Miniatura da capa do treinamento (com alternativa quando a imagem
 // não existe ou não pode ser lida pelo usuário).
 const CapaMiniatura: React.FC<{
@@ -35,10 +97,11 @@ const CapaMiniatura: React.FC<{
     [url]
   );
 
+  // Proporção 16:9, a mesma das capas do catálogo.
   const estilo: React.CSSProperties = {
-    width: '88px',
-    height: '56px',
-    borderRadius: '8px',
+    width: '128px',
+    height: '72px',
+    borderRadius: '10px',
     flex: '0 0 auto',
     objectFit: 'cover',
     display: 'block'
@@ -79,8 +142,8 @@ const CapaMiniatura: React.FC<{
           ? '#B45309'
           : '#FFFFFF',
         fontSize: url
-          ? '18px'
-          : '10px',
+          ? '20px'
+          : '11px',
         fontWeight: 700,
         textAlign: 'center',
         padding: '4px',
@@ -951,10 +1014,10 @@ const GestaoPage:
                                   'flex',
 
                                 gap:
-                                  '12px',
+                                  '14px',
 
                                 alignItems:
-                                  'flex-start'
+                                  'center'
                               }}
                             >
                             <CapaMiniatura
@@ -978,30 +1041,11 @@ const GestaoPage:
                               }
                             </strong>
 
-                            {treinamento.descricao && (
-                              <span
-                                style={{
-                                  display:
-                                    'block',
-
-                                  marginTop:
-                                    '4px',
-
-                                  color:
-                                    DGT.cinza,
-
-                                  fontSize:
-                                    '12px',
-
-                                  maxWidth:
-                                    '380px'
-                                }}
-                              >
-                                {
-                                  treinamento.descricao
-                                }
-                              </span>
-                            )}
+                            <DescricaoResumida
+                              texto={
+                                treinamento.descricao
+                              }
+                            />
                             </div>
                             </div>
                           </td>
