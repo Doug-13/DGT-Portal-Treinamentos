@@ -5,7 +5,6 @@ import {
 } from '../../../services/fluxo/bpmn/bpmnConversao';
 
 import {
-  ajustarCaminhoDosPacotes,
   carregarEditorBpmn,
   IElementoSelecionadoBpmn,
   IModelerFluxo
@@ -93,7 +92,7 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
 
         let cancelado = false;
 
-        let etapa = 'baixar o editor';
+        let etapa = 'carregar o editor';
 
         setCarregando(true);
         setErro('');
@@ -136,19 +135,14 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
             if (!cancelado) {
 
               const falha =
-                error as { name?: string; message?: string; request?: string };
+                error as { name?: string; message?: string };
 
-              setErro(
-                falha && falha.name === 'ChunkLoadError'
-                  ? 'Não foi possível baixar o editor visual do SharePoint.'
-                  : `Não foi possível ${etapa}.`
-              );
+              setErro(`Não foi possível ${etapa}.`);
 
               setDetalheErro(
                 [
                   falha && falha.name ? falha.name : 'Erro',
-                  falha && falha.message ? falha.message : String(error),
-                  `Pasta dos pacotes: ${ajustarCaminhoDosPacotes() || '(vazia)'}`
+                  falha && falha.message ? falha.message : String(error)
                 ].join(' · ')
               );
             }

@@ -19,8 +19,7 @@ require('bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css');
 // ============================================================
 // IMPLEMENTAÇÃO DO EDITOR COM bpmn-js
 //
-// Este arquivo vai para um pacote separado (chunk
-// "editor-fluxo-bpmn"), carregado apenas quando o editor abre.
+// Único arquivo que importa o bpmn-js diretamente.
 // ============================================================
 
 // ------------------------------------------------------------

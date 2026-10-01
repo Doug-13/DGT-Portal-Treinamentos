@@ -2,13 +2,15 @@ import {
   IBpmnSnapshot
 } from '../../../services/fluxo/bpmn/bpmnConversao';
 
+import {
+  criarModelerFluxo
+} from './modelerFluxo';
+
 // ============================================================
 // Contrato do editor BPMN usado pelas telas.
 //
-// A implementação (modelerFluxo.ts) importa o bpmn-js e é
-// carregada sob demanda, em um pacote separado, só quando alguém
-// abre o editor. Assim o portal não fica mais pesado para quem
-// apenas consulta documentos e treinamentos.
+// A implementação fica em modelerFluxo.ts (única parte que conhece
+// o bpmn-js); as telas usam só este contrato.
 // ============================================================
 
 export interface IElementoSelecionadoBpmn {
@@ -39,66 +41,14 @@ export interface IModelerFluxo {
 export type CriarModelerFluxo =
   (container: HTMLElement) => IModelerFluxo;
 
-// Variável especial do webpack: pasta de onde os pacotes extras
-// (chunks) são baixados.
-declare let __webpack_public_path__: string;
-
-const NOME_PACOTE_PRINCIPAL =
-  /portal-treinamentos-web-part_[0-9a-f]+\.js/i;
-
-// Em algumas formas de carregamento do SharePoint o webpack não
-// descobre corretamente a pasta do pacote (fica vazia, relativa à
-// página ou apontando para o carregador do SharePoint), e o download
-// do editor falha com "ChunkLoadError". Aqui a pasta é sempre a do
-// pacote principal deste web part, que já foi carregado.
-export const ajustarCaminhoDosPacotes = (): string => {
-
-  try {
-
-    const enderecos: string[] = [];
-
-    Array.from(document.getElementsByTagName('script')).forEach(
-      script => {
-        if (script.src) {
-          enderecos.push(script.src);
-        }
-      }
-    );
-
-    if (window.performance && typeof window.performance.getEntriesByType === 'function') {
-      window.performance.getEntriesByType('resource').forEach(
-        entrada => enderecos.push(entrada.name)
-      );
-    }
-
-    const principal =
-      enderecos.find(endereco => NOME_PACOTE_PRINCIPAL.test(endereco.split('?')[0]));
-
-    if (principal) {
-      const semConsulta =
-        principal.split('?')[0];
-
-      __webpack_public_path__ =
-        semConsulta.slice(0, semConsulta.lastIndexOf('/') + 1);
-    }
-
-    return __webpack_public_path__ || '';
-
-  } catch (error) {
-    console.error(error);
-    return '';
-  }
-};
-
-export const carregarEditorBpmn = async (): Promise<CriarModelerFluxo> => {
-
-  ajustarCaminhoDosPacotes();
-
-  const modulo =
-    await import(
-      /* webpackChunkName: 'editor-fluxo-bpmn' */
-      './modelerFluxo'
-    );
-
-  return modulo.criarModelerFluxo;
-};
+// O editor (bpmn-js) é incluído no pacote principal do web part.
+//
+// Uma primeira versão baixava o editor sob demanda, em um pacote
+// separado (chunk). No SharePoint isso se mostrou instável: quando
+// mais de uma cópia do web part é carregada na mesma página/sessão
+// (ex.: versão publicada + versão local do "npm run start"), os
+// pacotes extras podem ser registrados na cópia errada e o editor
+// não abre ("criar is not a function"). Incluindo no pacote
+// principal, esse problema deixa de existir.
+export const carregarEditorBpmn = async (): Promise<CriarModelerFluxo> =>
+  criarModelerFluxo;
