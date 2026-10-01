@@ -5,6 +5,7 @@ import {
 } from '../../../services/fluxo/bpmn/bpmnConversao';
 
 import {
+  ajustarCaminhoDosPacotes,
   carregarEditorBpmn,
   IElementoSelecionadoBpmn,
   IModelerFluxo
@@ -81,10 +82,22 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
     const [erro, setErro] =
       React.useState<string>('');
 
+    const [detalheErro, setDetalheErro] =
+      React.useState<string>('');
+
+    const [tentativa, setTentativa] =
+      React.useState<number>(0);
+
     React.useEffect(
       () => {
 
         let cancelado = false;
+
+        let etapa = 'baixar o editor';
+
+        setCarregando(true);
+        setErro('');
+        setDetalheErro('');
 
         const iniciar = async (): Promise<void> => {
 
@@ -96,6 +109,8 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
             if (cancelado || !containerRef.current) {
               return;
             }
+
+            etapa = 'iniciar o editor';
 
             const modeler =
               criar(containerRef.current);
@@ -110,14 +125,32 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
               () => callbacksRef.current.onAlterado()
             );
 
+            etapa = 'abrir o desenho do fluxo';
+
             await modeler.importar(xmlInicial);
 
           } catch (error) {
 
-            console.error(error);
+            console.error('[Editor de fluxo] Falha ao ' + etapa, error);
 
             if (!cancelado) {
-              setErro('Não foi possível abrir o editor visual. Veja o console do navegador (F12).');
+
+              const falha =
+                error as { name?: string; message?: string; request?: string };
+
+              setErro(
+                falha && falha.name === 'ChunkLoadError'
+                  ? 'Não foi possível baixar o editor visual do SharePoint.'
+                  : `Não foi possível ${etapa}.`
+              );
+
+              setDetalheErro(
+                [
+                  falha && falha.name ? falha.name : 'Erro',
+                  falha && falha.message ? falha.message : String(error),
+                  `Pasta dos pacotes: ${ajustarCaminhoDosPacotes() || '(vazia)'}`
+                ].join(' · ')
+              );
             }
 
           } finally {
@@ -141,7 +174,7 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
           }
         };
       },
-      []
+      [tentativa]
     );
 
     React.useImperativeHandle(
@@ -259,13 +292,39 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  flexDirection: 'column',
+                  gap: '10px',
                   padding: '24px',
                   textAlign: 'center',
                   color: COR_INDIGO,
-                  fontWeight: 600
+                  fontWeight: 600,
+                  background: '#FFFFFF'
                 }}
               >
-                {erro}
+                <div>{erro}</div>
+                {
+                  detalheErro && (
+                    <div
+                      style={{
+                        maxWidth: '720px',
+                        fontWeight: 400,
+                        fontSize: '12.5px',
+                        color: COR_AZUL,
+                        wordBreak: 'break-all',
+                        userSelect: 'text'
+                      }}
+                    >
+                      {detalheErro}
+                    </div>
+                  )
+                }
+                <button
+                  type="button"
+                  onClick={() => setTentativa(valor => valor + 1)}
+                  style={{ ...estiloBotaoFerramenta, border: `2px solid ${COR_AZUL}` }}
+                >
+                  Tentar novamente
+                </button>
               </div>
             )
           }
