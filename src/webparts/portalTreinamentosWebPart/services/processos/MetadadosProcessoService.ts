@@ -173,3 +173,39 @@ export const contarUsoMetadados = (
 
   return uso;
 };
+
+// ------------------------------------------------------------
+// Contrato de armazenamento dos metadados (local ou Dataverse)
+// ------------------------------------------------------------
+
+export interface IMetadadosRepositorio {
+  readonly local: boolean;
+
+  // versoes: só usado no modo local, para migrar processos antigos.
+  listar(processoId: string, versoes?: IFluxoDefinicao[]): Promise<IFluxoMetadado[]>;
+
+  // Grava a lista inteira (na ordem) e devolve com os ids.
+  salvar(processoId: string, metadados: IFluxoMetadado[]): Promise<IFluxoMetadado[]>;
+}
+
+export class MetadadosRepositorioLocal
+  implements IMetadadosRepositorio {
+
+  public readonly local: boolean =
+    true;
+
+  public async listar(
+    processoId: string,
+    versoes: IFluxoDefinicao[] = []
+  ): Promise<IFluxoMetadado[]> {
+    return migrarMetadadosDasVersoes(processoId, versoes);
+  }
+
+  public async salvar(
+    processoId: string,
+    metadados: IFluxoMetadado[]
+  ): Promise<IFluxoMetadado[]> {
+    salvarMetadadosProcesso(processoId, metadados);
+    return metadados;
+  }
+}

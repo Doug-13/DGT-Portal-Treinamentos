@@ -1825,6 +1825,10 @@ const PortalRouter:
               props.areasAdministrativas
             }
 
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
             contexto={
               props.contextoAcesso
             }

@@ -1680,6 +1680,204 @@ export class DataverseService {
   }
 
   // ==========================================================
+  // ACESSO GENÉRICO (usado pelo fluxo configurável)
+  //
+  // Leitura, criação e atualização de qualquer tabela pelo nome
+  // lógico. A atualização aceita ETag (If-Match) para impedir que
+  // duas pessoas sobrescrevam a mesma revisão ao mesmo tempo.
+  // ==========================================================
+
+  public async nomeConjunto(
+    logicalName: string
+  ): Promise<string> {
+    return this.getEntitySetName(logicalName);
+  }
+
+  public async referenciaLookup(
+    logicalName: string,
+    id: string
+  ): Promise<string> {
+    const entitySet =
+      await this.getEntitySetName(logicalName);
+
+    return `/${entitySet}(${String(id).replace(/[{}]/g, '').trim()})`;
+  }
+
+  // Lê todas as páginas da consulta (segue @odata.nextLink).
+  public async listarRegistros(
+    logicalName: string,
+    consulta: string
+  ): Promise<IDataverseRecord[]> {
+
+    const entitySet =
+      await this.getEntitySetName(logicalName);
+
+    const registros: IDataverseRecord[] = [];
+
+    let url: string | undefined =
+      `${this.apiUrl}/${entitySet}${consulta ? `?${consulta.replace(/^\?/, '')}` : ''}`;
+
+    let paginas = 0;
+
+    while (url && paginas < 50) {
+
+      paginas++;
+
+      const response: AadHttpClientResponse =
+        await this.client.get(
+          url,
+          AadHttpClient.configurations.v1,
+          {
+            headers: {
+              Accept: 'application/json',
+              'OData-MaxVersion': '4.0',
+              'OData-Version': '4.0',
+              Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue",odata.maxpagesize=500'
+            }
+          }
+        );
+
+      if (!response.ok) {
+        const detalhe = await response.text();
+        throw new Error(
+          `Dataverse retornou ${response.status} ${response.statusText} ao ler ${logicalName}. ${detalhe}`
+        );
+      }
+
+      const dados =
+        (await response.json()) as { value?: IDataverseRecord[]; '@odata.nextLink'?: string };
+
+      (dados.value || []).forEach(registro => registros.push(registro));
+
+      url = dados['@odata.nextLink'];
+    }
+
+    return registros;
+  }
+
+  public async obterRegistro(
+    logicalName: string,
+    id: string,
+    select: string[]
+  ): Promise<{ registro: IDataverseRecord; etag: string } | undefined> {
+
+    const entitySet =
+      await this.getEntitySetName(logicalName);
+
+    const response: AadHttpClientResponse =
+      await this.client.get(
+        `${this.apiUrl}/${entitySet}(${String(id).replace(/[{}]/g, '').trim()})?$select=${select.join(',')}`,
+        AadHttpClient.configurations.v1,
+        {
+          headers: {
+            Accept: 'application/json',
+            'OData-MaxVersion': '4.0',
+            'OData-Version': '4.0',
+            Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue"'
+          }
+        }
+      );
+
+    if (response.status === 404) {
+      return undefined;
+    }
+
+    if (!response.ok) {
+      const detalhe = await response.text();
+      throw new Error(
+        `Dataverse retornou ${response.status} ${response.statusText} ao ler ${logicalName}. ${detalhe}`
+      );
+    }
+
+    const registro =
+      (await response.json()) as IDataverseRecord;
+
+    return {
+      registro,
+      etag: String(registro['@odata.etag'] || '')
+    };
+  }
+
+  // Cria e devolve o id do novo registro.
+  public async criarRegistro(
+    logicalName: string,
+    dados: Record<string, unknown>
+  ): Promise<string> {
+
+    const entitySet =
+      await this.getEntitySetName(logicalName);
+
+    const criado =
+      await this.postObject(entitySet, dados);
+
+    return String(criado[`${logicalName}id`] || '');
+  }
+
+  // Com etag: só grava se o registro não mudou desde a leitura.
+  // Se mudou, lança um erro com codigo = 'CONFLITO'.
+  public async atualizarRegistro(
+    logicalName: string,
+    id: string,
+    dados: Record<string, unknown>,
+    etag?: string
+  ): Promise<string> {
+
+    const entitySet =
+      await this.getEntitySetName(logicalName);
+
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
+      'OData-MaxVersion': '4.0',
+      'OData-Version': '4.0',
+      Prefer: 'return=representation'
+    };
+
+    if (etag) {
+      headers['If-Match'] = etag;
+    }
+
+    const response: AadHttpClientResponse =
+      await this.client.fetch(
+        `${this.apiUrl}/${entitySet}(${String(id).replace(/[{}]/g, '').trim()})?$select=${logicalName}id`,
+        AadHttpClient.configurations.v1,
+        {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(dados)
+        }
+      );
+
+    if (response.status === 412) {
+      const erro = new Error(
+        'Outra pessoa alterou este registro enquanto você trabalhava. Recarregue a página e tente de novo.'
+      ) as Error & { codigo?: string };
+      erro.codigo = 'CONFLITO';
+      throw erro;
+    }
+
+    if (!response.ok) {
+      const detalhe = await response.text();
+      throw new Error(
+        `Dataverse retornou ${response.status} ${response.statusText} ao atualizar ${logicalName}. ${detalhe}`
+      );
+    }
+
+    const texto =
+      await response.text();
+
+    if (!texto) {
+      return '';
+    }
+
+    try {
+      return String((JSON.parse(texto) as IDataverseRecord)['@odata.etag'] || '');
+    } catch {
+      return '';
+    }
+  }
+
+  // ==========================================================
   // PROCESSOS (somente leitura)
   //
   // Usados pelo módulo Processos e pelo fluxo de revisão em

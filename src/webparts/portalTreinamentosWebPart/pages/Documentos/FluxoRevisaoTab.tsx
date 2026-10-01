@@ -54,6 +54,10 @@ export interface IFluxoRevisaoTabProps {
 
   // Abre o processo no módulo Processos (para criar/publicar o fluxo).
   onAbrirProcesso?: (processoId: string) => void;
+
+  // Chamado depois de cada ação (Dataverse), para atualizar status e
+  // revisões na tela do documento.
+  onRevisaoAlterada?: () => Promise<void>;
 }
 
 const COR_AZUL = '#202A44';
@@ -152,7 +156,8 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   revisoes,
   contexto,
   dataverseService,
-  onAbrirProcesso
+  onAbrirProcesso,
+  onRevisaoAlterada
 }) => {
 
   const fluxo =
@@ -160,8 +165,12 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       documento,
       revisoes,
       contexto,
-      dataverseService
+      dataverseService,
+      onRevisaoAlterada
     );
+
+  const teste =
+    fluxo.local ? ' (teste)' : '';
 
   const [processoEscolhido, setProcessoEscolhido] =
     React.useState<string>('');
@@ -186,7 +195,19 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
     [fluxo.instancia?.elementoAtualId, fluxo.instancia?.historico.length]
   );
 
-  const avisoTeste = (
+  const avisoTeste = !fluxo.local
+    ? (
+      <>
+        {
+          fluxo.avisos.length > 0 && (
+            <div role="status" style={{ border: `2px solid ${COR_INDIGO}`, borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: COR_AZUL, background: '#FFFFFF' }}>
+              {fluxo.avisos.join(' ')}
+            </div>
+          )
+        }
+      </>
+    )
+    : (
     <div
       style={{
         border: `2px solid ${COR_INDIGO}`,
@@ -217,12 +238,12 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
         )
       }
     </div>
-  );
+    );
 
   if (fluxo.situacao === 'carregando') {
     return (
       <div style={{ padding: '24px', color: COR_AZUL }}>
-        Carregando simulação do fluxo...
+        {fluxo.local ? 'Carregando simulação do fluxo...' : 'Carregando o fluxo da revisão...'}
       </div>
     );
   }
@@ -231,6 +252,21 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   // Documento ainda sem processo / com vários processos / processo
   // sem fluxo publicado
   // ----------------------------------------------------------
+
+  if (fluxo.situacao === 'semRevisao') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
+        {avisoTeste}
+        <section style={{ ...estiloCartao, padding: '18px 20px' }}>
+          <div style={{ fontSize: '17px', fontWeight: 700 }}>Nenhuma revisão em andamento</div>
+          <div style={{ fontSize: '14px', marginTop: '4px' }}>
+            O fluxo começa quando uma nova revisão é criada. Use a aba “Revisão” para criar a próxima
+            revisão do documento; ela seguirá automaticamente o fluxo publicado do processo.
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   if (
     fluxo.situacao === 'semProcesso' ||
@@ -342,7 +378,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                         }}
                         style={estiloBotao(true, !processoEscolhido)}
                       >
-                        {fluxo.situacao === 'semProcesso' ? 'Vincular (teste)' : 'Definir como principal (teste)'}
+                        {fluxo.situacao === 'semProcesso' ? `Vincular${teste}` : `Definir como principal${teste}`}
                       </button>
                     </div>
                   )
@@ -753,23 +789,25 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       .filter(item => item.sistema)
       .map(item => item.acaoChave);
 
+  const s_ = (seria: string, foi: string): string => (fluxo.local ? seria : foi);
+
   const resultadoSimulado: string[] =
     acoesSistemaExecutadas.indexOf('publicarComRetreinamento') >= 0
       ? [
-        `${instancia.revisao} seria marcada como vigente e a revisão anterior como substituída (histórico preservado).`,
-        'O impacto seria calculado em dgt_revisaoimpacto a partir dos treinamentos vinculados ao documento.',
-        'Novas atribuições seriam criadas com origem "Revisão documental", vinculadas a esta revisão.',
-        'Os colaboradores impactados seriam notificados pelo Power Automate.'
+        `${instancia.revisao} ${s_('seria marcada', 'foi marcada')} como vigente e a revisão anterior como substituída (histórico preservado).`,
+        `O impacto ${s_('seria calculado', 'foi calculado')} em dgt_revisaoimpacto a partir dos treinamentos vinculados ao documento.`,
+        `Novas atribuições ${s_('seriam criadas', 'foram criadas')} com origem "Revisão documental", vinculadas a esta revisão.`,
+        `Os colaboradores impactados ${s_('seriam notificados', 'são notificados')} pelo Power Automate.`
       ]
       : acoesSistemaExecutadas.indexOf('publicarSemRetreinamento') >= 0
         ? [
-          `${instancia.revisao} seria marcada como vigente e a revisão anterior como substituída (histórico preservado).`,
-          'A dispensa de retreinamento seria registrada com responsável, data e justificativa.',
-          'Os treinamentos já concluídos continuariam válidos.'
+          `${instancia.revisao} ${s_('seria marcada', 'foi marcada')} como vigente e a revisão anterior como substituída (histórico preservado).`,
+          `A dispensa de retreinamento ${s_('seria registrada', 'foi registrada')} com responsável, data e justificativa.`,
+          `Os treinamentos já concluídos ${s_('continuariam', 'continuam')} válidos.`
         ]
         : [
           'O fluxo chegou ao fim sem passar por uma tarefa de sistema de publicação.',
-          'Em produção, a revisão continuaria fora de vigência até ser publicada. Configure uma tarefa de sistema "Publicar" no fluxo do processo, se for o caso.'
+          'A revisão continua fora de vigência até ser publicada. Configure uma tarefa de sistema "Publicar" no fluxo do processo, se for o caso.'
         ];
 
   return (
@@ -831,52 +869,70 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
           </div>
         </div>
 
-        <div style={{ marginLeft: 'auto', minWidth: '260px' }}>
-          <label htmlFor="fluxo-ator" style={estiloRotuloCampo}>
-            Executar como
-          </label>
-          <select
-            id="fluxo-ator"
-            value={ator?.chave}
-            onChange={evento => fluxo.selecionarAtor(evento.target.value)}
-            style={{
-              minHeight: '40px',
-              width: '100%',
-              border: `1px solid ${COR_BORDA}`,
-              borderRadius: '6px',
-              padding: '0 10px',
-              fontFamily: 'inherit',
-              fontSize: '14px',
-              color: COR_AZUL,
-              background: '#FFFFFF'
-            }}
-          >
-            {
-              fluxo.atores.map(
-                item => (
-                  <option key={item.chave} value={item.chave}>
-                    {item.rotulo}
-                  </option>
-                )
-              )
-            }
-          </select>
-          {
-            ator && (
-              <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                {ator.descricao}
+        {
+          fluxo.local
+            ? (
+              <>
+                <div style={{ marginLeft: 'auto', minWidth: '260px' }}>
+                  <label htmlFor="fluxo-ator" style={estiloRotuloCampo}>
+                    Executar como
+                  </label>
+                  <select
+                    id="fluxo-ator"
+                    value={ator?.chave}
+                    onChange={evento => fluxo.selecionarAtor(evento.target.value)}
+                    style={{
+                      minHeight: '40px',
+                      width: '100%',
+                      border: `1px solid ${COR_BORDA}`,
+                      borderRadius: '6px',
+                      padding: '0 10px',
+                      fontFamily: 'inherit',
+                      fontSize: '14px',
+                      color: COR_AZUL,
+                      background: '#FFFFFF'
+                    }}
+                  >
+                    {
+                      fluxo.atores.map(
+                        item => (
+                          <option key={item.chave} value={item.chave}>
+                            {item.rotulo}
+                          </option>
+                        )
+                      )
+                    }
+                  </select>
+                  {
+                    ator && (
+                      <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                        {ator.descricao}
+                      </div>
+                    )
+                  }
+                </div>
+
+                <button
+                  type="button"
+                  onClick={reiniciar}
+                  style={estiloBotao(false, false)}
+                >
+                  Reiniciar simulação
+                </button>
+              </>
+            )
+            : (
+              <div style={{ marginLeft: 'auto', minWidth: '220px' }}>
+                <div style={estiloRotuloCampo}>Você</div>
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>{ator ? ator.rotulo : '-'}</div>
+                {
+                  ator && ator.descricao && (
+                    <div style={{ fontSize: '12px', marginTop: '2px' }}>{ator.descricao}</div>
+                  )
+                }
               </div>
             )
-          }
-        </div>
-
-        <button
-          type="button"
-          onClick={reiniciar}
-          style={estiloBotao(false, false)}
-        >
-          Reiniciar simulação
-        </button>
+        }
       </div>
 
       {/* DIAGRAMA */}
@@ -915,7 +971,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
         <section style={estiloCartao}>
           <div style={estiloBarraSecao}>
-            {concluido ? 'Resultado (simulado)' : `Etapa atual — ${elementoAtual?.nome || '-'}`}
+            {concluido ? (fluxo.local ? 'Resultado (simulado)' : 'Revisão concluída') : `Etapa atual — ${elementoAtual?.nome || '-'}`}
           </div>
 
           {
@@ -926,7 +982,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                     Fluxo concluído em {formatarDataHora(instancia.concluidoEm)}
                   </div>
                   <div style={{ fontSize: '13.5px' }}>
-                    Em produção, a tarefa de sistema executaria:
+                    {fluxo.local ? 'Em produção, a tarefa de sistema executaria:' : 'O que foi feito na conclusão:'}
                   </div>
                   <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', lineHeight: '21px' }}>
                     {
@@ -935,9 +991,13 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                       )
                     }
                   </ul>
-                  <div style={{ fontSize: '12.5px', borderTop: `1px solid ${COR_BORDA}`, paddingTop: '10px' }}>
-                    Nenhuma dessas ações foi executada: a publicação real continua sendo feita pela aba “Revisão”.
-                  </div>
+                  {
+                    fluxo.local && (
+                      <div style={{ fontSize: '12.5px', borderTop: `1px solid ${COR_BORDA}`, paddingTop: '10px' }}>
+                        Nenhuma dessas ações foi executada: a publicação real continua sendo feita pela aba “Revisão”.
+                      </div>
+                    )
+                  }
                 </div>
               )
               : elementoAtual && (
@@ -947,7 +1007,12 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                     <div>
                       <div style={estiloRotuloCampo}>Responsável</div>
                       <div style={{ fontSize: '14px' }}>
-                        {elementoAtual.responsaveis.map(item => item.descricao).join(', ') || '-'}
+                        {
+                          (fluxo.responsaveisEtapaAtual.length > 0
+                            ? fluxo.responsaveisEtapaAtual
+                            : elementoAtual.responsaveis.map(item => item.descricao)
+                          ).join(' · ') || '-'
+                        }
                       </div>
                     </div>
                     <div>
@@ -979,7 +1044,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                       >
                         <strong style={{ color: COR_INDIGO }}>Sem permissão nesta etapa.</strong>{' '}
                         {ator?.ator.nome} não é responsável por “{elementoAtual.nome}”.
-                        Troque em “Executar como” para simular o responsável.
+                        {fluxo.local ? ' Troque em “Executar como” para simular o responsável.' : ' A etapa aguarda um dos responsáveis acima.'}
                       </div>
                     )
                   }
@@ -1067,7 +1132,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
         <section style={estiloCartao}>
           <div style={estiloBarraSecao}>
-            Histórico da tramitação (simulado)
+            {fluxo.local ? 'Histórico da tramitação (simulado)' : 'Histórico da tramitação'}
           </div>
           {
             metadadosPreenchidos.length > 0 && (

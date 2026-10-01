@@ -22,6 +22,24 @@ import {
   obterMeusVinculos
 } from '../services/DocumentoVisibilidade';
 
+import {
+  IResponsavelResolvido
+} from '../models/Fluxo';
+
+import {
+  FEATURE_FLAGS,
+  fluxoNoDataverse
+} from '../constants/featureFlags';
+
+import {
+  usuarioAtende
+} from '../services/fluxo/ResolvedorResponsaveis';
+
+import {
+  TABELA_TAREFA_FLUXO,
+  TAREFA
+} from '../services/fluxo/dataverse/esquemaFluxo';
+
 // ============================================================
 // MINHAS PENDÊNCIAS DE DOCUMENTOS
 //
@@ -33,7 +51,9 @@ import {
 
 export type TipoPendenciaDocumento =
   | 'elaborar'
-  | 'aprovar';
+  | 'aprovar'
+  // Etapa do fluxo do processo aguardando o usuário (dgt_tarefafluxo).
+  | 'fluxo';
 
 export interface IPendenciaDocumento {
   id: string;
@@ -43,6 +63,10 @@ export interface IPendenciaDocumento {
   status: string;
   desde: string;
   diasParado: number;
+
+  // tipo = 'fluxo'
+  etapa?: string;
+  prazo?: string;
 }
 
 export interface IUseDocumentosPendencias {
@@ -109,6 +133,10 @@ export const useDocumentosPendencias = (
   const [registros, setRegistros] =
     React.useState<IDataverseRecord[]>([]);
 
+  // Pendências do fluxo do processo (modo Dataverse).
+  const [tarefas, setTarefas] =
+    React.useState<IDataverseRecord[]>([]);
+
   const [carregando, setCarregando] =
     React.useState(false);
 
@@ -131,6 +159,22 @@ export const useDocumentosPendencias = (
           setRegistros(
             await dataverse.getDocumentoRevisoesEmAndamento()
           );
+
+          if (FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE && fluxoNoDataverse()) {
+            try {
+              setTarefas(
+                await dataverse.listarRegistros(
+                  TABELA_TAREFA_FLUXO,
+                  `$select=${TAREFA.id},${TAREFA.revisaoValor},${TAREFA.etapaNome},${TAREFA.responsaveisJson},${TAREFA.prazo},${TAREFA.criadoEm}` +
+                  `&$filter=${TAREFA.situacao} eq 'pendente'`
+                )
+              );
+            } catch (erroTarefas) {
+              // Tabela ainda não criada: segue só com as pendências antigas.
+              console.error(erroTarefas);
+              setTarefas([]);
+            }
+          }
         } catch (e) {
           console.error(e);
           setErro(
@@ -192,8 +236,69 @@ export const useDocumentosPendencias = (
 
         const lista: IPendenciaDocumento[] = [];
 
+        // Revisões governadas pelo fluxo do processo: a pendência vem
+        // da etapa (dgt_tarefafluxo), não do status antigo.
+        const revisoesComFluxo: string[] =
+          tarefas.map(tarefa => guid(texto(tarefa, TAREFA.revisaoValor)));
+
+        tarefas.forEach(
+          tarefa => {
+
+            const revisaoId =
+              guid(texto(tarefa, TAREFA.revisaoValor));
+
+            const registro =
+              registros.find(item => guid(texto(item, 'dgt_documentorevisaoid')) === revisaoId);
+
+            const documento =
+              registro
+                ? documentos.find(item => guid(item.id) === guid(texto(registro, '_dgt_documento_value')))
+                : undefined;
+
+            if (!registro || !documento) {
+              return;
+            }
+
+            let responsaveis: IResponsavelResolvido[] = [];
+
+            try {
+              responsaveis = JSON.parse(texto(tarefa, TAREFA.responsaveisJson) || '[]') as IResponsavelResolvido[];
+            } catch {
+              responsaveis = [];
+            }
+
+            const minha =
+              admin ||
+              responsaveis.some(item => usuarioAtende(item, meuId, usuariosAreas));
+
+            if (!minha) {
+              return;
+            }
+
+            const desde =
+              texto(tarefa, TAREFA.criadoEm);
+
+            lista.push({
+              id: guid(texto(tarefa, TAREFA.id)),
+              tipo: 'fluxo',
+              documento,
+              revisao: texto(registro, 'dgt_revisao'),
+              status: texto(registro, 'dgt_status@OData.Community.Display.V1.FormattedValue') || '',
+              desde,
+              diasParado: diasDesde(desde),
+              etapa: texto(tarefa, TAREFA.etapaNome),
+              prazo: texto(tarefa, TAREFA.prazo) || undefined
+            });
+          }
+        );
+
         registros.forEach(
           registro => {
+
+            if (revisoesComFluxo.indexOf(guid(texto(registro, 'dgt_documentorevisaoid'))) >= 0) {
+              return;
+            }
+
 
             const documento =
               documentos.find(
@@ -266,6 +371,7 @@ export const useDocumentosPendencias = (
       },
       [
         registros,
+        tarefas,
         documentos,
         contexto,
         usuariosAreas

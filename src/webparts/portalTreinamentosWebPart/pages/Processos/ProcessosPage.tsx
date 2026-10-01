@@ -21,7 +21,8 @@ import {
 } from '../../services/DataverseService';
 
 import {
-  IAreaAdmin
+  IAreaAdmin,
+  IUsuarioAreaAdmin
 } from '../../services/AreaAdminService';
 
 import {
@@ -59,6 +60,9 @@ export interface IProcessosPageProps {
 
   // Áreas cadastradas (dgt_area), para classificar os processos.
   areas?: IAreaAdmin[];
+
+  // Vínculos usuário × área (para escolher responsáveis das etapas).
+  usuariosAreas?: IUsuarioAreaAdmin[];
   contexto?: IContextoAcesso;
   dataverseService?: DataverseService;
   onAbrirDocumento: (documento: IDocumento) => void;
@@ -189,6 +193,7 @@ const resumoFluxo = (
 const ProcessosPage: React.FC<IProcessosPageProps> = ({
   documentos,
   areas = [],
+  usuariosAreas = [],
   contexto,
   dataverseService,
   onAbrirDocumento
@@ -210,6 +215,17 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
           .filter(area => area.ativa)
           .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
       [areas]
+    );
+
+  // Usuários distintos (para responsável do tipo "Usuário").
+  const usuarios =
+    React.useMemo(
+      () =>
+        usuariosAreas
+          .filter((vinculo, indice, lista) => lista.findIndex(item => item.usuarioId === vinculo.usuarioId) === indice)
+          .map(vinculo => ({ id: vinculo.usuarioId, nome: vinculo.usuarioNome, email: vinculo.usuarioEmail }))
+          .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+      [usuariosAreas]
     );
 
   const [novoAreaId, setNovoAreaId] =
@@ -266,7 +282,33 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
       item => item.id === processoId
     );
 
-  const avisoTeste = (
+  // Sufixo "(teste)" nos botões só no modo de teste.
+  const teste =
+    dados.local ? ' (teste)' : '';
+
+  const [erroAcao, setErroAcao] =
+    React.useState<string>('');
+
+  const tratarErro = (
+    error: unknown
+  ): void => {
+    console.error(error);
+    setErroAcao(error instanceof Error ? error.message : 'Não foi possível concluir a operação.');
+  };
+
+  const avisoTeste = !dados.local
+    ? (
+      <>
+        {
+          (erroAcao || dados.erroMetadados) && (
+            <div role="alert" style={{ border: `2px solid ${COR_INDIGO}`, borderRadius: '8px', padding: '10px 14px', fontSize: '13.5px', color: COR_AZUL, background: '#FFFFFF' }}>
+              <strong style={{ color: COR_INDIGO }}>Atenção:</strong> {erroAcao || dados.erroMetadados}
+            </div>
+          )
+        }
+      </>
+    )
+    : (
     <div
       style={{
         border: `2px solid ${COR_INDIGO}`,
@@ -287,7 +329,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
         )
       }
     </div>
-  );
+    );
 
   if (dados.carregando && dados.processos.length === 0) {
     return (
@@ -365,7 +407,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {selo(processoSelecionado.areaNome ? `Área: ${processoSelecionado.areaNome}` : 'Sem área', false)}
-            {selo(processoSelecionado.origem === 'teste' ? 'Teste (local)' : 'Dataverse', processoSelecionado.origem === 'dataverse')}
+            {dados.local && selo(processoSelecionado.origem === 'teste' ? 'Teste (local)' : 'Dataverse', processoSelecionado.origem === 'dataverse')}
             {selo(resumo.texto, resumo.publicado)}
             {selo(`${vinculosProcesso.length} documento(s)`, false)}
           </div>
@@ -394,6 +436,10 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 onAlterado={() => dados.recarregar()}
                 metadados={metadadosProcesso}
                 onAlterarMetadados={lista => dados.salvarMetadados(processoSelecionado.id, lista)}
+                catalogo={dados.catalogo}
+                areas={areasAtivas}
+                usuarios={usuarios}
+                gravandoMetadados={dados.gravandoMetadados}
               />
             )
             : aba === 'metadados'
@@ -404,7 +450,10 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                   <div style={{ fontSize: '13.5px' }}>
                     Campos que as etapas do fluxo podem exibir, exigir ou usar nas decisões. Valem para
                     <strong> todas as versões</strong> do fluxo e aparecem nas telas <strong>nesta ordem</strong>.
-                    {podeEditar ? ' As alterações ficam salvas na hora.' : ''}
+                    {podeEditar ? ' As alterações são gravadas automaticamente.' : ''}
+                    {podeEditar && !dados.local && (
+                      <strong style={{ marginLeft: '8px' }}>{dados.gravandoMetadados ? 'Gravando…' : 'Gravado.'}</strong>
+                    )}
                   </div>
                   <PainelMetadados
                     metadados={metadadosProcesso}
@@ -446,13 +495,14 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                         type="button"
                         disabled={!documentoParaVincular}
                         onClick={() => {
+                          setErroAcao('');
                           dados.vincularDocumento(documentoParaVincular, processoSelecionado.id)
                             .then(() => setDocumentoParaVincular(''))
-                            .catch((error: unknown) => console.error(error));
+                            .catch(tratarErro);
                         }}
                         style={estiloBotao(true, !documentoParaVincular)}
                       >
-                        Vincular (teste)
+                        Vincular{teste}
                       </button>
                     </div>
                   )
@@ -514,24 +564,29 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => {
+                                          setErroAcao('');
                                           dados.definirPrincipal(vinculo.documentoId, vinculo.processoId)
-                                            .catch((error: unknown) => console.error(error));
+                                            .catch(tratarErro);
                                         }}
                                         style={estiloBotao(false, false)}
                                       >
-                                        Tornar principal (teste)
+                                        Tornar principal{teste}
                                       </button>
                                     )
                                   }
 
                                   {
                                     podeEditar &&
-                                    vinculo.origem === 'teste' && (
+                                    (!dados.local || vinculo.origem === 'teste') && (
                                       <button
                                         type="button"
                                         onClick={() => {
+                                          if (!window.confirm('Remover o vínculo deste documento com o processo? Revisões em andamento continuam no fluxo em que começaram.')) {
+                                            return;
+                                          }
+                                          setErroAcao('');
                                           dados.removerVinculo(vinculo.id)
-                                            .catch((error: unknown) => console.error(error));
+                                            .catch(tratarErro);
                                         }}
                                         style={estiloBotao(false, false)}
                                       >
@@ -631,7 +686,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 }}
                 style={estiloBotao(true, false)}
               >
-                Novo processo (teste)
+                Novo processo{teste}
               </button>
             )
           }
@@ -641,7 +696,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
       {
         novoAberto && (
           <section style={estiloCartao}>
-            <div style={estiloBarraSecao}>Novo processo (somente neste navegador)</div>
+            <div style={estiloBarraSecao}>{dados.local ? 'Novo processo (somente neste navegador)' : 'Novo processo'}</div>
             <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 200px) minmax(0, 1fr) minmax(200px, 320px)', gap: '12px' }}>
                 <div>
@@ -696,30 +751,44 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                       return;
                     }
 
-                    const resultado =
-                      dados.criarProcesso({
-                        codigo: novoCodigo,
-                        nome: novoNome,
-                        descricao: novoDescricao,
-                        areaId: area ? area.id : undefined,
-                        areaNome: area ? area.nome : undefined
-                      });
+                    setErroNovo('');
 
-                    if (!resultado.ok) {
-                      setErroNovo(resultado.erro);
-                      return;
-                    }
+                    dados.criarProcesso({
+                      codigo: novoCodigo,
+                      nome: novoNome,
+                      descricao: novoDescricao,
+                      areaId: area ? area.id : undefined,
+                      areaNome: area ? area.nome : undefined
+                    })
+                      .then(
+                        resultado => {
+                          if (!resultado.ok) {
+                            setErroNovo(resultado.erro);
+                            return;
+                          }
 
-                    setNovoAberto(false);
-                    setNovoCodigo('');
-                    setNovoNome('');
-                    setNovoDescricao('');
-                    setNovoAreaId('');
+                          setNovoAberto(false);
+                          setNovoCodigo('');
+                          setNovoNome('');
+                          setNovoDescricao('');
+                          setNovoAreaId('');
 
-                    if (resultado.processo) {
-                      setProcessoId(resultado.processo.id);
-                      setAba('fluxo');
-                    }
+                          if (resultado.processo) {
+                            setProcessoId(resultado.processo.id);
+                            setAba('fluxo');
+                          }
+                        }
+                      )
+                      .catch(
+                        (error: unknown) => {
+                          console.error(error);
+                          setErroNovo(
+                            error instanceof Error
+                              ? error.message
+                              : 'Não foi possível criar o processo.'
+                          );
+                        }
+                      );
                   }}
                   style={estiloBotao(true, false)}
                 >
@@ -740,7 +809,9 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
             <section style={{ ...estiloCartao, padding: '24px', fontSize: '14px' }}>
               {
                 dados.processos.length === 0
-                  ? 'Nenhum processo encontrado no Dataverse. No modo de teste você pode criar processos locais em “Novo processo (teste)”.'
+                  ? (dados.local
+                    ? 'Nenhum processo encontrado. No modo de teste você pode criar processos locais em “Novo processo (teste)”.'
+                    : 'Nenhum processo cadastrado. Crie o primeiro em “Novo processo”.')
                   : 'Nenhum processo corresponde à busca.'
               }
             </section>

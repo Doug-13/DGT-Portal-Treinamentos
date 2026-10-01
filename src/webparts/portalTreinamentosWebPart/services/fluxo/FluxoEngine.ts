@@ -53,6 +53,9 @@ export interface IResultadoExecucao {
   // (ex.: publicar a revisão). No modo de teste elas são apenas
   // descritas na tela, nunca executadas.
   acoesSistema: AcaoSistemaFluxo[];
+
+  // Avisos não bloqueantes da gravação (ex.: réplica do histórico).
+  avisos?: string[];
 }
 
 // ------------------------------------------------------------

@@ -6,9 +6,12 @@ import {
 } from '../models/Documento';
 
 import {
+  AcaoSistemaFluxo,
   IFluxoAtor,
   IFluxoDefinicao,
-  IFluxoInstancia
+  IFluxoInstancia,
+  IFluxoResponsavel,
+  IResponsavelResolvido
 } from '../models/Fluxo';
 
 import {
@@ -21,6 +24,11 @@ import {
 } from '../services/AutorizacaoService';
 
 import {
+  AreaAdminService,
+  IUsuarioAreaAdmin
+} from '../services/AreaAdminService';
+
+import {
   DataverseService
 } from '../services/DataverseService';
 
@@ -30,33 +38,38 @@ import {
 } from '../services/DocumentoRevisaoFluxoService';
 
 import {
-  fluxoCatalogo
-} from '../services/fluxo/FluxoCatalogoLocal';
+  RevisaoDocumentoAdminService
+} from '../services/RevisaoDocumentoAdminService';
 
 import {
-  FluxoRepositorioLocal
-} from '../services/fluxo/FluxoRepositorioLocal';
+  obterPersistenciaFluxo
+} from '../services/fluxo/persistenciaFluxo';
 
 import {
-  FluxoService
+  IContextoExecucaoFluxo
 } from '../services/fluxo/FluxoService';
 
 import {
-  carregarDadosProcessos,
-  definirProcessoPrincipalTeste,
+  descreverResolvido,
+  papeisDoUsuario,
+  resolverResponsaveis
+} from '../services/fluxo/ResolvedorResponsaveis';
+
+import {
   processoPrincipalDoDocumento,
-  vincularDocumentoTeste,
   vinculosDoDocumento
 } from '../services/processos/ProcessoService';
 
 // ============================================================
-// HOOK — FLUXO DE REVISÃO EM MODO DE TESTE
+// HOOK — FLUXO DE REVISÃO DO DOCUMENTO
 //
 // Documento → Processo (principal) → Fluxo publicado do processo
-//           → Instância do fluxo nesta revisão
+//           → Estado do fluxo nesta revisão
 //
-// Nada aqui grava no Dataverse. O estado fica no localStorage do
-// navegador, por revisão.
+// Dois modos (constants/featureFlags.ts, FLUXO_PERSISTENCIA):
+//   Dataverse → usuário REAL, responsáveis reais, publicação real,
+//               status do documento atualizado, nada simulado.
+//   Local     → modo de teste: navegador + usuários simulados.
 // ============================================================
 
 export interface IAtorSimulado {
@@ -71,17 +84,19 @@ export interface IRevisaoAlvoFluxo {
   revisao: string;
 
   // true = não existe revisão em andamento; a simulação usa uma
-  // revisão "virtual" (próximo número).
+  // revisão "virtual" (próximo número). Só no modo de teste.
   virtual: boolean;
 }
 
 // Em que ponto a tela está:
+//   semRevisao        → (Dataverse) não há revisão em andamento
 //   semProcesso       → documento não vinculado a nenhum processo
 //   escolherPrincipal → vinculado a vários; falta escolher qual governa
 //   semFluxo          → o processo não tem fluxo publicado
 //   pronto            → fluxo em andamento ou concluído
 export type SituacaoFluxoRevisao =
   | 'carregando'
+  | 'semRevisao'
   | 'semProcesso'
   | 'escolherPrincipal'
   | 'semFluxo'
@@ -89,10 +104,14 @@ export type SituacaoFluxoRevisao =
   | 'erro';
 
 export interface IUseFluxoRevisaoTeste {
+  // true = modo de teste (navegador + simulação).
+  local: boolean;
+
   situacao: SituacaoFluxoRevisao;
   processando: boolean;
   erro: string;
   errosAcao: string[];
+  avisos: string[];
   avisoProcessos: string;
   revisaoAlvo?: IRevisaoAlvoFluxo;
   processos: IProcesso[];
@@ -102,6 +121,10 @@ export interface IUseFluxoRevisaoTeste {
   instancia?: IFluxoInstancia;
   atores: IAtorSimulado[];
   atorSelecionado?: IAtorSimulado;
+
+  // Quem pode executar a etapa atual (nomes reais no Dataverse).
+  responsaveisEtapaAtual: string[];
+
   selecionarAtor: (chave: string) => void;
   vincularProcesso: (processoId: string) => Promise<void>;
   escolherPrincipal: (processoId: string) => Promise<void>;
@@ -115,25 +138,53 @@ export interface IUseFluxoRevisaoTeste {
   limparErros: () => void;
 }
 
-// Um único serviço por carregamento da página.
-const servico =
-  new FluxoService(
-    new FluxoRepositorioLocal(),
-    fluxoCatalogo
-  );
+// Vínculos usuário × área: lidos uma vez por sessão.
+const cacheVinculos: Array<{ dataverse: DataverseService; vinculos: Promise<IUsuarioAreaAdmin[]> }> = [];
 
-interface IPapelFluxo {
-  papelTeste: string;
-  tipo: string;
-  descricao: string;
-}
+const carregarVinculosUsuarios = (
+  dataverse?: DataverseService
+): Promise<IUsuarioAreaAdmin[]> => {
 
-// Papéis (responsáveis) que aparecem nas etapas do fluxo.
+  if (!dataverse) {
+    return Promise.resolve([]);
+  }
+
+  const existente =
+    cacheVinculos.find(item => item.dataverse === dataverse);
+
+  if (existente) {
+    return existente.vinculos;
+  }
+
+  const vinculos =
+    new AreaAdminService(dataverse)
+      .listarUsuariosArea()
+      .catch(
+        (error: unknown) => {
+          console.error(error);
+          return [] as IUsuarioAreaAdmin[];
+        }
+      );
+
+  cacheVinculos.push({ dataverse, vinculos });
+
+  return vinculos;
+};
+
+const dataIso = (
+  dias: number
+): string => {
+  const data = new Date();
+  data.setDate(data.getDate() + dias);
+  return data.toISOString().slice(0, 10);
+};
+
+// Papéis simulados (modo de teste): um usuário fictício por responsável.
 const papeisDaDefinicao = (
   definicao: IFluxoDefinicao | undefined
-): IPapelFluxo[] => {
+): Array<{ papelTeste: string; tipo: string; descricao: string }> => {
 
-  const lista: IPapelFluxo[] = [];
+  const lista: Array<{ papelTeste: string; tipo: string; descricao: string }> = [];
 
   if (!definicao) {
     return lista;
@@ -161,44 +212,25 @@ const papeisDaDefinicao = (
   return lista;
 };
 
-// O que o usuário REAL poderia fazer, pelas regras disponíveis hoje:
-//   - Administrador: todas as etapas (para testar);
-//   - autor da revisão: etapas do tipo "Autor da revisão";
-//   - Gestor: etapas do tipo "Gestor da área".
-// Grupo, função, setor e usuário específico só serão resolvidos
-// quando as tabelas existirem; até lá, use os usuários simulados.
-const papeisDoUsuarioReal = (
-  contexto: IContextoAcesso | undefined,
-  revisaoResponsavelId: string | undefined,
-  papeis: IPapelFluxo[]
-): IPapelFluxo[] => {
-
-  if (!contexto) {
-    return [];
-  }
-
-  if (contexto.perfil === 'Administrador') {
-    return papeis;
-  }
-
-  const ehAutor =
-    !!contexto.usuarioId &&
-    !!revisaoResponsavelId &&
-    contexto.usuarioId === revisaoResponsavelId;
-
-  return papeis.filter(
-    papel =>
-      (papel.tipo === 'autorRevisao' && ehAutor) ||
-      (papel.tipo === 'gestorArea' && contexto.perfil === 'Gestor')
-  );
-};
-
 export const useFluxoRevisaoTeste = (
   documento: IDocumento | undefined,
   revisoes: IDocumentoRevisao[],
   contexto: IContextoAcesso | undefined,
-  dataverseService?: DataverseService
+  dataverseService?: DataverseService,
+  onRevisaoAlterada?: () => Promise<void>
 ): IUseFluxoRevisaoTeste => {
+
+  const persistencia =
+    React.useMemo(
+      () => obterPersistenciaFluxo(dataverseService),
+      [dataverseService]
+    );
+
+  const local =
+    persistencia.local;
+
+  const servico =
+    persistencia.servico;
 
   const [situacao, setSituacao] =
     React.useState<SituacaoFluxoRevisao>('carregando');
@@ -215,6 +247,9 @@ export const useFluxoRevisaoTeste = (
   const [vinculos, setVinculos] =
     React.useState<IDocumentoProcessoVinculo[]>([]);
 
+  const [vinculosUsuarios, setVinculosUsuarios] =
+    React.useState<IUsuarioAreaAdmin[]>([]);
+
   const [processoAtualId, setProcessoAtualId] =
     React.useState<string | undefined>(undefined);
 
@@ -228,6 +263,9 @@ export const useFluxoRevisaoTeste = (
     React.useState<string>('');
 
   const [errosAcao, setErrosAcao] =
+    React.useState<string[]>([]);
+
+  const [avisos, setAvisos] =
     React.useState<string[]>([]);
 
   const [atorChave, setAtorChave] =
@@ -255,33 +293,72 @@ export const useFluxoRevisaoTeste = (
           };
         }
 
+        // No Dataverse não há revisão "virtual": é preciso criar a
+        // revisão (aba Revisão) para começar o fluxo.
+        if (!local) {
+          return undefined;
+        }
+
         return {
           id: `virtual-${documento.id}`,
           revisao: calcularProximaRevisao(revisoes || []),
           virtual: true
         };
       },
-      [documento, revisaoEmAndamento, revisoes]
+      [documento, revisaoEmAndamento, revisoes, local]
+    );
+
+  const dadosResponsaveis =
+    React.useMemo(
+      () => ({
+        revisaoResponsavelId: revisaoEmAndamento ? revisaoEmAndamento.responsavelId : undefined,
+        documentoAreaId: documento ? documento.areaId : undefined
+      }),
+      [revisaoEmAndamento, documento]
     );
 
   const atores: IAtorSimulado[] =
     React.useMemo(
       () => {
 
-        const papeis =
-          papeisDaDefinicao(definicao);
-
-        const papeisReais =
-          papeisDoUsuarioReal(
-            contexto,
-            revisaoEmAndamento?.responsavelId,
-            papeis
-          );
-
         const nomeReal =
           contexto?.nome ||
           contexto?.email ||
           'Usuário atual';
+
+        // ---- Dataverse: só o usuário real ----
+        if (!local) {
+
+          const papeis =
+            definicao
+              ? papeisDoUsuario(definicao, contexto, dadosResponsaveis, vinculosUsuarios)
+              : [];
+
+          return [
+            {
+              chave: 'eu',
+              rotulo: nomeReal,
+              descricao:
+                contexto?.perfil === 'Administrador'
+                  ? 'Administrador do portal: pode executar qualquer etapa.'
+                  : '',
+              ator: {
+                id: contexto?.usuarioId || '',
+                nome: nomeReal,
+                papeisTeste: papeis
+              }
+            }
+          ];
+        }
+
+        // ---- Teste: usuário real (pelas regras disponíveis) + simulados ----
+        const papeis =
+          papeisDaDefinicao(definicao);
+
+        const papeisReais =
+          definicao
+            ? papeisDoUsuario(definicao, contexto, dadosResponsaveis, vinculosUsuarios)
+            : [];
 
         return [
           {
@@ -289,12 +366,12 @@ export const useFluxoRevisaoTeste = (
             rotulo: `Eu (${nomeReal})`,
             descricao:
               papeisReais.length > 0
-                ? `Seu acesso real permite agir como: ${papeisReais.map(papel => papel.descricao).join(', ')}.`
+                ? `Seu acesso real permite agir como: ${papeis.filter(papel => papeisReais.indexOf(papel.papelTeste) >= 0).map(papel => papel.descricao).join(', ')}.`
                 : 'Com seu acesso real você não é responsável por nenhuma etapa deste fluxo. Use um usuário simulado.',
             ator: {
               id: contexto?.usuarioId || 'usuario-atual',
               nome: nomeReal,
-              papeisTeste: papeisReais.map(papel => papel.papelTeste)
+              papeisTeste: papeisReais
             }
           },
           ...papeis.map(
@@ -311,13 +388,93 @@ export const useFluxoRevisaoTeste = (
           )
         ];
       },
-      [contexto, revisaoEmAndamento, definicao]
+      [contexto, definicao, dadosResponsaveis, vinculosUsuarios, local]
     );
 
   const atorSelecionado =
-    atores.find(
-      item => item.chave === atorChave
-    ) || atores[0];
+    atores.find(item => item.chave === atorChave) || atores[0];
+
+  const contextoExecucao = (
+    definicaoAtual: IFluxoDefinicao | undefined
+  ): IContextoExecucaoFluxo => ({
+    rotuloRevisao: documento && revisaoAlvo ? `${documento.codigo} ${revisaoAlvo.revisao}` : undefined,
+
+    resolverResponsaveis: (responsaveis: IFluxoResponsavel[]): IResponsavelResolvido[] =>
+      resolverResponsaveis(responsaveis, dadosResponsaveis),
+
+    // Publicação REAL (só no Dataverse; no teste é apenas simulada).
+    executarAcoesSistema: local || !dataverseService || !revisaoEmAndamento
+      ? undefined
+      : async (acoes: AcaoSistemaFluxo[], novaInstancia: IFluxoInstancia): Promise<void> => {
+
+        const publicar =
+          acoes.filter(acao => acao === 'publicarComRetreinamento' || acao === 'publicarSemRetreinamento');
+
+        if (publicar.length === 0) {
+          return;
+        }
+
+        const comRetreinamento =
+          publicar.indexOf('publicarComRetreinamento') >= 0;
+
+        const valores =
+          novaInstancia.valores;
+
+        await new RevisaoDocumentoAdminService(dataverseService)
+          .publicar({
+            documentoRevisaoId: revisaoEmAndamento.id,
+            requerRetreinamento: comRetreinamento,
+            justificativa:
+              (valores.justificativaRetreinamento || '').trim() ||
+              `Publicada pelo fluxo "${definicaoAtual ? definicaoAtual.nome : 'do processo'}" sem retreinamento.`,
+            dataVigencia: dataIso(0),
+            dataLimite:
+              comRetreinamento
+                ? ((valores.prazoRetreinamento || '').trim() || dataIso(30))
+                : undefined
+          });
+      }
+  });
+
+  // Status do documento (dgt_status) conforme a etapa atual.
+  const atualizarStatusDocumento = async (
+    definicaoAtual: IFluxoDefinicao,
+    instanciaAtual: IFluxoInstancia
+  ): Promise<void> => {
+
+    if (local || !dataverseService || !revisaoEmAndamento || instanciaAtual.status === 'concluido') {
+      return;
+    }
+
+    const etapa =
+      definicaoAtual.elementos.find(item => item.id === instanciaAtual.elementoAtualId);
+
+    if (!etapa || etapa.tipo !== 'tarefaHumana') {
+      return;
+    }
+
+    // Automático: a 1ª etapa do fluxo é Elaboração; as demais, Aprovação.
+    const inicio =
+      definicaoAtual.elementos.find(item => item.tipo === 'inicio');
+
+    const primeira =
+      inicio
+        ? definicaoAtual.transicoes.find(item => item.origemId === inicio.id)
+        : undefined;
+
+    const status =
+      etapa.statusDocumento ||
+      (primeira && primeira.destinoId === etapa.id ? 'Elaboração' : 'Aprovação');
+
+    const normalizar = (valor: string): string =>
+      (valor || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    if (normalizar(revisaoEmAndamento.status || '') === normalizar(status)) {
+      return;
+    }
+
+    await dataverseService.alterarStatusDocumentoRevisao(revisaoEmAndamento.id, status);
+  };
 
   const carregar =
     React.useCallback(
@@ -325,7 +482,7 @@ export const useFluxoRevisaoTeste = (
         forcarReleitura: boolean = false
       ): Promise<void> => {
 
-        if (!documento || !revisaoAlvo) {
+        if (!documento) {
           setSituacao('erro');
           setErro('Documento não carregado.');
           return;
@@ -336,16 +493,26 @@ export const useFluxoRevisaoTeste = (
 
         try {
 
-          const dados =
-            await carregarDadosProcessos(
-              dataverseService,
-              forcarReleitura,
-              [{ id: documento.id, codigo: documento.codigo }]
-            );
+          const [dados, usuariosAreas] =
+            await Promise.all([
+              persistencia.processos.carregar(
+                forcarReleitura,
+                [{ id: documento.id, codigo: documento.codigo }]
+              ),
+              carregarVinculosUsuarios(dataverseService)
+            ]);
 
           setProcessos(dados.processos);
           setVinculos(dados.vinculos);
           setAvisoProcessos(dados.aviso);
+          setVinculosUsuarios(usuariosAreas);
+
+          if (!revisaoAlvo) {
+            setInstancia(undefined);
+            setDefinicao(undefined);
+            setSituacao('semRevisao');
+            return;
+          }
 
           // 1) Revisão já tem fluxo? Ele vale até o fim, mesmo que o
           //    processo ou o fluxo do processo mudem depois.
@@ -362,9 +529,7 @@ export const useFluxoRevisaoTeste = (
             setProcessoAtualId(existente.processoId);
 
             if (!definicaoExistente) {
-              setErro(
-                `A versão ${existente.fluxoVersao} do fluxo usada por esta revisão não foi encontrada neste navegador.`
-              );
+              setErro(`A versão ${existente.fluxoVersao} do fluxo usada por esta revisão não foi encontrada.`);
               setSituacao('erro');
               return;
             }
@@ -398,9 +563,7 @@ export const useFluxoRevisaoTeste = (
           setProcessoAtualId(principalId);
 
           const processo =
-            dados.processos.find(
-              item => item.id === principalId
-            );
+            dados.processos.find(item => item.id === principalId);
 
           if (!processo) {
             setSituacao('semProcesso');
@@ -415,34 +578,51 @@ export const useFluxoRevisaoTeste = (
                 revisaoId: revisaoAlvo.id,
                 documentoId: documento.id,
                 revisao: revisaoAlvo.revisao,
-                ator: atores[0].ator,
-                simulado: true
-              }
+                ator: {
+                  id: contexto?.usuarioId || 'usuario-atual',
+                  nome: contexto?.nome || contexto?.email || 'Usuário atual',
+                  papeisTeste: []
+                },
+                simulado: local
+              },
+              contextoExecucao(undefined)
             );
 
-          if (
-            !resultado.ok ||
-            !resultado.instancia
-          ) {
+          if (!resultado.ok || !resultado.instancia) {
             setSituacao('semFluxo');
             return;
           }
 
+          const definicaoNova =
+            await servico.definicaoDaInstancia(resultado.instancia);
+
           setInstancia(resultado.instancia);
-          setDefinicao(
-            await servico.definicaoDaInstancia(resultado.instancia)
-          );
+          setDefinicao(definicaoNova);
+          setAvisos(resultado.avisos || []);
           setSituacao('pronto');
+
+          if (definicaoNova) {
+            await atualizarStatusDocumento(definicaoNova, resultado.instancia);
+          }
 
         } catch (error) {
 
           console.error(error);
 
-          setErro('Não foi possível carregar a simulação do fluxo.');
+          const codigo =
+            (error as { codigo?: string }).codigo;
+
+          setErro(
+            codigo === 'CONFLITO'
+              ? (error as Error).message
+              : local
+                ? 'Não foi possível carregar a simulação do fluxo.'
+                : 'Não foi possível carregar o fluxo desta revisão do Dataverse. Confira se as tabelas do fluxo foram criadas e se o seu perfil tem permissão.'
+          );
           setSituacao('erro');
         }
       },
-      [documento, revisaoAlvo, atores, dataverseService]
+      [documento, revisaoAlvo, persistencia, dataverseService, contexto, local, dadosResponsaveis]
     );
 
   React.useEffect(
@@ -452,7 +632,7 @@ export const useFluxoRevisaoTeste = (
           (error: unknown) => console.error(error)
         );
     },
-    [documento?.id, revisaoAlvo?.id]
+    [documento?.id, revisaoAlvo?.id, persistencia]
   );
 
   const executar =
@@ -468,6 +648,7 @@ export const useFluxoRevisaoTeste = (
 
       setProcessando(true);
       setErrosAcao([]);
+      setAvisos([]);
 
       try {
 
@@ -479,15 +660,36 @@ export const useFluxoRevisaoTeste = (
               comentario,
               valores,
               ator: atorSelecionado.ator
-            }
+            },
+            contextoExecucao(definicao)
           );
 
-        if (!resultado.ok) {
+        if (!resultado.ok || !resultado.instancia) {
           setErrosAcao(resultado.erros);
           return false;
         }
 
         setInstancia(resultado.instancia);
+        setAvisos(resultado.avisos || []);
+
+        const definicaoAtual =
+          await servico.definicaoDaInstancia(resultado.instancia);
+
+        if (definicaoAtual) {
+          setDefinicao(definicaoAtual);
+
+          try {
+            await atualizarStatusDocumento(definicaoAtual, resultado.instancia);
+          } catch (error) {
+            console.error(error);
+            setAvisos(atual => atual.concat('O status do documento não pôde ser atualizado.'));
+          }
+        }
+
+        if (!local && onRevisaoAlterada) {
+          await onRevisaoAlterada();
+        }
+
         return true;
 
       } catch (error) {
@@ -495,7 +697,9 @@ export const useFluxoRevisaoTeste = (
         console.error(error);
 
         setErrosAcao([
-          'Erro inesperado ao executar a ação.'
+          (error as { codigo?: string }).codigo === 'CONFLITO'
+            ? (error as Error).message
+            : `Erro ao executar a ação: ${error instanceof Error ? error.message : String(error)}`
         ]);
 
         return false;
@@ -508,7 +712,7 @@ export const useFluxoRevisaoTeste = (
   const reiniciar =
     async (): Promise<void> => {
 
-      if (!revisaoAlvo) {
+      if (!revisaoAlvo || !local) {
         return;
       }
 
@@ -528,18 +732,19 @@ export const useFluxoRevisaoTeste = (
         return;
       }
 
-      vincularDocumentoTeste(
-        documento.id,
-        processoId,
-        vinculos
-      );
+      try {
+        await persistencia.processos.vincularDocumento(documento.id, processoId, vinculos);
+        await persistencia.processos.definirPrincipal(
+          documento.id,
+          processoId,
+          (await persistencia.processos.carregar(true, [{ id: documento.id, codigo: documento.codigo }])).vinculos
+        );
+      } catch (error) {
+        console.error(error);
+        setErro(error instanceof Error ? error.message : 'Não foi possível vincular o processo.');
+      }
 
-      definirProcessoPrincipalTeste(
-        documento.id,
-        processoId
-      );
-
-      await carregar();
+      await carregar(true);
     };
 
   const escolherPrincipal =
@@ -551,32 +756,54 @@ export const useFluxoRevisaoTeste = (
         return;
       }
 
-      definirProcessoPrincipalTeste(
-        documento.id,
-        processoId
-      );
+      try {
+        await persistencia.processos.definirPrincipal(documento.id, processoId, vinculos);
+      } catch (error) {
+        console.error(error);
+        setErro(error instanceof Error ? error.message : 'Não foi possível definir o processo principal.');
+      }
 
-      await carregar();
+      await carregar(true);
     };
 
+  // Quem pode executar a etapa atual.
+  const responsaveisEtapaAtual: string[] =
+    instancia && instancia.status !== 'concluido'
+      ? (() => {
+        const tarefa =
+          instancia.tarefas.find(item => item.status === 'pendente');
+
+        if (!tarefa) {
+          return [];
+        }
+
+        const resolvidos =
+          tarefa.responsaveisResolvidos ||
+          resolverResponsaveis(tarefa.responsaveis, dadosResponsaveis);
+
+        return resolvidos.map(item => descreverResolvido(item, vinculosUsuarios));
+      })()
+      : [];
+
   return {
+    local,
     situacao,
     processando,
     erro,
     errosAcao,
+    avisos,
     avisoProcessos,
     revisaoAlvo,
     processos,
     vinculos: documento
       ? vinculosDoDocumento(documento.id, vinculos)
       : [],
-    processoAtual: processos.find(
-      item => item.id === processoAtualId
-    ),
+    processoAtual: processos.find(item => item.id === processoAtualId),
     definicao,
     instancia,
     atores,
     atorSelecionado,
+    responsaveisEtapaAtual,
     selecionarAtor: (chave: string) => {
       setAtorChave(chave);
       setErrosAcao([]);

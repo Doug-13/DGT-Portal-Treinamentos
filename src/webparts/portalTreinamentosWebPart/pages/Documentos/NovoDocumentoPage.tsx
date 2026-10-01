@@ -15,8 +15,8 @@ import {
 } from '../../services/DataverseService';
 
 import {
-  vincularDocumentoPorCodigoTeste
-} from '../../services/processos/ProcessoService';
+  obterPersistenciaFluxo
+} from '../../services/fluxo/persistenciaFluxo';
 
 import {
   useProcessos
@@ -684,15 +684,26 @@ const NovoDocumentoPage:
             });
 
           // Documento criado: registra o vínculo com o processo
-          // (somente no navegador, modo de teste).
+          // (Dataverse: dgt_documentoprocesso; teste: navegador).
           if (
             usarProcessos &&
             processoId
           ) {
-            vincularDocumentoPorCodigoTeste(
-              codigoGerado,
-              processoId
-            );
+            try {
+              await obterPersistenciaFluxo(props.dataverseService)
+                .processos
+                .vincularDocumentoPorCodigo(
+                  codigoGerado,
+                  processoId
+                );
+            } catch (erroVinculo) {
+              console.error(erroVinculo);
+              window.alert(
+                erroVinculo instanceof Error
+                  ? erroVinculo.message
+                  : 'O documento foi criado, mas não foi possível vinculá-lo ao processo. Vincule pela tela do processo.'
+              );
+            }
           }
         } catch (e) {
 
@@ -1235,7 +1246,7 @@ const NovoDocumentoPage:
                             : 'Este processo ainda não tem fluxo publicado. O documento fica vinculado e passa a seguir o fluxo quando ele for publicado.'
                       }
                       <br />
-                      Modo de teste: o vínculo fica salvo apenas neste navegador.
+                      {dadosProcessos.local ? 'Modo de teste: o vínculo fica salvo apenas neste navegador.' : ''}
                     </div>
                   </div>
                 </div>

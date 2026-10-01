@@ -26,9 +26,17 @@ export type TipoElementoFluxo =
 // 'setor' e 'usuario' apontarão para dgt_grupo, dgt_funcao,
 // dgt_setor e dgt_usuario. 'autorRevisao' e 'gestorArea' são
 // resolvidos a partir da própria revisão/documento.
+// Resolvidos automaticamente hoje:
+//   autorRevisao → responsável da revisão (dgt_documentorevisao.dgt_responsavel)
+//   gestorArea   → Gestores da área do documento (dgt_usuarioarea, perfil Gestor)
+//   area         → membros (ou só Gestores) de uma área escolhida
+//   usuario      → um usuário específico (dgt_usuario)
+// Ainda não resolvidos (exigem vínculo usuário × grupo/função/setor):
+//   grupo, funcao, setor
 export type TipoResponsavelFluxo =
   | 'autorRevisao'
   | 'gestorArea'
+  | 'area'
   | 'grupo'
   | 'funcao'
   | 'setor'
@@ -42,10 +50,35 @@ export interface IFluxoResponsavel {
 
   descricao: string;
 
-  // Somente no modo de teste: chave do papel simulado que pode
-  // executar a etapa (ex.: 'autor', 'coordenacao', 'qualidade').
+  // Nome do registro referenciado (área ou usuário), para exibição.
+  referenciaNome?: string;
+
+  // tipo = 'area': só os Gestores da área (e não todos os membros).
+  somenteGestores?: boolean;
+
+  // Chave do "papel" deste responsável. Identifica o responsável no
+  // motor: no modo de teste vira um usuário simulado; no Dataverse
+  // é calculada a partir do usuário real.
   papelTeste: string;
 }
+
+// Responsável já resolvido para uma revisão concreta: é o que vai
+// para a pendência (dgt_tarefafluxo) e permite saber, sem recalcular,
+// quem pode executar a etapa.
+export interface IResponsavelResolvido {
+  papelTeste: string;
+  descricao: string;
+  usuarioId?: string;
+  areaId?: string;
+  somenteGestores?: boolean;
+}
+
+// Status do documento (dgt_documentorevisao.dgt_status) enquanto a
+// revisão está nesta etapa.
+export type StatusDocumentoEtapa =
+  | 'Elaboração'
+  | 'Revisão'
+  | 'Aprovação';
 
 // Ação de sistema executada por uma tarefa de sistema.
 export type AcaoSistemaFluxo =
@@ -108,6 +141,9 @@ export interface IColunaTabela {
 // qualquer versão do fluxo do processo. A ordem da lista é a ordem
 // em que os campos aparecem nas telas.
 export interface IFluxoMetadado {
+  // Id do registro em dgt_processometadado (modo Dataverse).
+  id?: string;
+
   chave: string;
 
   rotulo: string;
@@ -192,6 +228,9 @@ export interface IFluxoElemento {
 
   // Rótulo externo (eventos e gateways desenhados no editor BPMN).
   rotuloPosicao?: IFluxoPosicao;
+
+  // tarefaHumana: status do documento durante a etapa.
+  statusDocumento?: StatusDocumentoEtapa;
 }
 
 export type TipoCondicaoTransicao =
@@ -245,6 +284,9 @@ export interface IFluxoDefinicao {
 
   // Processo dono do fluxo (dgt_processo). Vazio nos modelos.
   processoId?: string;
+
+  // Id do registro desta VERSÃO em dgt_fluxo (modo Dataverse).
+  registroId?: string;
 
   // Modelo a partir do qual o fluxo foi criado.
   modeloId?: string;
@@ -314,7 +356,10 @@ export interface IFluxoTarefa {
 
   responsaveis: IFluxoResponsavel[];
 
-  status: 'pendente' | 'concluida';
+  // Preenchido no modo Dataverse ao criar a pendência.
+  responsaveisResolvidos?: IResponsavelResolvido[];
+
+  status: 'pendente' | 'concluida' | 'cancelada';
 
   criadaEm: string;
 

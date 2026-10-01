@@ -32,6 +32,14 @@ const GRUPOS: Array<{
   fundo: string;
 }> = [
   {
+    tipo: 'fluxo',
+    titulo: 'Etapas do fluxo aguardando você',
+    descricao: 'Revisões que seguem o fluxo do processo e estão em uma etapa sob sua responsabilidade.',
+    acao: 'Abrir',
+    cor: '#202A44',
+    fundo: '#E6F9FC'
+  },
+  {
     tipo: 'aprovar',
     titulo: 'Aguardando sua aprovação',
     descricao: 'Revisões enviadas pelo responsável para você avaliar.',
@@ -263,7 +271,7 @@ const MinhasPendenciasDocumentos:
                                       fontWeight: 700
                                     }}
                                   >
-                                    {pendencia.status}
+                                    {pendencia.etapa ? `Etapa: ${pendencia.etapa}` : pendencia.status}
                                   </span>
                                   {' · '}
                                   <span

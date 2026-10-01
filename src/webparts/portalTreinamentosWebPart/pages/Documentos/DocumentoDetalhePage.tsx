@@ -70,9 +70,17 @@ import AcoesFluxoRevisao from
 import FluxoRevisaoTab from
   './FluxoRevisaoTab';
 
+import AvisoRevisaoSegueFluxo from
+  './AvisoRevisaoSegueFluxo';
+
 import {
-  FEATURE_FLAGS
+  FEATURE_FLAGS,
+  fluxoNoDataverse
 } from '../../constants/featureFlags';
+
+import {
+  useRevisaoSegueFluxo
+} from '../../hooks/useRevisaoSegueFluxo';
 
 export interface IDocumentoDetalhePageProps {
   documento?: IDocumento;
@@ -626,6 +634,15 @@ const DocumentoDetalhePage:
         [revisoes]
       );
 
+    // Revisão governada pelo fluxo do processo (modo Dataverse): os
+    // botões do fluxo fixo antigo dão lugar à aba "Fluxo de revisão".
+    const segueFluxo =
+      useRevisaoSegueFluxo(
+        documento,
+        revisaoEmAndamento ? revisaoEmAndamento.id : undefined,
+        dataverseService
+      );
+
     const proximaRevisao =
       React.useMemo(
         () => calcularProximaRevisao(revisoes),
@@ -1149,9 +1166,13 @@ const DocumentoDetalhePage:
                 type="button"
                 style={estiloAba(aba === 'fluxo')}
                 onClick={() => setAba('fluxo')}
-                title="Simulação do fluxo configurável — nada é gravado no Dataverse"
+                title={
+                  fluxoNoDataverse()
+                    ? 'Fluxo de revisão definido no processo do documento'
+                    : 'Simulação do fluxo configurável — nada é gravado no Dataverse'
+                }
               >
-                Fluxo (teste)
+                {fluxoNoDataverse() ? 'Fluxo de revisão' : 'Fluxo (teste)'}
               </button>
             )
           }
@@ -1167,6 +1188,7 @@ const DocumentoDetalhePage:
                 contexto={contexto}
                 dataverseService={dataverseService}
                 onAbrirProcesso={onAbrirProcesso}
+                onRevisaoAlterada={onRecarregarRevisoes}
               />
             )
             : aba === 'historico'
@@ -1691,6 +1713,15 @@ const DocumentoDetalhePage:
                                     borderTop: '1px solid #E2E8F0'
                                   }}
                                 >
+                                  {
+                                    segueFluxo.segue
+                                      ? (
+                                        <AvisoRevisaoSegueFluxo
+                                          processoNome={segueFluxo.processoNome}
+                                          onAbrir={() => setAba('fluxo')}
+                                        />
+                                      )
+                                      : (
                                   <AcoesFluxoRevisao
                                     revisao={revisao}
                                     processando={ocupado}
@@ -1714,6 +1745,8 @@ const DocumentoDetalhePage:
                                       setRevisaoParaReprovar(revisao);
                                     }}
                                   />
+                                      )
+                                  }
                                 </div>
                               )
                             }

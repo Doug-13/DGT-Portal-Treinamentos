@@ -82,8 +82,10 @@ const configs = (
 
 describe('validarDefinicao', () => {
 
-  it('aceita os modelos prontos', () => {
-    expect(validarDefinicao(FLUXO_POP_PROCEDIMENTO_V2)).toEqual([]);
+  it('aceita os modelos prontos (o POP só pede a área da Qualidade)', () => {
+    expect(validarDefinicao(FLUXO_POP_PROCEDIMENTO_V2)).toEqual([
+      'Escolha a área do responsável "Gestores da área da Qualidade" na etapa "Aprovação".'
+    ]);
     expect(validarDefinicao(FLUXO_EM_BRANCO)).toEqual([]);
   });
 
@@ -136,7 +138,7 @@ describe('montarDefinicao', () => {
     expect(definicao.elementos.length).toBe(FLUXO_POP_PROCEDIMENTO_V2.elementos.length);
     expect(definicao.transicoes.length).toBe(FLUXO_POP_PROCEDIMENTO_V2.transicoes.length);
     expect(definicao.avisosModelagem).toEqual([]);
-    expect(validarDefinicao(definicao)).toEqual([]);
+    expect(validarDefinicao(definicao)).toEqual(validarDefinicao(FLUXO_POP_PROCEDIMENTO_V2));
 
     const xs = definicao.elementos.map(item => item.posicao.x);
     expect(Math.min(...xs)).toBe(24);

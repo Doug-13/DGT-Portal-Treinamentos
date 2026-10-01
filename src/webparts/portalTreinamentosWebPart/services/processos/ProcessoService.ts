@@ -513,3 +513,91 @@ export const consumirAberturaProcesso = (): string | undefined => {
 
   return valor;
 };
+
+// ------------------------------------------------------------
+// Contrato de armazenamento de processos e vínculos
+// (local = modo de teste; Dataverse = produção)
+// ------------------------------------------------------------
+
+export interface IResultadoNovoProcesso {
+  ok: boolean;
+  erro: string;
+  processo?: IProcesso;
+}
+
+export interface IProcessosRepositorio {
+  readonly local: boolean;
+
+  carregar(forcarReleitura: boolean, documentos: IDocumentoReferencia[]): Promise<IDadosProcessos>;
+
+  criarProcesso(dados: INovoProcessoTeste, existentes: IProcesso[]): Promise<IResultadoNovoProcesso>;
+
+  vincularDocumento(documentoId: string, processoId: string, vinculos: IDocumentoProcessoVinculo[]): Promise<void>;
+
+  // Usado na criação do documento, quando ainda não se tem o id.
+  vincularDocumentoPorCodigo(documentoCodigo: string, processoId: string): Promise<void>;
+
+  removerVinculo(vinculo: IDocumentoProcessoVinculo): Promise<void>;
+
+  definirPrincipal(documentoId: string, processoId: string, vinculos: IDocumentoProcessoVinculo[]): Promise<void>;
+}
+
+export class ProcessosRepositorioLocal
+  implements IProcessosRepositorio {
+
+  public readonly local: boolean =
+    true;
+
+  private readonly dataverseService?:
+    DataverseService;
+
+  public constructor(
+    dataverseService?: DataverseService
+  ) {
+    this.dataverseService = dataverseService;
+  }
+
+  public carregar(
+    forcarReleitura: boolean,
+    documentos: IDocumentoReferencia[]
+  ): Promise<IDadosProcessos> {
+    return carregarDadosProcessos(this.dataverseService, forcarReleitura, documentos);
+  }
+
+  public async criarProcesso(
+    dados: INovoProcessoTeste,
+    existentes: IProcesso[]
+  ): Promise<IResultadoNovoProcesso> {
+    return criarProcessoTeste(dados, existentes);
+  }
+
+  public async vincularDocumento(
+    documentoId: string,
+    processoId: string,
+    vinculos: IDocumentoProcessoVinculo[]
+  ): Promise<void> {
+    vincularDocumentoTeste(documentoId, processoId, vinculos);
+  }
+
+  public async vincularDocumentoPorCodigo(
+    documentoCodigo: string,
+    processoId: string
+  ): Promise<void> {
+    vincularDocumentoPorCodigoTeste(documentoCodigo, processoId);
+  }
+
+  public async removerVinculo(
+    vinculo: IDocumentoProcessoVinculo
+  ): Promise<void> {
+    if (vinculo.origem === 'teste') {
+      removerVinculoTeste(vinculo.id);
+    }
+  }
+
+  public async definirPrincipal(
+    documentoId: string,
+    processoId: string
+  ): Promise<void> {
+    definirProcessoPrincipalTeste(documentoId, processoId);
+  }
+}

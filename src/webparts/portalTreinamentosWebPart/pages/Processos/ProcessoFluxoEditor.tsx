@@ -15,9 +15,13 @@ import {
 } from '../../services/fluxo/definicoes/fluxoPopProcedimento';
 
 import {
-  fluxoCatalogo,
+  IFluxoCatalogo,
   IResultadoCatalogo
 } from '../../services/fluxo/FluxoCatalogoLocal';
+
+import {
+  IAreaAdmin
+} from '../../services/AreaAdminService';
 
 import {
   validarDefinicao
@@ -82,6 +86,15 @@ export interface IProcessoFluxoEditorProps {
   // Metadados do PROCESSO (não da versão), na ordem das telas.
   metadados: IFluxoMetadado[];
   onAlterarMetadados: (metadados: IFluxoMetadado[]) => void;
+
+  // Onde as versões do fluxo são gravadas (Dataverse ou navegador).
+  catalogo: IFluxoCatalogo;
+
+  // Para escolher responsáveis do tipo Área e Usuário.
+  areas: IAreaAdmin[];
+  usuarios: Array<{ id: string; nome: string; email: string }>;
+
+  gravandoMetadados?: boolean;
 }
 
 const COR_AZUL = '#202A44';
@@ -228,7 +241,11 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   podeEditar,
   onAlterado,
   metadados: metadadosProcesso,
-  onAlterarMetadados
+  onAlterarMetadados,
+  catalogo,
+  areas,
+  usuarios,
+  gravandoMetadados
 }) => {
 
   const editorRef =
@@ -420,9 +437,9 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     const ok =
       await executar(
         async () => {
-          const salvo = await fluxoCatalogo.salvarRascunho(definicao);
+          const salvo = await catalogo.salvarRascunho(definicao);
           return publicar && salvo.ok
-            ? fluxoCatalogo.publicarRascunho(processo.id)
+            ? catalogo.publicarRascunho(processo.id)
             : salvo;
         },
         publicar
@@ -538,7 +555,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                     disabled={processando || !modeloId}
                     onClick={() => {
                       executar(
-                        () => fluxoCatalogo.criarAPartirDoModelo(processo, modeloId),
+                        () => catalogo.criarAPartirDoModelo(processo, modeloId),
                         'Rascunho da versão 1 criado. Desenhe e configure o fluxo, depois publique.',
                         () => {
                           setVersaoSelecionada(1);
@@ -820,6 +837,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         key={`${selecionado ? selecionado.id : 'nenhum'}-${secao}`}
         secao={secao}
         extraCampos={extraCampos}
+        areas={areas}
+        usuarios={usuarios}
         selecionado={selecionado}
         tipo={tipoSelecionado}
         editavel={editavel}
@@ -1205,7 +1224,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                       }
 
                       executar(
-                        () => fluxoCatalogo.descartarRascunho(processo.id),
+                        () => catalogo.descartarRascunho(processo.id),
                         'Rascunho descartado.',
                         () => setVersaoSelecionada(undefined)
                       ).catch((error: unknown) => console.error(error));
@@ -1248,7 +1267,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                   disabled={processando}
                   onClick={() => {
                     executar(
-                      () => fluxoCatalogo.criarNovaVersao(processo.id),
+                      () => catalogo.criarNovaVersao(processo.id),
                       'Nova versão criada como rascunho, a partir da versão publicada.',
                       resultado => setVersaoSelecionada(resultado.definicao ? resultado.definicao.versao : undefined)
                     ).catch((error: unknown) => console.error(error));

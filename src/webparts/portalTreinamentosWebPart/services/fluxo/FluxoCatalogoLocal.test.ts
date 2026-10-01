@@ -48,7 +48,20 @@ describe('FluxoCatalogoLocal', () => {
 
     const catalogo = new FluxoCatalogoLocal();
 
-    await catalogo.criarAPartirDoModelo(processo('p2'), 'modelo-revisao-pop');
+    const criado =
+      await catalogo.criarAPartirDoModelo(processo('p2'), 'modelo-revisao-pop');
+
+    // O modelo POP exige escolher a área da Qualidade antes de publicar.
+    expect((await catalogo.publicarRascunho('p2')).ok).toBe(false);
+
+    const rascunho =
+      criado.definicao as NonNullable<typeof criado.definicao>;
+
+    rascunho.elementos
+      .filter(elemento => elemento.id === 'aprovacaoQualidade')[0]
+      .responsaveis[0].referenciaId = 'area-qualidade';
+
+    await catalogo.salvarRascunho(rascunho);
 
     expect((await catalogo.publicarRascunho('p2')).ok).toBe(true);
 

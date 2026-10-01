@@ -21,6 +21,19 @@ import {
 // Dataverse não exija reescrever quem os chama.
 // ============================================================
 
+// Informações extras para gravar no Dataverse (o modo local ignora).
+export interface IContextoGravacaoFluxo {
+  // Id do registro da versão do fluxo (dgt_fluxo).
+  fluxoRegistroId?: string;
+
+  // Texto curto da revisão (ex.: "POP-001 Rev.04"), usado nos nomes
+  // das pendências e do histórico.
+  rotuloRevisao?: string;
+
+  // Status do documento na etapa atual (Elaboração/Revisão/Aprovação).
+  statusDocumento?: string;
+}
+
 export interface IFluxoRepositorio {
 
   // true = grava apenas no navegador (modo de teste).
@@ -30,9 +43,12 @@ export interface IFluxoRepositorio {
     revisaoId: string
   ): Promise<IFluxoInstancia | undefined>;
 
+  // Devolve avisos não bloqueantes (ex.: falha ao gravar o histórico
+  // auxiliar), quando houver.
   salvar(
-    instancia: IFluxoInstancia
-  ): Promise<void>;
+    instancia: IFluxoInstancia,
+    contexto?: IContextoGravacaoFluxo
+  ): Promise<string[]>;
 
   remover(
     revisaoId: string
@@ -62,12 +78,14 @@ export class FluxoRepositorioLocal
 
   public async salvar(
     instancia: IFluxoInstancia
-  ): Promise<void> {
+  ): Promise<string[]> {
 
     gravarJson(
       PREFIXO_CHAVE + instancia.revisaoId,
       instancia
     );
+
+    return [];
   }
 
   public async remover(

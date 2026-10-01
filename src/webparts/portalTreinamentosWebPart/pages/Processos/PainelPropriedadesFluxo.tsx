@@ -6,6 +6,7 @@ import {
   IFluxoCampo,
   IFluxoMetadado,
   IFluxoResponsavel,
+  StatusDocumentoEtapa,
   TipoElementoFluxo,
   TipoResponsavelFluxo
 } from '../../models/Fluxo';
@@ -43,6 +44,10 @@ export type SecaoPainelFluxo =
 
 export interface IPainelPropriedadesFluxoProps {
   secao?: SecaoPainelFluxo;
+
+  // Opções para responsáveis do tipo Área e Usuário.
+  areas?: Array<{ id: string; nome: string; sigla?: string }>;
+  usuarios?: Array<{ id: string; nome: string; email?: string }>;
 
   // Conteúdo extra no fim da aba "campos" (editor de metadados).
   extraCampos?: React.ReactNode;
@@ -130,23 +135,29 @@ export const estiloBotaoPequeno = (
   cursor: 'pointer'
 });
 
+// Tipos que o sistema sabe transformar em pessoas reais.
 const TIPOS_RESPONSAVEL: Array<{ valor: TipoResponsavelFluxo; rotulo: string }> = [
   { valor: 'autorRevisao', rotulo: 'Autor da revisão' },
   { valor: 'gestorArea', rotulo: 'Gestor da área do documento' },
-  { valor: 'grupo', rotulo: 'Grupo' },
-  { valor: 'funcao', rotulo: 'Função' },
-  { valor: 'setor', rotulo: 'Setor' },
+  { valor: 'area', rotulo: 'Área específica' },
   { valor: 'usuario', rotulo: 'Usuário específico' }
 ];
 
 const DESCRICAO_PADRAO_RESPONSAVEL: Record<TipoResponsavelFluxo, string> = {
   autorRevisao: 'Autor da revisão',
   gestorArea: 'Gestor da área do documento',
-  grupo: 'Grupo: ',
-  funcao: 'Função: ',
-  setor: 'Setor: ',
-  usuario: 'Usuário: '
+  area: 'Membros da área',
+  grupo: 'Grupo',
+  funcao: 'Função',
+  setor: 'Setor',
+  usuario: 'Usuário'
 };
+
+const STATUS_DOCUMENTO: Array<{ valor: StatusDocumentoEtapa; rotulo: string }> = [
+  { valor: 'Elaboração', rotulo: 'Elaboração' },
+  { valor: 'Revisão', rotulo: 'Revisão' },
+  { valor: 'Aprovação', rotulo: 'Aprovação' }
+];
 
 const ACOES_SISTEMA: Array<{ valor: '' | AcaoSistemaFluxo; rotulo: string }> = [
   { valor: '', rotulo: 'Nenhuma (apenas segue o fluxo)' },
@@ -175,10 +186,14 @@ const modoDoCampo = (
   return campo.obrigatorio ? 'obrigatorio' : 'editavel';
 };
 
+// Identifica o responsável no motor. Área/usuário entram pelo id
+// (dois responsáveis iguais têm o mesmo papel).
 const papelTesteDe = (
-  responsavel: Pick<IFluxoResponsavel, 'tipo' | 'descricao'>
+  responsavel: Pick<IFluxoResponsavel, 'tipo' | 'descricao' | 'referenciaId' | 'somenteGestores'>
 ): string =>
-  `${responsavel.tipo}:${gerarChave(responsavel.descricao)}`;
+  responsavel.referenciaId
+    ? `${responsavel.tipo}:${responsavel.referenciaId}${responsavel.somenteGestores ? ':gestores' : ''}`
+    : `${responsavel.tipo}:${gerarChave(responsavel.descricao)}`;
 
 const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   selecionado,
@@ -198,7 +213,9 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   onRenomearSaida,
   onSelecionarSaida,
   secao = 'tudo',
-  extraCampos
+  extraCampos,
+  areas = [],
+  usuarios = []
 }) => {
 
   const ver = (
@@ -439,10 +456,23 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
             return item;
           }
 
-          const novo = { ...item, ...parcial };
+          const novo: IFluxoResponsavel = { ...item, ...parcial };
 
-          if (parcial.tipo && parcial.descricao === undefined) {
+          if (parcial.tipo && parcial.tipo !== item.tipo) {
             novo.descricao = DESCRICAO_PADRAO_RESPONSAVEL[parcial.tipo];
+            novo.referenciaId = undefined;
+            novo.referenciaNome = undefined;
+            novo.somenteGestores = parcial.tipo === 'area' ? true : undefined;
+          }
+
+          // Descrição automática ao escolher área/usuário.
+          if (parcial.referenciaId !== undefined || parcial.somenteGestores !== undefined) {
+            if (novo.tipo === 'area' && novo.referenciaNome) {
+              novo.descricao = `${novo.somenteGestores ? 'Gestores' : 'Membros'} da área ${novo.referenciaNome}`;
+            }
+            if (novo.tipo === 'usuario' && novo.referenciaNome) {
+              novo.descricao = novo.referenciaNome;
+            }
           }
 
           novo.papelTeste = papelTesteDe(novo);
@@ -562,6 +592,27 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         />
       </div>
 
+      <div>
+        <label htmlFor="prop-status-documento" style={estiloRotuloPainel}>Status do documento nesta etapa</label>
+        <select
+          id="prop-status-documento"
+          value={config.statusDocumento || ''}
+          disabled={!editavel}
+          onChange={evento => alterar({ statusDocumento: (evento.target.value || undefined) as StatusDocumentoEtapa | undefined })}
+          style={estiloEntradaPainel}
+        >
+          <option value="">Automático (Elaboração na 1ª etapa; depois Aprovação)</option>
+          {
+            STATUS_DOCUMENTO.map(
+              item => <option key={item.valor} value={item.valor}>{item.rotulo}</option>
+            )
+          }
+        </select>
+        <div style={{ fontSize: '12px', marginTop: '4px' }}>
+          É o status que aparece na lista de documentos e nos indicadores enquanto a revisão está nesta etapa.
+        </div>
+      </div>
+
 </>
 )}
 
@@ -593,7 +644,76 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                       item => <option key={item.valor} value={item.valor}>{item.rotulo}</option>
                     )
                   }
+                  {
+                    !TIPOS_RESPONSAVEL.some(item => item.valor === responsavel.tipo) && (
+                      <option value={responsavel.tipo}>
+                        {DESCRICAO_PADRAO_RESPONSAVEL[responsavel.tipo]} (não suportado — troque o tipo)
+                      </option>
+                    )
+                  }
                 </select>
+
+                {
+                  responsavel.tipo === 'area' && (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select
+                        aria-label={`Área do responsável ${indice + 1}`}
+                        value={responsavel.referenciaId || ''}
+                        disabled={!editavel}
+                        onChange={evento => {
+                          const area = areas.find(item => item.id === evento.target.value);
+                          alterarResponsavel(indice, {
+                            referenciaId: area ? area.id : '',
+                            referenciaNome: area ? area.nome : undefined
+                          });
+                        }}
+                        style={{ ...estiloEntradaPainel, flex: '1 1 200px' }}
+                      >
+                        <option value="">Escolha a área...</option>
+                        {
+                          areas.map(
+                            area => <option key={area.id} value={area.id}>{area.sigla ? `${area.sigla} — ` : ''}{area.nome}</option>
+                          )
+                        }
+                      </select>
+                      <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12.5px' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!responsavel.somenteGestores}
+                          disabled={!editavel}
+                          onChange={evento => alterarResponsavel(indice, { somenteGestores: evento.target.checked })}
+                        />
+                        Somente gestores da área
+                      </label>
+                    </div>
+                  )
+                }
+
+                {
+                  responsavel.tipo === 'usuario' && (
+                    <select
+                      aria-label={`Usuário responsável ${indice + 1}`}
+                      value={responsavel.referenciaId || ''}
+                      disabled={!editavel}
+                      onChange={evento => {
+                        const usuario = usuarios.find(item => item.id === evento.target.value);
+                        alterarResponsavel(indice, {
+                          referenciaId: usuario ? usuario.id : '',
+                          referenciaNome: usuario ? usuario.nome : undefined
+                        });
+                      }}
+                      style={estiloEntradaPainel}
+                    >
+                      <option value="">Escolha o usuário...</option>
+                      {
+                        usuarios.map(
+                          usuario => <option key={usuario.id} value={usuario.id}>{usuario.nome}{usuario.email ? ` (${usuario.email})` : ''}</option>
+                        )
+                      }
+                    </select>
+                  )
+                }
+
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <input
                     type="text"
@@ -601,7 +721,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                     value={responsavel.descricao}
                     disabled={!editavel}
                     onChange={evento => alterarResponsavel(indice, { descricao: evento.target.value })}
-                    placeholder="Ex.: Função: Analista da Qualidade"
+                    placeholder="Como aparece para os usuários"
                     style={estiloEntradaPainel}
                   />
                   {
@@ -645,8 +765,10 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         }
 
         <div style={{ fontSize: '12px', lineHeight: '17px' }}>
-          Grupo, função, setor e usuário serão escolhidos das tabelas do Dataverse quando
-          elas forem criadas. No teste, cada responsável vira um usuário simulado na aba do documento.
+          <strong>Autor da revisão</strong>: o responsável cadastrado na revisão.{' '}
+          <strong>Gestor da área do documento</strong>: os Gestores da área do documento (Áreas e acessos).{' '}
+          <strong>Área específica</strong>: membros (ou só gestores) da área escolhida.{' '}
+          Qualquer um dos responsáveis pode executar a etapa. O Administrador do portal também pode.
         </div>
       </fieldset>}
 

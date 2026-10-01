@@ -51,7 +51,7 @@ export interface IBpmnSnapshot {
 // Configuração de negócio de uma etapa (o que não está no desenho).
 export type IConfigElemento = Pick<
   IFluxoElemento,
-  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema'
+  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento'
 >;
 
 // Configuração de negócio de uma ligação.
@@ -175,7 +175,8 @@ export const configDoElemento = (
   responsaveis: elemento.responsaveis,
   acoes: elemento.acoes,
   campos: elemento.campos,
-  acaoSistema: elemento.acaoSistema
+  acaoSistema: elemento.acaoSistema,
+  statusDocumento: elemento.statusDocumento
 });
 
 export const configDaTransicao = (
@@ -501,6 +502,7 @@ export const montarDefinicao = (
           acoes: humana ? (config.acoes as IFluxoAcao[]) : [],
           campos: humana ? camposSincronizados(config.campos, dados.metadados) : [],
           acaoSistema: tipo === 'tarefaSistema' ? config.acaoSistema : undefined,
+          statusDocumento: humana ? config.statusDocumento : undefined,
           posicao: mover({ x: forma.x, y: forma.y, largura: forma.largura, altura: forma.altura }),
           rotuloPosicao: forma.rotulo ? mover(forma.rotulo) : undefined
         };

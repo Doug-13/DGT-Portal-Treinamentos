@@ -183,6 +183,25 @@ export const validarDefinicao = (
             if (!(responsavel.descricao || '').trim()) {
               erros.push(`Descreva o responsável da etapa "${item.nome}".`);
             }
+
+            if (
+              responsavel.tipo === 'grupo' ||
+              responsavel.tipo === 'funcao' ||
+              responsavel.tipo === 'setor'
+            ) {
+              erros.push(
+                `O responsável "${responsavel.descricao}" da etapa "${item.nome}" é do tipo ${responsavel.tipo === 'grupo' ? 'Grupo' : responsavel.tipo === 'funcao' ? 'Função' : 'Setor'}, que ainda não pode ser resolvido para pessoas. Use Autor da revisão, Gestor da área, Área ou Usuário.`
+              );
+            }
+
+            if (
+              (responsavel.tipo === 'area' || responsavel.tipo === 'usuario') &&
+              !(responsavel.referenciaId || '').trim()
+            ) {
+              erros.push(
+                `Escolha ${responsavel.tipo === 'area' ? 'a área' : 'o usuário'} do responsável "${responsavel.descricao}" na etapa "${item.nome}".`
+              );
+            }
           }
         );
 

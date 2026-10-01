@@ -79,6 +79,7 @@ export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
       tipo: 'tarefaHumana',
       nome: 'Elaboração',
       subtitulo: 'Autor da revisão',
+      statusDocumento: 'Elaboração',
       instrucoes:
         'Atualize o arquivo no SharePoint e descreva o que mudou antes de enviar.',
       prazoDiasUteis: 5,
@@ -107,6 +108,7 @@ export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
       tipo: 'tarefaHumana',
       nome: 'Revisão técnica',
       subtitulo: 'Gestor da área',
+      statusDocumento: 'Revisão',
       instrucoes:
         'Confira se o conteúdo técnico está correto. Para devolver, o comentário é obrigatório.',
       prazoDiasUteis: 3,
@@ -153,14 +155,18 @@ export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
       tipo: 'tarefaHumana',
       nome: 'Aprovação',
       subtitulo: 'Qualidade',
+      statusDocumento: 'Aprovação',
       instrucoes:
         'Aprove a revisão e responda se ela exige retreinamento. A resposta decide o caminho seguinte.',
       prazoDiasUteis: 2,
+      // A área da Qualidade é escolhida ao configurar o fluxo do
+      // processo (o modelo não conhece os ids das áreas).
       responsaveis: [
         {
-          tipo: 'funcao',
+          tipo: 'area',
           referenciaId: '',
-          descricao: 'Função: Analista da Qualidade',
+          somenteGestores: true,
+          descricao: 'Gestores da área da Qualidade',
           papelTeste: 'qualidade'
         }
       ],
@@ -446,6 +452,7 @@ export const FLUXO_EM_BRANCO: IFluxoDefinicao = {
       tipo: 'tarefaHumana',
       nome: 'Elaboração',
       subtitulo: 'Autor da revisão',
+      statusDocumento: 'Elaboração',
       prazoDiasUteis: 5,
       responsaveis: [
         {
