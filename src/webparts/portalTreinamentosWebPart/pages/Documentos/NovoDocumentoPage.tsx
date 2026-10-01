@@ -10,6 +10,22 @@ import {
   INovoDocumentoCompleto
 } from '../../services/DocumentoAdminService';
 
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import {
+  vincularDocumentoPorCodigoTeste
+} from '../../services/processos/ProcessoService';
+
+import {
+  useProcessos
+} from '../../hooks/useProcessos';
+
+import {
+  FEATURE_FLAGS
+} from '../../constants/featureFlags';
+
 export interface INovoDocumentoPageProps {
   statusDocumentos:
     Array<{
@@ -31,6 +47,10 @@ export interface INovoDocumentoPageProps {
 
   documentosExistentes:
     IDocumentoAdmin[];
+
+  // Leitura de processos (modo de teste do fluxo por processo).
+  dataverseService?:
+    DataverseService;
 
   processando:
     boolean;
@@ -443,6 +463,71 @@ const NovoDocumentoPage:
       ]
     );
 
+    // --------------------------------------------------------
+    // Processo do documento (modo de teste): define o fluxo de
+    // revisão que o documento vai seguir.
+    // --------------------------------------------------------
+
+    const usarProcessos =
+      FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE;
+
+    const dadosProcessos =
+      useProcessos(
+        usarProcessos ? props.dataverseService : undefined
+      );
+
+    const [
+      processoId,
+      setProcessoId
+    ] =
+      React.useState('');
+
+    // Processos da área escolhida + processos ainda sem área.
+    const processosDisponiveis =
+      React.useMemo(
+        () =>
+          dadosProcessos.processos.filter(
+            processo =>
+              !processo.areaId ||
+              !areaId ||
+              processo.areaId === areaId
+          ),
+        [
+          dadosProcessos.processos,
+          areaId
+        ]
+      );
+
+    React.useEffect(
+      () => {
+        if (
+          processoId &&
+          !processosDisponiveis.some(
+            processo => processo.id === processoId
+          )
+        ) {
+          setProcessoId('');
+        }
+      },
+      [
+        processosDisponiveis,
+        processoId
+      ]
+    );
+
+    const versaoPublicada = (
+      id: string
+    ): number | undefined => {
+      const publicada =
+        (dadosProcessos.fluxosPorProcesso[id] || []).find(
+          versao => versao.status === 'publicado'
+        );
+
+      return publicada
+        ? publicada.versao
+        : undefined;
+    };
+
     const aprovadorSelecionado =
       React.useMemo(
         () => {
@@ -597,6 +682,18 @@ const NovoDocumentoPage:
               arquivo:
                 arquivo as File
             });
+
+          // Documento criado: registra o vínculo com o processo
+          // (somente no navegador, modo de teste).
+          if (
+            usarProcessos &&
+            processoId
+          ) {
+            vincularDocumentoPorCodigoTeste(
+              codigoGerado,
+              processoId
+            );
+          }
         } catch (e) {
 
           // Volta para o formulário (não o aviso) para que o erro
@@ -1052,6 +1149,98 @@ const NovoDocumentoPage:
                 }
               </div>
             </div>
+
+            {
+              usarProcessos && (
+                <div
+                  style={{
+                    marginTop: '14px',
+                    padding: '12px 14px',
+                    border: `1px dashed ${C.borda}`,
+                    borderRadius: '10px',
+                    background: '#F8FAFC'
+                  }}
+                >
+                  <label
+                    htmlFor="novo-documento-processo"
+                    style={label}
+                  >
+                    Processo (fluxo de revisão)
+                  </label>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                      gap: '14px',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <select
+                      id="novo-documento-processo"
+                      value={processoId}
+                      disabled={dadosProcessos.carregando}
+                      onChange={
+                        event =>
+                          setProcessoId(
+                            event.target.value
+                          )
+                      }
+                      style={input}
+                    >
+                      <option value="">
+                        {
+                          dadosProcessos.carregando
+                            ? 'Carregando processos...'
+                            : 'Nenhum (vincular depois)'
+                        }
+                      </option>
+                      {
+                        processosDisponiveis.map(
+                          processo => {
+                            const versao =
+                              versaoPublicada(processo.id);
+
+                            return (
+                              <option
+                                key={processo.id}
+                                value={processo.id}
+                              >
+                                {processo.codigo ? `${processo.codigo} — ` : ''}
+                                {processo.nome}
+                                {versao ? ` · fluxo v${versao}` : ' · sem fluxo publicado'}
+                              </option>
+                            );
+                          }
+                        )
+                      }
+                    </select>
+
+                    <div
+                      style={{
+                        color: C.secundario,
+                        fontSize: '11.5px',
+                        lineHeight: 1.45
+                      }}
+                    >
+                      {
+                        !processoId
+                          ? (
+                            areaId
+                              ? 'Mostrando os processos da área selecionada e os processos sem área.'
+                              : 'Selecione a área para ver os processos dela.'
+                          )
+                          : versaoPublicada(processoId)
+                            ? `A revisão deste documento seguirá o fluxo v${versaoPublicada(processoId)} do processo.`
+                            : 'Este processo ainda não tem fluxo publicado. O documento fica vinculado e passa a seguir o fluxo quando ele for publicado.'
+                      }
+                      <br />
+                      Modo de teste: o vínculo fica salvo apenas neste navegador.
+                    </div>
+                  </div>
+                </div>
+              )
+            }
 
             <div
               style={{

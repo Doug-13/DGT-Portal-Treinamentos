@@ -8,7 +8,10 @@ import {
 } from './FluxoCatalogoLocal';
 
 import {
-  processoPrincipalDoDocumento
+  carregarDadosProcessos,
+  criarProcessoTeste,
+  processoPrincipalDoDocumento,
+  vincularDocumentoPorCodigoTeste
 } from '../processos/ProcessoService';
 
 // ============================================================
@@ -135,5 +138,37 @@ describe('processoPrincipalDoDocumento', () => {
         { id: 'v2', documentoId: 'd1', processoId: 'p2', principal: true, origem: 'dataverse' }
       ])
     ).toBe('p2');
+  });
+});
+
+describe('vínculo feito na criação do documento (pelo código)', () => {
+
+  it('liga ao documento quando ele aparece e o torna principal', async () => {
+
+    const criado =
+      criarProcessoTeste({ codigo: 'PRC-COD', nome: 'Compras', areaId: 'a1', areaNome: 'Suprimentos' }, []);
+
+    expect(criado.ok).toBe(true);
+
+    const processoId =
+      (criado.processo as IProcesso).id;
+
+    vincularDocumentoPorCodigoTeste('SUP-POP-001', processoId);
+
+    // Antes de o documento existir, o vínculo não aparece.
+    const antes =
+      await carregarDadosProcessos(undefined, true, []);
+
+    expect(antes.vinculos.some(item => item.processoId === processoId)).toBe(false);
+
+    const depois =
+      await carregarDadosProcessos(undefined, true, [{ id: '{ABC-123}', codigo: 'sup-pop-001' }]);
+
+    const vinculo =
+      depois.vinculos.find(item => item.processoId === processoId);
+
+    expect(vinculo?.documentoId).toBe('abc-123');
+    expect(vinculo?.principal).toBe(true);
+    expect(depois.processos.find(item => item.id === processoId)?.areaNome).toBe('Suprimentos');
   });
 });

@@ -21,6 +21,7 @@ import {
   carregarDadosProcessos,
   criarProcessoTeste,
   definirProcessoPrincipalTeste,
+  IDocumentoReferencia,
   INovoProcessoTeste,
   removerVinculoTeste,
   vincularDocumentoTeste
@@ -52,8 +53,17 @@ export interface IUseProcessos {
 }
 
 export const useProcessos = (
-  dataverseService?: DataverseService
+  dataverseService?: DataverseService,
+  documentos: IDocumentoReferencia[] = []
 ): IUseProcessos => {
+
+  // Só os códigos importam para resolver vínculos; evita recarregar
+  // a cada nova referência do array.
+  const documentosRef =
+    React.useRef<IDocumentoReferencia[]>(documentos);
+
+  documentosRef.current = documentos;
+
 
   const [carregando, setCarregando] =
     React.useState<boolean>(true);
@@ -87,7 +97,8 @@ export const useProcessos = (
           const dados =
             await carregarDadosProcessos(
               dataverseService,
-              forcarReleitura
+              forcarReleitura,
+              documentosRef.current
             );
 
           const fluxos: Record<string, IFluxoDefinicao[]> = {};

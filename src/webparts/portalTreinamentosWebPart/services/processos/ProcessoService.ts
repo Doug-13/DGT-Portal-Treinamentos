@@ -46,6 +46,14 @@ export interface INovoProcessoTeste {
   codigo: string;
   nome: string;
   descricao?: string;
+  areaId?: string;
+  areaNome?: string;
+}
+
+// Documento mínimo para ligar vínculos feitos pelo código.
+export interface IDocumentoReferencia {
+  id: string;
+  codigo: string;
 }
 
 const limparId = (
@@ -188,10 +196,60 @@ const principaisLocais = (): Record<string, string> =>
 // API
 // ------------------------------------------------------------
 
+// Vínculos criados junto com o documento só conhecem o código.
+// Quando o documento aparece na lista, o id é preenchido e gravado.
+const resolverVinculosPorCodigo = (
+  documentos: IDocumentoReferencia[]
+): void => {
+
+  if (documentos.length === 0) {
+    return;
+  }
+
+  const locais =
+    vinculosLocais();
+
+  let alterou = false;
+
+  locais.forEach(
+    vinculo => {
+
+      if (vinculo.documentoId || !vinculo.documentoCodigo) {
+        return;
+      }
+
+      const documento =
+        documentos.find(
+          item => normalizar(item.codigo) === normalizar(vinculo.documentoCodigo || '')
+        );
+
+      if (documento) {
+        vinculo.documentoId = limparId(documento.id);
+        alterou = true;
+
+        if (vinculo.principal) {
+          gravarJson(
+            CHAVE_PRINCIPAL,
+            { ...principaisLocais(), [vinculo.documentoId]: vinculo.processoId }
+          );
+        }
+      }
+    }
+  );
+
+  if (alterou) {
+    gravarJson(CHAVE_VINCULOS, locais);
+  }
+};
+
 export const carregarDadosProcessos = async (
   dataverseService?: DataverseService,
-  forcarReleitura: boolean = false
+  forcarReleitura: boolean = false,
+  documentos: IDocumentoReferencia[] = []
 ): Promise<IDadosProcessos> => {
+
+  resolverVinculosPorCodigo(documentos);
+
 
   if (
     !cacheDataverse ||
@@ -226,7 +284,8 @@ export const carregarDadosProcessos = async (
     ]
       .filter(
         vinculo =>
-          idsProcessos.indexOf(vinculo.processoId) >= 0
+          idsProcessos.indexOf(vinculo.processoId) >= 0 &&
+          !!vinculo.documentoId
       )
       .map(
         vinculo => ({
@@ -271,6 +330,8 @@ export const criarProcessoTeste = (
     codigo,
     nome,
     descricao: (dados.descricao || '').trim() || undefined,
+    areaId: dados.areaId || undefined,
+    areaNome: dados.areaNome || undefined,
     ativo: true,
     origem: 'teste'
   };
@@ -311,6 +372,45 @@ export const vincularDocumentoTeste = (
         documentoId: doc,
         processoId,
         principal: false,
+        origem: 'teste'
+      }
+    ]
+  );
+};
+
+// Vínculo feito na tela "Novo documento": o documento ainda não tem
+// id, então fica registrado pelo código e é resolvido depois.
+export const vincularDocumentoPorCodigoTeste = (
+  documentoCodigo: string,
+  processoId: string
+): void => {
+
+  const codigo =
+    (documentoCodigo || '').trim();
+
+  if (!codigo || !processoId) {
+    return;
+  }
+
+  const restantes =
+    vinculosLocais().filter(
+      vinculo =>
+        !(
+          !vinculo.documentoId &&
+          normalizar(vinculo.documentoCodigo || '') === normalizar(codigo)
+        )
+    );
+
+  gravarJson(
+    CHAVE_VINCULOS,
+    [
+      ...restantes,
+      {
+        id: gerarIdLocal('vinculo-teste'),
+        documentoId: '',
+        documentoCodigo: codigo,
+        processoId,
+        principal: true,
         origem: 'teste'
       }
     ]

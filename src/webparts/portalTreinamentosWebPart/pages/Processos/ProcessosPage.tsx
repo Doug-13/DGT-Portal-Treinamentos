@@ -21,6 +21,10 @@ import {
 } from '../../services/DataverseService';
 
 import {
+  IAreaAdmin
+} from '../../services/AreaAdminService';
+
+import {
   consumirAberturaProcesso,
   idDocumentoNormalizado
 } from '../../services/processos/ProcessoService';
@@ -45,6 +49,9 @@ import ProcessoFluxoEditor from
 
 export interface IProcessosPageProps {
   documentos: IDocumento[];
+
+  // Áreas cadastradas (dgt_area), para classificar os processos.
+  areas?: IAreaAdmin[];
   contexto?: IContextoAcesso;
   dataverseService?: DataverseService;
   onAbrirDocumento: (documento: IDocumento) => void;
@@ -174,13 +181,35 @@ const resumoFluxo = (
 
 const ProcessosPage: React.FC<IProcessosPageProps> = ({
   documentos,
+  areas = [],
   contexto,
   dataverseService,
   onAbrirDocumento
 }) => {
 
+  const referencias =
+    React.useMemo(
+      () => documentos.map(documento => ({ id: documento.id, codigo: documento.codigo })),
+      [documentos]
+    );
+
   const dados =
-    useProcessos(dataverseService);
+    useProcessos(dataverseService, referencias);
+
+  const areasAtivas =
+    React.useMemo(
+      () =>
+        areas
+          .filter(area => area.ativa)
+          .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+      [areas]
+    );
+
+  const [novoAreaId, setNovoAreaId] =
+    React.useState<string>('');
+
+  const [filtroAreaId, setFiltroAreaId] =
+    React.useState<string>('');
 
   const [processoId, setProcessoId] =
     React.useState<string>(
@@ -325,6 +354,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
             }
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {selo(processoSelecionado.areaNome ? `Área: ${processoSelecionado.areaNome}` : 'Sem área', false)}
             {selo(processoSelecionado.origem === 'teste' ? 'Teste (local)' : 'Dataverse', processoSelecionado.origem === 'dataverse')}
             {selo(resumo.texto, resumo.publicado)}
             {selo(`${vinculosProcesso.length} documento(s)`, false)}
@@ -500,10 +530,14 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
   const visiveis =
     dados.processos.filter(
       processo =>
-        !termo ||
+        (
+          !filtroAreaId ||
+          (filtroAreaId === 'sem' ? !processo.areaId : processo.areaId === filtroAreaId)
+        ) &&
+        (!termo ||
         `${processo.codigo} ${processo.nome} ${processo.descricao || ''}`
           .toLowerCase()
-          .indexOf(termo) >= 0
+          .indexOf(termo) >= 0)
     );
 
   return (
@@ -524,8 +558,21 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
           />
         </div>
 
+        <div style={{ minWidth: '200px', maxWidth: '280px' }}>
+          <label htmlFor="filtro-area" style={estiloRotulo}>Área</label>
+          <select id="filtro-area" value={filtroAreaId} onChange={evento => setFiltroAreaId(evento.target.value)} style={estiloEntrada}>
+            <option value="">Todas</option>
+            {
+              areasAtivas.map(
+                area => <option key={area.id} value={area.id}>{area.nome}</option>
+              )
+            }
+            <option value="sem">Sem área</option>
+          </select>
+        </div>
+
         <span style={{ fontSize: '13px' }}>
-          {dados.processos.length} processo(s)
+          {visiveis.length} de {dados.processos.length} processo(s)
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px' }}>
@@ -562,7 +609,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
           <section style={estiloCartao}>
             <div style={estiloBarraSecao}>Novo processo (somente neste navegador)</div>
             <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 200px) minmax(0, 1fr)', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 200px) minmax(0, 1fr) minmax(200px, 320px)', gap: '12px' }}>
                 <div>
                   <label htmlFor="novo-codigo" style={estiloRotulo}>Código *</label>
                   <input id="novo-codigo" type="text" value={novoCodigo} onChange={evento => setNovoCodigo(evento.target.value)} style={estiloEntrada} />
@@ -570,6 +617,28 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 <div>
                   <label htmlFor="novo-nome" style={estiloRotulo}>Nome *</label>
                   <input id="novo-nome" type="text" value={novoNome} onChange={evento => setNovoNome(evento.target.value)} style={estiloEntrada} />
+                </div>
+                <div>
+                  <label htmlFor="novo-area" style={estiloRotulo}>Área *</label>
+                  <select id="novo-area" value={novoAreaId} onChange={evento => setNovoAreaId(evento.target.value)} style={estiloEntrada}>
+                    <option value="">Selecione...</option>
+                    {
+                      areasAtivas.map(
+                        area => (
+                          <option key={area.id} value={area.id}>
+                            {area.sigla ? `${area.sigla} — ` : ''}{area.nome}
+                          </option>
+                        )
+                      )
+                    }
+                  </select>
+                  {
+                    areasAtivas.length === 0 && (
+                      <div style={{ fontSize: '12px', marginTop: '4px', color: COR_INDIGO }}>
+                        Nenhuma área ativa cadastrada. Cadastre em Gestão › Áreas e acessos.
+                      </div>
+                    )
+                  }
                 </div>
               </div>
               <div>
@@ -585,11 +654,21 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    const area =
+                      areasAtivas.find(item => item.id === novoAreaId);
+
+                    if (!area && areasAtivas.length > 0) {
+                      setErroNovo('Selecione a área do processo.');
+                      return;
+                    }
+
                     const resultado =
                       dados.criarProcesso({
                         codigo: novoCodigo,
                         nome: novoNome,
-                        descricao: novoDescricao
+                        descricao: novoDescricao,
+                        areaId: area ? area.id : undefined,
+                        areaNome: area ? area.nome : undefined
                       });
 
                     if (!resultado.ok) {
@@ -601,6 +680,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                     setNovoCodigo('');
                     setNovoNome('');
                     setNovoDescricao('');
+                    setNovoAreaId('');
 
                     if (resultado.processo) {
                       setProcessoId(resultado.processo.id);
@@ -662,6 +742,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                       >
                         <span style={{ fontSize: '12.5px', fontWeight: 700, color: COR_INDIGO }}>
                           {processo.codigo || 'Sem código'}
+                          {processo.areaNome ? ` · ${processo.areaNome}` : ''}
                         </span>
                         <span style={{ fontSize: '17px', fontWeight: 700, lineHeight: '22px' }}>
                           {processo.nome}

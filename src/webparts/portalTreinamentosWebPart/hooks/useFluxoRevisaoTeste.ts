@@ -339,7 +339,8 @@ export const useFluxoRevisaoTeste = (
           const dados =
             await carregarDadosProcessos(
               dataverseService,
-              forcarReleitura
+              forcarReleitura,
+              [{ id: documento.id, codigo: documento.codigo }]
             );
 
           setProcessos(dados.processos);

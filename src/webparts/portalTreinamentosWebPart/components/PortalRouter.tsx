@@ -1629,6 +1629,10 @@ const PortalRouter:
               props.usuariosAreasAdministrativos
             }
 
+            dataverseService={
+              props.dataverseService
+            }
+
             documentosExistentes={
               props.documentosAdministrativos
             }
@@ -1815,6 +1819,10 @@ const PortalRouter:
           <ProcessosPage
             documentos={
               props.documentos
+            }
+
+            areas={
+              props.areasAdministrativas
             }
 
             contexto={
