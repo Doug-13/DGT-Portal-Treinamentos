@@ -67,6 +67,13 @@ import {
 import AcoesFluxoRevisao from
   './AcoesFluxoRevisao';
 
+import FluxoRevisaoTab from
+  './FluxoRevisaoTab';
+
+import {
+  FEATURE_FLAGS
+} from '../../constants/featureFlags';
+
 export interface IDocumentoDetalhePageProps {
   documento?: IDocumento;
 
@@ -382,7 +389,7 @@ const obterReprovacaoPendente = (
 // COMPONENTE PRINCIPAL
 // ============================================================
 
-type Aba = 'revisoes' | 'historico';
+type Aba = 'revisoes' | 'historico' | 'fluxo';
 
 const DocumentoDetalhePage:
   React.FC<IDocumentoDetalhePageProps> = ({
@@ -1128,10 +1135,32 @@ const DocumentoDetalhePage:
           >
             Histórico ({fluxo.eventos.length})
           </button>
+
+          {
+            FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE && (
+              <button
+                type="button"
+                style={estiloAba(aba === 'fluxo')}
+                onClick={() => setAba('fluxo')}
+                title="Simulação do fluxo configurável — nada é gravado no Dataverse"
+              >
+                Fluxo (teste)
+              </button>
+            )
+          }
         </div>
 
         {
-          aba === 'historico'
+          aba === 'fluxo' &&
+          FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
+            ? (
+              <FluxoRevisaoTab
+                documento={documento}
+                revisoes={revisoes}
+                contexto={contexto}
+              />
+            )
+            : aba === 'historico'
             ? (
               fluxoDisponivel
                 ? (
