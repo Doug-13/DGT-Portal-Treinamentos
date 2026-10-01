@@ -30,9 +30,14 @@ export interface IEditorBpmnFluxoRef {
 
 export interface IEditorBpmnFluxoProps {
   xmlInicial: string;
-  altura?: number;
+
+  // Altura do desenho (px ou CSS). Padrão: quase a tela toda.
+  altura?: number | string;
   onSelecionar: (elemento: IElementoSelecionadoBpmn | undefined) => void;
   onAlterado: () => void;
+
+  // Duplo clique ou "⚙ Configurar" no menu do elemento.
+  onConfigurar: (elemento: IElementoSelecionadoBpmn) => void;
 }
 
 const COR_AZUL = '#202A44';
@@ -56,9 +61,10 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
   (
     {
       xmlInicial,
-      altura = 560,
+      altura = 'max(560px, calc(100vh - 230px))',
       onSelecionar,
-      onAlterado
+      onAlterado,
+      onConfigurar
     },
     ref
   ) => {
@@ -71,9 +77,9 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
 
     // Guarda os callbacks mais recentes sem recriar o editor.
     const callbacksRef =
-      React.useRef({ onSelecionar, onAlterado });
+      React.useRef({ onSelecionar, onAlterado, onConfigurar });
 
-    callbacksRef.current = { onSelecionar, onAlterado };
+    callbacksRef.current = { onSelecionar, onAlterado, onConfigurar };
 
     const [carregando, setCarregando] =
       React.useState<boolean>(true);
@@ -122,6 +128,10 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
 
             modeler.aoAlterar(
               () => callbacksRef.current.onAlterado()
+            );
+
+            modeler.aoConfigurar(
+              elemento => callbacksRef.current.onConfigurar(elemento)
             );
 
             etapa = 'abrir o desenho do fluxo';
@@ -246,11 +256,11 @@ const EditorBpmnFluxo = React.forwardRef<IEditorBpmnFluxoRef, IEditorBpmnFluxoPr
           {ferramenta('Ajustar', 'Ajustar o desenho na tela', modeler => modeler.ajustarNaTela())}
 
           <span style={{ marginLeft: 'auto', fontSize: '12.5px', color: COR_AZUL }}>
-            Arraste da paleta à esquerda · duplo clique para renomear · clique em um elemento para configurá-lo
+            Arraste os elementos da paleta à esquerda para o desenho
           </span>
         </div>
 
-        <div style={{ position: 'relative', height: `${altura}px` }}>
+        <div style={{ position: 'relative', height: typeof altura === 'number' ? `${altura}px` : altura }}>
 
           <div
             ref={containerRef}

@@ -49,8 +49,13 @@ import {
 
 import PainelPropriedadesFluxo, {
   IResultadoDisponivel,
-  ISaidaElemento
+  ISaidaElemento,
+  SecaoPainelFluxo
 } from './PainelPropriedadesFluxo';
+
+import ModalConfiguracaoFluxo, {
+  IAbaModalFluxo
+} from './ModalConfiguracaoFluxo';
 
 import PainelMetadados from
   './PainelMetadados';
@@ -237,6 +242,10 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   const [selecionado, setSelecionado] =
     React.useState<IElementoSelecionadoBpmn | undefined>(undefined);
 
+  // Modal aberto: configuração do elemento ou metadados do processo.
+  const [modal, setModal] =
+    React.useState<{ tipo: 'elemento' | 'metadados' } | undefined>(undefined);
+
   const [alterado, setAlterado] =
     React.useState<boolean>(false);
 
@@ -280,6 +289,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
           : undefined
       );
       setSelecionado(undefined);
+      setModal(undefined);
       setAlterado(false);
       setChaveEditor(chave => chave + 1);
     },
@@ -726,6 +736,183 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   }
 
   // ----------------------------------------------------------
+  // Metadados e modal
+  // ----------------------------------------------------------
+
+  const metadadosAtuais: IFluxoMetadado[] =
+    edicao ? edicao.metadados : metadadosDaDefinicao(definicaoSelecionada);
+
+  const alterarMetadados = (
+    metadados: IFluxoMetadado[]
+  ): void => {
+
+    if (!edicao) {
+      return;
+    }
+
+    const chaves =
+      metadados.map(item => item.chave);
+
+    // Retira das etapas os campos cujo metadado foi excluído.
+    const configsElementos: Record<string, IConfigElemento> = {};
+
+    Object.keys(edicao.configsElementos).forEach(
+      id => {
+        const config = edicao.configsElementos[id];
+        configsElementos[id] = {
+          ...config,
+          campos: config.campos.filter(campo => chaves.indexOf(campo.chave) >= 0)
+        };
+      }
+    );
+
+    setEdicao({ ...edicao, metadados, configsElementos });
+    setAlterado(true);
+  };
+
+  const editorMetadados = (
+    <PainelMetadados
+      metadados={metadadosAtuais}
+      editavel={editavel && !!edicao}
+      usoPorChave={usoPorChave}
+      onAlterar={alterarMetadados}
+    />
+  );
+
+  const configSelecionado: IConfigElemento | undefined =
+    edicao && selecionado && tipoSelecionado
+      ? edicao.configsElementos[selecionado.id] || configPadraoElemento(tipoSelecionado)
+      : undefined;
+
+  const painel = (
+    secao: SecaoPainelFluxo,
+    extraCampos?: React.ReactNode
+  ): React.ReactNode =>
+    edicao && (
+      <PainelPropriedadesFluxo
+        key={`${selecionado ? selecionado.id : 'nenhum'}-${secao}`}
+        secao={secao}
+        extraCampos={extraCampos}
+        selecionado={selecionado}
+        tipo={tipoSelecionado}
+        editavel={editavel}
+        configElemento={configSelecionado}
+        onAlterarElemento={config => {
+          if (!selecionado) {
+            return;
+          }
+          setEdicao({
+            ...edicao,
+            configsElementos: { ...edicao.configsElementos, [selecionado.id]: config }
+          });
+          setAlterado(true);
+        }}
+        configTransicao={
+          selecionado && selecionado.conexao
+            ? edicao.configsTransicoes[selecionado.id] || configPadraoTransicao()
+            : undefined
+        }
+        onAlterarTransicao={config => {
+          if (selecionado) {
+            alterarConfigTransicao(selecionado.id, config);
+          }
+        }}
+        saidas={saidas}
+        onAlterarSaida={alterarConfigTransicao}
+        onDefinirPadraoSaida={definirPadraoSaida}
+        onRenomearSaida={(id, nome) => {
+          if (editorRef.current) {
+            editorRef.current.renomear(id, nome);
+          }
+        }}
+        onSelecionarSaida={id => {
+          // Abre a ligação no próprio modal.
+          if (editorRef.current) {
+            editorRef.current.selecionar(id);
+            const ligacao = editorRef.current.elemento(id);
+            if (ligacao) {
+              setSelecionado(ligacao);
+            }
+          }
+        }}
+        tipoOrigem={tipoOrigem}
+        resultadosDisponiveis={resultadosDisponiveis}
+        metadados={metadadosAtuais}
+        onRenomear={nome => {
+          if (selecionado && editorRef.current) {
+            editorRef.current.renomear(selecionado.id, nome);
+          }
+        }}
+      />
+    );
+
+  const nomeTipoSelecionado =
+    !selecionado
+      ? ''
+      : selecionado.conexao
+        ? 'Ligação'
+        : tipoSelecionado === 'tarefaHumana'
+          ? 'Etapa com responsável'
+          : tipoSelecionado === 'tarefaSistema'
+            ? 'Tarefa de sistema'
+            : tipoSelecionado === 'gateway'
+              ? 'Decisão'
+              : tipoSelecionado === 'inicio'
+                ? 'Início'
+                : tipoSelecionado === 'fim'
+                  ? 'Fim'
+                  : 'Elemento não suportado';
+
+  const abasDoModal: IAbaModalFluxo[] =
+    tipoSelecionado === 'tarefaHumana' && configSelecionado
+      ? [
+        { id: 'geral', rotulo: 'Geral e prazo', conteudo: painel('geral') },
+        {
+          id: 'responsaveis',
+          rotulo: 'Responsáveis',
+          indicador: String(configSelecionado.responsaveis.length),
+          conteudo: painel('responsaveis')
+        },
+        {
+          id: 'acoes',
+          rotulo: 'Ações (botões)',
+          indicador: String(configSelecionado.acoes.length),
+          conteudo: painel('acoes')
+        },
+        {
+          id: 'campos',
+          rotulo: 'Metadados',
+          indicador: String(configSelecionado.campos.length),
+          conteudo: painel(
+            'campos',
+            <fieldset style={{ border: `1px solid ${COR_BORDA}`, borderRadius: '6px', padding: '10px 12px', margin: 0 }}>
+              <legend style={{ ...estiloRotulo, padding: '0 6px', marginBottom: 0 }}>Metadados do processo</legend>
+              {editorMetadados}
+            </fieldset>
+          )
+        },
+        {
+          id: 'caminhos',
+          rotulo: 'Caminhos',
+          indicador: String(saidas.length),
+          conteudo: painel('caminhos')
+        }
+      ]
+      : tipoSelecionado === 'gateway' && selecionado && !selecionado.conexao
+        ? [
+          { id: 'geral', rotulo: 'Geral', conteudo: painel('geral') },
+          {
+            id: 'caminhos',
+            rotulo: 'Caminhos',
+            indicador: String(saidas.length),
+            conteudo: painel('caminhos')
+          }
+        ]
+        : [
+          { id: 'tudo', rotulo: 'Configuração', conteudo: painel('tudo') }
+        ];
+
+  // ----------------------------------------------------------
   // Render
   // ----------------------------------------------------------
 
@@ -787,86 +974,57 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
           </span>
         </div>
 
+        {/* BARRA: metadados do processo */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '10px',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            padding: '10px 12px 0'
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setModal({ tipo: 'metadados' })}
+            style={{ ...estiloBotao(false, false), minHeight: '36px' }}
+          >
+            Metadados do processo ({metadadosAtuais.length})
+          </button>
+          <span style={{ fontSize: '12.5px' }}>
+            {
+              editavel
+                ? 'Dê duplo clique em uma etapa, decisão ou ligação (ou use ⚙ no menu do elemento) para configurar responsáveis, botões, prazo, metadados e caminhos.'
+                : 'Versão somente leitura.'
+            }
+          </span>
+        </div>
+
         {
           editavel && edicao
             ? (
-              <div style={{ padding: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'stretch' }}>
+              <div style={{ padding: '10px 12px 12px' }}>
+                <EditorBpmnFluxo
+                  key={chaveEditor}
+                  ref={editorRef}
+                  xmlInicial={edicao.xml}
+                  onSelecionar={() => undefined}
+                  onConfigurar={elemento => {
+                    setSelecionado(elemento);
+                    setModal({ tipo: 'elemento' });
+                  }}
+                  onAlterado={() => {
+                    setAlterado(true);
 
-                <div style={{ flex: '1 1 640px', minWidth: 0 }}>
-                  <EditorBpmnFluxo
-                    key={chaveEditor}
-                    ref={editorRef}
-                    xmlInicial={edicao.xml}
-                    onSelecionar={elemento => setSelecionado(elemento)}
-                    onAlterado={() => {
-                      setAlterado(true);
-
-                      // Atualiza o nome exibido no painel após renomear no desenho.
-                      setSelecionado(
-                        atual =>
-                          atual && editorRef.current
-                            ? editorRef.current.elemento(atual.id)
-                            : atual
-                      );
-                    }}
-                  />
-                </div>
-
-                <div style={{ flex: '1 1 340px', maxWidth: '420px', border: `1px solid ${COR_BORDA}`, borderRadius: '8px', overflowY: 'auto', maxHeight: '612px' }}>
-                  <div style={{ ...estiloBarraSecao, padding: '8px 16px', fontSize: '12px' }}>Propriedades</div>
-                  <PainelPropriedadesFluxo
-                    key={selecionado ? selecionado.id : 'nenhum'}
-                    selecionado={selecionado}
-                    tipo={tipoSelecionado}
-                    editavel={editavel}
-                    configElemento={
-                      selecionado && tipoSelecionado
-                        ? edicao.configsElementos[selecionado.id] || configPadraoElemento(tipoSelecionado)
-                        : undefined
-                    }
-                    onAlterarElemento={config => {
-                      if (!selecionado) {
-                        return;
-                      }
-                      setEdicao({
-                        ...edicao,
-                        configsElementos: { ...edicao.configsElementos, [selecionado.id]: config }
-                      });
-                      setAlterado(true);
-                    }}
-                    configTransicao={
-                      selecionado && selecionado.conexao
-                        ? edicao.configsTransicoes[selecionado.id] || configPadraoTransicao()
-                        : undefined
-                    }
-                    onAlterarTransicao={config => {
-                      if (selecionado) {
-                        alterarConfigTransicao(selecionado.id, config);
-                      }
-                    }}
-                    saidas={saidas}
-                    onAlterarSaida={alterarConfigTransicao}
-                    onDefinirPadraoSaida={definirPadraoSaida}
-                    onRenomearSaida={(id, nome) => {
-                      if (editorRef.current) {
-                        editorRef.current.renomear(id, nome);
-                      }
-                    }}
-                    onSelecionarSaida={id => {
-                      if (editorRef.current) {
-                        editorRef.current.selecionar(id);
-                      }
-                    }}
-                    tipoOrigem={tipoOrigem}
-                    resultadosDisponiveis={resultadosDisponiveis}
-                    metadados={edicao.metadados}
-                    onRenomear={nome => {
-                      if (selecionado && editorRef.current) {
-                        editorRef.current.renomear(selecionado.id, nome);
-                      }
-                    }}
-                  />
-                </div>
+                    // Atualiza o nome exibido no modal após renomear.
+                    setSelecionado(
+                      atual =>
+                        atual && editorRef.current
+                          ? editorRef.current.elemento(atual.id)
+                          : atual
+                    );
+                  }}
+                />
               </div>
             )
             : (
@@ -888,41 +1046,45 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         }
       </section>
 
-      {/* METADADOS */}
-      <section style={estiloCartao}>
-        <div style={estiloBarraSecao}>Metadados do processo</div>
-        <div style={{ padding: '14px 20px' }}>
-          <PainelMetadados
-            metadados={edicao ? edicao.metadados : metadadosDaDefinicao(definicaoSelecionada)}
-            editavel={editavel && !!edicao}
-            usoPorChave={usoPorChave}
-            onAlterar={metadados => {
-              if (!edicao) {
-                return;
-              }
-
-              const chaves =
-                metadados.map(item => item.chave);
-
-              // Retira das etapas os campos cujo metadado foi excluído.
-              const configsElementos: Record<string, IConfigElemento> = {};
-
-              Object.keys(edicao.configsElementos).forEach(
-                id => {
-                  const config = edicao.configsElementos[id];
-                  configsElementos[id] = {
-                    ...config,
-                    campos: config.campos.filter(campo => chaves.indexOf(campo.chave) >= 0)
-                  };
-                }
-              );
-
-              setEdicao({ ...edicao, metadados, configsElementos });
-              setAlterado(true);
-            }}
+      {/* MODAL: configuração do elemento */}
+      {
+        modal &&
+        modal.tipo === 'elemento' &&
+        selecionado &&
+        edicao && (
+          <ModalConfiguracaoFluxo
+            key={`modal-${selecionado.id}`}
+            titulo={selecionado.nome || '(sem nome)'}
+            subtitulo={nomeTipoSelecionado}
+            abas={abasDoModal}
+            onFechar={() => setModal(undefined)}
           />
-        </div>
-      </section>
+        )
+      }
+
+      {/* MODAL: metadados do processo */}
+      {
+        modal &&
+        modal.tipo === 'metadados' && (
+          <ModalConfiguracaoFluxo
+            titulo="Metadados do processo"
+            subtitulo={`${definicaoSelecionada.nome} — v${definicaoSelecionada.versao}`}
+            abas={[
+              {
+                id: 'metadados',
+                rotulo: 'Metadados',
+                conteudo: <div style={{ padding: '16px 20px' }}>{editorMetadados}</div>
+              }
+            ]}
+            onFechar={() => setModal(undefined)}
+            rodape={
+              editavel
+                ? 'Campos que as etapas podem exibir, exigir ou usar nas decisões. Grave com “Salvar rascunho”.'
+                : 'Versão somente leitura.'
+            }
+          />
+        )
+      }
 
       {/* MENSAGENS */}
       {

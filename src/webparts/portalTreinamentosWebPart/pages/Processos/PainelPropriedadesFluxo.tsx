@@ -32,7 +32,21 @@ export type { IResultadoDisponivel, ISaidaElemento };
 // PAINEL DE PROPRIEDADES DO ELEMENTO SELECIONADO NO EDITOR
 // ============================================================
 
+// Parte do painel exibida (o modal mostra uma aba por vez).
+export type SecaoPainelFluxo =
+  | 'tudo'
+  | 'geral'
+  | 'responsaveis'
+  | 'acoes'
+  | 'campos'
+  | 'caminhos';
+
 export interface IPainelPropriedadesFluxoProps {
+  secao?: SecaoPainelFluxo;
+
+  // Conteúdo extra no fim da aba "campos" (editor de metadados).
+  extraCampos?: React.ReactNode;
+
   selecionado?: IElementoSelecionadoBpmn;
   tipo?: TipoElementoFluxo;
   editavel: boolean;
@@ -182,8 +196,16 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   onAlterarSaida,
   onDefinirPadraoSaida,
   onRenomearSaida,
-  onSelecionarSaida
+  onSelecionarSaida,
+  secao = 'tudo',
+  extraCampos
 }) => {
+
+  const ver = (
+    parte: SecaoPainelFluxo
+  ): boolean =>
+    secao === 'tudo' || secao === parte;
+
 
   // O nome é editado localmente e aplicado ao sair do campo, para
   // não gerar um "desfazer" a cada tecla no editor.
@@ -257,8 +279,6 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
     return (
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', color: COR_AZUL }}>
 
-        <div style={{ fontWeight: 700, fontSize: '15px' }}>Ligação</div>
-
         {campoNome}
 
         <FormCondicaoLigacao
@@ -317,19 +337,20 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   if (tipo === 'inicio' || tipo === 'fim' || tipo === 'gateway') {
     return (
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', color: COR_AZUL }}>
-        <div style={{ fontWeight: 700, fontSize: '15px' }}>
-          {tipo === 'inicio' ? 'Início' : tipo === 'fim' ? 'Fim' : 'Decisão'}
-        </div>
-        {campoNome}
+        {ver('geral') && campoNome}
         {
           tipo === 'gateway' && (
             <>
-              <div style={{ fontSize: '12.5px', lineHeight: '18px', background: '#EDF0F5', borderRadius: '6px', padding: '8px 10px' }}>
-                A decisão não tem responsável: ela escolhe o caminho sozinha, conforme o botão
-                clicado na etapa anterior ou o valor de um campo.
-              </div>
+              {
+                ver('geral') && (
+                  <div style={{ fontSize: '12.5px', lineHeight: '18px', background: '#EDF0F5', borderRadius: '6px', padding: '8px 10px' }}>
+                    A decisão não tem responsável: ela escolhe o caminho sozinha, conforme o botão
+                    clicado na etapa anterior ou o valor de um campo.
+                  </div>
+                )
+              }
 
-              <fieldset style={estiloGrupo}>
+              {ver('caminhos') && <fieldset style={estiloGrupo}>
                 <legend style={estiloLegenda}>Para onde vai o documento</legend>
                 <CaminhosSaida
                   saidas={saidas}
@@ -342,7 +363,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                   onRenomearSaida={onRenomearSaida}
                   onSelecionarSaida={onSelecionarSaida}
                 />
-              </fieldset>
+              </fieldset>}
             </>
           )
         }
@@ -366,7 +387,6 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   if (tipo === 'tarefaSistema') {
     return (
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', color: COR_AZUL }}>
-        <div style={{ fontWeight: 700, fontSize: '15px' }}>Tarefa de sistema</div>
         {campoNome}
         <div>
           <label htmlFor="prop-subtitulo" style={estiloRotuloPainel}>Texto no diagrama</label>
@@ -497,8 +517,8 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   return (
     <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', color: COR_AZUL }}>
 
-      <div style={{ fontWeight: 700, fontSize: '15px' }}>Etapa com responsável</div>
-
+{ver('geral') && (
+<>
       {campoNome}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 110px', gap: '10px' }}>
@@ -542,8 +562,11 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         />
       </div>
 
+</>
+)}
+
       {/* RESPONSÁVEIS */}
-      <fieldset style={estiloGrupo}>
+      {ver('responsaveis') && <fieldset style={estiloGrupo}>
         <legend style={estiloLegenda}>Responsáveis</legend>
 
         {
@@ -625,10 +648,10 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           Grupo, função, setor e usuário serão escolhidos das tabelas do Dataverse quando
           elas forem criadas. No teste, cada responsável vira um usuário simulado na aba do documento.
         </div>
-      </fieldset>
+      </fieldset>}
 
       {/* AÇÕES */}
-      <fieldset style={estiloGrupo}>
+      {ver('acoes') && <fieldset style={estiloGrupo}>
         <legend style={estiloLegenda}>Botões (ações)</legend>
 
         {
@@ -737,17 +760,17 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           Cada botão gera um <strong>resultado</strong>. Nas ligações que saem desta etapa
           (ou da decisão logo depois), escolha o resultado que leva a cada caminho.
         </div>
-      </fieldset>
+      </fieldset>}
 
       {/* CAMPOS */}
-      <fieldset style={estiloGrupo}>
+      {ver('campos') && <fieldset style={estiloGrupo}>
         <legend style={estiloLegenda}>Campos nesta etapa</legend>
 
         {
           metadados.length === 0
             ? (
               <div style={{ fontSize: '12.5px' }}>
-                O processo ainda não tem metadados. Cadastre-os em “Metadados do processo”, abaixo do desenho.
+                O processo ainda não tem metadados. Cadastre-os logo abaixo, em “Metadados do processo”.
               </div>
             )
             : metadados.map(
@@ -784,10 +807,12 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
               }
             )
         }
-      </fieldset>
+      </fieldset>}
+
+      {ver('campos') && extraCampos}
 
       {/* CAMINHOS DE SAÍDA */}
-      <fieldset style={estiloGrupo}>
+      {ver('caminhos') && <fieldset style={estiloGrupo}>
         <legend style={estiloLegenda}>Para onde vai o documento</legend>
         <CaminhosSaida
           saidas={saidas}
@@ -800,7 +825,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           onRenomearSaida={onRenomearSaida}
           onSelecionarSaida={onSelecionarSaida}
         />
-      </fieldset>
+      </fieldset>}
     </div>
   );
 };

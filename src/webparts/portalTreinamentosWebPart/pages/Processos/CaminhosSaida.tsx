@@ -418,7 +418,7 @@ const CaminhosSaida: React.FC<ICaminhosSaidaProps> = ({
                   </div>
                   <button
                     type="button"
-                    title="Selecionar esta ligação no desenho"
+                    title="Abrir a configuração desta ligação"
                     onClick={() => onSelecionarSaida(saida.id)}
                     style={{
                       minHeight: '30px',
@@ -433,7 +433,7 @@ const CaminhosSaida: React.FC<ICaminhosSaidaProps> = ({
                       whiteSpace: 'nowrap'
                     }}
                   >
-                    Ver no desenho
+                    Detalhes
                   </button>
                 </div>
 

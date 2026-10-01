@@ -77,40 +77,88 @@ const CONTEXTO_BLOQUEADO: string[] = [
   'append.intermediate-event'
 ];
 
-function FiltroPaleta(this: any, palette: any, paletteProvider: any): void {
-  this._original = paletteProvider;
+// O provedor devolve uma FUNÇÃO que recebe as entradas já montadas
+// pelo bpmn-js e retorna só as permitidas (devolver um objeto apenas
+// somaria entradas, sem remover as outras).
+function FiltroPaleta(this: any, palette: any): void {
   palette.registerProvider(500, this);
 }
 
-FiltroPaleta.$inject = ['palette', 'paletteProvider'];
+FiltroPaleta.$inject = ['palette'];
 
-FiltroPaleta.prototype.getPaletteEntries = function (this: any): Record<string, unknown> {
-  const entradas = this._original.getPaletteEntries();
-  const filtradas: Record<string, unknown> = {};
+FiltroPaleta.prototype.getPaletteEntries = function (): (entradas: Record<string, unknown>) => Record<string, unknown> {
+  return (entradas: Record<string, unknown>) => {
+    const filtradas: Record<string, unknown> = {};
 
-  Object.keys(entradas).forEach(
-    chave => {
-      if (PALETA_PERMITIDA.indexOf(chave) >= 0) {
-        filtradas[chave] = entradas[chave];
+    Object.keys(entradas).forEach(
+      chave => {
+        if (PALETA_PERMITIDA.indexOf(chave) >= 0) {
+          filtradas[chave] = entradas[chave];
+        }
       }
-    }
-  );
+    );
 
-  return filtradas;
+    return filtradas;
+  };
 };
 
-function FiltroContexto(this: any, contextPad: any): void {
+// Evento interno: pedir para abrir a configuração de um elemento.
+const EVENTO_CONFIGURAR = 'dgt.configurar';
+
+function FiltroContexto(this: any, contextPad: any, eventBus: any): void {
+  this._eventBus = eventBus;
   contextPad.registerProvider(500, this);
 }
 
-FiltroContexto.$inject = ['contextPad'];
+FiltroContexto.$inject = ['contextPad', 'eventBus'];
 
-FiltroContexto.prototype.getContextPadEntries = function (): (entradas: Record<string, unknown>) => Record<string, unknown> {
+FiltroContexto.prototype.getContextPadEntries = function (this: any, elemento: any): (entradas: Record<string, unknown>) => Record<string, unknown> {
+
+  const eventBus = this._eventBus;
+
   return (entradas: Record<string, unknown>) => {
+
     CONTEXTO_BLOQUEADO.forEach(chave => { delete entradas[chave]; });
+
+    // Botão "Configurar" no menu do elemento (abre o modal).
+    if (elemento && elemento.type !== 'label') {
+      entradas['dgt.configurar'] = {
+        group: 'edit',
+        html: '<div class="entry" style="display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1;color:#202A44">⚙</div>',
+        title: 'Configurar',
+        action: {
+          click: () => eventBus.fire(EVENTO_CONFIGURAR, { element: elemento })
+        }
+      };
+    }
+
     return entradas;
   };
 };
+
+// Duplo clique abre a configuração (no lugar da edição do texto
+// direto no desenho; o nome é editado no modal).
+function DuploCliqueConfigura(this: any, eventBus: any): void {
+  eventBus.on('element.dblclick', 1500, (evento: any) => {
+
+    let elemento = evento && evento.element;
+
+    if (elemento && elemento.type === 'label' && elemento.labelTarget) {
+      elemento = elemento.labelTarget;
+    }
+
+    if (!elemento || elemento.type === 'bpmn:Process' || elemento.type === 'bpmn:Collaboration') {
+      return;
+    }
+
+    eventBus.fire(EVENTO_CONFIGURAR, { element: elemento });
+
+    // Impede a edição do texto direto no desenho.
+    return false;
+  });
+}
+
+DuploCliqueConfigura.$inject = ['eventBus'];
 
 // ------------------------------------------------------------
 // Tradução dos textos do editor
@@ -159,9 +207,10 @@ const traduzir = (
 };
 
 const moduloPersonalizado = {
-  __init__: ['filtroPaleta', 'filtroContexto'],
+  __init__: ['filtroPaleta', 'filtroContexto', 'duploCliqueConfigura'],
   filtroPaleta: ['type', FiltroPaleta],
   filtroContexto: ['type', FiltroContexto],
+  duploCliqueConfigura: ['type', DuploCliqueConfigura],
   translate: ['value', traduzir]
 };
 
@@ -300,6 +349,18 @@ export const criarModelerFluxo = (
         (evento: any) => {
           const selecionados = (evento && evento.newSelection) || [];
           callback(selecionados.length === 1 ? resumo(selecionados[0]) : undefined);
+        }
+      );
+    },
+
+    aoConfigurar(callback: (elemento: IElementoSelecionadoBpmn) => void): void {
+      servico('eventBus').on(
+        EVENTO_CONFIGURAR,
+        (evento: any) => {
+          const info = resumo(evento && evento.element);
+          if (info) {
+            callback(info);
+          }
         }
       );
     },

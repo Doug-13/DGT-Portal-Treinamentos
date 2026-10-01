@@ -31,6 +31,7 @@ export interface IModelerFluxo {
   selecionar(id: string): void;
   aoSelecionar(callback: (elemento: IElementoSelecionadoBpmn | undefined) => void): void;
   aoAlterar(callback: () => void): void;
+  aoConfigurar(callback: (elemento: IElementoSelecionadoBpmn) => void): void;
   ajustarNaTela(): void;
   aproximar(passo: number): void;
   desfazer(): void;
