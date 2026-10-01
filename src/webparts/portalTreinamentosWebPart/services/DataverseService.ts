@@ -1680,6 +1680,44 @@ export class DataverseService {
   }
 
   // ==========================================================
+  // PROCESSOS (somente leitura)
+  //
+  // Usados pelo módulo Processos e pelo fluxo de revisão em
+  // modo de teste. Estes métodos apenas LEEM o Dataverse.
+  // ==========================================================
+
+  public async getProcessos():
+    Promise<IDataverseRecord[]> {
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_processo'
+      );
+
+    return this.get(
+      `${entitySet}` +
+      '?$select=dgt_processoid,dgt_name,dgt_codigo,dgt_descricao,dgt_ativo' +
+      '&$filter=dgt_ativo eq true' +
+      '&$orderby=dgt_codigo asc'
+    );
+  }
+
+  public async getDocumentoProcessos():
+    Promise<IDataverseRecord[]> {
+
+    const entitySet =
+      await this.getEntitySetName(
+        'dgt_documentoprocesso'
+      );
+
+    return this.get(
+      `${entitySet}` +
+      '?$select=dgt_documentoprocessoid,_dgt_documento_value,_dgt_processo_value,dgt_ativo' +
+      '&$filter=dgt_ativo eq true'
+    );
+  }
+
+  // ==========================================================
   // WORKFLOW DE REVISAO DOCUMENTAL
   // ==========================================================
 

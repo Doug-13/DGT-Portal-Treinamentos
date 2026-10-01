@@ -36,7 +36,13 @@ const COR_CIANO_CLARO = '#DFF6FA';
 
 export interface IFluxoDiagramaProps {
   definicao: IFluxoDefinicao;
-  instancia: IFluxoInstancia;
+
+  // Sem instância = apenas visualizar a definição (ex.: no
+  // módulo Processos), todas as etapas em estilo neutro.
+  instancia?: IFluxoInstancia;
+
+  // Etapa destacada (ex.: a que está sendo editada).
+  elementoDestacadoId?: string;
 }
 
 interface IEstiloNo {
@@ -82,6 +88,15 @@ const estiloTarefa = (
         rotulo: 'NÃO PERCORRIDA'
       };
 
+    case 'definicao':
+      return {
+        fundo: '#FFFFFF',
+        contorno: COR_AZUL,
+        espessura: 2,
+        texto: COR_AZUL,
+        rotulo: ''
+      };
+
     default:
       return {
         fundo: '#FFFFFF',
@@ -109,6 +124,9 @@ const estiloGateway = (
     case 'naoPercorrido':
       return { fundo: COR_FUNDO_CLARO, contorno: COR_CINZA_CLARO, espessura: 1, texto: COR_AZUL, rotulo: '' };
 
+    case 'definicao':
+      return { fundo: COR_AZUL, contorno: COR_AZUL, espessura: 0, texto: '#FFFFFF', rotulo: '' };
+
     default:
       return { fundo: COR_CINZA_CLARO, contorno: COR_CINZA_CLARO, espessura: 0, texto: COR_AZUL, rotulo: '' };
   }
@@ -118,7 +136,8 @@ const DESCRICAO_STATUS: Record<StatusVisualElemento, string> = {
   concluido: 'concluída',
   atual: 'etapa atual',
   pendente: 'pendente',
-  naoPercorrido: 'não percorrida'
+  naoPercorrido: 'não percorrida',
+  definicao: 'etapa do fluxo'
 };
 
 const caminho = (
@@ -182,7 +201,8 @@ const renderizarTransicao = (
 
 const renderizarElemento = (
   elemento: IFluxoElemento,
-  status: StatusVisualElemento
+  status: StatusVisualElemento,
+  destacado: boolean
 ): React.ReactElement => {
 
   const { x, y, largura, altura } =
@@ -275,8 +295,13 @@ const renderizarElemento = (
     );
   }
 
-  const estilo =
+  const estiloBase =
     estiloTarefa(status);
+
+  const estilo: IEstiloNo =
+    destacado
+      ? { ...estiloBase, contorno: COR_CIANO, espessura: 4, tracejado: undefined, rotulo: 'EM EDIÇÃO' }
+      : estiloBase;
 
   return (
     <g key={elemento.id}>
@@ -359,8 +384,23 @@ const marcador = (
 
 const FluxoDiagrama: React.FC<IFluxoDiagramaProps> = ({
   definicao,
-  instancia
+  instancia,
+  elementoDestacadoId
 }) => {
+
+  const percorrida = (
+    transicaoId: string
+  ): boolean =>
+    instancia
+      ? instancia.transicoesPercorridas.indexOf(transicaoId) >= 0
+      : true;
+
+  const status = (
+    elementoId: string
+  ): StatusVisualElemento =>
+    instancia
+      ? statusVisualElemento(instancia, elementoId)
+      : 'definicao';
 
   const transicoesNormais =
     definicao.transicoes.filter(
@@ -373,14 +413,18 @@ const FluxoDiagrama: React.FC<IFluxoDiagramaProps> = ({
     );
 
   const atual =
-    definicao.elementos.find(
-      elemento => elemento.id === instancia.elementoAtualId
-    );
+    instancia
+      ? definicao.elementos.find(
+        elemento => elemento.id === instancia.elementoAtualId
+      )
+      : undefined;
 
   const descricao =
-    instancia.status === 'concluido'
-      ? `Fluxo ${definicao.nome} concluído.`
-      : `Fluxo ${definicao.nome}. Etapa atual: ${atual ? atual.nome : '-'}.`;
+    !instancia
+      ? `Fluxo ${definicao.nome}, versão ${definicao.versao}.`
+      : instancia.status === 'concluido'
+        ? `Fluxo ${definicao.nome} concluído.`
+        : `Fluxo ${definicao.nome}. Etapa atual: ${atual ? atual.nome : '-'}.`;
 
   return (
     <div
@@ -412,7 +456,7 @@ const FluxoDiagrama: React.FC<IFluxoDiagramaProps> = ({
             transicao =>
               renderizarTransicao(
                 transicao,
-                instancia.transicoesPercorridas.indexOf(transicao.id) >= 0
+                percorrida(transicao.id)
               )
           )
         }
@@ -422,7 +466,7 @@ const FluxoDiagrama: React.FC<IFluxoDiagramaProps> = ({
             transicao =>
               renderizarTransicao(
                 transicao,
-                instancia.transicoesPercorridas.indexOf(transicao.id) >= 0
+                percorrida(transicao.id)
               )
           )
         }
@@ -432,10 +476,8 @@ const FluxoDiagrama: React.FC<IFluxoDiagramaProps> = ({
             elemento =>
               renderizarElemento(
                 elemento,
-                statusVisualElemento(
-                  instancia,
-                  elemento.id
-                )
+                status(elemento.id),
+                elemento.id === elementoDestacadoId
               )
           )
         }

@@ -15,6 +15,10 @@ import {
 } from '../../services/AutorizacaoService';
 
 import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import {
   atorPodeExecutar,
   campoObrigatorioAgora,
   obterElementoAtual,
@@ -40,6 +44,12 @@ export interface IFluxoRevisaoTabProps {
   documento: IDocumento;
   revisoes: IDocumentoRevisao[];
   contexto?: IContextoAcesso;
+
+  // Leitura (somente) de dgt_processo / dgt_documentoprocesso.
+  dataverseService?: DataverseService;
+
+  // Abre o processo no módulo Processos (para criar/publicar o fluxo).
+  onAbrirProcesso?: (processoId: string) => void;
 }
 
 const COR_AZUL = '#202A44';
@@ -136,15 +146,21 @@ const formatarData = (
 const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   documento,
   revisoes,
-  contexto
+  contexto,
+  dataverseService,
+  onAbrirProcesso
 }) => {
 
   const fluxo =
     useFluxoRevisaoTeste(
       documento,
       revisoes,
-      contexto
+      contexto,
+      dataverseService
     );
+
+  const [processoEscolhido, setProcessoEscolhido] =
+    React.useState<string>('');
 
   const [comentario, setComentario] =
     React.useState<string>('');
@@ -166,7 +182,40 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
     [fluxo.instancia?.elementoAtualId, fluxo.instancia?.historico.length]
   );
 
-  if (fluxo.carregando) {
+  const avisoTeste = (
+    <div
+      style={{
+        border: `2px solid ${COR_INDIGO}`,
+        background: '#E8EAF8',
+        borderRadius: '8px',
+        padding: '12px 16px',
+        fontSize: '13.5px',
+        lineHeight: '20px',
+        color: COR_AZUL
+      }}
+    >
+      <strong>Modo de teste.</strong>{' '}
+      Esta aba simula o fluxo configurável. Nada é gravado no Dataverse nem no SharePoint:
+      o estado fica apenas neste navegador. O fluxo oficial continua na aba “Revisão”.
+      {
+        fluxo.revisaoAlvo?.virtual && (
+          <span>
+            {' '}Como não há revisão em andamento, a simulação usa uma{' '}
+            <strong>{fluxo.revisaoAlvo.revisao} virtual</strong>.
+          </span>
+        )
+      }
+      {
+        fluxo.avisoProcessos && (
+          <div style={{ marginTop: '6px' }}>
+            {fluxo.avisoProcessos}
+          </div>
+        )
+      }
+    </div>
+  );
+
+  if (fluxo.situacao === 'carregando') {
     return (
       <div style={{ padding: '24px', color: COR_AZUL }}>
         Carregando simulação do fluxo...
@@ -174,8 +223,188 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
     );
   }
 
+  // ----------------------------------------------------------
+  // Documento ainda sem processo / com vários processos / processo
+  // sem fluxo publicado
+  // ----------------------------------------------------------
+
   if (
-    fluxo.erro ||
+    fluxo.situacao === 'semProcesso' ||
+    fluxo.situacao === 'escolherPrincipal' ||
+    fluxo.situacao === 'semFluxo'
+  ) {
+
+    const processoAtualId =
+      fluxo.processoAtual ? fluxo.processoAtual.id : '';
+
+    const opcoes =
+      fluxo.situacao === 'escolherPrincipal'
+        ? fluxo.processos.filter(
+          processo =>
+            fluxo.vinculos.some(
+              vinculo => vinculo.processoId === processo.id
+            )
+        )
+        : fluxo.processos;
+
+    const titulo =
+      fluxo.situacao === 'semProcesso'
+        ? 'Este documento ainda não está vinculado a um processo'
+        : fluxo.situacao === 'escolherPrincipal'
+          ? 'Este documento pertence a mais de um processo'
+          : `O processo “${fluxo.processoAtual?.nome || ''}” ainda não tem fluxo publicado`;
+
+    const explicacao =
+      fluxo.situacao === 'semProcesso'
+        ? 'O fluxo de revisão é definido no processo. Vincule o documento a um processo para que a revisão siga o fluxo dele.'
+        : fluxo.situacao === 'escolherPrincipal'
+          ? 'Escolha qual processo governa a revisão deste documento. Os demais vínculos continuam valendo para consulta.'
+          : 'Crie e publique o fluxo no módulo Processos. Depois volte aqui: a revisão começa automaticamente na versão publicada.';
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
+
+        {avisoTeste}
+
+        <section style={estiloCartao}>
+          <div style={estiloBarraSecao}>
+            Processo do documento
+          </div>
+
+          <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+            <div>
+              <div style={{ fontSize: '17px', fontWeight: 700 }}>{titulo}</div>
+              <div style={{ fontSize: '14px', marginTop: '4px' }}>{explicacao}</div>
+            </div>
+
+            {
+              fluxo.situacao !== 'semFluxo' && (
+                opcoes.length === 0
+                  ? (
+                    <div style={{ fontSize: '14px' }}>
+                      Nenhum processo cadastrado. Cadastre um no módulo <strong>Processos</strong>{' '}
+                      (no modo de teste é possível criar processos locais).
+                    </div>
+                  )
+                  : (
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                      <div style={{ minWidth: '280px', flexGrow: 1, maxWidth: '520px' }}>
+                        <label htmlFor="fluxo-processo" style={estiloRotuloCampo}>
+                          {fluxo.situacao === 'semProcesso' ? 'Vincular ao processo' : 'Processo principal'}
+                        </label>
+                        <select
+                          id="fluxo-processo"
+                          value={processoEscolhido}
+                          onChange={evento => setProcessoEscolhido(evento.target.value)}
+                          style={{
+                            minHeight: '40px',
+                            width: '100%',
+                            border: `1px solid ${COR_BORDA}`,
+                            borderRadius: '6px',
+                            padding: '0 10px',
+                            fontFamily: 'inherit',
+                            fontSize: '14px',
+                            color: COR_AZUL,
+                            background: '#FFFFFF'
+                          }}
+                        >
+                          <option value="">Selecione...</option>
+                          {
+                            opcoes.map(
+                              processo => (
+                                <option key={processo.id} value={processo.id}>
+                                  {processo.codigo ? `${processo.codigo} — ` : ''}{processo.nome}
+                                  {processo.origem === 'teste' ? ' (teste)' : ''}
+                                </option>
+                              )
+                            )
+                          }
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!processoEscolhido}
+                        onClick={() => {
+                          const acao =
+                            fluxo.situacao === 'semProcesso'
+                              ? fluxo.vincularProcesso(processoEscolhido)
+                              : fluxo.escolherPrincipal(processoEscolhido);
+
+                          acao.catch(
+                            (error: unknown) => console.error(error)
+                          );
+                        }}
+                        style={estiloBotao(true, !processoEscolhido)}
+                      >
+                        {fluxo.situacao === 'semProcesso' ? 'Vincular (teste)' : 'Definir como principal (teste)'}
+                      </button>
+                    </div>
+                  )
+              )
+            }
+
+            {
+              fluxo.situacao === 'semFluxo' &&
+              fluxo.processoAtual && (
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  {
+                    onAbrirProcesso && (
+                      <button
+                        type="button"
+                        onClick={() => onAbrirProcesso(processoAtualId)}
+                        style={estiloBotao(true, false)}
+                      >
+                        Abrir o processo
+                      </button>
+                    )
+                  }
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fluxo.recarregar()
+                        .catch(
+                          (error: unknown) => console.error(error)
+                        );
+                    }}
+                    style={estiloBotao(false, false)}
+                  >
+                    Verificar novamente
+                  </button>
+                </div>
+              )
+            }
+
+            {
+              fluxo.vinculos.length > 0 && (
+                <div style={{ fontSize: '13px', borderTop: `1px solid ${COR_BORDA}`, paddingTop: '10px' }}>
+                  <strong>Vínculos atuais:</strong>{' '}
+                  {
+                    fluxo.vinculos
+                      .map(
+                        vinculo => {
+                          const processo =
+                            fluxo.processos.find(
+                              item => item.id === vinculo.processoId
+                            );
+
+                          return `${processo ? processo.nome : vinculo.processoId}${vinculo.origem === 'teste' ? ' (teste)' : ''}${vinculo.principal ? ' — principal' : ''}`;
+                        }
+                      )
+                      .join(' · ')
+                  }
+                </div>
+              )
+            }
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (
+    fluxo.situacao === 'erro' ||
     !fluxo.instancia ||
     !fluxo.definicao
   ) {
@@ -405,29 +634,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
 
-      {/* AVISO DE MODO DE TESTE */}
-      <div
-        style={{
-          border: `2px solid ${COR_INDIGO}`,
-          background: '#E8EAF8',
-          borderRadius: '8px',
-          padding: '12px 16px',
-          fontSize: '13.5px',
-          lineHeight: '20px'
-        }}
-      >
-        <strong>Modo de teste.</strong>{' '}
-        Esta aba simula o fluxo configurável. Nada é gravado no Dataverse nem no SharePoint:
-        o estado fica apenas neste navegador. O fluxo oficial continua na aba “Revisão”.
-        {
-          fluxo.revisaoAlvo?.virtual && (
-            <span>
-              {' '}Como não há revisão em andamento, a simulação usa uma{' '}
-              <strong>{fluxo.revisaoAlvo.revisao} virtual</strong>.
-            </span>
-          )
-        }
-      </div>
+      {avisoTeste}
 
       {/* CABEÇALHO */}
       <div
@@ -443,6 +650,32 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
         <div style={{ minWidth: '160px' }}>
           <div style={estiloRotuloCampo}>Revisão</div>
           <div style={{ fontWeight: 700, fontSize: '16px' }}>{instancia.revisao}</div>
+        </div>
+        <div style={{ minWidth: '200px' }}>
+          <div style={estiloRotuloCampo}>Processo</div>
+          <div style={{ fontWeight: 700, fontSize: '16px' }}>
+            {
+              onAbrirProcesso && instancia.processoId
+                ? (
+                  <button
+                    type="button"
+                    onClick={() => onAbrirProcesso(instancia.processoId || '')}
+                    style={{
+                      border: 0,
+                      padding: 0,
+                      background: 'transparent',
+                      color: COR_AZUL,
+                      font: 'inherit',
+                      textDecoration: 'underline',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {instancia.processoNome || fluxo.processoAtual?.nome || 'Processo'}
+                  </button>
+                )
+                : (instancia.processoNome || '-')
+            }
+          </div>
         </div>
         <div style={{ minWidth: '200px' }}>
           <div style={estiloRotuloCampo}>Fluxo (congelado nesta revisão)</div>

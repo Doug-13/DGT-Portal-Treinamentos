@@ -83,6 +83,13 @@ import DocumentosHomePage from
 import NovoDocumentoPage from
   '../pages/Documentos/NovoDocumentoPage';
 
+import ProcessosPage from
+  '../pages/Processos/ProcessosPage';
+
+import {
+  solicitarAberturaProcesso
+} from '../services/processos/ProcessoService';
+
 import DocumentoDetalhePage from
   '../pages/Documentos/DocumentoDetalhePage';
 
@@ -1785,10 +1792,41 @@ const PortalRouter:
               props.limparResultadoPublicacao
             }
 
+            onAbrirProcesso={processoId => {
+              solicitarAberturaProcesso(processoId);
+              props.navegar('processos');
+            }}
+
             onVoltar={() =>
               props.navegar(
                 'documentos'
               )
+            }
+          />
+        );
+
+      // ========================================================
+      // PROCESSOS (modo de teste — fluxo de revisão por processo)
+      // ========================================================
+
+      case 'processos':
+
+        return (
+          <ProcessosPage
+            documentos={
+              props.documentos
+            }
+
+            contexto={
+              props.contextoAcesso
+            }
+
+            dataverseService={
+              props.dataverseService
+            }
+
+            onAbrirDocumento={
+              props.abrirDocumento
             }
           />
         );

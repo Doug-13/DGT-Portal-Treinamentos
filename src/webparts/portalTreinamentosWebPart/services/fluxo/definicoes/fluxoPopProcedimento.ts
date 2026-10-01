@@ -1,9 +1,10 @@
 import {
-  IFluxoDefinicao
+  IFluxoDefinicao,
+  IFluxoModelo
 } from '../../../models/Fluxo';
 
 // ============================================================
-// FLUXO "POP / PROCEDIMENTO" — versão 2 (definição de TESTE)
+// MODELO "REVISÃO DE POP / PROCEDIMENTO" (definição de TESTE)
 //
 //   Início
 //     → Elaboração (autor da revisão)
@@ -17,9 +18,9 @@ import {
 //                                              └─ Não → Publicar e registrar dispensa
 //     → Fim
 //
-// Quando as tabelas existirem no Dataverse, esta definição será
-// um registro de dgt_fluxo (com etapas, ações e transições em
-// tabelas filhas). Até lá ela fica fixa aqui.
+// É um MODELO: cada processo cria o seu próprio fluxo a partir
+// dele (módulo Processos) e pode ajustar prazos, responsáveis,
+// instruções e ações antes de publicar.
 // ============================================================
 
 export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
@@ -394,7 +395,15 @@ export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
   ]
 };
 
-// Catálogo de fluxos disponíveis no modo de teste.
-export const FLUXOS_TESTE: IFluxoDefinicao[] = [
-  FLUXO_POP_PROCEDIMENTO_V2
+// Modelos disponíveis para criar o fluxo de um processo.
+// A definição acima também continua resolvendo simulações antigas,
+// iniciadas antes de o fluxo passar a pertencer ao processo.
+export const FLUXO_MODELOS: IFluxoModelo[] = [
+  {
+    id: 'modelo-revisao-pop',
+    nome: 'Revisão de POP / Procedimento',
+    descricao:
+      'Elaboração → Revisão técnica (gestor da área) → Aprovação da Qualidade → decisão de retreinamento → Publicação.',
+    definicao: FLUXO_POP_PROCEDIMENTO_V2
+  }
 ];

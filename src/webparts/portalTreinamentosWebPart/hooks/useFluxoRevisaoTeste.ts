@@ -12,13 +12,26 @@ import {
 } from '../models/Fluxo';
 
 import {
+  IDocumentoProcessoVinculo,
+  IProcesso
+} from '../models/Processo';
+
+import {
   IContextoAcesso
 } from '../services/AutorizacaoService';
+
+import {
+  DataverseService
+} from '../services/DataverseService';
 
 import {
   calcularProximaRevisao,
   obterRevisaoEmAndamento
 } from '../services/DocumentoRevisaoFluxoService';
+
+import {
+  fluxoCatalogo
+} from '../services/fluxo/FluxoCatalogoLocal';
 
 import {
   FluxoRepositorioLocal
@@ -28,8 +41,19 @@ import {
   FluxoService
 } from '../services/fluxo/FluxoService';
 
+import {
+  carregarDadosProcessos,
+  definirProcessoPrincipalTeste,
+  processoPrincipalDoDocumento,
+  vincularDocumentoTeste,
+  vinculosDoDocumento
+} from '../services/processos/ProcessoService';
+
 // ============================================================
 // HOOK — FLUXO DE REVISÃO EM MODO DE TESTE
+//
+// Documento → Processo (principal) → Fluxo publicado do processo
+//           → Instância do fluxo nesta revisão
 //
 // Nada aqui grava no Dataverse. O estado fica no localStorage do
 // navegador, por revisão.
@@ -51,30 +75,51 @@ export interface IRevisaoAlvoFluxo {
   virtual: boolean;
 }
 
+// Em que ponto a tela está:
+//   semProcesso       → documento não vinculado a nenhum processo
+//   escolherPrincipal → vinculado a vários; falta escolher qual governa
+//   semFluxo          → o processo não tem fluxo publicado
+//   pronto            → fluxo em andamento ou concluído
+export type SituacaoFluxoRevisao =
+  | 'carregando'
+  | 'semProcesso'
+  | 'escolherPrincipal'
+  | 'semFluxo'
+  | 'pronto'
+  | 'erro';
+
 export interface IUseFluxoRevisaoTeste {
-  carregando: boolean;
+  situacao: SituacaoFluxoRevisao;
   processando: boolean;
   erro: string;
   errosAcao: string[];
+  avisoProcessos: string;
   revisaoAlvo?: IRevisaoAlvoFluxo;
+  processos: IProcesso[];
+  vinculos: IDocumentoProcessoVinculo[];
+  processoAtual?: IProcesso;
   definicao?: IFluxoDefinicao;
   instancia?: IFluxoInstancia;
   atores: IAtorSimulado[];
   atorSelecionado?: IAtorSimulado;
   selecionarAtor: (chave: string) => void;
+  vincularProcesso: (processoId: string) => Promise<void>;
+  escolherPrincipal: (processoId: string) => Promise<void>;
   executar: (
     acaoChave: string,
     comentario: string,
     valores: Record<string, string>
   ) => Promise<boolean>;
   reiniciar: () => Promise<void>;
+  recarregar: () => Promise<void>;
   limparErros: () => void;
 }
 
 // Um único serviço por carregamento da página.
 const servico =
   new FluxoService(
-    new FluxoRepositorioLocal()
+    new FluxoRepositorioLocal(),
+    fluxoCatalogo
   );
 
 const papeisDoUsuarioReal = (
@@ -123,14 +168,30 @@ const DESCRICAO_PAPEL: Record<string, string> = {
 export const useFluxoRevisaoTeste = (
   documento: IDocumento | undefined,
   revisoes: IDocumentoRevisao[],
-  contexto: IContextoAcesso | undefined
+  contexto: IContextoAcesso | undefined,
+  dataverseService?: DataverseService
 ): IUseFluxoRevisaoTeste => {
+
+  const [situacao, setSituacao] =
+    React.useState<SituacaoFluxoRevisao>('carregando');
 
   const [instancia, setInstancia] =
     React.useState<IFluxoInstancia | undefined>(undefined);
 
-  const [carregando, setCarregando] =
-    React.useState<boolean>(true);
+  const [definicao, setDefinicao] =
+    React.useState<IFluxoDefinicao | undefined>(undefined);
+
+  const [processos, setProcessos] =
+    React.useState<IProcesso[]>([]);
+
+  const [vinculos, setVinculos] =
+    React.useState<IDocumentoProcessoVinculo[]>([]);
+
+  const [processoAtualId, setProcessoAtualId] =
+    React.useState<string | undefined>(undefined);
+
+  const [avisoProcessos, setAvisoProcessos] =
+    React.useState<string>('');
 
   const [processando, setProcessando] =
     React.useState<boolean>(false);
@@ -207,7 +268,7 @@ export const useFluxoRevisaoTeste = (
           {
             chave: 'autor',
             rotulo: 'Autor da revisão (simulado)',
-            descricao: 'Pode executar a etapa Elaboração.',
+            descricao: 'Pode executar as etapas do autor da revisão.',
             ator: {
               id: 'simulado-autor',
               nome: 'Autor (simulado)',
@@ -217,7 +278,7 @@ export const useFluxoRevisaoTeste = (
           {
             chave: 'coordenacao',
             rotulo: 'Gestor da área (simulado)',
-            descricao: 'Pode executar a etapa Revisão técnica.',
+            descricao: 'Pode executar as etapas do gestor da área.',
             ator: {
               id: 'simulado-coordenacao',
               nome: 'Gestor da área (simulado)',
@@ -227,7 +288,7 @@ export const useFluxoRevisaoTeste = (
           {
             chave: 'qualidade',
             rotulo: 'Qualidade (simulado)',
-            descricao: 'Pode executar a etapa Aprovação.',
+            descricao: 'Pode executar as etapas da Qualidade.',
             ator: {
               id: 'simulado-qualidade',
               nome: 'Qualidade (simulado)',
@@ -246,22 +307,95 @@ export const useFluxoRevisaoTeste = (
 
   const carregar =
     React.useCallback(
-      async (): Promise<void> => {
+      async (
+        forcarReleitura: boolean = false
+      ): Promise<void> => {
 
         if (!documento || !revisaoAlvo) {
-          setInstancia(undefined);
-          setCarregando(false);
+          setSituacao('erro');
+          setErro('Documento não carregado.');
           return;
         }
 
-        setCarregando(true);
+        setSituacao('carregando');
         setErro('');
 
         try {
 
+          const dados =
+            await carregarDadosProcessos(
+              dataverseService,
+              forcarReleitura
+            );
+
+          setProcessos(dados.processos);
+          setVinculos(dados.vinculos);
+          setAvisoProcessos(dados.aviso);
+
+          // 1) Revisão já tem fluxo? Ele vale até o fim, mesmo que o
+          //    processo ou o fluxo do processo mudem depois.
+          const existente =
+            await servico.obter(revisaoAlvo.id);
+
+          if (existente) {
+
+            const definicaoExistente =
+              await servico.definicaoDaInstancia(existente);
+
+            setInstancia(existente);
+            setDefinicao(definicaoExistente);
+            setProcessoAtualId(existente.processoId);
+
+            if (!definicaoExistente) {
+              setErro(
+                `A versão ${existente.fluxoVersao} do fluxo usada por esta revisão não foi encontrada neste navegador.`
+              );
+              setSituacao('erro');
+              return;
+            }
+
+            setSituacao('pronto');
+            return;
+          }
+
+          setInstancia(undefined);
+          setDefinicao(undefined);
+
+          // 2) Qual processo governa o documento?
+          const doDocumento =
+            vinculosDoDocumento(documento.id, dados.vinculos);
+
+          if (doDocumento.length === 0) {
+            setProcessoAtualId(undefined);
+            setSituacao('semProcesso');
+            return;
+          }
+
+          const principalId =
+            processoPrincipalDoDocumento(documento.id, dados.vinculos);
+
+          if (!principalId) {
+            setProcessoAtualId(undefined);
+            setSituacao('escolherPrincipal');
+            return;
+          }
+
+          setProcessoAtualId(principalId);
+
+          const processo =
+            dados.processos.find(
+              item => item.id === principalId
+            );
+
+          if (!processo) {
+            setSituacao('semProcesso');
+            return;
+          }
+
+          // 3) Inicia com a versão publicada do fluxo do processo.
           const resultado =
             await servico.iniciar(
-              documento.tipo,
+              processo,
               {
                 revisaoId: revisaoAlvo.id,
                 documentoId: documento.id,
@@ -271,25 +405,29 @@ export const useFluxoRevisaoTeste = (
               }
             );
 
-          if (!resultado.ok) {
-            setErro(resultado.erros.join(' '));
+          if (
+            !resultado.ok ||
+            !resultado.instancia
+          ) {
+            setSituacao('semFluxo');
+            return;
           }
 
           setInstancia(resultado.instancia);
+          setDefinicao(
+            await servico.definicaoDaInstancia(resultado.instancia)
+          );
+          setSituacao('pronto');
 
         } catch (error) {
 
           console.error(error);
 
-          setErro(
-            'Não foi possível carregar a simulação do fluxo.'
-          );
-
-        } finally {
-          setCarregando(false);
+          setErro('Não foi possível carregar a simulação do fluxo.');
+          setSituacao('erro');
         }
       },
-      [documento, revisaoAlvo, atores]
+      [documento, revisaoAlvo, atores, dataverseService]
     );
 
   React.useEffect(
@@ -301,11 +439,6 @@ export const useFluxoRevisaoTeste = (
     },
     [documento?.id, revisaoAlvo?.id]
   );
-
-  const definicao =
-    instancia
-      ? servico.definicaoDaInstancia(instancia)
-      : undefined;
 
   const executar =
     async (
@@ -371,12 +504,60 @@ export const useFluxoRevisaoTeste = (
       await carregar();
     };
 
+  const vincularProcesso =
+    async (
+      processoId: string
+    ): Promise<void> => {
+
+      if (!documento) {
+        return;
+      }
+
+      vincularDocumentoTeste(
+        documento.id,
+        processoId,
+        vinculos
+      );
+
+      definirProcessoPrincipalTeste(
+        documento.id,
+        processoId
+      );
+
+      await carregar();
+    };
+
+  const escolherPrincipal =
+    async (
+      processoId: string
+    ): Promise<void> => {
+
+      if (!documento) {
+        return;
+      }
+
+      definirProcessoPrincipalTeste(
+        documento.id,
+        processoId
+      );
+
+      await carregar();
+    };
+
   return {
-    carregando,
+    situacao,
     processando,
     erro,
     errosAcao,
+    avisoProcessos,
     revisaoAlvo,
+    processos,
+    vinculos: documento
+      ? vinculosDoDocumento(documento.id, vinculos)
+      : [],
+    processoAtual: processos.find(
+      item => item.id === processoAtualId
+    ),
     definicao,
     instancia,
     atores,
@@ -385,8 +566,11 @@ export const useFluxoRevisaoTeste = (
       setAtorChave(chave);
       setErrosAcao([]);
     },
+    vincularProcesso,
+    escolherPrincipal,
     executar,
     reiniciar,
+    recarregar: () => carregar(true),
     limparErros: () => setErrosAcao([])
   };
 };

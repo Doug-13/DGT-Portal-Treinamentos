@@ -35,8 +35,10 @@ import { Pagina } from '../constants/routes';
 import {
   obterModuloPagina,
   paginaEhTreinamentos,
-  paginaEhDocumentos
+  paginaEhDocumentos,
+  paginaEhProcessos
 } from '../constants/moduleRoutes';
+import { FEATURE_FLAGS } from '../constants/featureFlags';
 import {
   diagnosticarErro
 } from '../utils/diagnosticoDataverse';
@@ -2579,6 +2581,7 @@ const gestaoAreas =
           'inicio' |
           'treinamentos' |
           'documentos' |
+          'processos' |
           'outro';
       }> = [
 
@@ -2631,8 +2634,16 @@ const gestaoAreas =
         icon:
           '⌘',
 
+        // Módulo em teste: só navega com a feature flag ligada.
+        pagina:
+          FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
+            ? 'processos'
+            : undefined,
+
         modulo:
-          'outro'
+          FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
+            ? 'processos'
+            : 'outro'
       },
 
       {
@@ -3011,6 +3022,26 @@ const gestaoAreas =
                   paginasFilhas={{
                     documentoDetalhe: 'documentos'
                   }}
+                />
+              )
+            }
+
+            {
+              paginaEhProcessos(
+                paginaAtual
+              ) &&
+              (
+                <ModuloCabecalho
+                  config={CABECALHOS_MODULO.processos}
+                  abas={[
+                    {
+                      pagina: 'processos',
+                      label: 'Processos',
+                      icon: 'workflow'
+                    }
+                  ]}
+                  paginaAtual={paginaAtual}
+                  navegar={navegar}
                 />
               )
             }

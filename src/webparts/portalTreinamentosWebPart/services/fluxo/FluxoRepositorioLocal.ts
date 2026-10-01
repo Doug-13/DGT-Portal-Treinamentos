@@ -2,8 +2,14 @@ import {
   IFluxoInstancia
 } from '../../models/Fluxo';
 
+import {
+  lerJson,
+  gravarJson,
+  removerChave
+} from '../../utils/armazenamentoLocal';
+
 // ============================================================
-// REPOSITÓRIO DO ESTADO DO FLUXO
+// REPOSITÓRIO DO ESTADO DO FLUXO (instâncias por revisão)
 //
 // IFluxoRepositorio é o "contrato" de onde o estado do fluxo é
 // lido e gravado. Nesta fase existe só a implementação LOCAL
@@ -33,54 +39,10 @@ export interface IFluxoRepositorio {
   ): Promise<void>;
 }
 
+// Mantido igual à versão anterior para não perder simulações já
+// iniciadas.
 const PREFIXO_CHAVE =
   'dgt-portal:fluxo-teste:';
-
-// Usado quando o navegador bloqueia o localStorage (ex.: modo
-// privado com restrições). O estado dura só enquanto a página
-// estiver aberta.
-const memoria: Record<string, string> = {};
-
-const lerArmazenamento = (
-  chave: string
-): string | undefined => {
-
-  try {
-    const valor =
-      window.localStorage.getItem(chave);
-
-    return valor === null
-      ? undefined
-      : valor;
-  } catch {
-    return memoria[chave];
-  }
-};
-
-const gravarArmazenamento = (
-  chave: string,
-  valor: string
-): void => {
-
-  try {
-    window.localStorage.setItem(chave, valor);
-  } catch {
-    memoria[chave] = valor;
-  }
-};
-
-const removerArmazenamento = (
-  chave: string
-): void => {
-
-  try {
-    window.localStorage.removeItem(chave);
-  } catch {
-    // ignora
-  }
-
-  delete memoria[chave];
-};
 
 export class FluxoRepositorioLocal
   implements IFluxoRepositorio {
@@ -92,34 +54,19 @@ export class FluxoRepositorioLocal
     revisaoId: string
   ): Promise<IFluxoInstancia | undefined> {
 
-    const bruto =
-      lerArmazenamento(
-        PREFIXO_CHAVE + revisaoId
-      );
-
-    if (!bruto) {
-      return undefined;
-    }
-
-    try {
-      return JSON.parse(bruto) as IFluxoInstancia;
-    } catch {
-      // Conteúdo corrompido: descarta e recomeça a simulação.
-      removerArmazenamento(
-        PREFIXO_CHAVE + revisaoId
-      );
-
-      return undefined;
-    }
+    return lerJson<IFluxoInstancia | undefined>(
+      PREFIXO_CHAVE + revisaoId,
+      undefined
+    );
   }
 
   public async salvar(
     instancia: IFluxoInstancia
   ): Promise<void> {
 
-    gravarArmazenamento(
+    gravarJson(
       PREFIXO_CHAVE + instancia.revisaoId,
-      JSON.stringify(instancia)
+      instancia
     );
   }
 
@@ -127,7 +74,7 @@ export class FluxoRepositorioLocal
     revisaoId: string
   ): Promise<void> {
 
-    removerArmazenamento(
+    removerChave(
       PREFIXO_CHAVE + revisaoId
     );
   }

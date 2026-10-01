@@ -146,6 +146,12 @@ export interface IDocumentoDetalhePageProps {
   onLimparResultadoPublicacao:
     () => void;
 
+  // Abre o processo do documento no módulo Processos (modo de teste).
+  onAbrirProcesso?:
+    (
+      processoId: string
+    ) => void;
+
   onVoltar:
     () => void;
 }
@@ -411,6 +417,7 @@ const DocumentoDetalhePage:
     resultadoPublicacao,
     onPublicarRevisao,
     onLimparResultadoPublicacao,
+    onAbrirProcesso,
     onVoltar
 
   }) => {
@@ -1158,6 +1165,8 @@ const DocumentoDetalhePage:
                 documento={documento}
                 revisoes={revisoes}
                 contexto={contexto}
+                dataverseService={dataverseService}
+                onAbrirProcesso={onAbrirProcesso}
               />
             )
             : aba === 'historico'

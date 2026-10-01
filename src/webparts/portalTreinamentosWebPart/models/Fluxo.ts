@@ -167,6 +167,11 @@ export interface IFluxoTransicao {
   rotuloPosicao?: { x: number; y: number };
 }
 
+export type StatusDefinicaoFluxo =
+  | 'rascunho'
+  | 'publicado'
+  | 'arquivado';
+
 export interface IFluxoDefinicao {
   id: string;
 
@@ -174,7 +179,19 @@ export interface IFluxoDefinicao {
 
   versao: number;
 
-  status: 'rascunho' | 'publicado' | 'arquivado';
+  status: StatusDefinicaoFluxo;
+
+  // Processo dono do fluxo (dgt_processo). Vazio nos modelos.
+  processoId?: string;
+
+  // Modelo a partir do qual o fluxo foi criado.
+  modeloId?: string;
+
+  criadoEm?: string;
+
+  publicadoEm?: string;
+
+  arquivadoEm?: string;
 
   // Tipos de documento que usam este fluxo por padrão.
   tiposDocumento: string[];
@@ -244,6 +261,12 @@ export interface IFluxoInstancia {
 
   revisao: string;
 
+  // Processo cujo fluxo governa esta revisão (no momento em que
+  // o fluxo foi iniciado).
+  processoId?: string;
+
+  processoNome?: string;
+
   // A revisão "congela" a definição e a versão com que começou.
   fluxoId: string;
 
@@ -289,4 +312,17 @@ export type StatusVisualElemento =
   | 'concluido'
   | 'atual'
   | 'pendente'
-  | 'naoPercorrido';
+  | 'naoPercorrido'
+  // Visualização da definição, sem revisão em andamento.
+  | 'definicao';
+
+// Modelo pronto usado para criar o fluxo de um processo.
+export interface IFluxoModelo {
+  id: string;
+
+  nome: string;
+
+  descricao: string;
+
+  definicao: IFluxoDefinicao;
+}

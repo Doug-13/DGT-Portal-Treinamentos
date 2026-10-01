@@ -4,9 +4,12 @@ import {
 } from '../../models/Fluxo';
 
 import {
-  FLUXOS_TESTE,
-  FLUXO_POP_PROCEDIMENTO_V2
-} from './definicoes/fluxoPopProcedimento';
+  IProcesso
+} from '../../models/Processo';
+
+import {
+  IFluxoCatalogo
+} from './FluxoCatalogoLocal';
 
 import {
   executarAcao,
@@ -21,74 +24,47 @@ import {
 } from './FluxoRepositorioLocal';
 
 // ============================================================
-// SERVIÇO DO FLUXO
+// SERVIÇO DO FLUXO DE REVISÃO
 //
 // Junta as três peças:
-//   definição (qual fluxo)  +  motor (regras)  +  repositório (onde grava)
+//   catálogo (fluxo do processo) + motor (regras) + repositório
 //
-// Hoje: definições fixas no código + repositório local.
-// Futuro: definições vindas de dgt_fluxo + repositório Dataverse
-//         + motor rodando na Custom API.
+// Regra: o fluxo pertence ao PROCESSO. O documento é vinculado a
+// um processo e a revisão usa a versão PUBLICADA do fluxo desse
+// processo no momento em que começa — e fica nela até o fim.
+//
+// Hoje: catálogo e repositório no navegador (modo de teste).
+// Futuro: dgt_fluxo no Dataverse + motor na Custom API.
 // ============================================================
-
-const normalizar = (
-  valor: string
-): string =>
-  (valor || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
 
 export class FluxoService {
 
   private readonly repositorio:
     IFluxoRepositorio;
 
-  private readonly definicoes:
-    IFluxoDefinicao[];
+  private readonly catalogo:
+    IFluxoCatalogo;
 
   public constructor(
     repositorio: IFluxoRepositorio,
-    definicoes: IFluxoDefinicao[] = FLUXOS_TESTE
+    catalogo: IFluxoCatalogo
   ) {
     this.repositorio = repositorio;
-    this.definicoes = definicoes;
+    this.catalogo = catalogo;
   }
 
   public get gravaApenasLocalmente(): boolean {
-    return this.repositorio.local;
-  }
-
-  // Fluxo padrão para um tipo de documento.
-  public definicaoParaTipo(
-    tipoDocumento: string
-  ): IFluxoDefinicao {
-
-    const tipo =
-      normalizar(tipoDocumento);
-
-    const encontrada =
-      this.definicoes.find(
-        definicao =>
-          definicao.status === 'publicado' &&
-          definicao.tiposDocumento.some(
-            item => normalizar(item) === tipo
-          )
-      );
-
-    return encontrada || FLUXO_POP_PROCEDIMENTO_V2;
+    return this.repositorio.local && this.catalogo.local;
   }
 
   // Definição EXATA (id + versão) com que a revisão começou.
-  public definicaoDaInstancia(
+  public async definicaoDaInstancia(
     instancia: IFluxoInstancia
-  ): IFluxoDefinicao | undefined {
+  ): Promise<IFluxoDefinicao | undefined> {
 
-    return this.definicoes.find(
-      definicao =>
-        definicao.id === instancia.fluxoId &&
-        definicao.versao === instancia.fluxoVersao
+    return this.catalogo.obterVersao(
+      instancia.fluxoId,
+      instancia.fluxoVersao
     );
   }
 
@@ -99,8 +75,10 @@ export class FluxoService {
     return this.repositorio.obter(revisaoId);
   }
 
+  // Inicia o fluxo da revisão com a versão publicada do processo.
+  // Se a revisão já tem fluxo, devolve o existente (não reinicia).
   public async iniciar(
-    tipoDocumento: string,
+    processo: IProcesso,
     dados: IDadosInicioFluxo
   ): Promise<IResultadoExecucao> {
 
@@ -117,7 +95,17 @@ export class FluxoService {
     }
 
     const definicao =
-      this.definicaoParaTipo(tipoDocumento);
+      await this.catalogo.versaoPublicada(processo.id);
+
+    if (!definicao) {
+      return {
+        ok: false,
+        erros: [
+          `O processo "${processo.nome}" ainda não tem fluxo publicado.`
+        ],
+        acoesSistema: []
+      };
+    }
 
     const resultado =
       iniciarInstancia(
@@ -132,6 +120,12 @@ export class FluxoService {
       resultado.ok &&
       resultado.instancia
     ) {
+      resultado.instancia.processoId =
+        processo.id;
+
+      resultado.instancia.processoNome =
+        processo.nome;
+
       await this.repositorio.salvar(
         resultado.instancia
       );
@@ -157,13 +151,13 @@ export class FluxoService {
     }
 
     const definicao =
-      this.definicaoDaInstancia(instancia);
+      await this.definicaoDaInstancia(instancia);
 
     if (!definicao) {
       return {
         ok: false,
         erros: [
-          `A versão ${instancia.fluxoVersao} do fluxo "${instancia.fluxoId}" não está mais disponível.`
+          `A versão ${instancia.fluxoVersao} do fluxo usada por esta revisão não foi encontrada.`
         ],
         acoesSistema: []
       };

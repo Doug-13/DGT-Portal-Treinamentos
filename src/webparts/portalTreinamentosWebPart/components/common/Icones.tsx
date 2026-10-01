@@ -36,7 +36,8 @@ export type IconeChave =
   | 'filePlus'
   | 'folder'
   | 'bell'
-  | 'barChart';
+  | 'barChart'
+  | 'workflow';
 
 export const Icones:
   Record<IconeChave, React.FC> = {
@@ -169,6 +170,16 @@ export const Icones:
       <rect x="6.5" y="13" width="3" height="7" />
       <rect x="11" y="9" width="3" height="11" />
       <rect x="15.5" y="5" width="3" height="15" />
+    </svg>
+  ),
+
+  workflow: () => (
+    <svg {...base}>
+      <rect x="3" y="4" width="6" height="5" rx="1" />
+      <rect x="15" y="4" width="6" height="5" rx="1" />
+      <rect x="9" y="15" width="6" height="5" rx="1" />
+      <path d="M9 6.5h6" />
+      <path d="M18 9v3H12v3" />
     </svg>
   )
 };

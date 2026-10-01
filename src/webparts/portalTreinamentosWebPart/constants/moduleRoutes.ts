@@ -6,6 +6,7 @@ export type ModuloIntranet =
   | 'inicio'
   | 'treinamentos'
   | 'documentos'
+  | 'processos'
   | 'outro';
 
 const paginasTreinamentos:
@@ -54,6 +55,13 @@ export const obterModuloPagina =
     }
 
     if (
+      pagina ===
+      'processos'
+    ) {
+      return 'processos';
+    }
+
+    if (
       paginasTreinamentos
         .indexOf(
           pagina
@@ -85,6 +93,16 @@ export const paginaEhTreinamentos =
       pagina
     ) ===
     'treinamentos';
+
+export const paginaEhProcessos =
+  (
+    pagina:
+      Pagina
+  ): boolean =>
+    obterModuloPagina(
+      pagina
+    ) ===
+    'processos';
 
 export const paginaEhDocumentos =
   (

@@ -41,6 +41,7 @@ export const CABECALHOS_MODULO: {
   inicio: IConfigCabecalhoModulo;
   treinamentos: IConfigCabecalhoModulo;
   documentos: IConfigCabecalhoModulo;
+  processos: IConfigCabecalhoModulo;
 } = {
   inicio: {
     icone: 'home',
@@ -62,6 +63,13 @@ export const CABECALHOS_MODULO: {
     subtitulo: 'Procedimentos, políticas, instruções e muito mais.',
     descricao: 'Documentos vigentes, revisões e aprovações em um só lugar.',
     citacao: 'Informação organizada gera segurança e melhores resultados.'
+  },
+  processos: {
+    icone: 'workflow',
+    titulo: 'Processos',
+    subtitulo: 'Cada processo com o seu fluxo de revisão.',
+    descricao: 'Processos, fluxos de aprovação e documentos vinculados em um só lugar.',
+    citacao: 'Processo claro é processo que se cumpre.'
   }
 };
 
