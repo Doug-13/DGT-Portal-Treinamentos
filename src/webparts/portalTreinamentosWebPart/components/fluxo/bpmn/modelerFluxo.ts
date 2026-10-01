@@ -12,9 +12,38 @@ import {
   IModelerFluxo
 } from './IModelerFluxo';
 
-// Estilos do bpmn-js (carregados só junto com o editor).
-require('bpmn-js/dist/assets/diagram-js.css');
-require('bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css');
+import {
+  ESTILOS_BPMN,
+  VERSAO_ESTILOS_BPMN
+} from './estilosBpmn';
+
+// Estilos do bpmn-js: injetados na página uma única vez, como texto.
+// (Importar os .css pelo webpack do SPFx quebra o "npm run start";
+// veja scripts/gerar-estilos-bpmn.js.)
+const ID_ESTILOS = `dgt-estilos-bpmn-${VERSAO_ESTILOS_BPMN}`;
+
+const injetarEstilos = (): void => {
+
+  if (document.getElementById(ID_ESTILOS)) {
+    return;
+  }
+
+  const estilo =
+    document.createElement('style');
+
+  estilo.id = ID_ESTILOS;
+
+  // Mesma regra de segurança (CSP) usada pelos estilos do SPFx.
+  const nonce =
+    (window as unknown as { CSPSettings?: { nonce?: string } }).CSPSettings?.nonce;
+
+  if (nonce) {
+    estilo.setAttribute('nonce', nonce);
+  }
+  estilo.appendChild(document.createTextNode(ESTILOS_BPMN));
+
+  document.head.appendChild(estilo);
+};
 
 // ============================================================
 // IMPLEMENTAÇÃO DO EDITOR COM bpmn-js
@@ -161,6 +190,8 @@ const resumo = (
 export const criarModelerFluxo = (
   container: HTMLElement
 ): IModelerFluxo => {
+
+  injetarEstilos();
 
   const modeler: any =
     new Modeler({
