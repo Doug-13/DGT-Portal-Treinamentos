@@ -189,6 +189,10 @@ import {
   IImpactoRemocao
 } from '../services/TreinamentoRemocaoService';
 
+import {
+  IImpactoRemocaoModulo
+} from '../services/ModuloRemocaoService';
+
 import ModoTesteTreinamentoPage from
   '../pages/Treinamentos/ModoTesteTreinamentoPage';
 
@@ -1004,6 +1008,26 @@ export interface IPortalRouterProps {
       string,
     ativo:
       boolean
+  ) => Promise<void>;
+
+  // Remoção de módulo (somente Administrador).
+  analisarRemocaoModulo?:
+  (
+    modulo:
+      IModuloAdmin
+  ) => Promise<IImpactoRemocaoModulo>;
+
+  removerModulo?:
+  (
+    modulo:
+      IModuloAdmin
+  ) => Promise<void>;
+
+  // Arrastar e soltar os cards de módulo.
+  reordenarModulos?:
+  (
+    modulosNaNovaOrdem:
+      IModuloAdmin[]
   ) => Promise<void>;
 
   analisarModulosJson:
@@ -2494,6 +2518,26 @@ const PortalRouter:
             onDefinirAtivo={
               props
                 .definirModuloAtivo
+            }
+
+            onReordenar={
+              props
+                .reordenarModulos
+            }
+
+            // Remover módulo: somente Administrador.
+            onAnalisarRemocaoModulo={
+              props.contextoAcesso?.perfil ===
+              'Administrador'
+                ? props.analisarRemocaoModulo
+                : undefined
+            }
+
+            onRemoverModulo={
+              props.contextoAcesso?.perfil ===
+              'Administrador'
+                ? props.removerModulo
+                : undefined
             }
 
             onAnalisarJson={

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import * as ReactDOM from 'react-dom';
 
 import {
   COMMIT_BUILD,
@@ -12,6 +13,11 @@ import {
 
 // ============================================================
 // VERSÃO DO PORTAL
+//
+// A janela de Novidades é renderizada direto no <body> (portal do
+// React). Dentro da página do SharePoint, elementos com "transform"
+// fazem um position: fixed se prender ao web part, e a janela
+// aparecia no canto superior, cortada.
 //
 // Selo "v1.0.5" no cabeçalho. Ao clicar, abre "Novidades do
 // portal" com o histórico gerado a partir do CHANGELOG.md.
@@ -218,7 +224,7 @@ const VersaoPortal: React.FC = () => {
         )}
       </button>
 
-      {aberto && (
+      {aberto && ReactDOM.createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -234,7 +240,8 @@ const VersaoPortal: React.FC = () => {
             justifyContent: 'center',
             padding: '60px 16px',
             overflowY: 'auto',
-            color: '#18324A'
+            color: '#18324A',
+            fontFamily: '"Segoe UI", Barlow, Arial, sans-serif'
           }}
         >
           <div
@@ -300,7 +307,8 @@ const VersaoPortal: React.FC = () => {
               </ul>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

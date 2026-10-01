@@ -14,6 +14,8 @@ import {
 import HistoricoTreinamentoModal from
   './HistoricoTreinamentoModal';
 
+import MenuAcoes from '../../components/common/MenuAcoes';
+
 import RemoverTreinamentoModal from
   './RemoverTreinamentoModal';
 
@@ -410,22 +412,6 @@ const botaoEditar:
   border: `1px solid ${DGT.azul}`,
   background: '#FFFFFF',
   color: DGT.azul
-};
-
-const botaoDesativar:
-  React.CSSProperties = {
-  ...botaoBase,
-  border: `1px solid ${CORES_STATUS.erro.texto}`,
-  background: '#FFFFFF',
-  color: CORES_STATUS.erro.texto
-};
-
-const botaoAtivar:
-  React.CSSProperties = {
-  ...botaoBase,
-  border: `1px solid ${CORES_STATUS.sucesso.texto}`,
-  background: '#FFFFFF',
-  color: CORES_STATUS.sucesso.texto
 };
 
 const Acao:
@@ -1121,7 +1107,10 @@ const GestaoPage:
                                   '7px',
 
                                 flexWrap:
-                                  'wrap'
+                                  'nowrap',
+
+                                alignItems:
+                                  'center'
                               }}
                             >
                               <button
@@ -1173,81 +1162,82 @@ const GestaoPage:
                                 </button>
                               )}
 
-                              {props.onCarregarHistorico && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    abrirHistorico(
-                                      treinamento
-                                    )
-                                  }
-                                  style={
-                                    botaoEditar
-                                  }
-                                >
-                                  Histórico
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                disabled={
+                              {/* Ações secundárias no menu ⋮ */}
+                              <MenuAcoes
+                                desabilitado={
                                   processando
                                 }
-                                onClick={() => {
-                                  props
-                                    .onDefinirAtivo(
-                                      treinamento.id,
-                                      !treinamento.ativo
-                                    )
-                                    .catch(
-                                      (
-                                        error:
-                                          unknown
-                                      ) =>
-                                        console.error(
-                                          error
+                                rotulo={
+                                  `Mais ações de ${treinamento.codigo || treinamento.nome}`
+                                }
+                                itens={[
+                                  ...(
+                                    props.onCarregarHistorico
+                                      ? [
+                                        {
+                                          rotulo:
+                                            'Histórico',
+
+                                          onClick: () =>
+                                            abrirHistorico(
+                                              treinamento
+                                            )
+                                        }
+                                      ]
+                                      : []
+                                  ),
+
+                                  {
+                                    rotulo:
+                                      treinamento.ativo
+                                        ? 'Desativar'
+                                        : 'Ativar',
+
+                                    sucesso:
+                                      !treinamento.ativo,
+
+                                    onClick: () => {
+                                      props
+                                        .onDefinirAtivo(
+                                          treinamento.id,
+                                          !treinamento.ativo
                                         )
-                                    );
-                                }}
-                                style={{
-                                  ...(treinamento.ativo ? botaoDesativar : botaoAtivar),
-                                  opacity: processando ? .6 : 1
-                                }}
-                              >
-                                {
-                                  processando
-                                    ? 'Processando...'
-                                    : treinamento.ativo
-                                      ? 'Desativar'
-                                      : 'Ativar'
-                                }
-                              </button>
+                                        .catch(
+                                          (
+                                            error:
+                                              unknown
+                                          ) =>
+                                            console.error(
+                                              error
+                                            )
+                                        );
+                                    }
+                                  },
 
-                              {props.onAnalisarRemocao &&
-                                props.onRemoverTreinamento && (
-                                <button
-                                  type="button"
-                                  disabled={
-                                    processando
-                                  }
-                                  onClick={() =>
-                                    setRemoverDe(
-                                      treinamento
-                                    )
-                                  }
-                                  title="Excluir definitivamente (somente treinamentos nunca atribuídos)"
-                                  style={{
-                                    ...botaoDesativar,
-                                    background: '#B42318',
-                                    borderColor: '#B42318',
-                                    color: '#FFFFFF',
-                                    opacity: processando ? .6 : 1
-                                  }}
-                                >
-                                  Remover
-                                </button>
-                              )}
+                                  ...(
+                                    props.onAnalisarRemocao &&
+                                    props.onRemoverTreinamento
+                                      ? [
+                                        {
+                                          rotulo:
+                                            'Remover',
+
+                                          perigo:
+                                            true,
+
+                                          titulo:
+                                            'Excluir definitivamente (somente treinamentos nunca atribuídos)',
+
+                                          onClick: () =>
+                                            setRemoverDe(
+                                              treinamento
+                                            )
+                                        }
+                                      ]
+                                      : []
+                                  )
+                                ]}
+                              />
                             </div>
                           </td>
                         </tr>

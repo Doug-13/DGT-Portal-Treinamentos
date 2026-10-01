@@ -2,8 +2,11 @@
 // ============================================================
 // CONTROLE DE VERSÃO DO PORTAL
 //
-// Uso (normalmente chamado pelos scripts do package.json):
-//   node scripts/versao.js patch   → 1.0.4 → 1.0.5  (padrão do npm run build)
+// Uso:
+//   Para gerar uma VERSÃO, use o Gerar-Versao.ps1 (raiz do projeto).
+//   Builds comuns (npm run build / npx heft build) não mudam a versão.
+//
+//   node scripts/versao.js patch   → 1.0.4 → 1.0.5
 //   node scripts/versao.js minor   → 1.0.4 → 1.1.0
 //   node scripts/versao.js major   → 1.0.4 → 2.0.0
 //   node scripts/versao.js none    → não muda o número; só atualiza versao.ts
@@ -127,7 +130,7 @@ const CABECALHO_CHANGELOG =
   '# Histórico de versões do Portal DGT\n\n' +
   'Anote as mudanças em "Não publicado" enquanto desenvolve, uma por linha,\n' +
   'começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo\n' +
-  '`npm run build` elas passam para a nova versão e aparecem em "Novidades".\n\n';
+  '`Gerar-Versao.ps1` elas passam para a nova versão e aparecem em "Novidades".\n\n';
 
 let changelog = fs.existsSync(ARQ_CHANGELOG)
   ? fs.readFileSync(ARQ_CHANGELOG, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')

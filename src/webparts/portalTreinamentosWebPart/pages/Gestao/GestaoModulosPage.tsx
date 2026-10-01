@@ -1,5 +1,13 @@
 import * as React from 'react';
 
+import MenuAcoes from '../../components/common/MenuAcoes';
+
+import RemoverModuloModal from './RemoverModuloModal';
+
+import {
+  IImpactoRemocaoModulo
+} from '../../services/ModuloRemocaoService';
+
 import PageHeader from
   '../../components/layout/PageHeader';
 
@@ -78,6 +86,26 @@ export interface IGestaoModulosPageProps {
         string,
       ativo:
         boolean
+    ) => Promise<void>;
+
+  // Somente Administrador: exibe o botão "Remover" em cada módulo.
+  onAnalisarRemocaoModulo?:
+    (
+      modulo:
+        IModuloAdmin
+    ) => Promise<IImpactoRemocaoModulo>;
+
+  onRemoverModulo?:
+    (
+      modulo:
+        IModuloAdmin
+    ) => Promise<void>;
+
+  // Arrastar e soltar: recebe a lista na nova ordem e grava 1, 2, 3...
+  onReordenar?:
+    (
+      modulosNaNovaOrdem:
+        IModuloAdmin[]
     ) => Promise<void>;
 
   moduloConteudoSelecionadoId:
@@ -483,6 +511,156 @@ const GestaoModulosPage:
         null
       );
 
+    // ---------------- Ordem dos módulos (arrastar e soltar) ----------------
+    //
+    // O número exibido em cada card é a POSIÇÃO na lista (1, 2, 3...):
+    // nunca se repete e acompanha o card quando ele é arrastado.
+    // Ao soltar, a nova ordem é gravada em dgt_ordem.
+
+    const [
+      listaModulos,
+      setListaModulos
+    ] =
+      React.useState<
+        IModuloAdmin[]
+      >(
+        props.modulos
+      );
+
+    React.useEffect(
+      () => {
+        setListaModulos(
+          props.modulos
+        );
+      },
+      [
+        props.modulos
+      ]
+    );
+
+    const [
+      arrastandoId,
+      setArrastandoId
+    ] =
+      React.useState('');
+
+    const [
+      alvoId,
+      setAlvoId
+    ] =
+      React.useState('');
+
+    const [
+      erroOrdem,
+      setErroOrdem
+    ] =
+      React.useState('');
+
+    // Módulo em remoção (modal).
+    const [
+      removerModulo,
+      setRemoverModulo
+    ] =
+      React.useState<
+        IModuloAdmin | undefined
+      >(
+        undefined
+      );
+
+    const podeReordenar =
+      !!props.onReordenar &&
+      !props.processando &&
+      listaModulos.length > 1;
+
+    // Numeração gravada com repetições ou buracos (ex.: #2 duas vezes).
+    const numeracaoInconsistente =
+      props.modulos.some(
+        (modulo, indice) =>
+          modulo.ordem !==
+          indice + 1
+      );
+
+    const aplicarNovaOrdem =
+      (
+        nova:
+          IModuloAdmin[]
+      ): void => {
+
+        if (
+          !props.onReordenar
+        ) {
+          return;
+        }
+
+        setErroOrdem('');
+
+        setListaModulos(
+          nova
+        );
+
+        props
+          .onReordenar(
+            nova
+          )
+          .catch(
+            e => {
+              setListaModulos(
+                props.modulos
+              );
+
+              setErroOrdem(
+                e instanceof Error
+                  ? e.message
+                  : 'Não foi possível salvar a nova ordem.'
+              );
+            }
+          );
+      };
+
+    const moverModulo =
+      (
+        moduloId:
+          string,
+        destino:
+          number
+      ): void => {
+
+        const origem =
+          listaModulos.findIndex(
+            item =>
+              item.id ===
+              moduloId
+          );
+
+        if (
+          origem < 0 ||
+          destino < 0 ||
+          destino >= listaModulos.length ||
+          origem === destino
+        ) {
+          return;
+        }
+
+        const nova =
+          listaModulos.slice();
+
+        const [movido] =
+          nova.splice(
+            origem,
+            1
+          );
+
+        nova.splice(
+          destino,
+          0,
+          movido
+        );
+
+        aplicarNovaOrdem(
+          nova
+        );
+      };
+
     const [
       avancando,
       setAvancando
@@ -561,9 +739,19 @@ const GestaoModulosPage:
         modulo.descricao
       );
 
+      // Posição atual na lista (evita regravar um número repetido).
+      const posicaoAtual =
+        props.modulos.findIndex(
+          item =>
+            item.id ===
+            modulo.id
+        );
+
       setOrdem(
         String(
-          modulo.ordem
+          posicaoAtual >= 0
+            ? posicaoAtual + 1
+            : modulo.ordem
         )
       );
 
@@ -1613,6 +1801,106 @@ const GestaoModulosPage:
           >
 
             {
+              (numeracaoInconsistente || erroOrdem || podeReordenar) &&
+              props.modulos.length > 0 &&
+              (
+                <div
+                  style={{
+                    display:
+                      'flex',
+
+                    justifyContent:
+                      'space-between',
+
+                    alignItems:
+                      'center',
+
+                    gap:
+                      '12px',
+
+                    flexWrap:
+                      'wrap',
+
+                    padding:
+                      '10px 14px',
+
+                    borderRadius:
+                      '10px',
+
+                    background:
+                      erroOrdem
+                        ? '#FDE7E9'
+                        : numeracaoInconsistente
+                          ? '#FFF4E5'
+                          : '#F6F9FC',
+
+                    color:
+                      erroOrdem
+                        ? '#B42318'
+                        : numeracaoInconsistente
+                          ? '#8A5300'
+                          : '#64748b',
+
+                    fontSize:
+                      '13px'
+                  }}
+                >
+                  <span>
+                    {
+                      erroOrdem
+                        ? erroOrdem
+                        : numeracaoInconsistente
+                          ? 'A numeração gravada dos módulos tem números repetidos ou fora de sequência. Os cards já mostram a posição correta; clique em "Corrigir numeração" para gravá-la.'
+                          : 'Arraste os cards pela alça ⠿ para mudar a ordem dos módulos. A ordem é salva automaticamente.'
+                    }
+                  </span>
+
+                  {
+                    numeracaoInconsistente &&
+                    !!props.onReordenar &&
+                    (
+                      <button
+                        type="button"
+                        disabled={
+                          props.processando
+                        }
+                        onClick={() =>
+                          aplicarNovaOrdem(
+                            listaModulos.slice()
+                          )
+                        }
+                        style={{
+                          padding:
+                            '7px 14px',
+
+                          border:
+                            'none',
+
+                          borderRadius:
+                            '8px',
+
+                          background:
+                            '#B45309',
+
+                          color:
+                            '#ffffff',
+
+                          fontWeight:
+                            700,
+
+                          cursor:
+                            'pointer'
+                        }}
+                      >
+                        Corrigir numeração
+                      </button>
+                    )
+                  }
+                </div>
+              )
+            }
+
+            {
               props.modulos.length ===
               0 &&
               (
@@ -1643,19 +1931,107 @@ const GestaoModulosPage:
               )
             }
 
-            {props.modulos.map(
-              modulo => (
+            {listaModulos.map(
+              (modulo, posicao) => (
 
                 <article
                   key={
                     modulo.id
                   }
+                  draggable={
+                    podeReordenar
+                  }
+                  onDragStart={
+                    event => {
+                      setArrastandoId(
+                        modulo.id
+                      );
+
+                      event.dataTransfer.effectAllowed =
+                        'move';
+
+                      // Necessário para o Firefox iniciar o arraste.
+                      event.dataTransfer.setData(
+                        'text/plain',
+                        modulo.id
+                      );
+                    }
+                  }
+                  onDragOver={
+                    event => {
+                      if (
+                        !arrastandoId
+                      ) {
+                        return;
+                      }
+
+                      event.preventDefault();
+
+                      event.dataTransfer.dropEffect =
+                        'move';
+
+                      if (
+                        alvoId !==
+                        modulo.id
+                      ) {
+                        setAlvoId(
+                          modulo.id
+                        );
+                      }
+                    }
+                  }
+                  onDrop={
+                    event => {
+                      event.preventDefault();
+
+                      const origemId =
+                        arrastandoId;
+
+                      setArrastandoId('');
+                      setAlvoId('');
+
+                      if (
+                        origemId &&
+                        origemId !==
+                        modulo.id
+                      ) {
+                        moverModulo(
+                          origemId,
+                          posicao
+                        );
+                      }
+                    }
+                  }
+                  onDragEnd={() => {
+                    setArrastandoId('');
+                    setAlvoId('');
+                  }}
                   style={{
+                    opacity:
+                      arrastandoId ===
+                      modulo.id
+                        ? 0.45
+                        : 1,
+
+                    outline:
+                      alvoId ===
+                        modulo.id &&
+                      arrastandoId !==
+                        modulo.id
+                        ? '2px dashed #05C3DD'
+                        : 'none',
+
+                    outlineOffset:
+                      '2px',
+
+                    transition:
+                      'opacity .15s',
+
                     display:
                       'grid',
 
                     gridTemplateColumns:
-                      '70px minmax(240px, 1fr) 120px 100px 310px',
+                      '70px minmax(240px, 1fr) 120px 100px 300px',
 
                     gap:
                       '16px',
@@ -1677,9 +2053,55 @@ const GestaoModulosPage:
                   }}
                 >
 
-                  <strong>
-                    #{modulo.ordem}
-                  </strong>
+                  <div
+                    style={{
+                      display:
+                        'flex',
+
+                      alignItems:
+                        'center',
+
+                      gap:
+                        '8px'
+                    }}
+                  >
+                    {
+                      podeReordenar &&
+                      (
+                        <span
+                          aria-hidden="true"
+                          title="Arraste para mudar a posição"
+                          style={{
+                            cursor:
+                              'grab',
+
+                            color:
+                              '#94a3b8',
+
+                            fontSize:
+                              '18px',
+
+                            lineHeight:
+                              1,
+
+                            userSelect:
+                              'none'
+                          }}
+                        >
+                          ⠿
+                        </span>
+                      )
+                    }
+
+                    <strong
+                      title={
+                        `Posição ${posicao + 1} de ${listaModulos.length}`
+                      }
+                    >
+                      #{posicao + 1}
+                    </strong>
+
+                  </div>
 
                   <div>
 
@@ -1733,7 +2155,13 @@ const GestaoModulosPage:
                         '6px',
 
                       flexWrap:
-                        'wrap'
+                        'wrap',
+
+                      alignItems:
+                        'center',
+
+                      justifyContent:
+                        'flex-end'
                     }}
                   >
 
@@ -1812,40 +2240,69 @@ const GestaoModulosPage:
                       Editar módulo
                     </button>
 
-                    <button
-                      type="button"
-                      disabled={
+                    {/* Ações secundárias no menu ⋮ */}
+                    <MenuAcoes
+                      desabilitado={
                         props.processando
                       }
-                      onClick={() => {
+                      rotulo={
+                        `Mais ações do módulo ${posicao + 1}`
+                      }
+                      itens={[
+                        {
+                          rotulo:
+                            modulo.ativo
+                              ? 'Desativar'
+                              : 'Ativar',
 
-                        props
-                          .onDefinirAtivo(
-                            modulo.id,
-                            !modulo.ativo
-                          )
-                          .catch(
-                            (
-                              error:
-                                unknown
-                            ) =>
-                              console.error(
-                                error
+                          perigo:
+                            false,
+
+                          sucesso:
+                            !modulo.ativo,
+
+                          onClick: () => {
+                            props
+                              .onDefinirAtivo(
+                                modulo.id,
+                                !modulo.ativo
                               )
-                          );
-                      }}
-                      style={
-                        modulo.ativo
-                          ? buttonDanger
-                          : buttonSecondary
-                      }
-                    >
-                      {
-                        modulo.ativo
-                          ? 'Desativar'
-                          : 'Ativar'
-                      }
-                    </button>
+                              .catch(
+                                (
+                                  error:
+                                    unknown
+                                ) =>
+                                  console.error(
+                                    error
+                                  )
+                              );
+                          }
+                        },
+
+                        ...(
+                          props.onAnalisarRemocaoModulo &&
+                          props.onRemoverModulo
+                            ? [
+                              {
+                                rotulo:
+                                  'Remover',
+
+                                perigo:
+                                  true,
+
+                                titulo:
+                                  'Excluir definitivamente (somente módulos que nenhum colaborador iniciou)',
+
+                                onClick: () =>
+                                  setRemoverModulo(
+                                    modulo
+                                  )
+                              }
+                            ]
+                            : []
+                        )
+                      ]}
+                    />
 
                   </div>
 
@@ -2140,22 +2597,42 @@ const GestaoModulosPage:
                     Ordem
                   </label>
 
+                  {/*
+                    Somente leitura: a posição é definida arrastando os
+                    cards na lista. Novo módulo entra no fim.
+                  */}
                   <input
                     type="number"
-                    min={1}
                     value={
                       ordem
                     }
-                    onChange={
-                      event =>
-                        setOrdem(
-                          event.target.value
-                        )
-                    }
-                    style={
-                      inputStyle
-                    }
+                    readOnly
+                    disabled
+                    title="Para mudar a posição, arraste o card na lista de módulos."
+                    style={{
+                      ...inputStyle,
+                      background:
+                        '#f1f5f9',
+
+                      color:
+                        '#475569'
+                    }}
                   />
+
+                  <small
+                    style={{
+                      display:
+                        'block',
+
+                      marginTop:
+                        '4px',
+
+                      color:
+                        '#64748b'
+                    }}
+                  >
+                    Altere a posição arrastando o card na lista.
+                  </small>
                 </div>
 
                 <div>
@@ -2735,6 +3212,38 @@ const GestaoModulosPage:
             </div>
           </div>
         )}
+
+        {
+          props.onAnalisarRemocaoModulo &&
+          props.onRemoverModulo &&
+          (
+            <RemoverModuloModal
+              modulo={
+                removerModulo
+              }
+              posicao={
+                removerModulo
+                  ? listaModulos.findIndex(
+                    item =>
+                      item.id ===
+                      removerModulo.id
+                  ) + 1
+                  : 0
+              }
+              onAnalisar={
+                props.onAnalisarRemocaoModulo
+              }
+              onRemover={
+                props.onRemoverModulo
+              }
+              onFechar={() =>
+                setRemoverModulo(
+                  undefined
+                )
+              }
+            />
+          )
+        }
 
       </section>
     );

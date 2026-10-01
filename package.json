@@ -1,17 +1,14 @@
 {
   "name": "DGT-Portal-Treinamentos",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "private": true,
   "engines": {
     "node": ">=22.14.0 < 23.0.0"
   },
   "scripts": {
-    "build": "node scripts/versao.js patch && heft test --clean --production && heft package-solution --production",
-    "build:minor": "node scripts/versao.js minor && heft test --clean --production && heft package-solution --production",
-    "build:major": "node scripts/versao.js major && heft test --clean --production && heft package-solution --production",
-    "build:sem-versao": "node scripts/versao.js none && heft test --clean --production && heft package-solution --production",
-    "versao": "node scripts/versao.js none",
+    "build": "node scripts/versao.js none && heft test --clean --production && heft package-solution --production",
     "start": "node scripts/versao.js none && heft start --clean",
+    "versao": "node scripts/versao.js none",
     "clean": "heft clean",
     "eject-webpack": "heft eject-webpack"
   },

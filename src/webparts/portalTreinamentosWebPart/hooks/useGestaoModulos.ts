@@ -54,6 +54,13 @@ export interface IUseGestaoModulos {
         boolean
     ) => Promise<void>;
 
+  // Reordena pelos cards arrastados (grava 1, 2, 3...).
+  reordenar:
+    (
+      modulosNaNovaOrdem:
+        IModuloAdmin[]
+    ) => Promise<void>;
+
   limpar:
     () => void;
 }
@@ -296,6 +303,70 @@ export const useGestaoModulos = (
       ]
     );
 
+  const reordenar =
+    React.useCallback(
+      async (
+        modulosNaNovaOrdem:
+          IModuloAdmin[]
+      ): Promise<void> => {
+
+        // Mostra a nova ordem imediatamente, antes de gravar.
+        setModulos(
+          modulosNaNovaOrdem.map(
+            (modulo, indice) => ({
+              ...modulo,
+              ordem:
+                indice + 1
+            })
+          )
+        );
+
+        setProcessando(
+          true
+        );
+
+        setErro('');
+
+        try {
+
+          await service
+            .reordenar(
+              modulosNaNovaOrdem
+            );
+
+        } catch (e) {
+
+          setErro(
+            e instanceof Error
+              ? e.message
+              : 'Não foi possível salvar a nova ordem dos módulos.'
+          );
+
+          throw e;
+
+        } finally {
+
+          if (
+            treinamentoId
+          ) {
+
+            await carregar(
+              treinamentoId
+            );
+          }
+
+          setProcessando(
+            false
+          );
+        }
+      },
+      [
+        carregar,
+        service,
+        treinamentoId
+      ]
+    );
+
   const limpar =
     React.useCallback(
       (): void => {
@@ -317,6 +388,7 @@ export const useGestaoModulos = (
     criar,
     editar,
     definirAtivo,
+    reordenar,
     limpar
   };
 };

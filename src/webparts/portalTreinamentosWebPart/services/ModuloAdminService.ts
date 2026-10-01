@@ -422,6 +422,42 @@ export class ModuloAdminService {
       );
   }
 
+  // Grava a ordem conforme a posição na lista (1, 2, 3...), sem
+  // repetições. Só atualiza os módulos cuja ordem realmente mudou.
+  public async reordenar(
+    modulosNaNovaOrdem:
+      IModuloAdmin[]
+  ): Promise<void> {
+
+    for (
+      let indice = 0;
+      indice < modulosNaNovaOrdem.length;
+      indice += 1
+    ) {
+
+      const modulo =
+        modulosNaNovaOrdem[indice];
+
+      const novaOrdem =
+        indice + 1;
+
+      if (
+        modulo.ordem !==
+        novaOrdem
+      ) {
+
+        await this.dataverse
+          .atualizarModulo(
+            modulo.id,
+            {
+              dgt_ordem:
+                novaOrdem
+            }
+          );
+      }
+    }
+  }
+
   public async definirAtivo(
     moduloId:
       string,

@@ -13,6 +13,15 @@ import {
 } from '../services/TreinamentoRemocaoService';
 
 import {
+  IImpactoRemocaoModulo,
+  ModuloRemocaoService
+} from '../services/ModuloRemocaoService';
+
+import {
+  IModuloAdmin
+} from '../services/ModuloAdminService';
+
+import {
   AtribuicaoAreaService
 } from '../services/AtribuicaoAreaService';
 import styles from './PortalTreinamentos.module.scss';
@@ -1900,6 +1909,59 @@ const gestaoAreas =
       );
 
     // ==========================================================
+    // REMOÇÃO DE MÓDULO (somente Administrador)
+    // ==========================================================
+
+    const moduloRemocaoService =
+      React.useMemo(
+        () =>
+          new ModuloRemocaoService(
+            dataverseService
+          ),
+        [
+          dataverseService
+        ]
+      );
+
+    const analisarRemocaoModulo =
+      React.useCallback(
+        (
+          modulo:
+            IModuloAdmin
+        ): Promise<IImpactoRemocaoModulo> =>
+          moduloRemocaoService
+            .analisar(
+              modulo.id
+            ),
+        [
+          moduloRemocaoService
+        ]
+      );
+
+    const removerModulo =
+      React.useCallback(
+        async (
+          modulo:
+            IModuloAdmin
+        ): Promise<void> => {
+
+          await moduloRemocaoService
+            .remover(
+              modulo
+            );
+
+          await gestaoModulos
+            .selecionarTreinamento(
+              modulo.treinamentoId
+            );
+        },
+        [
+          gestaoModulos,
+          moduloRemocaoService
+        ]
+      );
+
+    // ==========================================================
     // MODO DE TESTE (visão do colaborador, sem registros)
     // ==========================================================
 
@@ -3453,6 +3515,18 @@ const gestaoAreas =
 
                 definirModuloAtivo={
                   gestaoModulos.definirAtivo
+                }
+
+                reordenarModulos={
+                  gestaoModulos.reordenar
+                }
+
+                analisarRemocaoModulo={
+                  analisarRemocaoModulo
+                }
+
+                removerModulo={
+                  removerModulo
                 }
 
                 analisarModulosJson={
