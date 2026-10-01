@@ -122,47 +122,75 @@ const servico =
     fluxoCatalogo
   );
 
+interface IPapelFluxo {
+  papelTeste: string;
+  tipo: string;
+  descricao: string;
+}
+
+// Papéis (responsáveis) que aparecem nas etapas do fluxo.
+const papeisDaDefinicao = (
+  definicao: IFluxoDefinicao | undefined
+): IPapelFluxo[] => {
+
+  const lista: IPapelFluxo[] = [];
+
+  if (!definicao) {
+    return lista;
+  }
+
+  definicao.elementos.forEach(
+    elemento => {
+      elemento.responsaveis.forEach(
+        responsavel => {
+          if (
+            responsavel.papelTeste &&
+            !lista.some(item => item.papelTeste === responsavel.papelTeste)
+          ) {
+            lista.push({
+              papelTeste: responsavel.papelTeste,
+              tipo: responsavel.tipo,
+              descricao: responsavel.descricao
+            });
+          }
+        }
+      );
+    }
+  );
+
+  return lista;
+};
+
+// O que o usuário REAL poderia fazer, pelas regras disponíveis hoje:
+//   - Administrador: todas as etapas (para testar);
+//   - autor da revisão: etapas do tipo "Autor da revisão";
+//   - Gestor: etapas do tipo "Gestor da área".
+// Grupo, função, setor e usuário específico só serão resolvidos
+// quando as tabelas existirem; até lá, use os usuários simulados.
 const papeisDoUsuarioReal = (
   contexto: IContextoAcesso | undefined,
-  revisaoResponsavelId: string | undefined
-): string[] => {
-
-  const papeis: string[] = [];
+  revisaoResponsavelId: string | undefined,
+  papeis: IPapelFluxo[]
+): IPapelFluxo[] => {
 
   if (!contexto) {
-    return papeis;
-  }
-
-  if (
-    contexto.usuarioId &&
-    revisaoResponsavelId &&
-    contexto.usuarioId === revisaoResponsavelId
-  ) {
-    papeis.push('autor');
-  }
-
-  if (
-    contexto.perfil === 'Gestor' ||
-    contexto.perfil === 'Administrador'
-  ) {
-    papeis.push('coordenacao');
+    return [];
   }
 
   if (contexto.perfil === 'Administrador') {
-    papeis.push('qualidade');
-
-    if (papeis.indexOf('autor') < 0) {
-      papeis.push('autor');
-    }
+    return papeis;
   }
 
-  return papeis;
-};
+  const ehAutor =
+    !!contexto.usuarioId &&
+    !!revisaoResponsavelId &&
+    contexto.usuarioId === revisaoResponsavelId;
 
-const DESCRICAO_PAPEL: Record<string, string> = {
-  autor: 'autor da revisão',
-  coordenacao: 'gestor da área',
-  qualidade: 'Qualidade'
+  return papeis.filter(
+    papel =>
+      (papel.tipo === 'autorRevisao' && ehAutor) ||
+      (papel.tipo === 'gestorArea' && contexto.perfil === 'Gestor')
+  );
 };
 
 export const useFluxoRevisaoTeste = (
@@ -240,10 +268,14 @@ export const useFluxoRevisaoTeste = (
     React.useMemo(
       () => {
 
+        const papeis =
+          papeisDaDefinicao(definicao);
+
         const papeisReais =
           papeisDoUsuarioReal(
             contexto,
-            revisaoEmAndamento?.responsavelId
+            revisaoEmAndamento?.responsavelId,
+            papeis
           );
 
         const nomeReal =
@@ -257,47 +289,29 @@ export const useFluxoRevisaoTeste = (
             rotulo: `Eu (${nomeReal})`,
             descricao:
               papeisReais.length > 0
-                ? `Seu acesso real permite agir como: ${papeisReais.map(papel => DESCRICAO_PAPEL[papel] || papel).join(', ')}.`
-                : 'Com seu acesso real você não é responsável por nenhuma etapa deste fluxo.',
+                ? `Seu acesso real permite agir como: ${papeisReais.map(papel => papel.descricao).join(', ')}.`
+                : 'Com seu acesso real você não é responsável por nenhuma etapa deste fluxo. Use um usuário simulado.',
             ator: {
               id: contexto?.usuarioId || 'usuario-atual',
               nome: nomeReal,
-              papeisTeste: papeisReais
+              papeisTeste: papeisReais.map(papel => papel.papelTeste)
             }
           },
-          {
-            chave: 'autor',
-            rotulo: 'Autor da revisão (simulado)',
-            descricao: 'Pode executar as etapas do autor da revisão.',
-            ator: {
-              id: 'simulado-autor',
-              nome: 'Autor (simulado)',
-              papeisTeste: ['autor']
-            }
-          },
-          {
-            chave: 'coordenacao',
-            rotulo: 'Gestor da área (simulado)',
-            descricao: 'Pode executar as etapas do gestor da área.',
-            ator: {
-              id: 'simulado-coordenacao',
-              nome: 'Gestor da área (simulado)',
-              papeisTeste: ['coordenacao']
-            }
-          },
-          {
-            chave: 'qualidade',
-            rotulo: 'Qualidade (simulado)',
-            descricao: 'Pode executar as etapas da Qualidade.',
-            ator: {
-              id: 'simulado-qualidade',
-              nome: 'Qualidade (simulado)',
-              papeisTeste: ['qualidade']
-            }
-          }
+          ...papeis.map(
+            papel => ({
+              chave: papel.papelTeste,
+              rotulo: `${papel.descricao} (simulado)`,
+              descricao: `Pode executar as etapas de "${papel.descricao}".`,
+              ator: {
+                id: `simulado-${papel.papelTeste}`,
+                nome: `${papel.descricao} (simulado)`,
+                papeisTeste: [papel.papelTeste]
+              }
+            })
+          )
         ];
       },
-      [contexto, revisaoEmAndamento]
+      [contexto, revisaoEmAndamento, definicao]
     );
 
   const atorSelecionado =

@@ -208,7 +208,15 @@ export const validarAcao = (
   elemento.campos.forEach(
     campo => {
 
+      if (campo.somenteLeitura) {
+        return;
+      }
+
+      const valor =
+        (valores[campo.chave] || '').trim();
+
       const obrigatorio =
+        !acao.dispensaCampos &&
         campoObrigatorioAgora(
           elemento,
           campo.chave,
@@ -216,18 +224,75 @@ export const validarAcao = (
           acao.resultado
         );
 
-      if (
-        obrigatorio &&
-        !(valores[campo.chave] || '').trim()
-      ) {
+      if (obrigatorio && !valor) {
         erros.push(
           `Preencha: ${campo.rotulo}`
         );
+        return;
+      }
+
+      if (!valor) {
+        return;
+      }
+
+      if (
+        campo.tipo === 'numero' &&
+        Number.isNaN(Number(valor.replace(',', '.')))
+      ) {
+        erros.push(`"${campo.rotulo}" precisa ser um número.`);
+      }
+
+      if (
+        campo.tipo === 'data' &&
+        !/^\d{4}-\d{2}-\d{2}$/.test(valor)
+      ) {
+        erros.push(`"${campo.rotulo}" precisa ser uma data válida.`);
+      }
+
+      if (
+        campo.tipo === 'lista' &&
+        campo.opcoes &&
+        campo.opcoes.indexOf(valor) < 0
+      ) {
+        erros.push(`"${campo.rotulo}" precisa ser uma das opções da lista.`);
+      }
+
+      if (
+        campo.tipo === 'simNao' &&
+        valor !== 'sim' &&
+        valor !== 'nao'
+      ) {
+        erros.push(`Responda "${campo.rotulo}" com Sim ou Não.`);
       }
     }
   );
 
   return erros;
+};
+
+export const formatarValorCampo = (
+  tipo: string,
+  valor: string
+): string => {
+
+  if (!valor) {
+    return '';
+  }
+
+  if (tipo === 'simNao') {
+    return valor === 'sim' ? 'Sim' : 'Não';
+  }
+
+  if (tipo === 'data') {
+    const partes =
+      valor.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    return partes
+      ? `${partes[3]}/${partes[2]}/${partes[1]}`
+      : valor;
+  }
+
+  return valor;
 };
 
 // ------------------------------------------------------------
@@ -465,6 +530,28 @@ const avancar = (
 
     if (
       destino.tipo === 'tarefaSistema' &&
+      !destino.acaoSistema
+    ) {
+
+      instancia.historico.unshift({
+        id: gerarId('hist'),
+        data: agora,
+        elementoId: destino.id,
+        elementoNome: destino.nome,
+        acaoChave: 'automatica',
+        acaoRotulo: 'Etapa automática concluída (simulada)',
+        resultado: 'concluido',
+        executadoPorId: 'sistema',
+        executadoPorNome: 'Sistema',
+        sistema: true
+      });
+
+      resultadoAtual =
+        'concluido';
+    }
+
+    if (
+      destino.tipo === 'tarefaSistema' &&
       destino.acaoSistema
     ) {
 
@@ -654,7 +741,10 @@ export const executarAcao = (
       const valor =
         execucao.valores[campo.chave];
 
-      if (valor !== undefined) {
+      if (
+        valor !== undefined &&
+        !campo.somenteLeitura
+      ) {
         valoresEtapa[campo.chave] =
           valor;
       }
@@ -723,13 +813,16 @@ export const executarAcao = (
       // executada (ex.: a resposta de retreinamento não entra no
       // histórico de uma reprovação).
       const relevante =
-        !campo.validarNosResultados ||
-        campo.validarNosResultados.length === 0 ||
-        campo.validarNosResultados.indexOf(acao.resultado) >= 0;
+        !acao.dispensaCampos &&
+        (
+          !campo.validarNosResultados ||
+          campo.validarNosResultados.length === 0 ||
+          campo.validarNosResultados.indexOf(acao.resultado) >= 0
+        );
 
       if (valor && relevante) {
         comentarioHistorico.push(
-          `${campo.rotulo} ${campo.tipo === 'simNao' ? (valor === 'sim' ? 'Sim' : 'Não') : valor}`
+          `${campo.rotulo} ${formatarValorCampo(campo.tipo, valor)}`
         );
       }
     }

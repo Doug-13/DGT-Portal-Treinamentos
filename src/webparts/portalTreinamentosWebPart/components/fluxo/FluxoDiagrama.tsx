@@ -199,6 +199,48 @@ const renderizarTransicao = (
   );
 };
 
+// Nome fora do símbolo (eventos e decisões pequenos, como os
+// desenhados no editor BPMN).
+const rotuloExterno = (
+  elemento: IFluxoElemento
+): React.ReactElement => {
+
+  const { x, y, largura, altura } =
+    elemento.posicao;
+
+  const caixa =
+    elemento.rotuloPosicao ||
+    {
+      x: x + largura / 2 - 60,
+      y: y + altura + 4,
+      largura: 120,
+      altura: 32
+    };
+
+  return (
+    <foreignObject
+      x={caixa.x - 10}
+      y={caixa.y}
+      width={Math.max(caixa.largura + 20, 60)}
+      height={Math.max(caixa.altura + 6, 20)}
+    >
+      <div
+        style={{
+          width: '100%',
+          textAlign: 'center',
+          fontFamily: 'Barlow, Arial, sans-serif',
+          fontSize: '12px',
+          lineHeight: '14px',
+          fontWeight: 600,
+          color: COR_AZUL
+        }}
+      >
+        {elemento.nome}
+      </div>
+    </foreignObject>
+  );
+};
+
 const renderizarElemento = (
   elemento: IFluxoElemento,
   status: StatusVisualElemento,
@@ -210,6 +252,9 @@ const renderizarElemento = (
 
   const titulo =
     `${elemento.nome} — ${DESCRICAO_STATUS[status]}`;
+
+  const pequeno =
+    largura < 90;
 
   if (
     elemento.tipo === 'inicio' ||
@@ -231,17 +276,23 @@ const renderizarElemento = (
           stroke={COR_AZUL}
           strokeWidth={elemento.tipo === 'fim' ? 4 : 0}
         />
-        <text
-          x={x + largura / 2}
-          y={y + altura / 2 + 4}
-          textAnchor="middle"
-          fontSize={11}
-          fontWeight={600}
-          fill={preenchido ? '#FFFFFF' : COR_AZUL}
-          fontFamily="Barlow, Arial, sans-serif"
-        >
-          {elemento.nome}
-        </text>
+        {
+          largura >= 44
+            ? (
+              <text
+                x={x + largura / 2}
+                y={y + altura / 2 + 4}
+                textAnchor="middle"
+                fontSize={11}
+                fontWeight={600}
+                fill={preenchido ? '#FFFFFF' : COR_AZUL}
+                fontFamily="Barlow, Arial, sans-serif"
+              >
+                {elemento.nome}
+              </text>
+            )
+            : rotuloExterno(elemento)
+        }
       </g>
     );
   }
@@ -267,30 +318,36 @@ const renderizarElemento = (
           stroke={estilo.contorno}
           strokeWidth={estilo.espessura}
         />
-        <foreignObject
-          x={x + largura * 0.2}
-          y={y + altura * 0.25}
-          width={largura * 0.6}
-          height={altura * 0.5}
-        >
-          <div
-            style={{
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              textAlign: 'center',
-              fontFamily: 'Barlow, Arial, sans-serif',
-              fontSize: '12px',
-              lineHeight: '14px',
-              fontWeight: 600,
-              color: estilo.texto
-            }}
-          >
-            {elemento.nome}
-          </div>
-        </foreignObject>
+        {
+          pequeno
+            ? rotuloExterno(elemento)
+            : (
+              <foreignObject
+                x={x + largura * 0.2}
+                y={y + altura * 0.25}
+                width={largura * 0.6}
+                height={altura * 0.5}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    fontFamily: 'Barlow, Arial, sans-serif',
+                    fontSize: '12px',
+                    lineHeight: '14px',
+                    fontWeight: 600,
+                    color: estilo.texto
+                  }}
+                >
+                  {elemento.nome}
+                </div>
+              </foreignObject>
+            )
+        }
       </g>
     );
   }
@@ -335,8 +392,9 @@ const renderizarElemento = (
             textAlign: 'center',
             fontFamily: 'Barlow, Arial, sans-serif',
             color: estilo.texto,
-            fontSize: '13px',
-            lineHeight: '16px'
+            fontSize: largura < 120 ? '12px' : '13px',
+            lineHeight: largura < 120 ? '14px' : '16px',
+            overflow: 'hidden'
           }}
         >
           <strong>{elemento.nome}</strong>

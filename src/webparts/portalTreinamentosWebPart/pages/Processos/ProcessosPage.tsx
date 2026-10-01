@@ -344,6 +344,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
           aba === 'fluxo'
             ? (
               <ProcessoFluxoEditor
+                key={processoSelecionado.id}
                 processo={processoSelecionado}
                 versoes={versoes}
                 podeEditar={podeEditar}

@@ -11,6 +11,15 @@ import {
 } from './definicoes/fluxoPopProcedimento';
 
 import {
+  validarDefinicao
+} from './FluxoValidacao';
+
+import {
+  definicaoParaBpmnXml,
+  metadadosDaDefinicao
+} from './bpmn/bpmnConversao';
+
+import {
   gravarJson,
   lerJson,
   PREFIXO_ARMAZENAMENTO_TESTE
@@ -103,53 +112,9 @@ const ordenar = (
     .slice()
     .sort((a, b) => b.versao - a.versao);
 
-// Regras mínimas para publicar um fluxo.
-export const validarDefinicao = (
-  definicao: IFluxoDefinicao
-): string[] => {
-
-  const erros: string[] = [];
-
-  definicao.elementos
-    .filter(elemento => elemento.tipo === 'tarefaHumana')
-    .forEach(
-      elemento => {
-
-        if (elemento.responsaveis.length === 0) {
-          erros.push(`A etapa "${elemento.nome}" não tem responsável.`);
-        }
-
-        elemento.responsaveis.forEach(
-          responsavel => {
-            if (!(responsavel.descricao || '').trim()) {
-              erros.push(`Descreva o responsável da etapa "${elemento.nome}".`);
-            }
-          }
-        );
-
-        if (elemento.acoes.length === 0) {
-          erros.push(`A etapa "${elemento.nome}" não tem ações.`);
-        }
-
-        elemento.acoes.forEach(
-          acao => {
-            if (!(acao.rotulo || '').trim()) {
-              erros.push(`Há uma ação sem nome na etapa "${elemento.nome}".`);
-            }
-          }
-        );
-
-        if (
-          elemento.prazoDiasUteis !== undefined &&
-          (elemento.prazoDiasUteis < 0 || elemento.prazoDiasUteis > 365)
-        ) {
-          erros.push(`O prazo da etapa "${elemento.nome}" deve ficar entre 0 e 365 dias úteis.`);
-        }
-      }
-    );
-
-  return erros;
-};
+// A validação completa fica em FluxoValidacao.ts; reexportada aqui
+// para quem já importava deste arquivo.
+export { validarDefinicao };
 
 export class FluxoCatalogoLocal
   implements IFluxoCatalogo {
@@ -239,6 +204,12 @@ export class FluxoCatalogoLocal
       publicadoEm: undefined,
       arquivadoEm: undefined
     };
+
+    definicao.metadados =
+      metadadosDaDefinicao(definicao);
+
+    definicao.bpmnXml =
+      definicaoParaBpmnXml(definicao);
 
     gravar(processo.id, [definicao]);
 

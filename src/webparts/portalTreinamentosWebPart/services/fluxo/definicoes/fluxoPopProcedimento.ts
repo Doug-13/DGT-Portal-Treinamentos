@@ -47,6 +47,21 @@ export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
 
   alturaDiagrama: 392,
 
+  metadados: [
+    {
+      chave: 'retreinamento',
+      rotulo: 'Esta revisão exige retreinamento?',
+      tipo: 'simNao',
+      ajuda:
+        'Sim: gera retreinamento com origem "Revisão documental" para quem foi treinado na revisão anterior.'
+    },
+    {
+      chave: 'justificativaRetreinamento',
+      rotulo: 'Justificativa da dispensa de retreinamento',
+      tipo: 'textoLongo'
+    }
+  ],
+
   elementos: [
 
     {
@@ -115,7 +130,8 @@ export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
           rotulo: 'Solicitar ajustes',
           resultado: 'ajustes',
           principal: false,
-          exigeComentario: true
+          exigeComentario: true,
+          dispensaCampos: true
         }
       ],
       campos: [],
@@ -163,7 +179,8 @@ export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
           rotulo: 'Reprovar',
           resultado: 'reprovado',
           principal: false,
-          exigeComentario: true
+          exigeComentario: true,
+          dispensaCampos: true
         }
       ],
       campos: [
@@ -179,7 +196,7 @@ export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
         {
           chave: 'justificativaRetreinamento',
           rotulo: 'Justificativa da dispensa de retreinamento',
-          tipo: 'texto',
+          tipo: 'textoLongo',
           obrigatorio: false,
           obrigatorioQuando: {
             campo: 'retreinamento',
@@ -395,6 +412,93 @@ export const FLUXO_POP_PROCEDIMENTO_V2: IFluxoDefinicao = {
   ]
 };
 
+// Ponto de partida mínimo para desenhar um fluxo do zero.
+export const FLUXO_EM_BRANCO: IFluxoDefinicao = {
+
+  id: 'fluxo-em-branco',
+
+  nome: 'Fluxo em branco',
+
+  versao: 1,
+
+  status: 'publicado',
+
+  tiposDocumento: [],
+
+  larguraDiagrama: 520,
+
+  alturaDiagrama: 200,
+
+  metadados: [],
+
+  elementos: [
+    {
+      id: 'inicio',
+      tipo: 'inicio',
+      nome: 'Início',
+      responsaveis: [],
+      acoes: [],
+      campos: [],
+      posicao: { x: 40, y: 76, largura: 36, altura: 36 }
+    },
+    {
+      id: 'elaboracao',
+      tipo: 'tarefaHumana',
+      nome: 'Elaboração',
+      subtitulo: 'Autor da revisão',
+      prazoDiasUteis: 5,
+      responsaveis: [
+        {
+          tipo: 'autorRevisao',
+          descricao: 'Autor da revisão',
+          papelTeste: 'autor'
+        }
+      ],
+      acoes: [
+        {
+          chave: 'concluir',
+          rotulo: 'Concluir',
+          resultado: 'concluido',
+          principal: true,
+          exigeComentario: false
+        }
+      ],
+      campos: [],
+      posicao: { x: 160, y: 54, largura: 136, altura: 80 }
+    },
+    {
+      id: 'fim',
+      tipo: 'fim',
+      nome: 'Fim',
+      responsaveis: [],
+      acoes: [],
+      campos: [],
+      posicao: { x: 380, y: 76, largura: 36, altura: 36 }
+    }
+  ],
+
+  transicoes: [
+    {
+      id: 't-inicio-elaboracao',
+      origemId: 'inicio',
+      destinoId: 'elaboracao',
+      tipoCondicao: 'sempre',
+      padrao: true,
+      excecao: false,
+      pontos: [{ x: 76, y: 94 }, { x: 160, y: 94 }]
+    },
+    {
+      id: 't-elaboracao-fim',
+      origemId: 'elaboracao',
+      destinoId: 'fim',
+      tipoCondicao: 'sempre',
+      padrao: true,
+      excecao: false,
+      pontos: [{ x: 296, y: 94 }, { x: 380, y: 94 }]
+    }
+  ]
+};
+
 // Modelos disponíveis para criar o fluxo de um processo.
 // A definição acima também continua resolvendo simulações antigas,
 // iniciadas antes de o fluxo passar a pertencer ao processo.
@@ -405,5 +509,12 @@ export const FLUXO_MODELOS: IFluxoModelo[] = [
     descricao:
       'Elaboração → Revisão técnica (gestor da área) → Aprovação da Qualidade → decisão de retreinamento → Publicação.',
     definicao: FLUXO_POP_PROCEDIMENTO_V2
+  },
+  {
+    id: 'modelo-em-branco',
+    nome: 'Em branco (desenhar do zero)',
+    descricao:
+      'Início → uma etapa → Fim. Use o editor visual para criar as etapas, decisões e caminhos do processo.',
+    definicao: FLUXO_EM_BRANCO
   }
 ];

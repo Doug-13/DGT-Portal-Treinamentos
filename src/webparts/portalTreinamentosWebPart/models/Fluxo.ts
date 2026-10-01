@@ -65,13 +65,36 @@ export interface IFluxoAcao {
 
   exigeComentario: boolean;
 
+  // true = esta ação NÃO exige os campos obrigatórios da etapa
+  // (ex.: "Reprovar" não precisa responder a pergunta de retreinamento).
+  dispensaCampos?: boolean;
+
   mensagemConfirmacao?: string;
 }
 
 // Campo que precisa ser preenchido na etapa antes de concluir.
 export type TipoCampoFluxo =
   | 'simNao'
-  | 'texto';
+  | 'texto'
+  | 'textoLongo'
+  | 'numero'
+  | 'data'
+  | 'lista';
+
+// Metadado do processo: campo que pode aparecer nas etapas do
+// fluxo. É versionado junto com o fluxo.
+export interface IFluxoMetadado {
+  chave: string;
+
+  rotulo: string;
+
+  tipo: TipoCampoFluxo;
+
+  // tipo = 'lista'
+  opcoes?: string[];
+
+  ajuda?: string;
+}
 
 export interface IFluxoCampo {
   chave: string;
@@ -81,6 +104,12 @@ export interface IFluxoCampo {
   tipo: TipoCampoFluxo;
 
   obrigatorio: boolean;
+
+  // Exibido na etapa, mas não pode ser alterado nela.
+  somenteLeitura?: boolean;
+
+  // tipo = 'lista'
+  opcoes?: string[];
 
   // Só exige este campo quando outro campo tiver o valor indicado.
   // Ex.: justificativa obrigatória apenas quando retreinamento = 'nao'.
@@ -130,6 +159,9 @@ export interface IFluxoElemento {
   subtitulo?: string;
 
   posicao: IFluxoPosicao;
+
+  // Rótulo externo (eventos e gateways desenhados no editor BPMN).
+  rotuloPosicao?: IFluxoPosicao;
 }
 
 export type TipoCondicaoTransicao =
@@ -192,6 +224,16 @@ export interface IFluxoDefinicao {
   publicadoEm?: string;
 
   arquivadoEm?: string;
+
+  // Desenho do fluxo no padrão BPMN 2.0 (editor visual).
+  bpmnXml?: string;
+
+  // Campos do processo usados pelas etapas.
+  metadados?: IFluxoMetadado[];
+
+  // Problemas encontrados ao converter o desenho BPMN (elementos
+  // não suportados etc.). Impedem a publicação.
+  avisosModelagem?: string[];
 
   // Tipos de documento que usam este fluxo por padrão.
   tiposDocumento: string[];

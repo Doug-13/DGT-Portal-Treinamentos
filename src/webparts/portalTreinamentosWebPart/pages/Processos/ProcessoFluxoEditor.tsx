@@ -2,8 +2,8 @@ import * as React from 'react';
 
 import {
   IFluxoDefinicao,
-  IFluxoElemento,
-  TipoResponsavelFluxo
+  IFluxoMetadado,
+  TipoElementoFluxo
 } from '../../models/Fluxo';
 
 import {
@@ -16,20 +16,50 @@ import {
 
 import {
   fluxoCatalogo,
-  IResultadoCatalogo,
-  validarDefinicao
+  IResultadoCatalogo
 } from '../../services/fluxo/FluxoCatalogoLocal';
+
+import {
+  validarDefinicao
+} from '../../services/fluxo/FluxoValidacao';
+
+import {
+  configDaTransicao,
+  configDoElemento,
+  configPadraoElemento,
+  configPadraoTransicao,
+  definicaoParaBpmnXml,
+  IConfigElemento,
+  IConfigTransicao,
+  metadadosDaDefinicao,
+  montarDefinicao,
+  tipoFluxoDoBpmn
+} from '../../services/fluxo/bpmn/bpmnConversao';
 
 import FluxoDiagrama from
   '../../components/fluxo/FluxoDiagrama';
 
+import EditorBpmnFluxo, {
+  IEditorBpmnFluxoRef
+} from '../../components/fluxo/bpmn/EditorBpmnFluxo';
+
+import {
+  IElementoSelecionadoBpmn
+} from '../../components/fluxo/bpmn/IModelerFluxo';
+
+import PainelPropriedadesFluxo, {
+  IResultadoDisponivel
+} from './PainelPropriedadesFluxo';
+
+import PainelMetadados from
+  './PainelMetadados';
+
 // ============================================================
 // ABA "FLUXO" DO PROCESSO
 //
-// Cria o fluxo do processo a partir de um modelo, edita o
-// rascunho (prazos, responsáveis, instruções, ações), publica e
-// versiona. A ESTRUTURA (etapas e ligações) vem do modelo; a
-// edição estrutural virá com a importação de BPMN.
+// Rascunho → editor visual BPMN (arrastar etapas, decisões,
+// ligações) + painel de propriedades + metadados do processo.
+// Publicada/arquivada → somente leitura.
 //
 // Modo de teste: tudo fica no navegador.
 // ============================================================
@@ -108,15 +138,6 @@ const ROTULO_STATUS: Record<string, string> = {
   arquivado: 'Arquivada'
 };
 
-const TIPOS_RESPONSAVEL: Array<{ valor: TipoResponsavelFluxo; rotulo: string }> = [
-  { valor: 'autorRevisao', rotulo: 'Autor da revisão' },
-  { valor: 'gestorArea', rotulo: 'Gestor da área do documento' },
-  { valor: 'grupo', rotulo: 'Grupo' },
-  { valor: 'funcao', rotulo: 'Função' },
-  { valor: 'setor', rotulo: 'Setor' },
-  { valor: 'usuario', rotulo: 'Usuário específico' }
-];
-
 const formatarData = (
   valor?: string
 ): string => {
@@ -133,10 +154,62 @@ const formatarData = (
     : data.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-const copiar = (
+interface IEstadoEdicao {
+  configsElementos: Record<string, IConfigElemento>;
+  configsTransicoes: Record<string, IConfigTransicao>;
+  metadados: IFluxoMetadado[];
+  xml: string;
+}
+
+const estadoInicial = (
   definicao: IFluxoDefinicao
-): IFluxoDefinicao =>
-  JSON.parse(JSON.stringify(definicao)) as IFluxoDefinicao;
+): IEstadoEdicao => {
+
+  const configsElementos: Record<string, IConfigElemento> = {};
+  const configsTransicoes: Record<string, IConfigTransicao> = {};
+
+  definicao.elementos.forEach(
+    elemento => {
+      configsElementos[elemento.id] = JSON.parse(JSON.stringify(configDoElemento(elemento))) as IConfigElemento;
+    }
+  );
+
+  definicao.transicoes.forEach(
+    transicao => {
+      configsTransicoes[transicao.id] = configDaTransicao(transicao);
+    }
+  );
+
+  return {
+    configsElementos,
+    configsTransicoes,
+    metadados: JSON.parse(JSON.stringify(metadadosDaDefinicao(definicao))) as IFluxoMetadado[],
+    xml: definicao.bpmnXml || definicaoParaBpmnXml(definicao)
+  };
+};
+
+const baixarArquivo = (
+  nome: string,
+  conteudo: string
+): void => {
+
+  const blob =
+    new Blob([conteudo], { type: 'application/xml' });
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const link =
+    document.createElement('a');
+
+  link.href = url;
+  link.download = nome;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
 
 const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   processo,
@@ -145,77 +218,93 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   onAlterado
 }) => {
 
+  const editorRef =
+    React.useRef<IEditorBpmnFluxoRef>(null);
+
+  const arquivoRef =
+    React.useRef<HTMLInputElement>(null);
+
   const [versaoSelecionada, setVersaoSelecionada] =
     React.useState<number | undefined>(undefined);
 
   const [edicao, setEdicao] =
-    React.useState<IFluxoDefinicao | undefined>(undefined);
+    React.useState<IEstadoEdicao | undefined>(undefined);
 
-  const [elementoId, setElementoId] =
-    React.useState<string>('');
+  const [chaveEditor, setChaveEditor] =
+    React.useState<number>(0);
+
+  const [selecionado, setSelecionado] =
+    React.useState<IElementoSelecionadoBpmn | undefined>(undefined);
+
+  const [alterado, setAlterado] =
+    React.useState<boolean>(false);
 
   const [modeloId, setModeloId] =
     React.useState<string>(FLUXO_MODELOS.length > 0 ? FLUXO_MODELOS[0].id : '');
 
   const [mensagens, setMensagens] =
-    React.useState<{ tipo: 'erro' | 'ok'; textos: string[] } | undefined>(undefined);
+    React.useState<{ tipo: 'erro' | 'ok'; titulo: string; textos: string[] } | undefined>(undefined);
 
   const [processando, setProcessando] =
     React.useState<boolean>(false);
 
-  // Versão padrão: o rascunho (se houver), senão a publicada,
-  // senão a mais nova.
+  // Versão padrão: o rascunho (se houver), senão a publicada.
   const versaoPadrao =
-    (versoes.find(item => item.status === 'rascunho') ||
-      versoes.find(item => item.status === 'publicado') ||
-      versoes[0]);
+    versoes.find(item => item.status === 'rascunho') ||
+    versoes.find(item => item.status === 'publicado') ||
+    versoes[0];
 
   const definicaoSelecionada =
-    versoes.find(
-      item => item.versao === versaoSelecionada
-    ) || versaoPadrao;
-
-  // Ao trocar a versão exibida, descarta a edição em memória.
-  React.useEffect(
-    () => {
-      setEdicao(
-        definicaoSelecionada && definicaoSelecionada.status === 'rascunho'
-          ? copiar(definicaoSelecionada)
-          : undefined
-      );
-    },
-    [definicaoSelecionada?.versao, definicaoSelecionada?.status, versoes]
-  );
+    versoes.find(item => item.versao === versaoSelecionada) ||
+    versaoPadrao;
 
   const editavel =
     podeEditar &&
     !!definicaoSelecionada &&
     definicaoSelecionada.status === 'rascunho';
 
-  const exibida: IFluxoDefinicao | undefined =
-    editavel && edicao
-      ? edicao
-      : definicaoSelecionada;
+  // Ao trocar de versão (ou após salvar), recarrega o estado de edição.
+  // (salvar o rascunho NÃO recarrega o editor: o estado em memória
+  // já é o que foi salvo.)
+  const assinatura =
+    definicaoSelecionada
+      ? `${processo.id}|${definicaoSelecionada.versao}|${definicaoSelecionada.status}`
+      : processo.id;
 
-  const alterado =
-    !!edicao &&
-    !!definicaoSelecionada &&
-    JSON.stringify(edicao) !== JSON.stringify(definicaoSelecionada);
+  React.useEffect(
+    () => {
+      setEdicao(
+        definicaoSelecionada && definicaoSelecionada.status === 'rascunho'
+          ? estadoInicial(definicaoSelecionada)
+          : undefined
+      );
+      setSelecionado(undefined);
+      setAlterado(false);
+      setChaveEditor(chave => chave + 1);
+    },
+    [assinatura]
+  );
 
-  const etapasHumanas: IFluxoElemento[] =
-    exibida
-      ? exibida.elementos.filter(item => item.tipo === 'tarefaHumana')
-      : [];
+  const trocarVersao = (
+    versao: number
+  ): void => {
 
-  const etapaSelecionada =
-    etapasHumanas.find(item => item.id === elementoId) ||
-    etapasHumanas[0];
+    if (
+      alterado &&
+      !window.confirm('Há alterações não salvas no rascunho. Trocar de versão e descartá-las?')
+    ) {
+      return;
+    }
+
+    setVersaoSelecionada(versao);
+    setMensagens(undefined);
+  };
 
   const executar = async (
     acao: () => Promise<IResultadoCatalogo>,
     sucesso: string,
     aposSucesso?: (resultado: IResultadoCatalogo) => void
-  ): Promise<void> => {
+  ): Promise<boolean> => {
 
     setProcessando(true);
     setMensagens(undefined);
@@ -226,8 +315,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         await acao();
 
       if (!resultado.ok) {
-        setMensagens({ tipo: 'erro', textos: resultado.erros });
-        return;
+        setMensagens({ tipo: 'erro', titulo: 'Não foi possível concluir:', textos: resultado.erros });
+        return false;
       }
 
       await onAlterado();
@@ -236,49 +325,163 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         aposSucesso(resultado);
       }
 
-      setMensagens({ tipo: 'ok', textos: [sucesso] });
+      setMensagens({ tipo: 'ok', titulo: sucesso, textos: [] });
+
+      return true;
 
     } catch (error) {
 
       console.error(error);
 
-      setMensagens({ tipo: 'erro', textos: ['Erro inesperado. Veja o console do navegador.'] });
+      setMensagens({ tipo: 'erro', titulo: 'Erro inesperado.', textos: ['Veja o console do navegador (F12).'] });
+
+      return false;
 
     } finally {
       setProcessando(false);
     }
   };
 
-  const alterarEtapa = (
-    id: string,
-    alteracao: (elemento: IFluxoElemento) => void
+  // Monta a definição a partir do desenho + configurações atuais.
+  const montar = async (): Promise<IFluxoDefinicao | undefined> => {
+
+    if (!edicao || !definicaoSelecionada || !editorRef.current) {
+      return undefined;
+    }
+
+    const snapshot =
+      editorRef.current.obterSnapshot();
+
+    if (!snapshot) {
+      return undefined;
+    }
+
+    const xml =
+      await editorRef.current.exportarXml();
+
+    return montarDefinicao({
+      base: definicaoSelecionada,
+      snapshot,
+      configsElementos: edicao.configsElementos,
+      configsTransicoes: edicao.configsTransicoes,
+      metadados: edicao.metadados,
+      bpmnXml: xml
+    });
+  };
+
+  const salvar = async (
+    publicar: boolean
+  ): Promise<void> => {
+
+    const definicao =
+      await montar();
+
+    if (!definicao) {
+      return;
+    }
+
+    const erros =
+      validarDefinicao(definicao);
+
+    if (publicar && erros.length > 0) {
+      setMensagens({
+        tipo: 'erro',
+        titulo: `Corrija ${erros.length} ponto(s) antes de publicar:`,
+        textos: erros
+      });
+      return;
+    }
+
+    if (
+      publicar &&
+      !window.confirm(`Publicar a versão ${definicao.versao}? Revisões novas passarão a usar esta versão.`)
+    ) {
+      return;
+    }
+
+    const ok =
+      await executar(
+        async () => {
+          const salvo = await fluxoCatalogo.salvarRascunho(definicao);
+          return publicar && salvo.ok
+            ? fluxoCatalogo.publicarRascunho(processo.id)
+            : salvo;
+        },
+        publicar
+          ? `Versão ${definicao.versao} publicada (teste).`
+          : 'Rascunho salvo neste navegador.'
+      );
+
+    if (ok && !publicar && erros.length > 0) {
+      setMensagens({
+        tipo: 'ok',
+        titulo: `Rascunho salvo. Antes de publicar, ainda falta resolver ${erros.length} ponto(s):`,
+        textos: erros
+      });
+    }
+
+    if (ok) {
+      setAlterado(false);
+    }
+  };
+
+  const verificar = async (): Promise<void> => {
+
+    const definicao =
+      await montar();
+
+    if (!definicao) {
+      return;
+    }
+
+    const erros =
+      validarDefinicao(definicao);
+
+    setMensagens(
+      erros.length === 0
+        ? { tipo: 'ok', titulo: 'Nenhum problema encontrado. O fluxo pode ser publicado.', textos: [] }
+        : { tipo: 'erro', titulo: `${erros.length} ponto(s) para resolver antes de publicar:`, textos: erros }
+    );
+  };
+
+  const importarArquivo = (
+    arquivo: File
   ): void => {
 
-    if (!edicao) {
-      return;
-    }
+    const leitor =
+      new FileReader();
 
-    const nova =
-      copiar(edicao);
+    leitor.onload = () => {
 
-    const elemento =
-      nova.elementos.find(item => item.id === id);
+      const xml =
+        String(leitor.result || '');
 
-    if (!elemento) {
-      return;
-    }
+      if (xml.indexOf('bpmn') < 0) {
+        setMensagens({ tipo: 'erro', titulo: 'O arquivo não parece ser um BPMN.', textos: [] });
+        return;
+      }
 
-    alteracao(elemento);
+      setEdicao(
+        atual => atual ? { ...atual, xml } : atual
+      );
+      setSelecionado(undefined);
+      setAlterado(true);
+      setChaveEditor(chave => chave + 1);
+      setMensagens({
+        tipo: 'ok',
+        titulo: 'Desenho importado. Configure as etapas novas e salve o rascunho.',
+        textos: ['Etapas com o mesmo id de antes mantêm a configuração.']
+      });
+    };
 
-    setEdicao(nova);
-    setMensagens(undefined);
+    leitor.readAsText(arquivo);
   };
 
   // ----------------------------------------------------------
   // Processo sem fluxo
   // ----------------------------------------------------------
 
-  if (versoes.length === 0 || !exibida) {
+  if (versoes.length === 0 || !definicaoSelecionada) {
     return (
       <section style={estiloCartao}>
         <div style={estiloBarraSecao}>Fluxo do processo</div>
@@ -295,7 +498,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
               ? (
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                   <div style={{ minWidth: '280px', flexGrow: 1, maxWidth: '520px' }}>
-                    <label htmlFor="modelo-fluxo" style={estiloRotulo}>Começar a partir do modelo</label>
+                    <label htmlFor="modelo-fluxo" style={estiloRotulo}>Começar a partir de</label>
                     <select
                       id="modelo-fluxo"
                       value={modeloId}
@@ -304,9 +507,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                     >
                       {
                         FLUXO_MODELOS.map(
-                          modelo => (
-                            <option key={modelo.id} value={modelo.id}>{modelo.nome}</option>
-                          )
+                          modelo => <option key={modelo.id} value={modelo.id}>{modelo.nome}</option>
                         )
                       }
                     </select>
@@ -320,7 +521,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                     onClick={() => {
                       executar(
                         () => fluxoCatalogo.criarAPartirDoModelo(processo, modeloId),
-                        'Rascunho da versão 1 criado. Ajuste o que precisar e publique.',
+                        'Rascunho da versão 1 criado. Desenhe e configure o fluxo, depois publique.',
                         () => setVersaoSelecionada(1)
                       ).catch((error: unknown) => console.error(error));
                     }}
@@ -340,7 +541,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
           {
             mensagens && (
               <div role="alert" style={{ fontSize: '13.5px', color: mensagens.tipo === 'erro' ? COR_INDIGO : COR_AZUL }}>
-                {mensagens.textos.join(' ')}
+                {mensagens.titulo} {mensagens.textos.join(' ')}
               </div>
             )
           }
@@ -352,10 +553,93 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   const temRascunho =
     versoes.some(item => item.status === 'rascunho');
 
-  const errosValidacao =
-    editavel && edicao
-      ? validarDefinicao(edicao)
+  // ----------------------------------------------------------
+  // Dados do painel de propriedades
+  // ----------------------------------------------------------
+
+  const tipoSelecionado: TipoElementoFluxo | undefined =
+    selecionado && !selecionado.conexao
+      ? tipoFluxoDoBpmn(selecionado.tipoBpmn)
+      : undefined;
+
+  const snapshotAtual =
+    editavel && selecionado && editorRef.current
+      ? editorRef.current.obterSnapshot()
+      : undefined;
+
+  const tipoDe = (
+    id: string
+  ): TipoElementoFluxo | undefined => {
+    const forma =
+      snapshotAtual ? snapshotAtual.formas.find(item => item.id === id) : undefined;
+    return forma ? tipoFluxoDoBpmn(forma.tipo) : undefined;
+  };
+
+  const nomeDe = (
+    id: string
+  ): string => {
+    const forma =
+      snapshotAtual ? snapshotAtual.formas.find(item => item.id === id) : undefined;
+    return forma ? (forma.nome || 'Etapa sem nome') : id;
+  };
+
+  const acoesDe = (
+    id: string
+  ): IResultadoDisponivel[] => {
+    const config =
+      edicao ? edicao.configsElementos[id] : undefined;
+    return tipoDe(id) === 'tarefaHumana'
+      ? (config || configPadraoElemento('tarefaHumana')).acoes.map(
+        acao => ({ resultado: acao.resultado, descricao: `${acao.rotulo} (${nomeDe(id)})` })
+      )
       : [];
+  };
+
+  const tipoOrigem =
+    selecionado && selecionado.conexao && selecionado.origemId
+      ? tipoDe(selecionado.origemId)
+      : undefined;
+
+  let resultadosDisponiveis: IResultadoDisponivel[] = [];
+
+  if (selecionado && selecionado.conexao && selecionado.origemId && snapshotAtual) {
+
+    if (tipoOrigem === 'tarefaHumana') {
+      resultadosDisponiveis = acoesDe(selecionado.origemId);
+    } else if (tipoOrigem === 'gateway') {
+      // Resultados das etapas que chegam na decisão.
+      const anteriores =
+        snapshotAtual.conexoes
+          .filter(conexao => conexao.destinoId === selecionado.origemId)
+          .map(conexao => conexao.origemId);
+
+      anteriores.forEach(
+        id => { resultadosDisponiveis = resultadosDisponiveis.concat(acoesDe(id)); }
+      );
+
+      if (resultadosDisponiveis.length === 0) {
+        snapshotAtual.formas.forEach(
+          forma => { resultadosDisponiveis = resultadosDisponiveis.concat(acoesDe(forma.id)); }
+        );
+      }
+    }
+  }
+
+  const usoPorChave: Record<string, number> = {};
+
+  if (edicao) {
+    Object.keys(edicao.configsElementos).forEach(
+      id => {
+        edicao.configsElementos[id].campos.forEach(
+          campo => { usoPorChave[campo.chave] = (usoPorChave[campo.chave] || 0) + 1; }
+        );
+      }
+    );
+  }
+
+  // ----------------------------------------------------------
+  // Render
+  // ----------------------------------------------------------
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
@@ -367,17 +651,14 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
           versoes.map(
             item => {
               const ativa =
-                item.versao === exibida.versao;
+                item.versao === definicaoSelecionada.versao;
 
               return (
                 <button
                   key={item.versao}
                   type="button"
                   aria-pressed={ativa}
-                  onClick={() => {
-                    setVersaoSelecionada(item.versao);
-                    setMensagens(undefined);
-                  }}
+                  onClick={() => trocarVersao(item.versao)}
                   style={{
                     minHeight: '36px',
                     padding: '0 14px',
@@ -403,307 +684,176 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         </span>
       </section>
 
-      {/* DIAGRAMA */}
+      {/* CABEÇALHO DA VERSÃO */}
       <section style={estiloCartao}>
         <div style={{ ...estiloBarraSecao, display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <span>{exibida.nome} — v{exibida.versao} ({ROTULO_STATUS[exibida.status]})</span>
+          <span>{definicaoSelecionada.nome} — v{definicaoSelecionada.versao} ({ROTULO_STATUS[definicaoSelecionada.status]})</span>
           <span style={{ marginLeft: 'auto', fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: '12.5px' }}>
             {
-              exibida.status === 'publicado'
-                ? `Publicada em ${formatarData(exibida.publicadoEm)}`
-                : exibida.status === 'arquivado'
-                  ? `Arquivada em ${formatarData(exibida.arquivadoEm)}`
-                  : `Criada em ${formatarData(exibida.criadoEm)}`
+              definicaoSelecionada.status === 'publicado'
+                ? `Publicada em ${formatarData(definicaoSelecionada.publicadoEm)}`
+                : definicaoSelecionada.status === 'arquivado'
+                  ? `Arquivada em ${formatarData(definicaoSelecionada.arquivadoEm)}`
+                  : `Criada em ${formatarData(definicaoSelecionada.criadoEm)}${alterado ? ' · alterações não salvas' : ''}`
             }
           </span>
         </div>
-        <div style={{ padding: '8px 0' }}>
-          <FluxoDiagrama
-            definicao={exibida}
-            elementoDestacadoId={editavel && etapaSelecionada ? etapaSelecionada.id : undefined}
-          />
-        </div>
-      </section>
-
-      {/* ETAPAS */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px) minmax(0, 1fr)', gap: '16px', alignItems: 'start' }}>
-
-        <section style={estiloCartao}>
-          <div style={estiloBarraSecao}>Etapas com responsável</div>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {
-              etapasHumanas.map(
-                etapa => {
-                  const ativa =
-                    etapaSelecionada && etapa.id === etapaSelecionada.id;
-
-                  return (
-                    <li key={etapa.id} style={{ borderBottom: `1px solid ${COR_BORDA}` }}>
-                      <button
-                        type="button"
-                        aria-pressed={!!ativa}
-                        onClick={() => setElementoId(etapa.id)}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '12px 20px',
-                          border: 0,
-                          borderLeft: `4px solid ${ativa ? COR_CIANO : 'transparent'}`,
-                          background: ativa ? '#E6F9FC' : '#FFFFFF',
-                          color: COR_AZUL,
-                          cursor: 'pointer',
-                          fontFamily: 'inherit'
-                        }}
-                      >
-                        <div style={{ fontWeight: 700, fontSize: '14px' }}>{etapa.nome}</div>
-                        <div style={{ fontSize: '12.5px' }}>
-                          {etapa.responsaveis.map(item => item.descricao).join(', ') || 'Sem responsável'}
-                          {etapa.prazoDiasUteis !== undefined ? ` · ${etapa.prazoDiasUteis} dias úteis` : ''}
-                        </div>
-                      </button>
-                    </li>
-                  );
-                }
-              )
-            }
-          </ul>
-        </section>
 
         {
-          etapaSelecionada && (
-            <section style={estiloCartao}>
-              <div style={estiloBarraSecao}>
-                {editavel ? 'Editar etapa' : 'Detalhes da etapa'} — {etapaSelecionada.nome}
+          editavel && edicao
+            ? (
+              <div style={{ padding: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'stretch' }}>
+
+                <div style={{ flex: '1 1 640px', minWidth: 0 }}>
+                  <EditorBpmnFluxo
+                    key={chaveEditor}
+                    ref={editorRef}
+                    xmlInicial={edicao.xml}
+                    onSelecionar={elemento => setSelecionado(elemento)}
+                    onAlterado={() => {
+                      setAlterado(true);
+
+                      // Atualiza o nome exibido no painel após renomear no desenho.
+                      setSelecionado(
+                        atual =>
+                          atual && editorRef.current
+                            ? editorRef.current.elemento(atual.id)
+                            : atual
+                      );
+                    }}
+                  />
+                </div>
+
+                <div style={{ flex: '1 1 340px', maxWidth: '420px', border: `1px solid ${COR_BORDA}`, borderRadius: '8px', overflowY: 'auto', maxHeight: '612px' }}>
+                  <div style={{ ...estiloBarraSecao, padding: '8px 16px', fontSize: '12px' }}>Propriedades</div>
+                  <PainelPropriedadesFluxo
+                    key={selecionado ? selecionado.id : 'nenhum'}
+                    selecionado={selecionado}
+                    tipo={tipoSelecionado}
+                    editavel={editavel}
+                    configElemento={
+                      selecionado && tipoSelecionado
+                        ? edicao.configsElementos[selecionado.id] || configPadraoElemento(tipoSelecionado)
+                        : undefined
+                    }
+                    onAlterarElemento={config => {
+                      if (!selecionado) {
+                        return;
+                      }
+                      setEdicao({
+                        ...edicao,
+                        configsElementos: { ...edicao.configsElementos, [selecionado.id]: config }
+                      });
+                      setAlterado(true);
+                    }}
+                    configTransicao={
+                      selecionado && selecionado.conexao
+                        ? edicao.configsTransicoes[selecionado.id] || configPadraoTransicao()
+                        : undefined
+                    }
+                    onAlterarTransicao={config => {
+                      if (!selecionado) {
+                        return;
+                      }
+                      setEdicao({
+                        ...edicao,
+                        configsTransicoes: { ...edicao.configsTransicoes, [selecionado.id]: config }
+                      });
+                      setAlterado(true);
+                    }}
+                    tipoOrigem={tipoOrigem}
+                    resultadosDisponiveis={resultadosDisponiveis}
+                    metadados={edicao.metadados}
+                    onRenomear={nome => {
+                      if (selecionado && editorRef.current) {
+                        editorRef.current.renomear(selecionado.id, nome);
+                      }
+                    }}
+                  />
+                </div>
               </div>
-
-              <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
+            )
+            : (
+              <div style={{ padding: '8px 0' }}>
+                <FluxoDiagrama definicao={definicaoSelecionada} />
                 {
-                  !editavel && (
-                    <div style={{ background: '#EDF0F5', borderRadius: '6px', padding: '10px 12px', fontSize: '13.5px' }}>
+                  podeEditar && (
+                    <div style={{ padding: '8px 20px', fontSize: '13px' }}>
                       {
-                        podeEditar
-                          ? temRascunho
-                            ? 'Esta versão não pode ser alterada. Selecione o rascunho para editar.'
-                            : 'Versões publicadas não são alteradas. Clique em “Criar nova versão” para fazer ajustes.'
-                          : 'Somente administradores e editores de documentos podem alterar o fluxo.'
+                        temRascunho
+                          ? 'Esta versão não pode ser alterada. Selecione o rascunho para editar.'
+                          : 'Versões publicadas não são alteradas. Clique em “Criar nova versão” para editar o desenho.'
                       }
                     </div>
                   )
                 }
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                  <div>
-                    <label htmlFor="etapa-nome" style={estiloRotulo}>Nome da etapa</label>
-                    <input
-                      id="etapa-nome"
-                      type="text"
-                      value={etapaSelecionada.nome}
-                      disabled={!editavel}
-                      onChange={evento => {
-                        const valor = evento.target.value;
-                        alterarEtapa(etapaSelecionada.id, elemento => { elemento.nome = valor; });
-                      }}
-                      style={estiloEntrada}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="etapa-subtitulo" style={estiloRotulo}>Texto no diagrama</label>
-                    <input
-                      id="etapa-subtitulo"
-                      type="text"
-                      value={etapaSelecionada.subtitulo || ''}
-                      disabled={!editavel}
-                      onChange={evento => {
-                        const valor = evento.target.value;
-                        alterarEtapa(etapaSelecionada.id, elemento => { elemento.subtitulo = valor; });
-                      }}
-                      style={estiloEntrada}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="etapa-prazo" style={estiloRotulo}>Prazo (dias úteis)</label>
-                    <input
-                      id="etapa-prazo"
-                      type="number"
-                      min={0}
-                      max={365}
-                      value={etapaSelecionada.prazoDiasUteis === undefined ? '' : etapaSelecionada.prazoDiasUteis}
-                      disabled={!editavel}
-                      onChange={evento => {
-                        const bruto = evento.target.value;
-                        alterarEtapa(etapaSelecionada.id, elemento => {
-                          elemento.prazoDiasUteis = bruto === '' ? undefined : Math.round(Number(bruto));
-                        });
-                      }}
-                      style={estiloEntrada}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="etapa-instrucoes" style={estiloRotulo}>Instruções para o responsável</label>
-                  <textarea
-                    id="etapa-instrucoes"
-                    rows={2}
-                    value={etapaSelecionada.instrucoes || ''}
-                    disabled={!editavel}
-                    onChange={evento => {
-                      const valor = evento.target.value;
-                      alterarEtapa(etapaSelecionada.id, elemento => { elemento.instrucoes = valor; });
-                    }}
-                    style={{ ...estiloEntrada, minHeight: '60px' }}
-                  />
-                </div>
-
-                <fieldset style={{ border: `1px solid ${COR_BORDA}`, borderRadius: '6px', padding: '12px 14px', margin: 0 }}>
-                  <legend style={{ ...estiloRotulo, padding: '0 6px', marginBottom: 0 }}>Responsável</legend>
-                  {
-                    etapaSelecionada.responsaveis.map(
-                      (responsavel, indice) => (
-                        <div
-                          key={`${etapaSelecionada.id}-resp-${indice}`}
-                          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}
-                        >
-                          <div>
-                            <label htmlFor={`resp-tipo-${indice}`} style={estiloRotulo}>Tipo</label>
-                            <select
-                              id={`resp-tipo-${indice}`}
-                              value={responsavel.tipo}
-                              disabled={!editavel}
-                              onChange={evento => {
-                                const valor = evento.target.value as TipoResponsavelFluxo;
-                                alterarEtapa(etapaSelecionada.id, elemento => {
-                                  elemento.responsaveis[indice].tipo = valor;
-                                });
-                              }}
-                              style={estiloEntrada}
-                            >
-                              {
-                                TIPOS_RESPONSAVEL.map(
-                                  tipo => (
-                                    <option key={tipo.valor} value={tipo.valor}>{tipo.rotulo}</option>
-                                  )
-                                )
-                              }
-                            </select>
-                          </div>
-                          <div>
-                            <label htmlFor={`resp-desc-${indice}`} style={estiloRotulo}>Descrição</label>
-                            <input
-                              id={`resp-desc-${indice}`}
-                              type="text"
-                              value={responsavel.descricao}
-                              disabled={!editavel}
-                              onChange={evento => {
-                                const valor = evento.target.value;
-                                alterarEtapa(etapaSelecionada.id, elemento => {
-                                  elemento.responsaveis[indice].descricao = valor;
-                                });
-                              }}
-                              style={estiloEntrada}
-                            />
-                          </div>
-                        </div>
-                      )
-                    )
-                  }
-                  <div style={{ fontSize: '12.5px', marginTop: '8px' }}>
-                    No modo de teste, a permissão continua sendo simulada pelo papel da etapa
-                    (“Executar como” na aba do documento). A escolha do grupo, função ou setor real
-                    virá junto com as tabelas do Dataverse.
-                  </div>
-                </fieldset>
-
-                <fieldset style={{ border: `1px solid ${COR_BORDA}`, borderRadius: '6px', padding: '12px 14px', margin: 0 }}>
-                  <legend style={{ ...estiloRotulo, padding: '0 6px', marginBottom: 0 }}>Ações (botões da etapa)</legend>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {
-                      etapaSelecionada.acoes.map(
-                        (acao, indice) => (
-                          <div
-                            key={acao.chave}
-                            style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}
-                          >
-                            <div style={{ flexGrow: 1, minWidth: '220px' }}>
-                              <label htmlFor={`acao-${acao.chave}`} style={{ ...estiloRotulo, textTransform: 'none', letterSpacing: 0, fontSize: '12px' }}>
-                                Texto do botão ({acao.principal ? 'principal' : 'secundário'})
-                              </label>
-                              <input
-                                id={`acao-${acao.chave}`}
-                                type="text"
-                                value={acao.rotulo}
-                                disabled={!editavel}
-                                onChange={evento => {
-                                  const valor = evento.target.value;
-                                  alterarEtapa(etapaSelecionada.id, elemento => {
-                                    elemento.acoes[indice].rotulo = valor;
-                                  });
-                                }}
-                                style={estiloEntrada}
-                              />
-                            </div>
-                            <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13.5px', minHeight: '44px', cursor: editavel ? 'pointer' : 'default' }}>
-                              <input
-                                type="checkbox"
-                                checked={acao.exigeComentario}
-                                disabled={!editavel}
-                                onChange={evento => {
-                                  const valor = evento.target.checked;
-                                  alterarEtapa(etapaSelecionada.id, elemento => {
-                                    elemento.acoes[indice].exigeComentario = valor;
-                                  });
-                                }}
-                              />
-                              Comentário obrigatório
-                            </label>
-                          </div>
-                        )
-                      )
-                    }
-                  </div>
-                </fieldset>
-
-                {
-                  etapaSelecionada.campos.length > 0 && (
-                    <div style={{ fontSize: '13.5px' }}>
-                      <strong>Campos desta etapa:</strong>{' '}
-                      {etapaSelecionada.campos.map(campo => campo.rotulo).join(' · ')}
-                    </div>
-                  )
-                }
               </div>
-            </section>
-          )
+            )
         }
-      </div>
+      </section>
 
-      {/* MENSAGENS + AÇÕES */}
+      {/* METADADOS */}
+      <section style={estiloCartao}>
+        <div style={estiloBarraSecao}>Metadados do processo</div>
+        <div style={{ padding: '14px 20px' }}>
+          <PainelMetadados
+            metadados={edicao ? edicao.metadados : metadadosDaDefinicao(definicaoSelecionada)}
+            editavel={editavel && !!edicao}
+            usoPorChave={usoPorChave}
+            onAlterar={metadados => {
+              if (!edicao) {
+                return;
+              }
+
+              const chaves =
+                metadados.map(item => item.chave);
+
+              // Retira das etapas os campos cujo metadado foi excluído.
+              const configsElementos: Record<string, IConfigElemento> = {};
+
+              Object.keys(edicao.configsElementos).forEach(
+                id => {
+                  const config = edicao.configsElementos[id];
+                  configsElementos[id] = {
+                    ...config,
+                    campos: config.campos.filter(campo => chaves.indexOf(campo.chave) >= 0)
+                  };
+                }
+              );
+
+              setEdicao({ ...edicao, metadados, configsElementos });
+              setAlterado(true);
+            }}
+          />
+        </div>
+      </section>
+
+      {/* MENSAGENS */}
       {
-        (mensagens || errosValidacao.length > 0) && (
+        mensagens && (
           <div
             role="alert"
             style={{
-              border: `2px solid ${mensagens && mensagens.tipo === 'ok' && errosValidacao.length === 0 ? COR_CIANO : COR_INDIGO}`,
+              border: `2px solid ${mensagens.tipo === 'ok' ? COR_CIANO : COR_INDIGO}`,
               borderRadius: '8px',
               padding: '10px 14px',
               fontSize: '13.5px',
               background: '#FFFFFF'
             }}
           >
-            <ul style={{ margin: 0, paddingLeft: '20px' }}>
-              {
-                (mensagens ? mensagens.textos : []).concat(
-                  errosValidacao.map(item => `Para publicar: ${item}`)
-                ).map(
-                  item => <li key={item}>{item}</li>
-                )
-              }
-            </ul>
+            <strong>{mensagens.titulo}</strong>
+            {
+              mensagens.textos.length > 0 && (
+                <ul style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
+                  {mensagens.textos.map(item => <li key={item}>{item}</li>)}
+                </ul>
+              )
+            }
           </div>
         )
       }
 
+      {/* AÇÕES */}
       {
         podeEditar && (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -712,60 +862,60 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                 <>
                   <button
                     type="button"
-                    disabled={!alterado || processando}
-                    onClick={() => {
-                      executar(
-                        () => fluxoCatalogo.salvarRascunho(edicao),
-                        'Rascunho salvo neste navegador.'
-                      ).catch((error: unknown) => console.error(error));
-                    }}
-                    style={estiloBotao(false, !alterado || processando)}
+                    disabled={processando}
+                    onClick={() => { salvar(false).catch((error: unknown) => console.error(error)); }}
+                    style={estiloBotao(false, processando)}
                   >
                     Salvar rascunho
                   </button>
 
                   <button
                     type="button"
-                    disabled={!alterado || processando}
-                    onClick={() => {
-                      if (definicaoSelecionada) {
-                        setEdicao(copiar(definicaoSelecionada));
-                        setMensagens(undefined);
-                      }
-                    }}
-                    style={estiloBotao(false, !alterado || processando)}
+                    disabled={processando}
+                    onClick={() => { verificar().catch((error: unknown) => console.error(error)); }}
+                    style={estiloBotao(false, processando)}
                   >
-                    Desfazer alterações
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={processando || errosValidacao.length > 0}
-                    onClick={() => {
-                      if (!window.confirm(`Publicar a versão ${edicao.versao}? Revisões novas passarão a usar esta versão.`)) {
-                        return;
-                      }
-
-                      executar(
-                        async () => {
-                          const salvo = await fluxoCatalogo.salvarRascunho(edicao);
-                          return salvo.ok
-                            ? fluxoCatalogo.publicarRascunho(processo.id)
-                            : salvo;
-                        },
-                        `Versão ${edicao.versao} publicada (teste).`
-                      ).catch((error: unknown) => console.error(error));
-                    }}
-                    style={estiloBotao(true, processando || errosValidacao.length > 0)}
-                  >
-                    Publicar versão {edicao.versao}
+                    Verificar fluxo
                   </button>
 
                   <button
                     type="button"
                     disabled={processando}
+                    onClick={() => { salvar(true).catch((error: unknown) => console.error(error)); }}
+                    style={estiloBotao(true, processando)}
+                  >
+                    Publicar versão {definicaoSelecionada.versao}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={processando}
+                    onClick={() => arquivoRef.current && arquivoRef.current.click()}
+                    style={estiloBotao(false, processando)}
+                  >
+                    Importar .bpmn
+                  </button>
+
+                  <input
+                    ref={arquivoRef}
+                    type="file"
+                    accept=".bpmn,.xml"
+                    aria-label="Importar arquivo BPMN"
+                    style={{ display: 'none' }}
+                    onChange={evento => {
+                      const arquivo = evento.target.files && evento.target.files[0];
+                      if (arquivo) {
+                        importarArquivo(arquivo);
+                      }
+                      evento.target.value = '';
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    disabled={processando}
                     onClick={() => {
-                      if (!window.confirm('Descartar o rascunho? As alterações desta versão serão perdidas.')) {
+                      if (!window.confirm('Descartar o rascunho? Todas as alterações desta versão serão perdidas.')) {
                         return;
                       }
 
@@ -782,6 +932,29 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                 </>
               )
             }
+
+            <button
+              type="button"
+              disabled={processando}
+              onClick={() => {
+                const exportar = async (): Promise<void> => {
+                  const xml =
+                    editavel && editorRef.current
+                      ? await editorRef.current.exportarXml()
+                      : definicaoSelecionada.bpmnXml || definicaoParaBpmnXml(definicaoSelecionada);
+
+                  baixarArquivo(
+                    `${(processo.codigo || 'fluxo').replace(/[^A-Za-z0-9_-]+/g, '_')}_v${definicaoSelecionada.versao}.bpmn`,
+                    xml
+                  );
+                };
+
+                exportar().catch((error: unknown) => console.error(error));
+              }}
+              style={estiloBotao(false, processando)}
+            >
+              Exportar .bpmn
+            </button>
 
             {
               !temRascunho && (

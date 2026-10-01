@@ -21,6 +21,7 @@ import {
 import {
   atorPodeExecutar,
   campoObrigatorioAgora,
+  formatarValorCampo,
   obterElementoAtual,
   tarefaPendente
 } from '../../services/fluxo/FluxoEngine';
@@ -521,16 +522,66 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       return undefined;
     }
 
+    const valor =
+      valoresVisiveis[campo.chave] || '';
+
+    // Somente leitura: mostra o valor preenchido em etapas anteriores.
+    if (campo.somenteLeitura) {
+      return (
+        <div key={campo.chave}>
+          <div style={estiloRotuloCampo}>{campo.rotulo}</div>
+          <div
+            style={{
+              fontSize: '14px',
+              background: '#F2F2F2',
+              borderRadius: '6px',
+              padding: '8px 10px',
+              minHeight: '20px',
+              whiteSpace: 'pre-wrap'
+            }}
+          >
+            {formatarValorCampo(campo.tipo, valor) || '—'}
+          </div>
+        </div>
+      );
+    }
+
     const obrigatorio =
+      campo.obrigatorio ||
       campoObrigatorioAgora(
         elementoAtual,
         campo.chave,
         valoresVisiveis,
-        'aprovado'
+        elementoAtual.acoes.length > 0 ? elementoAtual.acoes[0].resultado : ''
       );
 
-    const valor =
-      valoresVisiveis[campo.chave] || '';
+    const desabilitado =
+      !podeAgir || fluxo.processando;
+
+    const idCampo =
+      `fluxo-campo-${campo.chave}`;
+
+    const ajuda =
+      campo.ajuda
+        ? (
+          <div style={{ fontSize: '12.5px', color: COR_AZUL, marginTop: '6px' }}>
+            {campo.ajuda}
+          </div>
+        )
+        : undefined;
+
+    const estiloEntrada: React.CSSProperties = {
+      width: '100%',
+      boxSizing: 'border-box',
+      minHeight: '38px',
+      border: `1px solid ${COR_BORDA}`,
+      borderRadius: '6px',
+      padding: '8px 10px',
+      fontFamily: 'inherit',
+      fontSize: '14px',
+      color: COR_AZUL,
+      background: '#FFFFFF'
+    };
 
     if (campo.tipo === 'simNao') {
       return (
@@ -561,7 +612,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                       key={opcao.chave}
                       type="button"
                       aria-pressed={selecionado}
-                      disabled={!podeAgir || fluxo.processando}
+                      disabled={desabilitado}
                       onClick={() => definirValor(campo.chave, opcao.chave)}
                       style={{
                         ...estiloBotao(selecionado, !podeAgir),
@@ -575,61 +626,101 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
               )
             }
           </div>
-          {
-            campo.ajuda && (
-              <div style={{ fontSize: '12.5px', color: COR_AZUL, marginTop: '8px' }}>
-                {campo.ajuda}
-              </div>
-            )
-          }
+          {ajuda}
         </fieldset>
       );
     }
 
-    const idCampo =
-      `fluxo-campo-${campo.chave}`;
+    let entrada: React.ReactElement;
+
+    if (campo.tipo === 'lista') {
+      entrada = (
+        <select
+          id={idCampo}
+          value={valor}
+          disabled={desabilitado}
+          onChange={evento => definirValor(campo.chave, evento.target.value)}
+          style={estiloEntrada}
+        >
+          <option value="">Selecione...</option>
+          {
+            (campo.opcoes || []).map(
+              opcao => <option key={opcao} value={opcao}>{opcao}</option>
+            )
+          }
+        </select>
+      );
+    } else if (campo.tipo === 'textoLongo') {
+      entrada = (
+        <textarea
+          id={idCampo}
+          rows={3}
+          value={valor}
+          disabled={desabilitado}
+          onChange={evento => definirValor(campo.chave, evento.target.value)}
+          style={estiloEntrada}
+        />
+      );
+    } else {
+      entrada = (
+        <input
+          id={idCampo}
+          type={campo.tipo === 'numero' ? 'number' : campo.tipo === 'data' ? 'date' : 'text'}
+          value={valor}
+          disabled={desabilitado}
+          onChange={evento => definirValor(campo.chave, evento.target.value)}
+          style={estiloEntrada}
+        />
+      );
+    }
 
     return (
       <div key={campo.chave}>
         <label htmlFor={idCampo} style={estiloRotuloCampo}>
           {campo.rotulo}{obrigatorio ? ' *' : ''}
         </label>
-        <textarea
-          id={idCampo}
-          rows={2}
-          value={valor}
-          disabled={!podeAgir || fluxo.processando}
-          onChange={evento => definirValor(campo.chave, evento.target.value)}
-          style={{
-            width: '100%',
-            boxSizing: 'border-box',
-            border: `1px solid ${COR_BORDA}`,
-            borderRadius: '6px',
-            padding: '8px 10px',
-            fontFamily: 'inherit',
-            fontSize: '14px'
-          }}
-        />
+        {entrada}
+        {ajuda}
       </div>
     );
   };
 
-  const retreinamento =
-    instancia.valores.retreinamento;
+  // Metadados já preenchidos nesta revisão.
+  const metadadosPreenchidos =
+    (definicao.metadados || [])
+      .filter(item => !!instancia.valores[item.chave])
+      .map(
+        item => ({
+          rotulo: item.rotulo,
+          valor: formatarValorCampo(item.tipo, instancia.valores[item.chave])
+        })
+      );
+
+  // O que a publicação real faria, conforme as tarefas de sistema
+  // que o fluxo percorreu.
+  const acoesSistemaExecutadas =
+    instancia.historico
+      .filter(item => item.sistema)
+      .map(item => item.acaoChave);
 
   const resultadoSimulado: string[] =
-    retreinamento === 'sim'
+    acoesSistemaExecutadas.indexOf('publicarComRetreinamento') >= 0
       ? [
         `${instancia.revisao} seria marcada como vigente e a revisão anterior como substituída (histórico preservado).`,
         'O impacto seria calculado em dgt_revisaoimpacto a partir dos treinamentos vinculados ao documento.',
         'Novas atribuições seriam criadas com origem "Revisão documental", vinculadas a esta revisão.',
         'Os colaboradores impactados seriam notificados pelo Power Automate.'
       ]
-      : [
-        `${instancia.revisao} seria marcada como vigente e a revisão anterior como substituída (histórico preservado).`,
-        'A dispensa de retreinamento seria registrada com responsável, data e justificativa.',
-        'Os treinamentos já concluídos continuariam válidos.'
-      ];
+      : acoesSistemaExecutadas.indexOf('publicarSemRetreinamento') >= 0
+        ? [
+          `${instancia.revisao} seria marcada como vigente e a revisão anterior como substituída (histórico preservado).`,
+          'A dispensa de retreinamento seria registrada com responsável, data e justificativa.',
+          'Os treinamentos já concluídos continuariam válidos.'
+        ]
+        : [
+          'O fluxo chegou ao fim sem passar por uma tarefa de sistema de publicação.',
+          'Em produção, a revisão continuaria fora de vigência até ser publicada. Configure uma tarefa de sistema "Publicar" no fluxo do processo, se for o caso.'
+        ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
@@ -928,6 +1019,25 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
           <div style={estiloBarraSecao}>
             Histórico da tramitação (simulado)
           </div>
+          {
+            metadadosPreenchidos.length > 0 && (
+              <div style={{ padding: '12px 20px', borderBottom: `1px solid ${COR_BORDA}`, background: '#EDF0F5' }}>
+                <div style={estiloRotuloCampo}>Metadados desta revisão</div>
+                <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr)', gap: '4px 12px', fontSize: '13.5px' }}>
+                  {
+                    metadadosPreenchidos.map(
+                      item => (
+                        <React.Fragment key={item.rotulo}>
+                          <dt style={{ fontWeight: 600 }}>{item.rotulo}</dt>
+                          <dd style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{item.valor}</dd>
+                        </React.Fragment>
+                      )
+                    )
+                  }
+                </dl>
+              </div>
+            )
+          }
           <ol style={{ listStyle: 'none', margin: 0, padding: '4px 20px 12px' }}>
             {
               instancia.historico.map(
