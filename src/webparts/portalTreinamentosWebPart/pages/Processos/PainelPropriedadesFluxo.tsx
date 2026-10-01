@@ -6,7 +6,6 @@ import {
   IFluxoCampo,
   IFluxoMetadado,
   IFluxoResponsavel,
-  TipoCondicaoTransicao,
   TipoElementoFluxo,
   TipoResponsavelFluxo
 } from '../../models/Fluxo';
@@ -21,14 +20,17 @@ import {
   IElementoSelecionadoBpmn
 } from '../../components/fluxo/bpmn/IModelerFluxo';
 
+import CaminhosSaida, {
+  FormCondicaoLigacao,
+  IResultadoDisponivel,
+  ISaidaElemento
+} from './CaminhosSaida';
+
+export type { IResultadoDisponivel, ISaidaElemento };
+
 // ============================================================
 // PAINEL DE PROPRIEDADES DO ELEMENTO SELECIONADO NO EDITOR
 // ============================================================
-
-export interface IResultadoDisponivel {
-  resultado: string;
-  descricao: string;
-}
 
 export interface IPainelPropriedadesFluxoProps {
   selecionado?: IElementoSelecionadoBpmn;
@@ -48,6 +50,13 @@ export interface IPainelPropriedadesFluxoProps {
   metadados: IFluxoMetadado[];
 
   onRenomear: (nome: string) => void;
+
+  // Caminhos que saem do elemento selecionado (decisão ou etapa).
+  saidas: ISaidaElemento[];
+  onAlterarSaida: (id: string, config: IConfigTransicao) => void;
+  onDefinirPadraoSaida: (id: string | undefined) => void;
+  onRenomearSaida: (id: string, nome: string) => void;
+  onSelecionarSaida: (id: string) => void;
 }
 
 const COR_AZUL = '#202A44';
@@ -168,7 +177,12 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   tipoOrigem,
   resultadosDisponiveis,
   metadados,
-  onRenomear
+  onRenomear,
+  saidas,
+  onAlterarSaida,
+  onDefinirPadraoSaida,
+  onRenomearSaida,
+  onSelecionarSaida
 }) => {
 
   // O nome é editado localmente e aplicado ao sair do campo, para
@@ -192,7 +206,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         <ul style={{ margin: '10px 0 0', paddingLeft: '18px' }}>
           <li><strong>Etapa</strong>: responsável, prazo, botões e campos.</li>
           <li><strong>Tarefa de sistema</strong> (troque o tipo da etapa pela chave inglesa): ação automática, como publicar.</li>
-          <li><strong>Decisão</strong>: escolhe o caminho; configure cada ligação que sai dela.</li>
+          <li><strong>Decisão</strong>: escolhe o caminho; mostra todos os caminhos que saem dela e a condição de cada um.</li>
           <li><strong>Ligação</strong>: condição para seguir por ela.</li>
         </ul>
       </div>
@@ -240,9 +254,6 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
       onAlterarTransicao({ ...config, ...parcial });
     };
 
-    const metadadoCondicao =
-      metadados.find(item => item.chave === config.campo);
-
     return (
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', color: COR_AZUL }}>
 
@@ -250,124 +261,15 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
 
         {campoNome}
 
-        <div>
-          <label htmlFor="prop-condicao" style={estiloRotuloPainel}>Seguir por esta ligação quando</label>
-          <select
-            id="prop-condicao"
-            value={config.tipoCondicao}
-            disabled={!editavel}
-            onChange={evento => alterar({ tipoCondicao: evento.target.value as TipoCondicaoTransicao })}
-            style={estiloEntradaPainel}
-          >
-            <option value="sempre">Sempre</option>
-            <option value="resultado">O resultado da ação for...</option>
-            <option value="campo">Um campo tiver o valor...</option>
-          </select>
-          {
-            tipoOrigem === 'tarefaHumana' && config.tipoCondicao === 'sempre' && (
-              <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                Qualquer botão da etapa segue por aqui. Para separar os botões, escolha “O resultado da ação for”.
-              </div>
-            )
-          }
-        </div>
-
-        {
-          config.tipoCondicao === 'resultado' && (
-            <div>
-              <label htmlFor="prop-resultado" style={estiloRotuloPainel}>Resultado</label>
-              <select
-                id="prop-resultado"
-                value={config.resultado || ''}
-                disabled={!editavel}
-                onChange={evento => alterar({ resultado: evento.target.value })}
-                style={estiloEntradaPainel}
-              >
-                <option value="">Selecione...</option>
-                {
-                  resultadosDisponiveis.map(
-                    item => (
-                      <option key={`${item.resultado}-${item.descricao}`} value={item.resultado}>
-                        {item.descricao}
-                      </option>
-                    )
-                  )
-                }
-              </select>
-            </div>
-          )
-        }
-
-        {
-          config.tipoCondicao === 'campo' && (
-            <>
-              <div>
-                <label htmlFor="prop-campo" style={estiloRotuloPainel}>Campo</label>
-                <select
-                  id="prop-campo"
-                  value={config.campo || ''}
-                  disabled={!editavel}
-                  onChange={evento => alterar({ campo: evento.target.value, valorEsperado: '' })}
-                  style={estiloEntradaPainel}
-                >
-                  <option value="">Selecione...</option>
-                  {
-                    metadados.map(
-                      item => (
-                        <option key={item.chave} value={item.chave}>{item.rotulo}</option>
-                      )
-                    )
-                  }
-                </select>
-                {
-                  metadados.length === 0 && (
-                    <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                      Cadastre metadados em “Metadados do processo” para usar aqui.
-                    </div>
-                  )
-                }
-              </div>
-
-              <div>
-                <label htmlFor="prop-valor" style={estiloRotuloPainel}>Valor esperado</label>
-                {
-                  metadadoCondicao && (metadadoCondicao.tipo === 'simNao' || metadadoCondicao.tipo === 'lista')
-                    ? (
-                      <select
-                        id="prop-valor"
-                        value={config.valorEsperado || ''}
-                        disabled={!editavel}
-                        onChange={evento => alterar({ valorEsperado: evento.target.value })}
-                        style={estiloEntradaPainel}
-                      >
-                        <option value="">Selecione...</option>
-                        {
-                          metadadoCondicao.tipo === 'simNao'
-                            ? [
-                              <option key="sim" value="sim">Sim</option>,
-                              <option key="nao" value="nao">Não</option>
-                            ]
-                            : (metadadoCondicao.opcoes || []).map(
-                              opcao => <option key={opcao} value={opcao}>{opcao}</option>
-                            )
-                        }
-                      </select>
-                    )
-                    : (
-                      <input
-                        id="prop-valor"
-                        type="text"
-                        value={config.valorEsperado || ''}
-                        disabled={!editavel}
-                        onChange={evento => alterar({ valorEsperado: evento.target.value })}
-                        style={estiloEntradaPainel}
-                      />
-                    )
-                }
-              </div>
-            </>
-          )
-        }
+        <FormCondicaoLigacao
+          config={config}
+          onAlterar={alterar}
+          editavel={editavel}
+          tipoOrigem={tipoOrigem}
+          resultadosDisponiveis={resultadosDisponiveis}
+          metadados={metadados}
+          prefixoId="prop-ligacao"
+        />
 
         <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13.5px' }}>
           <input
@@ -421,12 +323,27 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         {campoNome}
         {
           tipo === 'gateway' && (
-            <div style={{ fontSize: '13px', lineHeight: '19px', background: '#EDF0F5', borderRadius: '6px', padding: '10px 12px' }}>
-              A decisão não tem responsável: ela escolhe o caminho automaticamente.
-              Clique em <strong>cada ligação que sai dela</strong> e defina a condição
-              (resultado do botão clicado na etapa anterior ou valor de um campo).
-              Marque uma delas como caminho padrão.
-            </div>
+            <>
+              <div style={{ fontSize: '12.5px', lineHeight: '18px', background: '#EDF0F5', borderRadius: '6px', padding: '8px 10px' }}>
+                A decisão não tem responsável: ela escolhe o caminho sozinha, conforme o botão
+                clicado na etapa anterior ou o valor de um campo.
+              </div>
+
+              <fieldset style={estiloGrupo}>
+                <legend style={estiloLegenda}>Para onde vai o documento</legend>
+                <CaminhosSaida
+                  saidas={saidas}
+                  editavel={editavel}
+                  tipoOrigem="gateway"
+                  resultadosDisponiveis={resultadosDisponiveis}
+                  metadados={metadados}
+                  onAlterarSaida={onAlterarSaida}
+                  onDefinirPadrao={onDefinirPadraoSaida}
+                  onRenomearSaida={onRenomearSaida}
+                  onSelecionarSaida={onSelecionarSaida}
+                />
+              </fieldset>
+            </>
           )
         }
       </div>
@@ -867,6 +784,22 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
               }
             )
         }
+      </fieldset>
+
+      {/* CAMINHOS DE SAÍDA */}
+      <fieldset style={estiloGrupo}>
+        <legend style={estiloLegenda}>Para onde vai o documento</legend>
+        <CaminhosSaida
+          saidas={saidas}
+          editavel={editavel}
+          tipoOrigem="tarefaHumana"
+          resultadosDisponiveis={resultadosDisponiveis}
+          metadados={metadados}
+          onAlterarSaida={onAlterarSaida}
+          onDefinirPadrao={onDefinirPadraoSaida}
+          onRenomearSaida={onRenomearSaida}
+          onSelecionarSaida={onSelecionarSaida}
+        />
       </fieldset>
     </div>
   );

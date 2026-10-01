@@ -48,7 +48,8 @@ import {
 } from '../../components/fluxo/bpmn/IModelerFluxo';
 
 import PainelPropriedadesFluxo, {
-  IResultadoDisponivel
+  IResultadoDisponivel,
+  ISaidaElemento
 } from './PainelPropriedadesFluxo';
 
 import PainelMetadados from
@@ -595,27 +596,56 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       : [];
   };
 
-  const tipoOrigem =
-    selecionado && selecionado.conexao && selecionado.origemId
-      ? tipoDe(selecionado.origemId)
+  // Etapas com botões que chegam a um elemento, atravessando decisões
+  // encadeadas (decisão → decisão).
+  const resultadosQueChegam = (
+    destinoId: string,
+    visitados: string[]
+  ): IResultadoDisponivel[] => {
+
+    if (!snapshotAtual || visitados.indexOf(destinoId) >= 0) {
+      return [];
+    }
+
+    let lista: IResultadoDisponivel[] = [];
+
+    snapshotAtual.conexoes
+      .filter(conexao => conexao.destinoId === destinoId)
+      .forEach(
+        conexao => {
+          const tipo =
+            tipoDe(conexao.origemId);
+
+          if (tipo === 'tarefaHumana') {
+            lista = lista.concat(acoesDe(conexao.origemId));
+          } else if (tipo === 'gateway') {
+            lista = lista.concat(resultadosQueChegam(conexao.origemId, visitados.concat(destinoId)));
+          }
+        }
+      );
+
+    return lista;
+  };
+
+  // Elemento cujos caminhos de saída estão sendo configurados:
+  // a origem da ligação selecionada, ou o próprio elemento.
+  const idOrigem: string | undefined =
+    selecionado
+      ? (selecionado.conexao ? selecionado.origemId : selecionado.id)
       : undefined;
+
+  const tipoOrigem: TipoElementoFluxo | undefined =
+    idOrigem ? tipoDe(idOrigem) : undefined;
 
   let resultadosDisponiveis: IResultadoDisponivel[] = [];
 
-  if (selecionado && selecionado.conexao && selecionado.origemId && snapshotAtual) {
+  if (idOrigem && snapshotAtual) {
 
     if (tipoOrigem === 'tarefaHumana') {
-      resultadosDisponiveis = acoesDe(selecionado.origemId);
+      resultadosDisponiveis = acoesDe(idOrigem);
     } else if (tipoOrigem === 'gateway') {
-      // Resultados das etapas que chegam na decisão.
-      const anteriores =
-        snapshotAtual.conexoes
-          .filter(conexao => conexao.destinoId === selecionado.origemId)
-          .map(conexao => conexao.origemId);
 
-      anteriores.forEach(
-        id => { resultadosDisponiveis = resultadosDisponiveis.concat(acoesDe(id)); }
-      );
+      resultadosDisponiveis = resultadosQueChegam(idOrigem, []);
 
       if (resultadosDisponiveis.length === 0) {
         snapshotAtual.formas.forEach(
@@ -624,6 +654,64 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       }
     }
   }
+
+  // Caminhos que saem do elemento selecionado (decisão ou etapa).
+  const saidas: ISaidaElemento[] =
+    selecionado && !selecionado.conexao && snapshotAtual && edicao
+      ? snapshotAtual.conexoes
+        .filter(
+          conexao =>
+            conexao.origemId === selecionado.id &&
+            conexao.tipo === 'bpmn:SequenceFlow'
+        )
+        .map(
+          conexao => ({
+            id: conexao.id,
+            nome: conexao.nome,
+            destinoNome: nomeDe(conexao.destinoId),
+            destinoTipo: tipoDe(conexao.destinoId),
+            config: edicao.configsTransicoes[conexao.id] || configPadraoTransicao()
+          })
+        )
+      : [];
+
+  const alterarConfigTransicao = (
+    id: string,
+    config: IConfigTransicao
+  ): void => {
+
+    if (!edicao) {
+      return;
+    }
+
+    setEdicao({
+      ...edicao,
+      configsTransicoes: { ...edicao.configsTransicoes, [id]: config }
+    });
+
+    setAlterado(true);
+  };
+
+  // Só um caminho padrão por elemento.
+  const definirPadraoSaida = (
+    id: string | undefined
+  ): void => {
+
+    if (!edicao) {
+      return;
+    }
+
+    const configsTransicoes = { ...edicao.configsTransicoes };
+
+    saidas.forEach(
+      saida => {
+        configsTransicoes[saida.id] = { ...saida.config, padrao: saida.id === id };
+      }
+    );
+
+    setEdicao({ ...edicao, configsTransicoes });
+    setAlterado(true);
+  };
 
   const usoPorChave: Record<string, number> = {};
 
@@ -752,14 +840,22 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                         : undefined
                     }
                     onAlterarTransicao={config => {
-                      if (!selecionado) {
-                        return;
+                      if (selecionado) {
+                        alterarConfigTransicao(selecionado.id, config);
                       }
-                      setEdicao({
-                        ...edicao,
-                        configsTransicoes: { ...edicao.configsTransicoes, [selecionado.id]: config }
-                      });
-                      setAlterado(true);
+                    }}
+                    saidas={saidas}
+                    onAlterarSaida={alterarConfigTransicao}
+                    onDefinirPadraoSaida={definirPadraoSaida}
+                    onRenomearSaida={(id, nome) => {
+                      if (editorRef.current) {
+                        editorRef.current.renomear(id, nome);
+                      }
+                    }}
+                    onSelecionarSaida={id => {
+                      if (editorRef.current) {
+                        editorRef.current.selecionar(id);
+                      }
                     }}
                     tipoOrigem={tipoOrigem}
                     resultadosDisponiveis={resultadosDisponiveis}
