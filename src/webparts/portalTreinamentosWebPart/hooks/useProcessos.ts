@@ -1,8 +1,14 @@
 import * as React from 'react';
 
 import {
-  IFluxoDefinicao
+  IFluxoDefinicao,
+  IFluxoMetadado
 } from '../models/Fluxo';
+
+import {
+  migrarMetadadosDasVersoes,
+  salvarMetadadosProcesso
+} from '../services/processos/MetadadosProcessoService';
 
 import {
   IDocumentoProcessoVinculo,
@@ -45,6 +51,11 @@ export interface IUseProcessos {
   // Versões do fluxo por processo (mais nova primeiro).
   fluxosPorProcesso: Record<string, IFluxoDefinicao[]>;
 
+  // Metadados de cada processo, na ordem das telas.
+  metadadosPorProcesso: Record<string, IFluxoMetadado[]>;
+
+  salvarMetadados: (processoId: string, metadados: IFluxoMetadado[]) => void;
+
   recarregar: (forcarReleitura?: boolean) => Promise<void>;
   criarProcesso: (dados: INovoProcessoTeste) => { ok: boolean; erro: string; processo?: IProcesso };
   vincularDocumento: (documentoId: string, processoId: string) => Promise<void>;
@@ -83,6 +94,9 @@ export const useProcessos = (
   const [fluxosPorProcesso, setFluxosPorProcesso] =
     React.useState<Record<string, IFluxoDefinicao[]>>({});
 
+  const [metadadosPorProcesso, setMetadadosPorProcesso] =
+    React.useState<Record<string, IFluxoMetadado[]>>({});
+
   const recarregar =
     React.useCallback(
       async (
@@ -103,15 +117,21 @@ export const useProcessos = (
 
           const fluxos: Record<string, IFluxoDefinicao[]> = {};
 
+          const metadados: Record<string, IFluxoMetadado[]> = {};
+
           for (const processo of dados.processos) {
             fluxos[processo.id] =
               await fluxoCatalogo.listarVersoes(processo.id);
+
+            metadados[processo.id] =
+              migrarMetadadosDasVersoes(processo.id, fluxos[processo.id]);
           }
 
           setProcessos(dados.processos);
           setVinculos(dados.vinculos);
           setAviso(dados.aviso);
           setFluxosPorProcesso(fluxos);
+          setMetadadosPorProcesso(metadados);
 
         } catch (error) {
 
@@ -143,7 +163,16 @@ export const useProcessos = (
     processos,
     vinculos,
     fluxosPorProcesso,
+    metadadosPorProcesso,
     recarregar,
+
+    // Grava na hora: os metadados não dependem de rascunho.
+    salvarMetadados: (processoId: string, metadados: IFluxoMetadado[]) => {
+      salvarMetadadosProcesso(processoId, metadados);
+      setMetadadosPorProcesso(
+        atual => ({ ...atual, [processoId]: metadados })
+      );
+    },
 
     criarProcesso: (dados: INovoProcessoTeste) => {
 

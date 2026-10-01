@@ -33,6 +33,9 @@ import {
 import FluxoDiagrama from
   '../../components/fluxo/FluxoDiagrama';
 
+import TabelaCampoFluxo from
+  '../../components/fluxo/TabelaCampoFluxo';
+
 // ============================================================
 // ABA "FLUXO (TESTE)" DO DETALHE DO DOCUMENTO
 //
@@ -526,6 +529,21 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       valoresVisiveis[campo.chave] || '';
 
     // Somente leitura: mostra o valor preenchido em etapas anteriores.
+    if (campo.somenteLeitura && campo.tipo === 'tabela') {
+      return (
+        <div key={campo.chave}>
+          <div style={estiloRotuloCampo}>{campo.rotulo}</div>
+          <TabelaCampoFluxo
+            id={`fluxo-campo-${campo.chave}`}
+            rotulo={campo.rotulo}
+            colunas={campo.colunas || []}
+            valor={valor}
+            somenteLeitura={true}
+          />
+        </div>
+      );
+    }
+
     if (campo.somenteLeitura) {
       return (
         <div key={campo.chave}>
@@ -582,6 +600,34 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       color: COR_AZUL,
       background: '#FFFFFF'
     };
+
+    if (campo.tipo === 'tabela') {
+      return (
+        <fieldset
+          key={campo.chave}
+          style={{
+            border: `1px solid ${COR_BORDA}`,
+            borderRadius: '6px',
+            padding: '12px 14px',
+            margin: 0,
+            minWidth: 0
+          }}
+        >
+          <legend style={{ ...estiloRotuloCampo, padding: '0 6px', marginBottom: 0 }}>
+            {campo.rotulo}{obrigatorio ? ' * (pelo menos uma linha)' : ''}
+          </legend>
+          <TabelaCampoFluxo
+            id={idCampo}
+            rotulo={campo.rotulo}
+            colunas={campo.colunas || []}
+            valor={valor}
+            desabilitado={desabilitado}
+            onAlterar={novo => definirValor(campo.chave, novo)}
+          />
+          {ajuda}
+        </fieldset>
+      );
+    }
 
     if (campo.tipo === 'simNao') {
       return (
@@ -691,7 +737,11 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       .filter(item => !!instancia.valores[item.chave])
       .map(
         item => ({
+          chave: item.chave,
           rotulo: item.rotulo,
+          tipo: item.tipo,
+          colunas: item.colunas || [],
+          bruto: instancia.valores[item.chave],
           valor: formatarValorCampo(item.tipo, instancia.valores[item.chave])
         })
       );
@@ -1027,9 +1077,23 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                   {
                     metadadosPreenchidos.map(
                       item => (
-                        <React.Fragment key={item.rotulo}>
-                          <dt style={{ fontWeight: 600 }}>{item.rotulo}</dt>
-                          <dd style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{item.valor}</dd>
+                        <React.Fragment key={item.chave}>
+                          <dt style={{ fontWeight: 600, gridColumn: item.tipo === 'tabela' ? '1 / -1' : undefined }}>{item.rotulo}</dt>
+                          <dd style={{ margin: 0, whiteSpace: 'pre-wrap', gridColumn: item.tipo === 'tabela' ? '1 / -1' : undefined }}>
+                            {
+                              item.tipo === 'tabela'
+                                ? (
+                                  <TabelaCampoFluxo
+                                    id={`resumo-${item.chave}`}
+                                    rotulo={item.rotulo}
+                                    colunas={item.colunas}
+                                    valor={item.bruto}
+                                    somenteLeitura={true}
+                                  />
+                                )
+                                : item.valor
+                            }
+                          </dd>
                         </React.Fragment>
                       )
                     )

@@ -364,6 +364,7 @@ const camposSincronizados = (
           rotulo: metadado.rotulo,
           tipo: metadado.tipo,
           opcoes: metadado.opcoes,
+          colunas: metadado.colunas,
           ajuda: metadado.ajuda
         });
       }

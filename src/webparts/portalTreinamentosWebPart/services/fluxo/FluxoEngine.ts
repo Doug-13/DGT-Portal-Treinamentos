@@ -11,6 +11,11 @@ import {
   StatusVisualElemento
 } from '../../models/Fluxo';
 
+import {
+  resumoTabela,
+  validarTabela
+} from './valoresTabela';
+
 // ============================================================
 // MOTOR DO FLUXO (lógica pura, sem acesso a dados)
 //
@@ -224,6 +229,16 @@ export const validarAcao = (
           acao.resultado
         );
 
+      if (campo.tipo === 'tabela') {
+        validarTabela(
+          campo.rotulo,
+          campo.colunas || [],
+          valor,
+          obrigatorio
+        ).forEach(erro => erros.push(erro));
+        return;
+      }
+
       if (obrigatorio && !valor) {
         erros.push(
           `Preencha: ${campo.rotulo}`
@@ -281,6 +296,10 @@ export const formatarValorCampo = (
 
   if (tipo === 'simNao') {
     return valor === 'sim' ? 'Sim' : 'Não';
+  }
+
+  if (tipo === 'tabela') {
+    return resumoTabela(valor);
   }
 
   if (tipo === 'data') {

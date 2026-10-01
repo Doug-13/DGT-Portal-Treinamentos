@@ -12,6 +12,11 @@ import {
 } from './FluxoCatalogoLocal';
 
 import {
+  aplicarMetadadosNaDefinicao,
+  obterMetadadosProcesso
+} from '../processos/MetadadosProcessoService';
+
+import {
   executarAcao,
   IDadosInicioFluxo,
   IExecucaoAcao,
@@ -58,14 +63,27 @@ export class FluxoService {
   }
 
   // Definição EXATA (id + versão) com que a revisão começou.
+  // Os metadados (rótulos, tipos, colunas e ORDEM) vêm do processo.
   public async definicaoDaInstancia(
     instancia: IFluxoInstancia
   ): Promise<IFluxoDefinicao | undefined> {
 
-    return this.catalogo.obterVersao(
-      instancia.fluxoId,
-      instancia.fluxoVersao
-    );
+    const definicao =
+      await this.catalogo.obterVersao(
+        instancia.fluxoId,
+        instancia.fluxoVersao
+      );
+
+    if (!definicao) {
+      return undefined;
+    }
+
+    const processoId =
+      instancia.processoId || definicao.processoId;
+
+    return processoId
+      ? aplicarMetadadosNaDefinicao(definicao, obterMetadadosProcesso(processoId))
+      : definicao;
   }
 
   public async obter(

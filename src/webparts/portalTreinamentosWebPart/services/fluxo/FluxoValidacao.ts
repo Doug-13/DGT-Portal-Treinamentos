@@ -96,6 +96,40 @@ export const validarDefinicao = (
       ) {
         erros.push(`Informe as opções da lista "${metadado.rotulo}".`);
       }
+
+      if (metadado.tipo === 'tabela') {
+
+        const colunas =
+          metadado.colunas || [];
+
+        if (colunas.length === 0) {
+          erros.push(`A tabela "${metadado.rotulo}" precisa de pelo menos uma coluna.`);
+        }
+
+        const chavesColunas: string[] = [];
+
+        colunas.forEach(
+          coluna => {
+
+            if (!(coluna.rotulo || '').trim()) {
+              erros.push(`Há uma coluna sem nome na tabela "${metadado.rotulo}".`);
+            }
+
+            if (chavesColunas.indexOf(coluna.chave) >= 0) {
+              erros.push(`A coluna "${coluna.rotulo}" está repetida na tabela "${metadado.rotulo}".`);
+            }
+
+            chavesColunas.push(coluna.chave);
+
+            if (
+              coluna.tipo === 'lista' &&
+              (!coluna.opcoes || coluna.opcoes.length === 0)
+            ) {
+              erros.push(`Informe as opções da coluna "${coluna.rotulo}" (tabela "${metadado.rotulo}").`);
+            }
+          }
+        );
+      }
     }
   );
 
@@ -244,6 +278,13 @@ export const validarDefinicao = (
 
         if (!transicao.campo || chaves.indexOf(transicao.campo) < 0) {
           erros.push(`Escolha o campo da condição da ligação "${nome}".`);
+        }
+
+        const metadadoCondicao =
+          metadados.find(item => item.chave === transicao.campo);
+
+        if (metadadoCondicao && metadadoCondicao.tipo === 'tabela') {
+          erros.push(`A ligação "${nome}" não pode usar uma tabela como condição.`);
         }
 
         if (!(transicao.valorEsperado || '').trim()) {

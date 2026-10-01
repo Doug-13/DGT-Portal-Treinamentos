@@ -172,9 +172,11 @@ export const FormCondicaoLigacao: React.FC<IFormCondicaoLigacaoProps> = ({
               >
                 <option value="">Selecione...</option>
                 {
-                  metadados.map(
-                    item => <option key={item.chave} value={item.chave}>{item.rotulo}</option>
-                  )
+                  metadados
+                    .filter(item => item.tipo !== 'tabela')
+                    .map(
+                      item => <option key={item.chave} value={item.chave}>{item.rotulo}</option>
+                    )
                 }
               </select>
             </div>

@@ -36,6 +36,13 @@ import {
 import ProcessoFluxoEditor from
   './ProcessoFluxoEditor';
 
+import PainelMetadados from
+  './PainelMetadados';
+
+import {
+  contarUsoMetadados
+} from '../../services/processos/MetadadosProcessoService';
+
 // ============================================================
 // MÓDULO PROCESSOS (modo de teste)
 //
@@ -57,7 +64,7 @@ export interface IProcessosPageProps {
   onAbrirDocumento: (documento: IDocumento) => void;
 }
 
-type AbaProcesso = 'fluxo' | 'documentos';
+type AbaProcesso = 'fluxo' | 'metadados' | 'documentos';
 
 const COR_AZUL = '#202A44';
 const COR_CIANO = '#05C3DD';
@@ -321,6 +328,9 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
     const versoes =
       dados.fluxosPorProcesso[processoSelecionado.id] || [];
 
+    const metadadosProcesso =
+      dados.metadadosPorProcesso[processoSelecionado.id] || [];
+
     const resumo =
       resumoFluxo(versoes);
 
@@ -365,6 +375,9 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
           <button type="button" style={estiloAba(aba === 'fluxo')} onClick={() => setAba('fluxo')}>
             Fluxo de revisão
           </button>
+          <button type="button" style={estiloAba(aba === 'metadados')} onClick={() => setAba('metadados')}>
+            Metadados ({metadadosProcesso.length})
+          </button>
           <button type="button" style={estiloAba(aba === 'documentos')} onClick={() => setAba('documentos')}>
             Documentos vinculados ({vinculosProcesso.length})
           </button>
@@ -379,7 +392,28 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 versoes={versoes}
                 podeEditar={podeEditar}
                 onAlterado={() => dados.recarregar()}
+                metadados={metadadosProcesso}
+                onAlterarMetadados={lista => dados.salvarMetadados(processoSelecionado.id, lista)}
               />
+            )
+            : aba === 'metadados'
+            ? (
+              <section style={estiloCartao}>
+                <div style={estiloBarraSecao}>Metadados do processo</div>
+                <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ fontSize: '13.5px' }}>
+                    Campos que as etapas do fluxo podem exibir, exigir ou usar nas decisões. Valem para
+                    <strong> todas as versões</strong> do fluxo e aparecem nas telas <strong>nesta ordem</strong>.
+                    {podeEditar ? ' As alterações ficam salvas na hora.' : ''}
+                  </div>
+                  <PainelMetadados
+                    metadados={metadadosProcesso}
+                    editavel={podeEditar}
+                    usoPorChave={contarUsoMetadados(versoes)}
+                    onAlterar={lista => dados.salvarMetadados(processoSelecionado.id, lista)}
+                  />
+                </div>
+              </section>
             )
             : (
               <section style={estiloCartao}>

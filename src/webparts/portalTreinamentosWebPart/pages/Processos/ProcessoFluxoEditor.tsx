@@ -24,6 +24,10 @@ import {
 } from '../../services/fluxo/FluxoValidacao';
 
 import {
+  contarUsoMetadados
+} from '../../services/processos/MetadadosProcessoService';
+
+import {
   configDaTransicao,
   configDoElemento,
   configPadraoElemento,
@@ -31,7 +35,6 @@ import {
   definicaoParaBpmnXml,
   IConfigElemento,
   IConfigTransicao,
-  metadadosDaDefinicao,
   montarDefinicao,
   tipoFluxoDoBpmn
 } from '../../services/fluxo/bpmn/bpmnConversao';
@@ -75,6 +78,10 @@ export interface IProcessoFluxoEditorProps {
   versoes: IFluxoDefinicao[];
   podeEditar: boolean;
   onAlterado: () => Promise<void>;
+
+  // Metadados do PROCESSO (não da versão), na ordem das telas.
+  metadados: IFluxoMetadado[];
+  onAlterarMetadados: (metadados: IFluxoMetadado[]) => void;
 }
 
 const COR_AZUL = '#202A44';
@@ -163,7 +170,6 @@ const formatarData = (
 interface IEstadoEdicao {
   configsElementos: Record<string, IConfigElemento>;
   configsTransicoes: Record<string, IConfigTransicao>;
-  metadados: IFluxoMetadado[];
   xml: string;
 }
 
@@ -189,7 +195,6 @@ const estadoInicial = (
   return {
     configsElementos,
     configsTransicoes,
-    metadados: JSON.parse(JSON.stringify(metadadosDaDefinicao(definicao))) as IFluxoMetadado[],
     xml: definicao.bpmnXml || definicaoParaBpmnXml(definicao)
   };
 };
@@ -221,7 +226,9 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   processo,
   versoes,
   podeEditar,
-  onAlterado
+  onAlterado,
+  metadados: metadadosProcesso,
+  onAlterarMetadados
 }) => {
 
   const editorRef =
@@ -375,7 +382,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       snapshot,
       configsElementos: edicao.configsElementos,
       configsTransicoes: edicao.configsTransicoes,
-      metadados: edicao.metadados,
+      metadados: metadadosProcesso,
       bpmnXml: xml
     });
   };
@@ -533,7 +540,28 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                       executar(
                         () => fluxoCatalogo.criarAPartirDoModelo(processo, modeloId),
                         'Rascunho da versão 1 criado. Desenhe e configure o fluxo, depois publique.',
-                        () => setVersaoSelecionada(1)
+                        () => {
+                          setVersaoSelecionada(1);
+
+                          // Os campos usados pelo modelo passam a ser
+                          // metadados do processo (sem duplicar os que já existem).
+                          const modelo =
+                            FLUXO_MODELOS.find(item => item.id === modeloId);
+
+                          const doModelo =
+                            (modelo && modelo.definicao.metadados) || [];
+
+                          const faltantes =
+                            doModelo.filter(
+                              item => !metadadosProcesso.some(atual => atual.chave === item.chave)
+                            );
+
+                          if (faltantes.length > 0) {
+                            onAlterarMetadados(
+                              metadadosProcesso.concat(JSON.parse(JSON.stringify(faltantes)) as IFluxoMetadado[])
+                            );
+                          }
+                        }
                       ).catch((error: unknown) => console.error(error));
                     }}
                     style={estiloBotao(true, processando)}
@@ -723,28 +751,28 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     setAlterado(true);
   };
 
-  const usoPorChave: Record<string, number> = {};
-
-  if (edicao) {
-    Object.keys(edicao.configsElementos).forEach(
-      id => {
-        edicao.configsElementos[id].campos.forEach(
-          campo => { usoPorChave[campo.chave] = (usoPorChave[campo.chave] || 0) + 1; }
-        );
-      }
+  const usoPorChave: Record<string, number> =
+    contarUsoMetadados(
+      versoes,
+      edicao
+        ? Object.keys(edicao.configsElementos).map(id => edicao.configsElementos[id])
+        : undefined
     );
-  }
 
   // ----------------------------------------------------------
   // Metadados e modal
   // ----------------------------------------------------------
 
   const metadadosAtuais: IFluxoMetadado[] =
-    edicao ? edicao.metadados : metadadosDaDefinicao(definicaoSelecionada);
+    metadadosProcesso;
 
+  // Metadados são do processo: gravam na hora (não dependem do
+  // rascunho). No rascunho em edição, campos excluídos saem das etapas.
   const alterarMetadados = (
     metadados: IFluxoMetadado[]
   ): void => {
+
+    onAlterarMetadados(metadados);
 
     if (!edicao) {
       return;
@@ -766,14 +794,13 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       }
     );
 
-    setEdicao({ ...edicao, metadados, configsElementos });
-    setAlterado(true);
+    setEdicao({ ...edicao, configsElementos });
   };
 
   const editorMetadados = (
     <PainelMetadados
       metadados={metadadosAtuais}
-      editavel={editavel && !!edicao}
+      editavel={podeEditar}
       usoPorChave={usoPorChave}
       onAlterar={alterarMetadados}
     />
@@ -1068,7 +1095,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         modal.tipo === 'metadados' && (
           <ModalConfiguracaoFluxo
             titulo="Metadados do processo"
-            subtitulo={`${definicaoSelecionada.nome} — v${definicaoSelecionada.versao}`}
+            subtitulo={`${processo.codigo ? `${processo.codigo} — ` : ''}${processo.nome}`}
             abas={[
               {
                 id: 'metadados',
@@ -1078,9 +1105,9 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
             ]}
             onFechar={() => setModal(undefined)}
             rodape={
-              editavel
-                ? 'Campos que as etapas podem exibir, exigir ou usar nas decisões. Grave com “Salvar rascunho”.'
-                : 'Versão somente leitura.'
+              podeEditar
+                ? 'Os metadados são do processo e ficam salvos na hora, para todas as versões do fluxo.'
+                : 'Somente leitura.'
             }
           />
         )

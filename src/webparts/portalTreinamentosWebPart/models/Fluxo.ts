@@ -79,10 +79,34 @@ export type TipoCampoFluxo =
   | 'textoLongo'
   | 'numero'
   | 'data'
+  | 'lista'
+  | 'tabela';
+
+// Tipos permitidos numa coluna de tabela.
+export type TipoColunaTabela =
+  | 'texto'
+  | 'numero'
+  | 'data'
+  | 'simNao'
   | 'lista';
 
-// Metadado do processo: campo que pode aparecer nas etapas do
-// fluxo. É versionado junto com o fluxo.
+// Coluna de um metadado do tipo tabela.
+export interface IColunaTabela {
+  chave: string;
+
+  rotulo: string;
+
+  tipo: TipoColunaTabela;
+
+  // tipo = 'lista'
+  opcoes?: string[];
+
+  obrigatoria?: boolean;
+}
+
+// Metadado do PROCESSO: campo que pode aparecer nas etapas de
+// qualquer versão do fluxo do processo. A ordem da lista é a ordem
+// em que os campos aparecem nas telas.
 export interface IFluxoMetadado {
   chave: string;
 
@@ -92,6 +116,9 @@ export interface IFluxoMetadado {
 
   // tipo = 'lista'
   opcoes?: string[];
+
+  // tipo = 'tabela' (o valor é gravado como JSON: lista de linhas)
+  colunas?: IColunaTabela[];
 
   ajuda?: string;
 }
@@ -110,6 +137,9 @@ export interface IFluxoCampo {
 
   // tipo = 'lista'
   opcoes?: string[];
+
+  // tipo = 'tabela'
+  colunas?: IColunaTabela[];
 
   // Só exige este campo quando outro campo tiver o valor indicado.
   // Ex.: justificativa obrigatória apenas quando retreinamento = 'nao'.
