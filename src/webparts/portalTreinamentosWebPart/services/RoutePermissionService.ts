@@ -88,6 +88,10 @@ const regras:
     { rota: 'avaliacao', perfis: TODOS },
     { rota: 'suporte', perfis: TODOS },
 
+    // Módulo Processos (modo de teste). Todos consultam; somente
+    // Editor e Administrador alteram fluxos (controlado na tela).
+    { rota: 'processos', perfis: TODOS },
+
     // Gestão de pessoas (Gestor e Administrador)
     { rota: 'equipe', perfis: GESTAO_PESSOAS },
     { rota: 'atribuirTreinamento', perfis: GESTAO_PESSOAS },
