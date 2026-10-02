@@ -58,6 +58,13 @@ export interface IFluxoRevisaoTabProps {
   // Chamado depois de cada ação (Dataverse), para atualizar status e
   // revisões na tela do documento.
   onRevisaoAlterada?: () => Promise<void>;
+
+  // true = só o painel da etapa atual (responsáveis, campos, botões),
+  // para ficar na aba Revisão, na abertura do documento.
+  compacto?: boolean;
+
+  // Abre a aba com o fluxo completo (desenho e histórico).
+  onVerFluxoCompleto?: () => void;
 }
 
 const COR_AZUL = '#202A44';
@@ -157,7 +164,9 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   contexto,
   dataverseService,
   onAbrirProcesso,
-  onRevisaoAlterada
+  onRevisaoAlterada,
+  compacto = false,
+  onVerFluxoCompleto
 }) => {
 
   const fluxo =
@@ -815,6 +824,8 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
       {avisoTeste}
 
+      {!compacto && (
+      <>
       {/* CABEÇALHO */}
       <div
         style={{
@@ -959,19 +970,49 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
         </div>
       </section>
 
+      </>
+      )}
+
       {/* PAINEL + HISTÓRICO */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+          gridTemplateColumns: compacto ? 'minmax(0, 1fr)' : 'repeat(auto-fit, minmax(340px, 1fr))',
           gap: '16px',
           alignItems: 'start'
         }}
       >
 
         <section style={estiloCartao}>
-          <div style={estiloBarraSecao}>
-            {concluido ? (fluxo.local ? 'Resultado (simulado)' : 'Revisão concluída') : `Etapa atual — ${elementoAtual?.nome || '-'}`}
+          <div style={{ ...estiloBarraSecao, display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span>
+              {concluido ? (fluxo.local ? 'Resultado (simulado)' : 'Revisão concluída') : `Etapa atual — ${elementoAtual?.nome || '-'}`}
+              {compacto && ` · Fluxo ${definicao.nome} v${instancia.fluxoVersao}`}
+            </span>
+            {
+              compacto && onVerFluxoCompleto && (
+                <button
+                  type="button"
+                  onClick={onVerFluxoCompleto}
+                  style={{
+                    marginLeft: 'auto',
+                    minHeight: '30px',
+                    padding: '0 12px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255,255,255,.6)',
+                    background: 'transparent',
+                    color: '#FFFFFF',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    letterSpacing: 0,
+                    textTransform: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Ver fluxo completo e histórico
+                </button>
+              )
+            }
           </div>
 
           {
@@ -1147,7 +1188,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
           }
         </section>
 
-        <section style={estiloCartao}>
+        {!compacto && <section style={estiloCartao}>
           <div style={estiloBarraSecao}>
             {fluxo.local ? 'Histórico da tramitação (simulado)' : 'Histórico da tramitação'}
           </div>
@@ -1226,7 +1267,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
               )
             }
           </ol>
-        </section>
+        </section>}
       </div>
     </div>
   );

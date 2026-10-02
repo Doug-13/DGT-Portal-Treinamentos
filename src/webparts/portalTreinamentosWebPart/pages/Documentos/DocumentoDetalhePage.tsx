@@ -70,8 +70,6 @@ import AcoesFluxoRevisao from
 import FluxoRevisaoTab from
   './FluxoRevisaoTab';
 
-import AvisoRevisaoSegueFluxo from
-  './AvisoRevisaoSegueFluxo';
 
 import {
   FEATURE_FLAGS,
@@ -1713,9 +1711,15 @@ const DocumentoDetalhePage:
                                   {
                                     segueFluxo.segue
                                       ? (
-                                        <AvisoRevisaoSegueFluxo
-                                          processoNome={segueFluxo.processoNome}
-                                          onAbrir={() => setAba('fluxo')}
+                                        <FluxoRevisaoTab
+                                          compacto={true}
+                                          documento={documento}
+                                          revisoes={revisoes}
+                                          contexto={contexto}
+                                          dataverseService={dataverseService}
+                                          onAbrirProcesso={onAbrirProcesso}
+                                          onVerFluxoCompleto={() => setAba('fluxo')}
+                                          onRevisaoAlterada={async () => { if (onRecarregarRevisoes) { await onRecarregarRevisoes(); } setVersaoFluxo(atual => atual + 1); }}
                                         />
                                       )
                                       : (
