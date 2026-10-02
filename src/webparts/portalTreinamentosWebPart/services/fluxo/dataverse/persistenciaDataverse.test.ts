@@ -20,10 +20,17 @@ import {
 } from '../FluxoService';
 
 import {
+  etapaDeAprovacao,
   papeisDoUsuario,
   resolverResponsavel,
-  usuarioAtende
+  usuarioAtende,
+  usuariosElegiveis
 } from '../ResolvedorResponsaveis';
+
+import {
+  FLUXO_EM_BRANCO,
+  FLUXO_POP_PROCEDIMENTO_V2
+} from '../definicoes/fluxoPopProcedimento';
 
 import {
   DataverseFalso
@@ -124,6 +131,29 @@ describe('Resolvedor de responsáveis', () => {
     expect(usuarioAtende(gestor, AUTOR, vinculos)).toBe(false);
     expect(usuarioAtende(qualidade, GESTOR_QUALIDADE, vinculos)).toBe(true);
     expect(usuarioAtende(qualidade, GESTOR_DOC, vinculos)).toBe(false);
+  });
+});
+
+describe('Etapa de aprovação (campo Aprovador do novo documento)', () => {
+
+  it('encontra a etapa de aprovação e as pessoas que podem aprovar', () => {
+
+    const pop =
+      JSON.parse(JSON.stringify(FLUXO_POP_PROCEDIMENTO_V2)) as IFluxoDefinicao;
+
+    const etapa =
+      etapaDeAprovacao(pop) as IFluxoDefinicao['elementos'][0];
+
+    expect(etapa.id).toBe('aprovacaoQualidade');
+
+    etapa.responsaveis[0].referenciaId = AREA_QUALIDADE;
+
+    expect(
+      usuariosElegiveis(etapa.responsaveis, { documentoAreaId: AREA_DOC }, vinculos).map(item => item.usuarioNome)
+    ).toEqual(['Gestora Qualidade']);
+
+    // Fluxo de uma etapa só: ela é a de aprovação.
+    expect((etapaDeAprovacao(FLUXO_EM_BRANCO) as IFluxoDefinicao['elementos'][0]).id).toBe('elaboracao');
   });
 });
 

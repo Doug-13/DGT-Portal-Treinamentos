@@ -19,6 +19,11 @@ import {
 } from '../../services/fluxo/persistenciaFluxo';
 
 import {
+  etapaDeAprovacao,
+  usuariosElegiveis
+} from '../../services/fluxo/ResolvedorResponsaveis';
+
+import {
   useProcessos
 } from '../../hooks/useProcessos';
 
@@ -528,22 +533,87 @@ const NovoDocumentoPage:
         : undefined;
     };
 
+    // --------------------------------------------------------
+    // Aprovador: com processo de fluxo publicado, são os
+    // responsáveis da ETAPA DE APROVAÇÃO do fluxo; sem processo,
+    // continua sendo o Gestor da área (regra antiga).
+    // --------------------------------------------------------
+
+    const aprovacaoDoFluxo =
+      React.useMemo(
+        () => {
+
+          if (!processoId) {
+            return undefined;
+          }
+
+          const publicada =
+            (dadosProcessos.fluxosPorProcesso[processoId] || []).find(
+              versao => versao.status === 'publicado'
+            );
+
+          const etapa =
+            publicada ? etapaDeAprovacao(publicada) : undefined;
+
+          if (!etapa) {
+            return undefined;
+          }
+
+          return {
+            etapa,
+            usuarios: usuariosElegiveis(
+              etapa.responsaveis,
+              { documentoAreaId: areaId },
+              props.usuariosAreas
+            )
+          };
+        },
+        [
+          processoId,
+          dadosProcessos.fluxosPorProcesso,
+          areaId,
+          props.usuariosAreas
+        ]
+      );
+
+    const aprovadoresElegiveis =
+      aprovacaoDoFluxo && aprovacaoDoFluxo.usuarios.length > 0
+        ? aprovacaoDoFluxo.usuarios
+        : gestoresDaArea;
+
+    const origemAprovador =
+      aprovacaoDoFluxo && aprovacaoDoFluxo.usuarios.length > 0
+        ? `Definido pelo fluxo do processo: responsável da etapa “${aprovacaoDoFluxo.etapa.nome}” (${aprovacaoDoFluxo.etapa.responsaveis.map(item => item.descricao).join(', ')}).`
+        : aprovacaoDoFluxo
+          ? `A etapa “${aprovacaoDoFluxo.etapa.nome}” do fluxo não tem pessoas cadastradas para os responsáveis definidos; usando o Gestor da área.`
+          : '';
+
+    // Ao trocar de processo, a escolha anterior não vale mais.
+    React.useEffect(
+      () => {
+        setAprovadorEscolhidoId('');
+      },
+      [
+        processoId
+      ]
+    );
+
     const aprovadorSelecionado =
       React.useMemo(
         () => {
           if (
-            gestoresDaArea.length === 1
+            aprovadoresElegiveis.length === 1
           ) {
-            return gestoresDaArea[0];
+            return aprovadoresElegiveis[0];
           }
 
-          return gestoresDaArea.find(
+          return aprovadoresElegiveis.find(
             vinculo =>
               vinculo.usuarioId === aprovadorEscolhidoId
           );
         },
         [
-          gestoresDaArea,
+          aprovadoresElegiveis,
           aprovadorEscolhidoId
         ]
       );
@@ -650,7 +720,7 @@ const NovoDocumentoPage:
           !aprovadorSelecionado
         ) {
           setErroLocal(
-            gestoresDaArea.length === 0
+            aprovadoresElegiveis.length === 0
               ? `A área "${areaSelecionada.nome}" não possui um Gestor definido. Cadastre um Gestor em "Áreas e acessos" antes de criar o documento.`
               : 'Selecione o Gestor responsável pela aprovação.'
           );
@@ -1039,7 +1109,7 @@ const NovoDocumentoPage:
                   // Área sem Gestor cadastrado: bloqueia com orientação
                   // clara, em vez de deixar digitar um nome qualquer.
                   areaId &&
-                  gestoresDaArea.length === 0 && (
+                  aprovadoresElegiveis.length === 0 && (
                     <>
                       <input
                         value="Nenhum Gestor definido para esta área"
@@ -1073,11 +1143,11 @@ const NovoDocumentoPage:
                   // Exatamente um Gestor: preenchido automaticamente,
                   // sem edição — é sempre o responsável pela área/processo.
                   areaId &&
-                  gestoresDaArea.length === 1 && (
+                  aprovadoresElegiveis.length === 1 && (
                     <>
                       <input
                         value={
-                          `${gestoresDaArea[0].usuarioNome} — ${gestoresDaArea[0].usuarioEmail}`
+                          `${aprovadoresElegiveis[0].usuarioNome} — ${aprovadoresElegiveis[0].usuarioEmail}`
                         }
                         readOnly
                         aria-readonly="true"
@@ -1093,8 +1163,7 @@ const NovoDocumentoPage:
                           lineHeight: 1.4
                         }}
                       >
-                        Definido automaticamente: é o Gestor cadastrado
-                        para esta área.
+                        {origemAprovador || 'Definido automaticamente: é o Gestor cadastrado para esta área.'}
                       </div>
                     </>
                   )
@@ -1104,7 +1173,7 @@ const NovoDocumentoPage:
                   // Mais de um Gestor ativo na área: escolha entre eles
                   // (nunca texto livre — continua restrito aos Gestores).
                   areaId &&
-                  gestoresDaArea.length > 1 && (
+                  aprovadoresElegiveis.length > 1 && (
                     <>
                       <select
                         value={
@@ -1121,11 +1190,11 @@ const NovoDocumentoPage:
                         }
                       >
                         <option value="">
-                          Selecione o Gestor responsável
+                          {origemAprovador ? 'Selecione o aprovador' : 'Selecione o Gestor responsável'}
                         </option>
 
                         {
-                          gestoresDaArea.map(
+                          aprovadoresElegiveis.map(
                             vinculo => (
                               <option
                                 key={
@@ -1152,8 +1221,11 @@ const NovoDocumentoPage:
                           lineHeight: 1.4
                         }}
                       >
-                        Esta área tem mais de um Gestor cadastrado;
-                        selecione quem vai aprovar este documento.
+                        {
+                          origemAprovador
+                            ? `${origemAprovador} Selecione quem vai aprovar este documento.`
+                            : 'Esta área tem mais de um Gestor cadastrado; selecione quem vai aprovar este documento.'
+                        }
                       </div>
                     </>
                   )

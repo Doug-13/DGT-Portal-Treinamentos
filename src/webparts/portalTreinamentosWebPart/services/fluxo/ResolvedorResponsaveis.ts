@@ -191,3 +191,137 @@ export const descreverResolvido = (
 
   return resolvido.descricao;
 };
+
+// ------------------------------------------------------------
+// Etapa de aprovação do fluxo e quem pode aprová-la
+// ------------------------------------------------------------
+
+// A etapa que "aprova" o documento:
+//   1. a etapa marcada com status do documento "Aprovação"
+//      (se houver mais de uma, a última pelo caminho do fluxo);
+//   2. senão, a última etapa com responsável antes de uma tarefa
+//      de sistema de publicação;
+//   3. senão, a última etapa com responsável do fluxo.
+export const etapaDeAprovacao = (
+  definicao: IFluxoDefinicao
+): IFluxoDefinicao['elementos'][0] | undefined => {
+
+  // Ordem pelo caminho a partir do início (busca em largura).
+  const inicio =
+    definicao.elementos.find(item => item.tipo === 'inicio');
+
+  const ordem: string[] = [];
+
+  if (inicio) {
+    const fila: string[] = [inicio.id];
+
+    while (fila.length > 0) {
+      const atual = fila.shift() as string;
+
+      if (ordem.indexOf(atual) >= 0) {
+        continue;
+      }
+
+      ordem.push(atual);
+
+      definicao.transicoes
+        .filter(transicao => transicao.origemId === atual && !transicao.excecao)
+        .forEach(transicao => fila.push(transicao.destinoId));
+    }
+  }
+
+  const humanas =
+    ordem
+      .map(id => definicao.elementos.find(item => item.id === id))
+      .filter((item): item is IFluxoDefinicao['elementos'][0] => !!item && item.tipo === 'tarefaHumana');
+
+  const marcadas =
+    humanas.filter(item => item.statusDocumento === 'Aprovação');
+
+  if (marcadas.length > 0) {
+    return marcadas[marcadas.length - 1];
+  }
+
+  // Etapa humana que leva (direto ou por decisões) a uma publicação.
+  const levaAPublicacao = (
+    id: string,
+    visitados: string[]
+  ): boolean => {
+
+    if (visitados.indexOf(id) >= 0) {
+      return false;
+    }
+
+    return definicao.transicoes
+      .filter(transicao => transicao.origemId === id && !transicao.excecao)
+      .some(
+        transicao => {
+          const destino = definicao.elementos.find(item => item.id === transicao.destinoId);
+
+          if (!destino) {
+            return false;
+          }
+
+          if (destino.tipo === 'tarefaSistema' && !!destino.acaoSistema) {
+            return true;
+          }
+
+          return destino.tipo === 'gateway'
+            ? levaAPublicacao(destino.id, visitados.concat(id))
+            : false;
+        }
+      );
+  };
+
+  const antesDaPublicacao =
+    humanas.filter(item => levaAPublicacao(item.id, []));
+
+  if (antesDaPublicacao.length > 0) {
+    return antesDaPublicacao[antesDaPublicacao.length - 1];
+  }
+
+  return humanas.length > 0
+    ? humanas[humanas.length - 1]
+    : undefined;
+};
+
+// Usuários (vínculos usuário × área) que atendem aos responsáveis.
+// "Autor da revisão" não vira pessoa aqui: depende de quem criar a revisão.
+export const usuariosElegiveis = (
+  responsaveis: IFluxoResponsavel[],
+  dados: IDadosRevisaoResponsaveis,
+  vinculos: IUsuarioAreaAdmin[]
+): IUsuarioAreaAdmin[] => {
+
+  const lista: IUsuarioAreaAdmin[] = [];
+
+  resolverResponsaveis(responsaveis, dados).forEach(
+    resolvido => {
+
+      if (!resolvido.usuarioId && !resolvido.areaId) {
+        return;
+      }
+
+      vinculos
+        .filter(vinculo => vinculo.ativo && usuarioAtende(resolvido, vinculo.usuarioId, [vinculo]))
+        .forEach(
+          vinculo => {
+            if (!lista.some(item => guid(item.usuarioId) === guid(vinculo.usuarioId))) {
+              lista.push(vinculo);
+            }
+          }
+        );
+
+      // Usuário específico sem vínculo de área: ainda entra pela
+      // primeira ocorrência dele em qualquer vínculo.
+      if (resolvido.usuarioId && !lista.some(item => guid(item.usuarioId) === guid(resolvido.usuarioId))) {
+        const qualquer = vinculos.find(item => guid(item.usuarioId) === guid(resolvido.usuarioId));
+        if (qualquer) {
+          lista.push(qualquer);
+        }
+      }
+    }
+  );
+
+  return lista;
+};
