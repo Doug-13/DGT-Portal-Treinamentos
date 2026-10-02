@@ -5,11 +5,19 @@ import {
   COMMIT_BUILD,
   DATA_BUILD,
   INovidadeVersao,
+  INovidadeItem,
   NOVIDADES,
   TipoNovidade,
   VERSAO_PORTAL,
   VERSAO_SOLUCAO
 } from '../../constants/versao';
+
+import * as InfoVersao from '../../constants/versao';
+
+// Itens de "## [Não publicado]" do CHANGELOG (próxima versão, em
+// preparação). Lido com tolerância: versao.ts antigos não têm a lista.
+const NOVIDADES_PENDENTES: INovidadeItem[] =
+  (InfoVersao as unknown as { NOVIDADES_PENDENTES?: INovidadeItem[] }).NOVIDADES_PENDENTES || [];
 
 // ============================================================
 // VERSÃO DO PORTAL
@@ -86,7 +94,8 @@ const registrarNoConsole = (): void => {
 const Versao: React.FC<{
   item: INovidadeVersao;
   atual: boolean;
-}> = ({ item, atual }) => (
+  emPreparacao?: boolean;
+}> = ({ item, atual, emPreparacao = false }) => (
   <li
     style={{
       padding: '14px 0',
@@ -102,8 +111,24 @@ const Versao: React.FC<{
       }}
     >
       <strong style={{ fontSize: '15px', color: '#0B2D4D' }}>
-        v{item.versao}
+        {emPreparacao ? 'Próxima versão' : `v${item.versao}`}
       </strong>
+
+      {emPreparacao && (
+        <span
+          style={{
+            padding: '1px 8px',
+            borderRadius: '999px',
+            border: '1px dashed #05C3DD',
+            background: '#E6F9FC',
+            color: '#0B2D4D',
+            fontSize: '11px',
+            fontWeight: 700
+          }}
+        >
+          Em preparação
+        </span>
+      )}
 
       {atual && (
         <span
@@ -121,7 +146,7 @@ const Versao: React.FC<{
       )}
 
       <span style={{ marginLeft: 'auto', color: '#66788A', fontSize: '12px' }}>
-        {formatarData(item.data)}
+        {emPreparacao ? 'ainda não publicada' : formatarData(item.data)}
       </span>
     </div>
 
@@ -291,12 +316,20 @@ const VersaoPortal: React.FC = () => {
               </button>
             </div>
 
-            {NOVIDADES.length === 0 ? (
+            {NOVIDADES.length === 0 && NOVIDADES_PENDENTES.length === 0 ? (
               <p style={{ margin: '18px 0', fontSize: '13px', color: '#66788A' }}>
                 Nenhuma novidade registrada ainda.
               </p>
             ) : (
               <ul style={{ listStyle: 'none', margin: '14px 0 0', padding: 0 }}>
+                {NOVIDADES_PENDENTES.length > 0 && (
+                  <Versao
+                    key="em-preparacao"
+                    item={{ versao: 'proxima', data: '', itens: NOVIDADES_PENDENTES }}
+                    atual={false}
+                    emPreparacao={true}
+                  />
+                )}
                 {NOVIDADES.map(item => (
                   <Versao
                     key={item.versao}

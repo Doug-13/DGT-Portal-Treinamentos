@@ -179,6 +179,34 @@ const TIPOS = {
   ajuste: 'Melhoria'
 };
 
+// Converte as linhas "- Tipo: texto" de um trecho em itens.
+const lerItens = texto =>
+  texto
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => /^[-*]\s+/.test(l))
+    .map(l => {
+      const conteudo = l.replace(/^[-*]\s+/, '');
+      const t = conteudo.match(/^([A-Za-zÀ-ú]+)\s*:\s*(.+)$/);
+      const chave = t ? t[1].toLowerCase() : '';
+      return TIPOS[chave]
+        ? { tipo: TIPOS[chave], texto: t[2].trim() }
+        : { tipo: 'Melhoria', texto: conteudo };
+    });
+
+// Itens ainda em "## [Não publicado]": aparecem no portal como
+// "Próxima versão (em preparação)" para conferência antes de gerar
+// a versão. Ao gerar a versão eles passam para a nova seção.
+const lerPendentes = () => {
+  const inicio = changelog.indexOf(SECAO_PENDENTE);
+  if (inicio < 0) return [];
+  const resto = changelog.slice(inicio + SECAO_PENDENTE.length);
+  const proxima = resto.search(/^## /m);
+  return lerItens(proxima >= 0 ? resto.slice(0, proxima) : resto);
+};
+
+const pendentes = lerPendentes();
+
 const novidades = [];
 const regexSecao = /^## \[(\d+\.\d+\.\d+)\](?:\s*-\s*(\d{4}-\d{2}-\d{2}))?\s*$/gm;
 let m;
@@ -196,18 +224,7 @@ secoes.forEach((secao, i) => {
   const corte = corpo.search(/^## /m);
   const texto = corte >= 0 ? corpo.slice(0, corte) : corpo;
 
-  const itens = texto
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => /^[-*]\s+/.test(l))
-    .map(l => {
-      const conteudo = l.replace(/^[-*]\s+/, '');
-      const t = conteudo.match(/^([A-Za-zÀ-ú]+)\s*:\s*(.+)$/);
-      const chave = t ? t[1].toLowerCase() : '';
-      return TIPOS[chave]
-        ? { tipo: TIPOS[chave], texto: t[2].trim() }
-        : { tipo: 'Melhoria', texto: conteudo };
-    });
+  const itens = lerItens(texto);
 
   novidades.push({ versao: secao.versao, data: secao.data, itens });
 });
@@ -243,6 +260,9 @@ export const DATA_BUILD = ${JSON.stringify(new Date().toISOString())};
 export const COMMIT_BUILD = ${JSON.stringify(commitAtual())};
 
 export const NOVIDADES: INovidadeVersao[] = ${JSON.stringify(novidades.slice(0, MAX_VERSOES_NO_PORTAL), null, 2)};
+
+// Itens de "## [Não publicado]" (próxima versão, em preparação).
+export const NOVIDADES_PENDENTES: INovidadeItem[] = ${JSON.stringify(pendentes, null, 2)};
 `;
 
 fs.writeFileSync(ARQ_VERSAO_TS, conteudoTs, 'utf8');
@@ -256,4 +276,5 @@ console.log(tipo === 'none'
   ? `  Versão mantida: ${versao} (versao.ts atualizado)`
   : `  Versão do portal: ${atual.join('.')} → ${versao}  (pacote SharePoint ${versaoSolucao})`);
 console.log(`  Novidades publicadas no portal: ${Math.min(novidades.length, MAX_VERSOES_NO_PORTAL)} versão(ões)`);
+console.log(`  Próxima versão (em preparação): ${pendentes.length} item(ns) em "Não publicado"`);
 console.log('');
