@@ -1,4 +1,9 @@
 import {
+  maiorRevisao,
+  proximaRevisaoInteira
+} from '../utils/numeracaoRevisao';
+
+import {
   DataverseService
 } from './DataverseService';
 
@@ -176,64 +181,23 @@ export const numeroRevisao = (
     : -1;
 };
 
-// "Rev.00" → "Rev.01" | "Rev.9" → "Rev.10" | "03" → "04".
-// Usa a MAIOR revisão existente, preservando prefixo e quantidade de
-// dígitos. Sem revisões → "Rev.00".
+// Próxima revisão INTEIRA: "Rev.00" → "Rev.01" · "Rev.00B" → "Rev.01"
+// · "03" → "04". Usa a MAIOR revisão existente (considerando as
+// sub-revisões), preservando o prefixo. Sem revisões → "Rev.00".
+// A sub-revisão (00A, 00B...) é definida pelo evento de revisão do
+// fluxo do processo — ver utils/numeracaoRevisao.ts.
 export const calcularProximaRevisao = (
   revisoes: IDocumentoRevisao[]
 ): string => {
 
-  let maior: IDocumentoRevisao | undefined;
-
-  revisoes.forEach(
-    revisao => {
-      if (
-        !maior ||
-        numeroRevisao(revisao.revisao) >
-          numeroRevisao(maior.revisao)
-      ) {
-        maior = revisao;
-      }
-    }
-  );
-
-  if (
-    !maior ||
-    numeroRevisao(maior.revisao) < 0
-  ) {
-    return 'Rev.00';
-  }
-
-  const base =
-    maior.revisao.trim();
-
-  const encontrado =
-    base.match(/^(.*?)(\d+)(\D*)$/);
-
-  if (!encontrado) {
-    return 'Rev.00';
-  }
-
-  const prefixo =
-    encontrado[1];
-
-  const digitos =
-    encontrado[2];
-
-  const sufixo =
-    encontrado[3];
-
-  const proximo =
-    String(
-      Number(digitos) + 1
+  const maior =
+    maiorRevisao(
+      revisoes.map(revisao => revisao.revisao)
     );
 
-  const preenchido =
-    proximo.length < digitos.length
-      ? `${'0'.repeat(digitos.length - proximo.length)}${proximo}`
-      : proximo;
-
-  return `${prefixo}${preenchido}${sufixo}`;
+  return maior
+    ? proximaRevisaoInteira(maior)
+    : 'Rev.00';
 };
 
 // Revisão que está em andamento (Elaboração / Aprovação / legado

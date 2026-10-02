@@ -673,7 +673,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
 
           if (tipo === 'tarefaHumana') {
             lista = lista.concat(acoesDe(conexao.origemId));
-          } else if (tipo === 'gateway') {
+          } else if (tipo === 'gateway' || tipo === 'eventoRevisao') {
+            // Decisões e eventos de revisão repassam o resultado.
             lista = lista.concat(resultadosQueChegam(conexao.origemId, visitados.concat(destinoId)));
           }
         }
@@ -903,6 +904,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
             ? 'Tarefa de sistema'
             : tipoSelecionado === 'gateway'
               ? 'Decisão'
+              : tipoSelecionado === 'eventoRevisao'
+                ? 'Evento de revisão'
               : tipoSelecionado === 'inicio'
                 ? 'Início'
                 : tipoSelecionado === 'fim'

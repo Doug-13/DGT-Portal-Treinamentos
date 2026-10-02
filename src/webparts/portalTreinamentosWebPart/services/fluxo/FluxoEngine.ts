@@ -460,7 +460,11 @@ const DESCRICAO_ACAO_SISTEMA: Record<AcaoSistemaFluxo, string> = {
   publicarComRetreinamento:
     'Publicação com retreinamento (simulada)',
   publicarSemRetreinamento:
-    'Publicação com dispensa de retreinamento (simulada)'
+    'Publicação com dispensa de retreinamento (simulada)',
+  novaRevisao:
+    'Número da revisão definido: nova revisão (00 → 01)',
+  novaSubRevisao:
+    'Número da revisão definido: nova sub-revisão (00 → 00A)'
 };
 
 // Avança automaticamente por gateways e tarefas de sistema até
@@ -596,6 +600,34 @@ const avancar = (
 
       resultadoAtual =
         'concluido';
+    }
+
+    // Evento de revisão: pede para renumerar a revisão e segue.
+    // Mantém o resultado da última ação humana (como um gateway),
+    // para que uma decisão logo depois continue funcionando.
+    if (destino.tipo === 'eventoRevisao') {
+
+      const acao: AcaoSistemaFluxo =
+        destino.tipoRevisao === 'subrevisao'
+          ? 'novaSubRevisao'
+          : 'novaRevisao';
+
+      acoesSistema.push(
+        acao
+      );
+
+      instancia.historico.unshift({
+        id: gerarId('hist'),
+        data: agora,
+        elementoId: destino.id,
+        elementoNome: destino.nome,
+        acaoChave: acao,
+        acaoRotulo: DESCRICAO_ACAO_SISTEMA[acao],
+        resultado: 'concluido',
+        executadoPorId: 'sistema',
+        executadoPorNome: 'Sistema',
+        sistema: true
+      });
     }
 
     // Gateways mantêm o resultado da última ação humana.

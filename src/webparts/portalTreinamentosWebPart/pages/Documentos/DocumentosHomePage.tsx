@@ -145,8 +145,13 @@ const atendeFiltroIndicador = (
     case 'pendencias':
       return idsPendentes.indexOf(guidTela(documento.id)) >= 0;
 
+    // Responsável pelo documento OU por uma etapa do fluxo que está
+    // aguardando o usuário.
     case 'responsavel':
-      return !!meuId && guidTela(documento.responsavelId) === meuId;
+      return (
+        (!!meuId && guidTela(documento.responsavelId) === meuId) ||
+        idsPendentes.indexOf(guidTela(documento.id)) >= 0
+      );
 
     default:
       return true;
@@ -415,6 +420,28 @@ const DocumentosHomePage:
         ]
       );
 
+    // Pendências são calculadas sobre TODOS os documentos: quem é
+    // responsável por uma etapa precisa ver o documento mesmo que não
+    // seja membro da área dele.
+    const pendencias =
+      useDocumentosPendencias(
+        dataverseService,
+        documentos,
+        contexto,
+        usuariosAreas
+      );
+
+    const idsPendentes =
+      React.useMemo(
+        () =>
+          pendencias.pendencias.map(
+            pendencia => guidTela(pendencia.documento.id)
+          ),
+        [
+          pendencias.pendencias
+        ]
+      );
+
     const documentosVisiveis =
       React.useMemo(
         () =>
@@ -422,13 +449,15 @@ const DocumentosHomePage:
             documentos,
             contexto,
             areasVisiveis,
-            usuariosAreas
+            usuariosAreas,
+            idsPendentes
           ),
         [
           documentos,
           contexto,
           areasVisiveis,
-          usuariosAreas
+          usuariosAreas,
+          idsPendentes
         ]
       );
 
@@ -438,14 +467,6 @@ const DocumentosHomePage:
       useArquivosDocumentos(
         dataverseService,
         documentos
-      );
-
-    const pendencias =
-      useDocumentosPendencias(
-        dataverseService,
-        documentos,
-        contexto,
-        usuariosAreas
       );
 
     const [
@@ -494,17 +515,6 @@ const DocumentosHomePage:
               ? ''
               : filtro
         );
-
-    const idsPendentes =
-      React.useMemo(
-        () =>
-          pendencias.pendencias.map(
-            pendencia => guidTela(pendencia.documento.id)
-          ),
-        [
-          pendencias.pendencias
-        ]
-      );
 
     // Lista com pesquisa + área + tipo + status. É a base tanto da
     // tabela quanto dos NÚMEROS dos cards — assim o número do card é
@@ -603,12 +613,11 @@ const DocumentosHomePage:
             guidTela(contexto?.usuarioId);
 
           const minhaResponsabilidade =
-            meuId
-              ? baseFiltrada.filter(
-                documento =>
-                  guidTela(documento.responsavelId) === meuId
-              ).length
-              : 0;
+            baseFiltrada.filter(
+              documento =>
+                (!!meuId && guidTela(documento.responsavelId) === meuId) ||
+                idsPendentes.indexOf(guidTela(documento.id)) >= 0
+            ).length;
 
           return [
             {
@@ -643,7 +652,7 @@ const DocumentosHomePage:
               valor: minhaResponsabilidade,
               icone: 'checkCircle',
               ...CORES_INDICADOR.azul,
-              detalhe: 'documentos',
+              detalhe: 'documento ou etapa do fluxo',
               ativo: filtroIndicador === 'responsavel',
               onClick: () => alternarFiltro('responsavel')
             },

@@ -1095,9 +1095,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                             : (
                               <>
                                 <strong style={{ color: COR_INDIGO }}>Aguardando o responsável.</strong>{' '}
-                                A etapa “{elementoAtual.nome}” está com{' '}
-                                <strong>{fluxo.responsaveisEtapaAtual.join(' · ') || 'o responsável definido no fluxo'}</strong>.
-                                Somente {fluxo.responsaveisEtapaAtual.length > 1 ? 'eles podem' : 'ele pode'} avançar a revisão.
+                                Somente {fluxo.responsaveisEtapaAtual.length > 1 ? 'os responsáveis indicados acima podem' : 'o responsável indicado acima pode'} avançar esta etapa.
                               </>
                             )
                         }

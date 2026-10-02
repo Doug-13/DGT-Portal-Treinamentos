@@ -240,6 +240,11 @@ export class FluxoService {
       ) {
         try {
           await contexto.executarAcoesSistema(resultado.acoesSistema, resultado.instancia);
+
+          // As tarefas automáticas alteram a própria revisão.
+          if (this.repositorio.renovarVersao) {
+            await this.repositorio.renovarVersao(revisaoId);
+          }
         } catch (error) {
           console.error(error);
           return {

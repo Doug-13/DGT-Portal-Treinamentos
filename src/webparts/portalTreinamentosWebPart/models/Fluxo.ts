@@ -15,11 +15,19 @@
 //   IFluxoHistorico        → dgt_historicofluxo
 // ============================================================
 
+import {
+  TipoEventoRevisao
+} from '../utils/numeracaoRevisao';
+
 export type TipoElementoFluxo =
   | 'inicio'
   | 'tarefaHumana'
   | 'gateway'
   | 'tarefaSistema'
+  // Evento de revisão (círculo no desenho): ao ser percorrido,
+  // define o número da revisão — inteira (00 → 01) ou
+  // sub-revisão (00 → 00A). Ver utils/numeracaoRevisao.ts.
+  | 'eventoRevisao'
   | 'fim';
 
 // Quem pode executar uma etapa. Os tipos 'grupo', 'funcao',
@@ -83,7 +91,11 @@ export type StatusDocumentoEtapa =
 // Ação de sistema executada por uma tarefa de sistema.
 export type AcaoSistemaFluxo =
   | 'publicarComRetreinamento'
-  | 'publicarSemRetreinamento';
+  | 'publicarSemRetreinamento'
+  // Gerados pelo evento de revisão (não aparecem na lista da
+  // tarefa de sistema).
+  | 'novaRevisao'
+  | 'novaSubRevisao';
 
 export interface IFluxoAcao {
   chave: string;
@@ -231,6 +243,9 @@ export interface IFluxoElemento {
 
   // tarefaHumana: status do documento durante a etapa.
   statusDocumento?: StatusDocumentoEtapa;
+
+  // eventoRevisao: como o número da revisão muda ao passar aqui.
+  tipoRevisao?: TipoEventoRevisao;
 }
 
 export type TipoCondicaoTransicao =

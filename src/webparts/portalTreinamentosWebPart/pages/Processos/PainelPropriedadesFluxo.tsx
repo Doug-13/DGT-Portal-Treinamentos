@@ -1,6 +1,11 @@
 import * as React from 'react';
 
 import {
+  DESCRICAO_TIPO_EVENTO_REVISAO,
+  TipoEventoRevisao
+} from '../../utils/numeracaoRevisao';
+
+import {
   AcaoSistemaFluxo,
   IFluxoAcao,
   IFluxoCampo,
@@ -434,6 +439,66 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           <div style={{ fontSize: '12px', marginTop: '4px' }}>
             No modo de teste a ação é apenas simulada e registrada no histórico.
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ----------------------------------------------------------
+  // EVENTO DE REVISÃO
+  // ----------------------------------------------------------
+
+  if (tipo === 'eventoRevisao') {
+
+    const tipoRevisao: TipoEventoRevisao =
+      config.tipoRevisao || 'revisao';
+
+    const exemplo =
+      tipoRevisao === 'subrevisao'
+        ? 'Última publicada Rev.00 → Rev.00A · Rev.00A → Rev.00B · Rev.01 → Rev.01A'
+        : 'Última publicada Rev.00 → Rev.01 · Rev.00B → Rev.01';
+
+    return (
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', color: COR_AZUL }}>
+        {campoNome}
+
+        <fieldset style={estiloGrupo}>
+          <legend style={estiloLegenda}>Numeração da revisão</legend>
+
+          {
+            (['revisao', 'subrevisao'] as TipoEventoRevisao[]).map(
+              opcao => (
+                <label
+                  key={opcao}
+                  style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13.5px', marginBottom: '6px' }}
+                >
+                  <input
+                    type="radio"
+                    name="prop-tipo-revisao"
+                    checked={tipoRevisao === opcao}
+                    disabled={!editavel}
+                    onChange={() => alterar({ tipoRevisao: opcao })}
+                  />
+                  {DESCRICAO_TIPO_EVENTO_REVISAO[opcao]}
+                </label>
+              )
+            )
+          }
+
+          <div style={{ fontSize: '12.5px', lineHeight: '18px', background: '#EDF0F5', borderRadius: '6px', padding: '8px 10px', marginTop: '4px' }}>
+            Quando o documento passa por este evento, a revisão recebe o número
+            calculado a partir da <strong>última revisão publicada</strong>.
+            <br />
+            {exemplo}
+            <br />
+            Sem revisão publicada, o documento recebe <strong>Rev.00</strong>.
+          </div>
+        </fieldset>
+
+        <div style={{ fontSize: '12px', lineHeight: '17px' }}>
+          Coloque o evento <strong>antes</strong> da tarefa que publica a revisão, para que
+          ela seja publicada já com o número certo. O evento não tem responsável e tem
+          apenas uma saída; para escolher caminhos, use uma decisão depois dele.
         </div>
       </div>
     );

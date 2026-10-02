@@ -1,5 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import Modeler from 'bpmn-js/lib/Modeler';
+import BaseRenderer from 'diagram-js/lib/draw/BaseRenderer';
+import {
+  append as svgAppend,
+  attr as svgAttr,
+  create as svgCreate
+} from 'tiny-svg';
 
 import {
   IBpmnConexao,
@@ -62,6 +68,8 @@ const PALETA_PERMITIDA: string[] = [
   'global-connect-tool',
   'tool-separator',
   'create.start-event',
+  // Evento intermediário = evento de revisão (círculo).
+  'create.intermediate-event',
   'create.end-event',
   'create.exclusive-gateway',
   'create.task'
@@ -73,9 +81,100 @@ const CONTEXTO_BLOQUEADO: string[] = [
   'append.timer-intermediate-event',
   'append.condition-intermediate-event',
   'append.signal-intermediate-event',
-  'append.compensation-activity',
-  'append.intermediate-event'
+  'append.compensation-activity'
 ];
+
+// ------------------------------------------------------------
+// Evento de revisão: círculo simples (mesmo formato do Início)
+// com um "R" no centro. No BPMN ele é um evento intermediário
+// (bpmn:IntermediateThrowEvent), que por padrão seria desenhado
+// com borda dupla.
+// ------------------------------------------------------------
+
+const COR_EVENTO_REVISAO = '#202A44';
+
+const ICONE_EVENTO_REVISAO =
+  '<svg width="30" height="30" viewBox="0 0 26 26" aria-hidden="true">' +
+  '<circle cx="13" cy="13" r="11" fill="none" stroke="currentColor" stroke-width="2" />' +
+  '<text x="13" y="17.5" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor" font-family="Arial, sans-serif">R</text>' +
+  '</svg>';
+
+const ehEventoRevisao = (
+  elemento: any
+): boolean =>
+  !!elemento &&
+  elemento.type === 'bpmn:IntermediateThrowEvent' &&
+  !elemento.labelTarget &&
+  !(
+    elemento.businessObject &&
+    elemento.businessObject.eventDefinitions &&
+    elemento.businessObject.eventDefinitions.length > 0
+  );
+
+function RenderizadorEventoRevisao(this: any, eventBus: any, bpmnRenderer: any): void {
+  (BaseRenderer as any).call(this, eventBus, 1500);
+  this._bpmnRenderer = bpmnRenderer;
+}
+
+RenderizadorEventoRevisao.prototype = Object.create((BaseRenderer as any).prototype);
+RenderizadorEventoRevisao.prototype.constructor = RenderizadorEventoRevisao;
+RenderizadorEventoRevisao.$inject = ['eventBus', 'bpmnRenderer'];
+
+RenderizadorEventoRevisao.prototype.canRender = function (elemento: any): boolean {
+  return ehEventoRevisao(elemento);
+};
+
+RenderizadorEventoRevisao.prototype.drawShape = function (pai: SVGElement, elemento: any): SVGElement {
+
+  const di =
+    elemento.di || {};
+
+  const corBorda =
+    (di.get && di.get('color:border-color')) || COR_EVENTO_REVISAO;
+
+  const corFundo =
+    (di.get && di.get('color:background-color')) || '#FFFFFF';
+
+  const raio =
+    Math.min(elemento.width, elemento.height) / 2;
+
+  const circulo =
+    svgCreate('circle');
+
+  svgAttr(circulo, {
+    cx: elemento.width / 2,
+    cy: elemento.height / 2,
+    r: raio - 1,
+    fill: corFundo,
+    stroke: corBorda,
+    'stroke-width': 2
+  });
+
+  svgAppend(pai, circulo);
+
+  const letra =
+    svgCreate('text');
+
+  svgAttr(letra, {
+    x: elemento.width / 2,
+    y: elemento.height / 2 + 6,
+    'text-anchor': 'middle',
+    'font-size': 17,
+    'font-weight': 700,
+    'font-family': 'Arial, sans-serif',
+    fill: corBorda
+  });
+
+  letra.textContent = 'R';
+
+  svgAppend(pai, letra);
+
+  return circulo;
+};
+
+RenderizadorEventoRevisao.prototype.getShapePath = function (this: any, elemento: any): string {
+  return this._bpmnRenderer.getShapePath(elemento);
+};
 
 // O provedor devolve uma FUNÇÃO que recebe as entradas já montadas
 // pelo bpmn-js e retorna só as permitidas (devolver um objeto apenas
@@ -94,6 +193,15 @@ FiltroPaleta.prototype.getPaletteEntries = function (): (entradas: Record<string
       chave => {
         if (PALETA_PERMITIDA.indexOf(chave) >= 0) {
           filtradas[chave] = entradas[chave];
+        }
+
+        // Ícone próprio do evento de revisão (círculo com "R").
+        if (chave === 'create.intermediate-event' && filtradas[chave]) {
+          filtradas[chave] = {
+            ...(filtradas[chave] as Record<string, unknown>),
+            className: '',
+            html: `<div class="entry" draggable="true" style="display:flex;align-items:center;justify-content:center">${ICONE_EVENTO_REVISAO}</div>`
+          };
         }
       }
     );
@@ -119,6 +227,14 @@ FiltroContexto.prototype.getContextPadEntries = function (this: any, elemento: a
   return (entradas: Record<string, unknown>) => {
 
     CONTEXTO_BLOQUEADO.forEach(chave => { delete entradas[chave]; });
+
+    if (entradas['append.intermediate-event']) {
+      entradas['append.intermediate-event'] = {
+        ...(entradas['append.intermediate-event'] as Record<string, unknown>),
+        className: '',
+        html: `<div class="entry" style="display:flex;align-items:center;justify-content:center;color:#202A44">${ICONE_EVENTO_REVISAO}</div>`
+      };
+    }
 
     // Botão "Configurar" no menu do elemento (abre o modal).
     if (elemento && elemento.type !== 'label') {
@@ -171,6 +287,9 @@ const TRADUCOES: Record<string, string> = {
   'Activate global connect tool': 'Ligar elementos',
   'Create start event': 'Início',
   'Create end event': 'Fim',
+  'Create intermediate/boundary event': 'Evento de revisão',
+  'Append intermediate/boundary event': 'Adicionar evento de revisão',
+  'Intermediate throw event': 'Evento de revisão',
   'Create gateway': 'Decisão',
   'Create task': 'Etapa',
   'Append task': 'Adicionar etapa',
@@ -207,7 +326,8 @@ const traduzir = (
 };
 
 const moduloPersonalizado = {
-  __init__: ['filtroPaleta', 'filtroContexto', 'duploCliqueConfigura'],
+  __init__: ['filtroPaleta', 'filtroContexto', 'duploCliqueConfigura', 'renderizadorEventoRevisao'],
+  renderizadorEventoRevisao: ['type', RenderizadorEventoRevisao],
   filtroPaleta: ['type', FiltroPaleta],
   filtroContexto: ['type', FiltroContexto],
   duploCliqueConfigura: ['type', DuploCliqueConfigura],

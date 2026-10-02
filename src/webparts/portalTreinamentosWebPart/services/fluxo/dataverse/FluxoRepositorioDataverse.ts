@@ -195,6 +195,35 @@ export class FluxoRepositorioDataverse
     return avisos;
   }
 
+  public async renovarVersao(
+    revisaoId: string
+  ): Promise<void> {
+
+    const id =
+      guid(revisaoId);
+
+    const anterior =
+      this.cache[id];
+
+    if (!anterior) {
+      return;
+    }
+
+    const lido =
+      await this.dataverse.obterRegistro(
+        TABELA_DOCUMENTO_REVISAO,
+        id,
+        [REVISAO_FLUXO.situacaoFluxo]
+      );
+
+    if (lido) {
+      this.cache[id] = {
+        ...anterior,
+        etag: lido.etag
+      };
+    }
+  }
+
   public async remover(): Promise<void> {
     throw new Error(
       'No Dataverse o fluxo de uma revisão não pode ser reiniciado: o histórico é preservado.'

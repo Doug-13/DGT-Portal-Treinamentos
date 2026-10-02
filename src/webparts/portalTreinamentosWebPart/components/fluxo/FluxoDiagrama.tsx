@@ -297,6 +297,43 @@ const renderizarElemento = (
     );
   }
 
+  // Evento de revisão: círculo simples com "R" (mesmo formato do
+  // Início), nome abaixo.
+  if (elemento.tipo === 'eventoRevisao') {
+
+    const atual =
+      status === 'atual';
+
+    const percorrido =
+      status === 'concluido';
+
+    return (
+      <g key={elemento.id}>
+        <title>{`${titulo} · ${elemento.tipoRevisao === 'subrevisao' ? 'Nova sub-revisão (00 → 00A)' : 'Nova revisão (00 → 01)'}`}</title>
+        <circle
+          cx={x + largura / 2}
+          cy={y + altura / 2}
+          r={largura / 2 - 1}
+          fill={percorrido ? COR_CIANO_CLARO : '#FFFFFF'}
+          stroke={atual ? COR_CIANO : COR_AZUL}
+          strokeWidth={2}
+        />
+        <text
+          x={x + largura / 2}
+          y={y + altura / 2 + 5}
+          textAnchor="middle"
+          fontSize={14}
+          fontWeight={700}
+          fill={COR_AZUL}
+          fontFamily="Barlow, Arial, sans-serif"
+        >
+          R
+        </text>
+        {rotuloExterno(elemento)}
+      </g>
+    );
+  }
+
   if (elemento.tipo === 'gateway') {
 
     const estilo =

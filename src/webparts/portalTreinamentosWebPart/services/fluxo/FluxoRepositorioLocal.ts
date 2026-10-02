@@ -53,6 +53,13 @@ export interface IFluxoRepositorio {
   remover(
     revisaoId: string
   ): Promise<void>;
+
+  // Depois das tarefas automáticas (renumerar, publicar), que alteram
+  // a própria revisão, atualiza a versão (ETag) guardada para que a
+  // gravação do estado do fluxo não seja recusada como conflito.
+  renovarVersao?(
+    revisaoId: string
+  ): Promise<void>;
 }
 
 // Mantido igual à versão anterior para não perder simulações já

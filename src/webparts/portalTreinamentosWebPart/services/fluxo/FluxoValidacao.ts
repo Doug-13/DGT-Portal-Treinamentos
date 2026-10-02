@@ -56,7 +56,8 @@ const rotaExiste = (
         return false;
       }
 
-      return destino.tipo === 'gateway'
+      // Decisões e eventos de revisão repassam o resultado da ação.
+      return destino.tipo === 'gateway' || destino.tipo === 'eventoRevisao'
         ? rotaExiste(definicao, destino.id, resultado, visitados.concat(origemId))
         : true;
     }
@@ -251,6 +252,17 @@ export const validarDefinicao = (
           (item.prazoDiasUteis < 0 || item.prazoDiasUteis > 365)
         ) {
           erros.push(`O prazo da etapa "${item.nome}" deve ficar entre 0 e 365 dias úteis.`);
+        }
+      }
+
+      if (item.tipo === 'eventoRevisao') {
+
+        if (saidas.length > 1) {
+          erros.push(`O evento de revisão "${item.nome}" deve ter apenas uma ligação de saída. Para escolher caminhos, use uma decisão depois dele.`);
+        }
+
+        if (!item.tipoRevisao) {
+          erros.push(`Escolha no evento "${item.nome}" se ele gera uma nova revisão ou uma nova sub-revisão.`);
         }
       }
 

@@ -1,4 +1,8 @@
 import {
+  compararRevisoes
+} from '../utils/numeracaoRevisao';
+
+import {
   DataverseService,
   IDataverseRecord
 } from './DataverseService';
@@ -477,18 +481,15 @@ export class DocumentoService {
       .sort(
         (a, b) => {
 
-          const numeroA =
-            this.numeroRevisao(
+          // Considera a sub-revisão: Rev.01 > Rev.00B > Rev.00A > Rev.00.
+          const ordem =
+            compararRevisoes(
+              b.revisao,
               a.revisao
             );
 
-          const numeroB =
-            this.numeroRevisao(
-              b.revisao
-            );
-
-          if (numeroA !== numeroB) {
-            return numeroB - numeroA;
+          if (ordem !== 0) {
+            return ordem;
           }
 
           const dataA =

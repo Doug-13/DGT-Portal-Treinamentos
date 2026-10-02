@@ -34,8 +34,13 @@ import {
 
 import {
   calcularProximaRevisao,
+  estagioRevisao,
   obterRevisaoEmAndamento
 } from '../services/DocumentoRevisaoFluxoService';
+
+import {
+  rotuloPeloEvento
+} from '../utils/numeracaoRevisao';
 
 import {
   RevisaoDocumentoAdminService
@@ -426,6 +431,45 @@ export const useFluxoRevisaoTeste = (
     executarAcoesSistema: local || !dataverseService || !revisaoEmAndamento
       ? undefined
       : async (acoes: AcaoSistemaFluxo[], novaInstancia: IFluxoInstancia): Promise<void> => {
+
+        // 1) Evento de revisão: renumera ANTES de publicar, para a
+        //    revisão já ser publicada com o número certo
+        //    (00 → 01 ou 00 → 00A, conforme o evento).
+        const renumerar =
+          acoes.filter(acao => acao === 'novaRevisao' || acao === 'novaSubRevisao');
+
+        if (renumerar.length > 0) {
+
+          // Revisões já publicadas (vigente e obsoletas), sem a atual.
+          const publicadas =
+            (revisoes || [])
+              .filter(
+                item =>
+                  item.id !== revisaoEmAndamento.id &&
+                  estagioRevisao(item.status) === 'vigente'
+              )
+              .map(item => item.revisao);
+
+          // Se houver mais de um evento no mesmo avanço, vale o último.
+          const novoRotulo =
+            rotuloPeloEvento(
+              renumerar[renumerar.length - 1] === 'novaSubRevisao' ? 'subrevisao' : 'revisao',
+              publicadas
+            );
+
+          if (novoRotulo !== revisaoEmAndamento.revisao) {
+            await dataverseService.atualizarRegistro(
+              'dgt_documentorevisao',
+              revisaoEmAndamento.id,
+              {
+                dgt_revisao: novoRotulo,
+                dgt_name: `${documento ? documento.codigo : 'Documento'} - ${novoRotulo}`.substring(0, 100)
+              }
+            );
+          }
+
+          novaInstancia.revisao = novoRotulo;
+        }
 
         const publicar =
           acoes.filter(acao => acao === 'publicarComRetreinamento' || acao === 'publicarSemRetreinamento');

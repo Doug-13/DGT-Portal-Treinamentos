@@ -51,7 +51,7 @@ export interface IBpmnSnapshot {
 // Configuração de negócio de uma etapa (o que não está no desenho).
 export type IConfigElemento = Pick<
   IFluxoElemento,
-  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento'
+  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao'
 >;
 
 // Configuração de negócio de uma ligação.
@@ -72,7 +72,9 @@ const MAPA_TIPOS: Record<string, TipoElementoFluxo> = {
   'bpmn:ManualTask': 'tarefaHumana',
   'bpmn:ExclusiveGateway': 'gateway',
   'bpmn:ServiceTask': 'tarefaSistema',
-  'bpmn:ScriptTask': 'tarefaSistema'
+  'bpmn:ScriptTask': 'tarefaSistema',
+  // Evento intermediário (círculo) = evento de revisão.
+  'bpmn:IntermediateThrowEvent': 'eventoRevisao'
 };
 
 // Elementos que podem existir no desenho, mas não afetam o fluxo.
@@ -89,8 +91,7 @@ const NOME_TIPO_BPMN: Record<string, string> = {
   'bpmn:InclusiveGateway': 'gateway inclusivo',
   'bpmn:EventBasedGateway': 'gateway de evento',
   'bpmn:ComplexGateway': 'gateway complexo',
-  'bpmn:IntermediateThrowEvent': 'evento intermediário',
-  'bpmn:IntermediateCatchEvent': 'evento intermediário',
+  'bpmn:IntermediateCatchEvent': 'evento intermediário de captura',
   'bpmn:BoundaryEvent': 'evento de borda',
   'bpmn:SubProcess': 'subprocesso',
   'bpmn:CallActivity': 'chamada de processo',
@@ -114,7 +115,8 @@ const TIPO_BPMN_DO_FLUXO: Record<TipoElementoFluxo, string> = {
   fim: 'bpmn:endEvent',
   tarefaHumana: 'bpmn:userTask',
   gateway: 'bpmn:exclusiveGateway',
-  tarefaSistema: 'bpmn:serviceTask'
+  tarefaSistema: 'bpmn:serviceTask',
+  eventoRevisao: 'bpmn:intermediateThrowEvent'
 };
 
 // ------------------------------------------------------------
@@ -153,6 +155,15 @@ export const configPadraoElemento = (
     };
   }
 
+  if (tipo === 'eventoRevisao') {
+    return {
+      tipoRevisao: 'revisao',
+      responsaveis: [],
+      acoes: [],
+      campos: []
+    };
+  }
+
   return {
     responsaveis: [],
     acoes: [],
@@ -176,7 +187,8 @@ export const configDoElemento = (
   acoes: elemento.acoes,
   campos: elemento.campos,
   acaoSistema: elemento.acaoSistema,
-  statusDocumento: elemento.statusDocumento
+  statusDocumento: elemento.statusDocumento,
+  tipoRevisao: elemento.tipoRevisao
 });
 
 export const configDaTransicao = (
@@ -392,7 +404,7 @@ export const montarDefinicao = (
 
       if (!tipoFluxoDoBpmn(forma.tipo)) {
         avisos.push(
-          `O elemento "${forma.nome || forma.id}" (${NOME_TIPO_BPMN[forma.tipo] || forma.tipo}) ainda não é suportado. Use etapas, tarefas de sistema, decisões exclusivas, início e fim.`
+          `O elemento "${forma.nome || forma.id}" (${NOME_TIPO_BPMN[forma.tipo] || forma.tipo}) ainda não é suportado. Use etapas, tarefas de sistema, decisões exclusivas, eventos de revisão, início e fim.`
         );
         return;
       }
@@ -494,7 +506,13 @@ export const montarDefinicao = (
           tipo,
           nome:
             (forma.nome || '').trim() ||
-            (tipo === 'inicio' ? 'Início' : tipo === 'fim' ? 'Fim' : 'Etapa sem nome'),
+            (tipo === 'inicio'
+              ? 'Início'
+              : tipo === 'fim'
+                ? 'Fim'
+                : tipo === 'eventoRevisao'
+                  ? (config.tipoRevisao === 'subrevisao' ? 'Nova sub-revisão' : 'Nova revisão')
+                  : 'Etapa sem nome'),
           subtitulo: humana || tipo === 'tarefaSistema' ? config.subtitulo : undefined,
           instrucoes: humana ? config.instrucoes : undefined,
           prazoDiasUteis: humana ? config.prazoDiasUteis : undefined,
@@ -503,6 +521,7 @@ export const montarDefinicao = (
           campos: humana ? camposSincronizados(config.campos, dados.metadados) : [],
           acaoSistema: tipo === 'tarefaSistema' ? config.acaoSistema : undefined,
           statusDocumento: humana ? config.statusDocumento : undefined,
+          tipoRevisao: tipo === 'eventoRevisao' ? (config.tipoRevisao || 'revisao') : undefined,
           posicao: mover({ x: forma.x, y: forma.y, largura: forma.largura, altura: forma.altura }),
           rotuloPosicao: forma.rotulo ? mover(forma.rotulo) : undefined
         };

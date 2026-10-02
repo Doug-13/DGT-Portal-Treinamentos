@@ -14,16 +14,28 @@ import {
 // ============================================================
 // VISIBILIDADE DE DOCUMENTOS NA TELA "DOCUMENTOS"
 //
-// Administrador → vê todas as áreas e todos os documentos.
-// Demais perfis → vê apenas as áreas às quais está vinculado
-//                 (Gestão → Áreas e acessos) e os documentos sem
-//                 área (corporativos).
-// Documentos ainda não publicados (Elaboração / Aprovação) só
-// aparecem para quem participa do fluxo: responsável, Gestor da área
-// ou quem gerencia documentos.
+// Administrador        → vê todas as áreas e todos os documentos.
+//
+// Membro de uma área   → vê TODOS os documentos da área, em qualquer
+//                        situação (vigente, elaboração, aprovação...),
+//                        independente de ser o responsável.
+//                        Vínculo: Gestão → Áreas e acessos.
+//
+// Responsável          → vê sempre o documento pelo qual responde,
+//                        mesmo que não seja membro da área:
+//                          • responsável do documento (dgt_responsavel);
+//                          • responsável por uma etapa do fluxo que está
+//                            aguardando ele (Minhas pendências).
+//
+// Documento sem área   → vigente: todos veem.
+// (corporativo)          não publicado: só quem participa do fluxo.
+//
+// Ver o documento não dá direito de agir: quem executa cada etapa
+// continua sendo definido pelo fluxo do processo (FluxoRevisaoTab).
 //
 // IMPORTANTE: isto organiza a TELA. A proteção real dos dados deve
-// estar também nas Security Roles do Dataverse.
+// estar também nas Security Roles do Dataverse — se a role só permite
+// ler os registros do próprio usuário, o documento nem chega à tela.
 // ============================================================
 
 const guid = (
@@ -150,7 +162,10 @@ export const filtrarDocumentosVisiveis = (
   documentos: IDocumento[],
   contexto: IContextoAcesso | undefined,
   areasVisiveis: IAreaAdmin[],
-  usuariosAreas: IUsuarioAreaAdmin[]
+  usuariosAreas: IUsuarioAreaAdmin[],
+  // Documentos com etapa do fluxo aguardando o usuário
+  // (ids vindos de "Minhas pendências").
+  idsDocumentosComPendencia: string[] = []
 ): IDocumento[] => {
 
   // Sem contexto carregado ainda: não esconde nada (comportamento
@@ -159,12 +174,21 @@ export const filtrarDocumentosVisiveis = (
     return documentos;
   }
 
-  const admin =
-    ehAdministrador(contexto);
+  if (ehAdministrador(contexto)) {
+    return documentos;
+  }
+
+  const meuId =
+    guid(contexto.usuarioId);
 
   const idsAreas =
     areasVisiveis.map(
       area => guid(area.id)
+    );
+
+  const idsPendentes =
+    idsDocumentosComPendencia.map(
+      id => guid(id)
     );
 
   const meusVinculos =
@@ -176,20 +200,27 @@ export const filtrarDocumentosVisiveis = (
   return documentos.filter(
     documento => {
 
+      // 1. Responsável pelo documento ou por uma etapa pendente:
+      //    sempre vê, mesmo fora da sua área.
+      const souResponsavel =
+        (!!meuId && guid(documento.responsavelId) === meuId) ||
+        idsPendentes.indexOf(guid(documento.id)) >= 0;
+
+      if (souResponsavel) {
+        return true;
+      }
+
       const areaDoc =
         guid(documento.areaId);
 
-      const areaPermitida =
-        admin ||
-        !areaDoc ||
-        idsAreas.indexOf(areaDoc) >= 0 ||
-        // O responsável sempre enxerga o próprio documento.
-        guid(documento.responsavelId) === guid(contexto.usuarioId);
-
-      if (!areaPermitida) {
-        return false;
+      // 2. Documento de uma área: todos os membros da área veem
+      //    todos os documentos dela, em qualquer situação.
+      if (areaDoc) {
+        return idsAreas.indexOf(areaDoc) >= 0;
       }
 
+      // 3. Documento corporativo (sem área): vigente para todos;
+      //    em revisão, só para quem participa do fluxo.
       return (
         documentoPublicado(documento) ||
         participaDoFluxo(

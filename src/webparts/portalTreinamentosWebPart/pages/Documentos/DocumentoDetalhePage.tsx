@@ -57,6 +57,10 @@ import RevisaoEditorModal, {
 import DocumentoHistoricoTab from
   './DocumentoHistoricoTab';
 
+import {
+  compararRevisoes
+} from '../../utils/numeracaoRevisao';
+
 import PreviaDocumentoModal from
   './PreviaDocumentoModal';
 
@@ -208,18 +212,6 @@ const formatarData = (
   );
 };
 
-const numeroRevisaoTela = (
-  revisao: string
-): number => {
-
-  const encontrado =
-    (revisao || '').match(/(\d+)(?!.*\d)/);
-
-  return encontrado
-    ? Number(encontrado[1])
-    : -1;
-};
-
 const valorOuTraco = (
   valor?: string
 ): string =>
@@ -230,52 +222,6 @@ const valorOuTraco = (
 // ============================================================
 // COMPONENTES AUXILIARES
 // ============================================================
-
-const Card:
-  React.FC<{
-    titulo: string;
-    valor: string;
-    destaque?: boolean;
-  }> = ({
-    titulo,
-    valor,
-    destaque
-  }) => (
-
-    <div
-      style={{
-        background: '#ffffff',
-        border: destaque
-          ? `1px solid ${COR_CIANO}`
-          : '1px solid #e5e7eb',
-        borderLeft: destaque
-          ? `4px solid ${COR_CIANO}`
-          : '1px solid #e5e7eb',
-        borderRadius: '12px',
-        padding: '16px'
-      }}
-    >
-      <span
-        style={{
-          display: 'block',
-          color: '#64748b',
-          fontSize: '12px'
-        }}
-      >
-        {titulo}
-      </span>
-
-      <strong
-        style={{
-          display: 'block',
-          marginTop: '5px',
-          color: '#0b1f3a'
-        }}
-      >
-        {valor}
-      </strong>
-    </div>
-  );
 
 const Informacao:
   React.FC<{
@@ -310,6 +256,46 @@ const Informacao:
     </div>
   );
 
+// Item da barra de resumo (rótulo pequeno + valor).
+const ItemResumo:
+  React.FC<{
+    titulo: string;
+    children: React.ReactNode;
+  }> = ({
+    titulo,
+    children
+  }) => (
+
+    <div
+      style={{
+        minWidth: 0,
+        padding: '2px 0'
+      }}
+    >
+      <span
+        style={{
+          display: 'block',
+          color: '#64748b',
+          fontSize: '11.5px',
+          marginBottom: '4px'
+        }}
+      >
+        {titulo}
+      </span>
+
+      <div
+        style={{
+          color: COR_AZUL,
+          fontSize: '13.5px',
+          fontWeight: 600,
+          lineHeight: 1.4
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+
 const BlocoTexto:
   React.FC<{
     titulo: string;
@@ -319,25 +305,22 @@ const BlocoTexto:
     texto
   }) => (
 
-    <div
-      style={{
-        marginTop: '16px'
-      }}
-    >
-      <strong
+    <div>
+      <span
         style={{
           display: 'block',
-          color: '#334155',
-          fontSize: '13px'
+          color: '#64748b',
+          fontSize: '12px'
         }}
       >
         {titulo}
-      </strong>
+      </span>
 
       <p
         style={{
-          margin: '5px 0 0',
-          color: '#64748b',
+          margin: '3px 0 0',
+          color: '#334155',
+          fontSize: '13px',
           lineHeight: 1.5,
           whiteSpace: 'pre-wrap'
         }}
@@ -636,7 +619,6 @@ const DocumentoDetalhePage:
     // botões do fluxo fixo antigo dão lugar à aba "Fluxo de revisão".
     const [versaoFluxo, setVersaoFluxo] = React.useState<number>(0);
     const segueFluxo = useRevisaoSegueFluxo(documento, revisaoEmAndamento ? revisaoEmAndamento.id : undefined, dataverseService, versaoFluxo);
-    const responsavelPeloFluxo = segueFluxo.segue && segueFluxo.responsaveisAtuais.length > 0;
 
     const proximaRevisao =
       React.useMemo(
@@ -721,12 +703,11 @@ const DocumentoDetalhePage:
         .filter(
           item =>
             estagioRevisao(item.status) === 'vigente' &&
-            numeroRevisaoTela(item.revisao) > numeroRevisaoTela(revisao.revisao)
+            compararRevisoes(item.revisao, revisao.revisao) > 0
         )
         .sort(
           (a, b) =>
-            numeroRevisaoTela(a.revisao) -
-            numeroRevisaoTela(b.revisao)
+            compararRevisoes(a.revisao, b.revisao)
         )[0];
 
     // ==========================================================
@@ -903,7 +884,9 @@ const DocumentoDetalhePage:
           }
           subtitulo={
             documento.descricao ||
-            'Detalhes, revisões e histórico do documento.'
+            [documento.tipo, documento.area]
+              .filter(item => !!item && item.trim() && item.trim() !== '-')
+              .join(' · ')
           }
           acao={
             <button
@@ -915,102 +898,118 @@ const DocumentoDetalhePage:
           }
         />
 
-        {/* RESUMO */}
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns:
-              'repeat(auto-fit, minmax(170px, 1fr))',
-            gap: '14px',
-            marginBottom: '18px'
-          }}
-        >
-          <Card
-            titulo="Tipo"
-            valor={documento.tipo}
-          />
-
-          <Card
-            titulo="Revisão vigente"
-            valor={
-              revisaoVigente?.revisao ||
-              'Nenhuma (ainda não publicada)'
-            }
-          />
-
-          <Card
-            titulo="Status"
-            valor={statusDocumento}
-          />
-
-          <Card
-            titulo="Em andamento"
-            valor={
-              revisaoEmAndamento
-                ? `${revisaoEmAndamento.revisao} · ${seloStatus(revisaoEmAndamento, vigenteAtualId).texto}`
-                : 'Nenhuma'
-            }
-            destaque={!!revisaoEmAndamento}
-          />
-
-          <Card
-            titulo={responsavelPeloFluxo ? `Responsável — ${segueFluxo.etapaAtual}` : 'Responsável'}
-            valor={responsavelPeloFluxo ? segueFluxo.responsaveisAtuais.join(' · ') : valorOuTraco(documento.responsavel)}
-          />
-        </div>
+        {/* RESUMO — uma linha com o essencial */}
 
         {
-          // Diagnóstico: explica por que o botão de aprovar aparece
-          // (ou não) para quem está vendo esta tela agora.
+          (() => {
+
+            const seloAndamento =
+              revisaoEmAndamento
+                ? seloStatus(revisaoEmAndamento, vigenteAtualId)
+                : undefined;
+
+            const seloGeral =
+              revisaoVigente
+                ? seloStatus(revisaoVigente, vigenteAtualId)
+                : seloAndamento;
+
+            return (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '16px 24px',
+                  alignItems: 'start',
+                  marginBottom: '18px',
+                  padding: '14px 18px',
+                  background: '#FFFFFF',
+                  border: '1px solid #E5E7EB',
+                  borderLeft: `4px solid ${revisaoEmAndamento ? COR_CIANO : '#E5E7EB'}`,
+                  borderRadius: '12px'
+                }}
+              >
+                <ItemResumo titulo="Situação">
+                  {
+                    seloGeral
+                      ? (
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '3px 10px',
+                            borderRadius: '20px',
+                            background: seloGeral.fundo,
+                            color: seloGeral.cor,
+                            fontSize: '12px',
+                            fontWeight: 700
+                          }}
+                        >
+                          {statusDocumento}
+                        </span>
+                      )
+                      : statusDocumento
+                  }
+                </ItemResumo>
+
+                <ItemResumo titulo="Revisão vigente">
+                  {
+                    revisaoVigente
+                      ? `${revisaoVigente.revisao} · desde ${formatarData(revisaoVigente.dataVigencia || revisaoVigente.dataAprovacao)}`
+                      : 'Ainda não publicada'
+                  }
+                </ItemResumo>
+
+                {
+                  // Só quando há uma revisão nova sobre uma vigente;
+                  // sem vigente, a "Situação" já diz o mesmo.
+                  revisaoEmAndamento &&
+                  revisaoVigente &&
+                  seloAndamento &&
+                  (
+                    <ItemResumo titulo="Nova revisão">
+                      {revisaoEmAndamento.revisao} · {seloAndamento.texto.toLowerCase()}
+                    </ItemResumo>
+                  )
+                }
+
+                <ItemResumo titulo="Responsável pelo documento">
+                  {valorOuTraco(documento.responsavel)}
+                </ItemResumo>
+              </div>
+            );
+          })()
+        }
+
+        {
+          // Aviso de configuração — só aparece quando impede a aprovação
+          // no fluxo antigo (documentos que não seguem o fluxo do processo).
           contexto &&
+          !segueFluxo.segue &&
+          revisaoEmAndamento &&
+          contexto.perfil !== 'Administrador' &&
+          (!documento.areaId || gestoresDaArea.length === 0) &&
           (
             <div
               style={{
                 marginBottom: '18px',
-                padding: '12px 14px',
+                padding: '10px 14px',
                 borderRadius: '10px',
-                background: '#F8FAFC',
-                border: '1px solid #E2E8F0',
-                fontSize: '12px',
-                color: '#64748B',
-                lineHeight: 1.6
+                border: `1px solid ${COR_INDIGO}`,
+                background: '#E8EAF8',
+                fontSize: '12.5px',
+                color: COR_AZUL,
+                lineHeight: 1.5
               }}
             >
-              Você está logado como{' '}
-              <strong>
-                {contexto.email || 'usuário não identificado'}
-              </strong>
+              <strong>! Ninguém pode aprovar este documento ainda.</strong>{' '}
               {
-                contexto.perfil === 'Administrador'
-                  ? ' — perfil Administrador, pode aprovar qualquer documento.'
-                  : !documento.areaId
-                    ? ' — este documento não tem área definida, então não é possível saber quem aprova.'
-                    : gestoresDaArea.length === 0
-                      ? (
-                        <>
-                          {' '}— esta área não tem nenhum Gestor cadastrado em{' '}
-                          <strong>Gestão → Áreas e acessos</strong>, então ninguém
-                          consegue aprovar este documento ainda.
-                        </>
-                      )
-                      : (
-                        <>
-                          {' '}— Gestor(es) desta área:{' '}
-                          <strong>
-                            {
-                              gestoresDaArea
-                                .map(g => `${g.usuarioNome} (${g.usuarioEmail})`)
-                                .join(', ')
-                            }
-                          </strong>.
-                          {
-                            podeAprovar
-                              ? ' Você é um deles: os botões de aprovação aparecem na revisão em aprovação.'
-                              : ' Seu e-mail não bate com nenhum deles, por isso os botões de aprovação não aparecem.'
-                          }
-                        </>
-                      )
+                !documento.areaId
+                  ? 'O documento não tem área definida.'
+                  : (
+                    <>
+                      A área não tem Gestor cadastrado em{' '}
+                      <strong>Gestão → Áreas e acessos</strong>.
+                    </>
+                  )
               }
             </div>
           )
@@ -1235,8 +1234,9 @@ const DocumentoDetalhePage:
                       gap: '14px'
                     }}
                   >
-                    {/* LISTA SUSPENSA DE REVISÕES */}
+                    {/* LISTA SUSPENSA DE REVISÕES — só com mais de uma */}
 
+                    {revisoes.length > 1 && (
                     <div
                       style={{
                         display: 'flex',
@@ -1330,6 +1330,7 @@ const DocumentoDetalhePage:
                         )
                       }
                     </div>
+                    )}
 
                     {(revisaoExibida ? [revisaoExibida] : []).map(
                       revisao => {
@@ -1454,30 +1455,6 @@ const DocumentoDetalhePage:
                               )
                             }
 
-                            {
-                              // TARJA: revisão ainda NÃO vigente
-                              emAndamento &&
-                              (
-                                <div
-                                  style={{
-                                    margin: '-20px -20px 18px',
-                                    padding: '10px 20px',
-                                    background: '#E6F9FC',
-                                    borderBottom: `1px solid ${COR_CIANO}`,
-                                    color: COR_AZUL,
-                                    fontSize: '13px',
-                                    lineHeight: 1.5
-                                  }}
-                                >
-                                  <strong>Revisão ainda não vigente.</strong>{' '}
-                                  {
-                                    revisaoVigente
-                                      ? `Até a aprovação, vale a ${revisaoVigente.revisao}.`
-                                      : 'O documento passa a valer quando esta revisão for aprovada.'
-                                  }
-                                </div>
-                              )
-                            }
                             <div
                               style={{
                                 display: 'flex',
@@ -1507,7 +1484,10 @@ const DocumentoDetalhePage:
                                   {
                                     estagio === 'vigente'
                                       ? `Vigente desde ${formatarData(revisao.dataVigencia || revisao.dataAprovacao)}`
-                                      : `Criada em ${formatarData(revisao.criadoEm || revisao.dataRevisao)}`
+                                      : `Criada em ${formatarData(revisao.criadoEm || revisao.dataRevisao)}` +
+                                        (revisaoVigente
+                                          ? ` · até a aprovação, vale a ${revisaoVigente.revisao}`
+                                          : ' · passa a valer quando for aprovada')
                                   }
                                 </span>
                               </div>
@@ -1527,49 +1507,64 @@ const DocumentoDetalhePage:
                               </span>
                             </div>
 
-                            <div
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns:
-                                  'repeat(auto-fit, minmax(180px, 1fr))',
-                                gap: '12px',
-                                marginTop: '18px'
-                              }}
-                            >
-                              <Informacao
-                                titulo="Vigência"
-                                valor={
-                                  estagio === 'vigente'
-                                    ? formatarData(revisao.dataVigencia)
-                                    : 'Após aprovação'
-                                }
-                              />
+                            {
+                              (() => {
 
-                              <Informacao
-                                titulo="Responsável"
-                                valor={
+                                const autor =
                                   valorOuTraco(revisao.responsavel) !== '-'
                                     ? valorOuTraco(revisao.responsavel)
-                                    : valorOuTraco(revisao.criadoPor)
-                                }
-                              />
+                                    : valorOuTraco(revisao.criadoPor);
 
-                              <Informacao
-                                titulo="Aprovado por"
-                                valor={valorOuTraco(revisao.aprovadoPor)}
-                              />
+                                // Em andamento com fluxo: o responsável da
+                                // etapa já aparece no quadro do fluxo abaixo.
+                                const mostrarAutor =
+                                  autor !== '-' &&
+                                  !(emAndamento && segueFluxo.segue);
 
-                              <Informacao
-                                titulo="Retreinamento"
-                                valor={
-                                  estagio !== 'vigente'
-                                    ? 'Definido na aprovação'
-                                    : revisao.requerRetreinamento
-                                      ? 'Obrigatório'
-                                      : 'Não requerido'
+                                const itens: Array<{ titulo: string; valor: string }> = [];
+
+                                if (mostrarAutor) {
+                                  itens.push({ titulo: estagio === 'vigente' ? 'Elaborada por' : 'Autor', valor: autor });
                                 }
-                              />
-                            </div>
+
+                                if (valorOuTraco(revisao.aprovadoPor) !== '-') {
+                                  itens.push({ titulo: 'Aprovada por', valor: revisao.aprovadoPor as string });
+                                }
+
+                                if (estagio === 'vigente') {
+                                  itens.push({
+                                    titulo: 'Retreinamento',
+                                    valor: revisao.requerRetreinamento ? 'Obrigatório' : 'Não requerido'
+                                  });
+                                }
+
+                                if (itens.length === 0) {
+                                  return null;
+                                }
+
+                                return (
+                                  <div
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns:
+                                        'repeat(auto-fit, minmax(180px, 1fr))',
+                                      gap: '12px',
+                                      marginTop: '16px'
+                                    }}
+                                  >
+                                    {
+                                      itens.map(item => (
+                                        <Informacao
+                                          key={item.titulo}
+                                          titulo={item.titulo}
+                                          valor={item.valor}
+                                        />
+                                      ))
+                                    }
+                                  </div>
+                                );
+                              })()
+                            }
 
                             {
                               reprovacao &&
@@ -1594,41 +1589,41 @@ const DocumentoDetalhePage:
                               )
                             }
 
-                            {revisao.motivoAlteracao && (
-                              <BlocoTexto
-                                titulo="Motivo da alteração"
-                                texto={revisao.motivoAlteracao}
-                              />
-                            )}
+                            {
+                              (revisao.motivoAlteracao || revisao.descricaoAlteracoes || revisao.justificativa) && (
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                                    gap: '14px 24px',
+                                    marginTop: '16px'
+                                  }}
+                                >
+                                  {revisao.motivoAlteracao && (
+                                    <BlocoTexto
+                                      titulo="Motivo da alteração"
+                                      texto={revisao.motivoAlteracao}
+                                    />
+                                  )}
 
-                            {revisao.descricaoAlteracoes && (
-                              <BlocoTexto
-                                titulo="Alterações realizadas"
-                                texto={revisao.descricaoAlteracoes}
-                              />
-                            )}
+                                  {revisao.descricaoAlteracoes && (
+                                    <BlocoTexto
+                                      titulo="Alterações realizadas"
+                                      texto={revisao.descricaoAlteracoes}
+                                    />
+                                  )}
 
-                            {revisao.justificativa && (
-                              <BlocoTexto
-                                titulo="Justificativa"
-                                texto={revisao.justificativa}
-                              />
-                            )}
+                                  {revisao.justificativa && (
+                                    <BlocoTexto
+                                      titulo="Justificativa"
+                                      texto={revisao.justificativa}
+                                    />
+                                  )}
+                                </div>
+                              )
+                            }
 
-                            {revisao.requerRetreinamento && estagio === 'vigente' && (
-                              <div
-                                style={{
-                                  marginTop: '16px',
-                                  padding: '12px 14px',
-                                  background: '#fff4ce',
-                                  color: '#8a6d00',
-                                  borderRadius: '9px',
-                                  fontWeight: 600
-                                }}
-                              >
-                                Esta revisão exige retreinamento dos usuários impactados.
-                              </div>
-                            )}
+                            {/* Retreinamento já aparece nos campos acima. */}
 
                             <div
                               style={{
