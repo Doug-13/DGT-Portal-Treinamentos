@@ -279,6 +279,23 @@ export const useGestaoDocumentos = (
             );
           }
 
+          // 1) Arquivo PRIMEIRO: se o envio falhar, nada é criado no
+          //    Dataverse (antes ficava um documento sem revisão).
+          //
+          //    O código é novo (o próximo livre no Dataverse), então um
+          //    arquivo que já exista nesta pasta é sobra de uma tentativa
+          //    anterior que não chegou ao fim — pode ser substituído.
+          const upload =
+            await sharePoint
+              .uploadArquivo(
+                dados.area,
+                dados.codigo,
+                dados.revisaoInicial,
+                dados.arquivo,
+                true
+              );
+
+          // 2) Documento e revisão no Dataverse.
           const documentoCriado =
             await service
               .criarDocumento(
@@ -292,15 +309,6 @@ export const useGestaoDocumentos = (
               'O documento foi criado, mas o Dataverse não retornou o ID.'
             );
           }
-
-          const upload =
-            await sharePoint
-              .uploadArquivo(
-                dados.area,
-                dados.codigo,
-                dados.revisaoInicial,
-                dados.arquivo
-              );
 
           await service
             .criarRevisao({
@@ -443,13 +451,16 @@ export const useGestaoDocumentos = (
 
         try {
 
+          // Revisão nova: um arquivo já existente na pasta dela só pode
+          // ser sobra de uma tentativa anterior que falhou.
           const upload =
             await sharePoint
               .uploadArquivo(
                 documentoSelecionado.area,
                 documentoSelecionado.codigo,
                 dados.revisao,
-                dados.arquivo
+                dados.arquivo,
+                true
               );
 
           await service
