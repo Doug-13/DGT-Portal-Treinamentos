@@ -23,6 +23,7 @@ import {
 } from '../services/DocumentoVisibilidade';
 
 import {
+  IFluxoDefinicao,
   IResponsavelResolvido
 } from '../models/Fluxo';
 
@@ -32,8 +33,21 @@ import {
 } from '../constants/featureFlags';
 
 import {
+  resolverResponsaveis,
   usuarioAtende
 } from '../services/fluxo/ResolvedorResponsaveis';
+
+import {
+  iniciarInstancia
+} from '../services/fluxo/FluxoEngine';
+
+import {
+  obterPersistenciaFluxo
+} from '../services/fluxo/persistenciaFluxo';
+
+import {
+  processoPrincipalDoDocumento
+} from '../services/processos/ProcessoService';
 
 import {
   TABELA_TAREFA_FLUXO,
@@ -137,6 +151,15 @@ export const useDocumentosPendencias = (
   const [tarefas, setTarefas] =
     React.useState<IDataverseRecord[]>([]);
 
+  // Revisões que já têm o fluxo iniciado (dgt_situacaofluxo preenchido).
+  const [revisoesComFluxo, setRevisoesComFluxo] =
+    React.useState<string[]>([]);
+
+  // Revisões governadas por um processo cujo fluxo ainda não começou
+  // (ninguém abriu a aba "Fluxo de revisão"): a pendência é a 1ª etapa.
+  const [etapasIniciais, setEtapasIniciais] =
+    React.useState<Record<string, { etapa: string; responsaveis: IResponsavelResolvido[] }>>({});
+
   const [carregando, setCarregando] =
     React.useState(false);
 
@@ -155,10 +178,102 @@ export const useDocumentosPendencias = (
         setCarregando(true);
         setErro('');
 
+        // Descobre quais revisões seguem o fluxo de um processo.
+        const carregarGovernadas = async (
+          lidos: IDataverseRecord[]
+        ): Promise<void> => {
+
+          const comFluxo =
+            (await dataverse.listarRegistros(
+              'dgt_documentorevisao',
+              '$select=dgt_documentorevisaoid,dgt_situacaofluxo&$filter=dgt_situacaofluxo ne null'
+            )).map(registro => guid(texto(registro, 'dgt_documentorevisaoid')));
+
+          setRevisoesComFluxo(comFluxo);
+
+          const semFluxo =
+            lidos.filter(registro => comFluxo.indexOf(guid(texto(registro, 'dgt_documentorevisaoid'))) < 0);
+
+          if (semFluxo.length === 0) {
+            setEtapasIniciais({});
+            return;
+          }
+
+          const persistencia =
+            obterPersistenciaFluxo(dataverse);
+
+          const dadosProcessos =
+            await persistencia.processos.carregar(false, []);
+
+          const publicadas: Record<string, Promise<IFluxoDefinicao | undefined>> = {};
+
+          const iniciais: Record<string, { etapa: string; responsaveis: IResponsavelResolvido[] }> = {};
+
+          for (const registro of semFluxo) {
+
+            const documentoId =
+              guid(texto(registro, '_dgt_documento_value'));
+
+            const processoId =
+              processoPrincipalDoDocumento(documentoId, dadosProcessos.vinculos);
+
+            if (!processoId) {
+              continue;
+            }
+
+            if (!publicadas[processoId]) {
+              publicadas[processoId] = persistencia.catalogo.versaoPublicada(processoId);
+            }
+
+            const definicao =
+              await publicadas[processoId];
+
+            if (!definicao) {
+              continue;
+            }
+
+            // Simula o início (sem gravar) só para saber a 1ª etapa.
+            const simulacao =
+              iniciarInstancia(definicao, {
+                revisaoId: guid(texto(registro, 'dgt_documentorevisaoid')),
+                documentoId,
+                revisao: texto(registro, 'dgt_revisao'),
+                ator: { id: '', nome: '', papeisTeste: [] },
+                simulado: true
+              });
+
+            const tarefa =
+              simulacao.instancia
+                ? simulacao.instancia.tarefas.find(item => item.status === 'pendente')
+                : undefined;
+
+            if (!tarefa) {
+              continue;
+            }
+
+            const documento =
+              documentos.find(item => guid(item.id) === documentoId);
+
+            iniciais[guid(texto(registro, 'dgt_documentorevisaoid'))] = {
+              etapa: tarefa.elementoNome,
+              responsaveis: resolverResponsaveis(
+                tarefa.responsaveis,
+                {
+                  revisaoResponsavelId: texto(registro, '_dgt_responsavel_value'),
+                  documentoAreaId: documento ? documento.areaId : undefined
+                }
+              )
+            };
+          }
+
+          setEtapasIniciais(iniciais);
+        };
+
         try {
-          setRegistros(
-            await dataverse.getDocumentoRevisoesEmAndamento()
-          );
+          const registrosLidos =
+            await dataverse.getDocumentoRevisoesEmAndamento();
+
+          setRegistros(registrosLidos);
 
           if (FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE && fluxoNoDataverse()) {
             try {
@@ -174,6 +289,14 @@ export const useDocumentosPendencias = (
               console.error(erroTarefas);
               setTarefas([]);
             }
+
+            try {
+              await carregarGovernadas(registrosLidos);
+            } catch (erroFluxo) {
+              console.error(erroFluxo);
+              setRevisoesComFluxo([]);
+              setEtapasIniciais({});
+            }
           }
         } catch (e) {
           console.error(e);
@@ -186,7 +309,8 @@ export const useDocumentosPendencias = (
       },
       [
         dataverse,
-        contexto
+        contexto,
+        documentos
       ]
     );
 
@@ -237,9 +361,50 @@ export const useDocumentosPendencias = (
         const lista: IPendenciaDocumento[] = [];
 
         // Revisões governadas pelo fluxo do processo: a pendência vem
-        // da etapa (dgt_tarefafluxo), não do status antigo.
-        const revisoesComFluxo: string[] =
-          tarefas.map(tarefa => guid(texto(tarefa, TAREFA.revisaoValor)));
+        // da etapa (dgt_tarefafluxo ou 1ª etapa ainda não iniciada),
+        // nunca do status antigo nem do "Responsável" do documento.
+        const governadas: string[] =
+          revisoesComFluxo
+            .concat(Object.keys(etapasIniciais))
+            .concat(tarefas.map(tarefa => guid(texto(tarefa, TAREFA.revisaoValor))));
+
+        Object.keys(etapasIniciais).forEach(
+          revisaoId => {
+
+            const inicial =
+              etapasIniciais[revisaoId];
+
+            if (!inicial.responsaveis.some(item => usuarioAtende(item, meuId, usuariosAreas))) {
+              return;
+            }
+
+            const registro =
+              registros.find(item => guid(texto(item, 'dgt_documentorevisaoid')) === revisaoId);
+
+            const documento =
+              registro
+                ? documentos.find(item => guid(item.id) === guid(texto(registro, '_dgt_documento_value')))
+                : undefined;
+
+            if (!registro || !documento) {
+              return;
+            }
+
+            const desde =
+              texto(registro, 'createdon') || texto(registro, 'modifiedon');
+
+            lista.push({
+              id: revisaoId,
+              tipo: 'fluxo',
+              documento,
+              revisao: texto(registro, 'dgt_revisao'),
+              status: texto(registro, 'dgt_status@OData.Community.Display.V1.FormattedValue') || '',
+              desde,
+              diasParado: diasDesde(desde),
+              etapa: inicial.etapa
+            });
+          }
+        );
 
         tarefas.forEach(
           tarefa => {
@@ -267,8 +432,9 @@ export const useDocumentosPendencias = (
               responsaveis = [];
             }
 
+            // Só quem é responsável da etapa (o Administrador pode agir
+            // pela aba do fluxo, mas a pendência não é dele).
             const minha =
-              admin ||
               responsaveis.some(item => usuarioAtende(item, meuId, usuariosAreas));
 
             if (!minha) {
@@ -295,7 +461,7 @@ export const useDocumentosPendencias = (
         registros.forEach(
           registro => {
 
-            if (revisoesComFluxo.indexOf(guid(texto(registro, 'dgt_documentorevisaoid'))) >= 0) {
+            if (governadas.indexOf(guid(texto(registro, 'dgt_documentorevisaoid'))) >= 0) {
               return;
             }
 
@@ -372,6 +538,8 @@ export const useDocumentosPendencias = (
       [
         registros,
         tarefas,
+        revisoesComFluxo,
+        etapasIniciais,
         documentos,
         contexto,
         usuariosAreas
