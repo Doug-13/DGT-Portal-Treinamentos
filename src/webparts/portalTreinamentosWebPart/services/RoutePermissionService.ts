@@ -63,6 +63,14 @@ const SOMENTE_ADMIN: PerfilAcesso[] = [
   'Administrador'
 ];
 
+// Módulo Licitações (consulta pública ao PNCP).
+// Fase de teste: somente Administrador. Para liberar aos gestores,
+// acrescente 'Gestor' aqui. Quando houver um grupo próprio
+// (ex.: "DGT Comercial"), criar um perfil específico.
+const LICITACOES: PerfilAcesso[] = [
+  'Administrador'
+];
+
 const regras:
   IRegraRota[] = [
 
@@ -79,10 +87,6 @@ const regras:
     { rota: 'executarModulo', perfis: TODOS },
     { rota: 'avaliacao', perfis: TODOS },
     { rota: 'suporte', perfis: TODOS },
-
-    // Módulo Processos (modo de teste). Todos consultam; somente
-    // Editor e Administrador alteram fluxos (controlado na tela).
-    { rota: 'processos', perfis: TODOS },
 
     // Gestão de pessoas (Gestor e Administrador)
     { rota: 'equipe', perfis: GESTAO_PESSOAS },
@@ -109,7 +113,11 @@ const regras:
 
     // Somente Administrador
     // (antes não havia regra para esta rota, o que a tornava pública)
-    { rota: 'gestaoAreas', perfis: SOMENTE_ADMIN }
+    { rota: 'gestaoAreas', perfis: SOMENTE_ADMIN },
+
+    // Licitações (PNCP)
+    { rota: 'licitacoes', perfis: LICITACOES },
+    { rota: 'licitacoesTeste', perfis: LICITACOES }
   ];
 
 const mensagemNegado = (

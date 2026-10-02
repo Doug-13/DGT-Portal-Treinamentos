@@ -83,13 +83,6 @@ import DocumentosHomePage from
 import NovoDocumentoPage from
   '../pages/Documentos/NovoDocumentoPage';
 
-import ProcessosPage from
-  '../pages/Processos/ProcessosPage';
-
-import {
-  solicitarAberturaProcesso
-} from '../services/processos/ProcessoService';
-
 import DocumentoDetalhePage from
   '../pages/Documentos/DocumentoDetalhePage';
 
@@ -226,6 +219,12 @@ import {
 
 import IndicadoresPage from
   '../pages/Indicadores/IndicadoresPage';
+
+import LicitacoesBuscaPage from
+  '../pages/Licitacoes/LicitacoesBuscaPage';
+
+import LicitacoesTesteConexaoPage from
+  '../pages/Licitacoes/LicitacoesTesteConexaoPage';
 
 import {
   IEventoCalendario
@@ -1629,10 +1628,6 @@ const PortalRouter:
               props.usuariosAreasAdministrativos
             }
 
-            dataverseService={
-              props.dataverseService
-            }
-
             documentosExistentes={
               props.documentosAdministrativos
             }
@@ -1796,49 +1791,10 @@ const PortalRouter:
               props.limparResultadoPublicacao
             }
 
-            onAbrirProcesso={processoId => {
-              solicitarAberturaProcesso(processoId);
-              props.navegar('processos');
-            }}
-
             onVoltar={() =>
               props.navegar(
                 'documentos'
               )
-            }
-          />
-        );
-
-      // ========================================================
-      // PROCESSOS (modo de teste — fluxo de revisão por processo)
-      // ========================================================
-
-      case 'processos':
-
-        return (
-          <ProcessosPage
-            documentos={
-              props.documentos
-            }
-
-            areas={
-              props.areasAdministrativas
-            }
-
-            usuariosAreas={
-              props.usuariosAreasAdministrativos
-            }
-
-            contexto={
-              props.contextoAcesso
-            }
-
-            dataverseService={
-              props.dataverseService
-            }
-
-            onAbrirDocumento={
-              props.abrirDocumento
             }
           />
         );
@@ -2980,6 +2936,34 @@ const PortalRouter:
             onVoltar={() =>
               props.navegar(
                 'inicio'
+              )
+            }
+          />
+        );
+
+      // ========================================================
+      // LICITAÇÕES (PNCP)
+      // ========================================================
+
+      case 'licitacoes':
+
+        return (
+          <LicitacoesBuscaPage
+            onIrParaTeste={() =>
+              props.navegar(
+                'licitacoesTeste'
+              )
+            }
+          />
+        );
+
+      case 'licitacoesTeste':
+
+        return (
+          <LicitacoesTesteConexaoPage
+            onIrParaBusca={() =>
+              props.navegar(
+                'licitacoes'
               )
             }
           />

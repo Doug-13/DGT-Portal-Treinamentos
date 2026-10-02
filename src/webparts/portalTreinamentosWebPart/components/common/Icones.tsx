@@ -37,7 +37,10 @@ export type IconeChave =
   | 'folder'
   | 'bell'
   | 'barChart'
-  | 'workflow';
+  | 'workflow'
+  | 'search'
+  | 'activity'
+  | 'gavel';
 
 export const Icones:
   Record<IconeChave, React.FC> = {
@@ -180,6 +183,28 @@ export const Icones:
       <rect x="9" y="15" width="6" height="5" rx="1" />
       <path d="M9 6.5h6" />
       <path d="M18 9v3H12v3" />
+    </svg>
+  ),
+
+  search: () => (
+    <svg {...base}>
+      <circle cx="11" cy="11" r="6.5" />
+      <line x1="16" y1="16" x2="20.5" y2="20.5" />
+    </svg>
+  ),
+
+  activity: () => (
+    <svg {...base}>
+      <polyline points="3 12 7.5 12 10 5 14 19 16.5 12 21 12" />
+    </svg>
+  ),
+
+  // Licitações: martelo de leilão/pregão
+  gavel: () => (
+    <svg {...base}>
+      <path d="M14.5 3.5l6 6-5 5-6-6z" />
+      <line x1="12.5" y1="11.5" x2="4.5" y2="19.5" />
+      <line x1="14" y1="20.5" x2="21" y2="20.5" />
     </svg>
   )
 };

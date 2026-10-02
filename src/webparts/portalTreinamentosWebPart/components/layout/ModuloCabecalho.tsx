@@ -42,6 +42,7 @@ export const CABECALHOS_MODULO: {
   treinamentos: IConfigCabecalhoModulo;
   documentos: IConfigCabecalhoModulo;
   processos: IConfigCabecalhoModulo;
+  licitacoes: IConfigCabecalhoModulo;
 } = {
   inicio: {
     icone: 'home',
@@ -70,6 +71,13 @@ export const CABECALHOS_MODULO: {
     subtitulo: 'Cada processo com o seu fluxo de revisão.',
     descricao: 'Processos, fluxos de aprovação e documentos vinculados em um só lugar.',
     citacao: 'Processo claro é processo que se cumpre.'
+  },
+  licitacoes: {
+    icone: 'gavel',
+    titulo: 'Licitações',
+    subtitulo: 'Oportunidades públicas aderentes ao negócio da DGT.',
+    descricao: 'Consulta ao PNCP com filtros por assunto, UF, modalidade, valor e score de aderência.',
+    citacao: 'Oportunidade bem filtrada é tempo bem investido.'
   }
 };
 

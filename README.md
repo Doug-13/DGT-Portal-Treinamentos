@@ -532,23 +532,43 @@ Consulte o [CHANGELOG.md](CHANGELOG.md). No portal, clique no selo de versão no
 
 ## 18. Gerar Executável
 
+# ============================================================
+# Gera o pacote SharePoint (.sppkg) do Portal DGT
+#
+# NÃO muda o número da versão. Para gerar uma nova versão, use
+# o Gerar-Versao.ps1.
+# ============================================================
+
+$ErrorActionPreference = 'Stop'
+
 cd C:\DGT\DGT-Portal-Treinamentos\portal-treinamentos
 
-# Compilar a versão de produção
+# 1. Limpar pastas geradas (evita arquivos antigos no pacote e nos testes)
+Remove-Item -Recurse -Force lib, lib-commonjs, temp, dist, release -ErrorAction SilentlyContinue
+
+# 2. Atualizar versao.ts com o CHANGELOG.md
+#    (mantém a versão; leva os itens de "Não publicado" para a tela de Novidades)
+node scripts/versao.js none
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Erro ao atualizar as novidades (scripts/versao.js). Processo interrompido."
+}
+
+# 3. Compilar a versão de produção
 npx heft build --production
 
 if ($LASTEXITCODE -ne 0) {
     throw "Erro na compilação. Processo interrompido."
 }
 
-# Gerar o pacote SharePoint
+# 4. Gerar o pacote SharePoint
 npx heft package-solution --production
 
 if ($LASTEXITCODE -ne 0) {
     throw "Erro ao gerar o pacote."
 }
 
-# Copiar o pacote para Downloads
+# 5. Copiar o pacote para Downloads
 $Origem = ".\sharepoint\solution\DGT-Portal-Treinamentos.sppkg"
 
 $Destino = "$env:USERPROFILE\Downloads\DGT-Portal-Treinamentos.sppkg"

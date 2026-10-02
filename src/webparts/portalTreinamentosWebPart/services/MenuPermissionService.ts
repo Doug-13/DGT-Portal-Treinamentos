@@ -116,3 +116,32 @@ export const obterMenuDocumentos = (
         contexto
       )
   );
+
+// ============================================================
+// MENU (ABAS) DO MÓDULO LICITAÇÕES — mesmo padrão dos demais
+// ============================================================
+
+const itensLicitacoes:
+  IItemMenuTreinamento[] = [
+    {
+      pagina: 'licitacoes',
+      label: 'Buscar licitações',
+      icon: 'search'
+    },
+    {
+      pagina: 'licitacoesTeste',
+      label: 'Teste de conexão',
+      icon: 'activity'
+    }
+  ];
+
+export const obterMenuLicitacoes = (
+  contexto?: IContextoAcesso
+): IItemMenuTreinamento[] =>
+  itensLicitacoes.filter(
+    item =>
+      podeAcessarRota(
+        item.pagina,
+        contexto
+      )
+  );

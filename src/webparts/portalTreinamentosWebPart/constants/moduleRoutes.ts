@@ -7,6 +7,7 @@ export type ModuloIntranet =
   | 'treinamentos'
   | 'documentos'
   | 'processos'
+  | 'licitacoes'
   | 'outro';
 
 const paginasTreinamentos:
@@ -38,6 +39,12 @@ const paginasDocumentos:
     'documentoDetalhe',
     'novoDocumento',
     'gestaoDocumentos'
+  ];
+
+const paginasLicitacoes:
+  Pagina[] = [
+    'licitacoes',
+    'licitacoesTeste'
   ];
 
 export const obterModuloPagina =
@@ -81,6 +88,16 @@ export const obterModuloPagina =
       return 'documentos';
     }
 
+    if (
+      paginasLicitacoes
+        .indexOf(
+          pagina
+        ) >=
+      0
+    ) {
+      return 'licitacoes';
+    }
+
     return 'outro';
   };
 
@@ -113,3 +130,13 @@ export const paginaEhDocumentos =
       pagina
     ) ===
     'documentos';
+
+export const paginaEhLicitacoes =
+  (
+    pagina:
+      Pagina
+  ): boolean =>
+    obterModuloPagina(
+      pagina
+    ) ===
+    'licitacoes';

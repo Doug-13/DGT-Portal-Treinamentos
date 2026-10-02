@@ -25,7 +25,11 @@ export type Pagina =
   | 'gestaoConformidade'
   | 'catalogoTreinamentos'
   | 'testeTreinamento'
-  | 'processos';
+  | 'processos'
+
+  // Módulo Licitações (PNCP)
+  | 'licitacoes'
+  | 'licitacoesTeste';
 
 export const ROTAS = {
   INICIO: 'inicio',
@@ -55,6 +59,8 @@ export const ROTAS = {
   CATALOGO_TREINAMENTOS: 'catalogoTreinamentos',
   TESTE_TREINAMENTO: 'testeTreinamento',
   PROCESSOS: 'processos',
+  LICITACOES: 'licitacoes',
+  LICITACOES_TESTE: 'licitacoesTeste',
 } as const;
 
 

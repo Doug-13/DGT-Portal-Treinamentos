@@ -36,7 +36,8 @@ import {
   obterModuloPagina,
   paginaEhTreinamentos,
   paginaEhDocumentos,
-  paginaEhProcessos
+  paginaEhProcessos,
+  paginaEhLicitacoes
 } from '../constants/moduleRoutes';
 import { FEATURE_FLAGS } from '../constants/featureFlags';
 import {
@@ -75,7 +76,7 @@ import { useGestaoDocumentos } from '../hooks/useGestaoDocumentos';
 import { useDocumentoTreinamentos } from '../hooks/useDocumentoTreinamentos';
 import { useGestaoAreas } from '../hooks/useGestaoAreas';
 import { useConformidade } from '../hooks/useConformidade';
-import { obterMenuTreinamento, obterMenuDocumentos } from '../services/MenuPermissionService';
+import { obterMenuTreinamento, obterMenuDocumentos, obterMenuLicitacoes } from '../services/MenuPermissionService';
 import { IModuloImportJson, ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
 import { SharePointDocumentoService } from '../services/sharepoint/SharePointDocumentoService';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
@@ -2558,6 +2559,19 @@ const gestaoAreas =
         ]
       );
 
+    // Módulo Licitações: só aparece no menu para quem tem
+    // permissão em pelo menos uma das abas.
+    const abasLicitacoes =
+      React.useMemo(
+        () =>
+          obterMenuLicitacoes(
+            autorizacao.contexto
+          ),
+        [
+          autorizacao.contexto
+        ]
+      );
+
     // ==========================================================
     // MENU INTRANET
     // ==========================================================
@@ -2582,6 +2596,7 @@ const gestaoAreas =
           'treinamentos' |
           'documentos' |
           'processos' |
+          'licitacoes' |
           'outro';
       }> = [
 
@@ -2645,6 +2660,27 @@ const gestaoAreas =
             ? 'processos'
             : 'outro'
       },
+
+      // Licitações (PNCP) — visível só para perfis autorizados
+      ...(
+        abasLicitacoes.length > 0
+          ? [
+            {
+              label:
+                'Licitações',
+
+              icon:
+                '◈',
+
+              pagina:
+                abasLicitacoes[0].pagina,
+
+              modulo:
+                'licitacoes' as const
+            }
+          ]
+          : []
+      ),
 
       {
         label:
@@ -3040,6 +3076,20 @@ const gestaoAreas =
                       icon: 'workflow'
                     }
                   ]}
+                  paginaAtual={paginaAtual}
+                  navegar={navegar}
+                />
+              )
+            }
+
+            {
+              paginaEhLicitacoes(
+                paginaAtual
+              ) &&
+              (
+                <ModuloCabecalho
+                  config={CABECALHOS_MODULO.licitacoes}
+                  abas={abasLicitacoes}
                   paginaAtual={paginaAtual}
                   navegar={navegar}
                 />
