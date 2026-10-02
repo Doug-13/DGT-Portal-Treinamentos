@@ -1042,20 +1042,36 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                           fontSize: '13.5px'
                         }}
                       >
-                        <strong style={{ color: COR_INDIGO }}>Sem permissão nesta etapa.</strong>{' '}
-                        {ator?.ator.nome} não é responsável por “{elementoAtual.nome}”.
-                        {fluxo.local ? ' Troque em “Executar como” para simular o responsável.' : ' A etapa aguarda um dos responsáveis acima.'}
+                        {
+                          fluxo.local
+                            ? (
+                              <>
+                                <strong style={{ color: COR_INDIGO }}>Sem permissão nesta etapa.</strong>{' '}
+                                {ator?.ator.nome} não é responsável por “{elementoAtual.nome}”.
+                                Troque em “Executar como” para simular o responsável.
+                              </>
+                            )
+                            : (
+                              <>
+                                <strong style={{ color: COR_INDIGO }}>Aguardando o responsável.</strong>{' '}
+                                A etapa “{elementoAtual.nome}” está com{' '}
+                                <strong>{fluxo.responsaveisEtapaAtual.join(' · ') || 'o responsável definido no fluxo'}</strong>.
+                                Somente {fluxo.responsaveisEtapaAtual.length > 1 ? 'eles podem' : 'ele pode'} avançar a revisão.
+                              </>
+                            )
+                        }
                       </div>
                     )
                   }
 
                   {
+                    (podeAgir || fluxo.local) &&
                     elementoAtual.campos.map(
                       campo => renderizarCampo(campo)
                     )
                   }
 
-                  <div>
+                  {(podeAgir || fluxo.local) && <div>
                     <label htmlFor="fluxo-comentario" style={estiloRotuloCampo}>
                       Comentário {exigeComentarioEmAlguma ? '(obrigatório para devolver ou reprovar)' : '(opcional)'}
                     </label>
@@ -1078,7 +1094,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                         fontSize: '14px'
                       }}
                     />
-                  </div>
+                  </div>}
 
                   {
                     fluxo.errosAcao.length > 0 && (
@@ -1105,6 +1121,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     {
+                      (podeAgir || fluxo.local) &&
                       elementoAtual.acoes.map(
                         acao => {
                           const desabilitado =

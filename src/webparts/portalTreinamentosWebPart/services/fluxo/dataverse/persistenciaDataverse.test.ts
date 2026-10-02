@@ -346,8 +346,11 @@ describe('Fluxo de uma revisão no Dataverse', () => {
     );
 
     const definicao = await servico.definicaoDaInstancia(inicio.instancia as IFluxoInstancia) as IFluxoDefinicao;
-    const todos = papeisDoUsuario(definicao, contexto(AUTOR, 'Administrador'), dados, vinculos);
-    const admin = { id: AUTOR, nome: 'Admin', papeisTeste: todos };
+
+    // O perfil Administrador NÃO dá acesso a etapas de outros.
+    expect(papeisDoUsuario(definicao, contexto(GESTOR_QUALIDADE, 'Administrador'), dados, vinculos)).toEqual(['qualidade']);
+
+    const admin = { id: AUTOR, nome: 'Todos os papéis', papeisTeste: ['autor', 'coordenacao', 'qualidade'] };
 
     await servico.executar(REVISAO, { acaoChave: 'enviarRevisaoTecnica', comentario: '', valores: {}, ator: admin }, contextoExecucao);
     await servico.executar(REVISAO, { acaoChave: 'aprovarTecnicamente', comentario: '', valores: {}, ator: admin }, contextoExecucao);

@@ -636,12 +636,9 @@ const DocumentoDetalhePage:
 
     // Revisão governada pelo fluxo do processo (modo Dataverse): os
     // botões do fluxo fixo antigo dão lugar à aba "Fluxo de revisão".
-    const segueFluxo =
-      useRevisaoSegueFluxo(
-        documento,
-        revisaoEmAndamento ? revisaoEmAndamento.id : undefined,
-        dataverseService
-      );
+    const [versaoFluxo, setVersaoFluxo] = React.useState<number>(0);
+    const segueFluxo = useRevisaoSegueFluxo(documento, revisaoEmAndamento ? revisaoEmAndamento.id : undefined, dataverseService, versaoFluxo);
+    const responsavelPeloFluxo = segueFluxo.segue && segueFluxo.responsaveisAtuais.length > 0;
 
     const proximaRevisao =
       React.useMemo(
@@ -960,8 +957,8 @@ const DocumentoDetalhePage:
           />
 
           <Card
-            titulo="Responsável"
-            valor={valorOuTraco(documento.responsavel)}
+            titulo={responsavelPeloFluxo ? `Responsável — ${segueFluxo.etapaAtual}` : 'Responsável'}
+            valor={responsavelPeloFluxo ? segueFluxo.responsaveisAtuais.join(' · ') : valorOuTraco(documento.responsavel)}
           />
         </div>
 
@@ -1188,7 +1185,7 @@ const DocumentoDetalhePage:
                 contexto={contexto}
                 dataverseService={dataverseService}
                 onAbrirProcesso={onAbrirProcesso}
-                onRevisaoAlterada={onRecarregarRevisoes}
+                onRevisaoAlterada={async () => { if (onRecarregarRevisoes) { await onRecarregarRevisoes(); } setVersaoFluxo(atual => atual + 1); }}
               />
             )
             : aba === 'historico'

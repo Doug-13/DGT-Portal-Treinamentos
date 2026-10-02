@@ -765,10 +765,10 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         }
 
         <div style={{ fontSize: '12px', lineHeight: '17px' }}>
-          <strong>Autor da revisão</strong>: o responsável cadastrado na revisão.{' '}
+          <strong>Autor da revisão</strong>: quem criou a revisão (no primeiro cadastro, quem criou o documento).{' '}
           <strong>Gestor da área do documento</strong>: os Gestores da área do documento (Áreas e acessos).{' '}
           <strong>Área específica</strong>: membros (ou só gestores) da área escolhida.{' '}
-          Qualquer um dos responsáveis pode executar a etapa. O Administrador do portal também pode.
+          Qualquer um dos responsáveis pode executar a etapa; somente eles veem os botões.
         </div>
       </fieldset>}
 

@@ -120,7 +120,8 @@ export const usuarioAtende = (
 };
 
 // Papéis (papelTeste) do fluxo que o usuário REAL pode executar
-// nesta revisão. Administrador do portal pode executar todos.
+// nesta revisão. Só quem é responsável — o perfil Administrador do
+// portal NÃO passa por cima do fluxo.
 export const papeisDoUsuario = (
   definicao: IFluxoDefinicao,
   contexto: IContextoAcesso | undefined,
@@ -144,7 +145,6 @@ export const papeisDoUsuario = (
           }
 
           if (
-            contexto.perfil === 'Administrador' ||
             usuarioAtende(resolverResponsavel(responsavel, dados), contexto.usuarioId, vinculos)
           ) {
             papeis.push(responsavel.papelTeste);
@@ -157,19 +157,31 @@ export const papeisDoUsuario = (
   return papeis;
 };
 
-// Nomes legíveis de quem pode executar (para a tela).
+// Nomes legíveis de quem pode executar (para a tela): a pessoa
+// primeiro, o papel entre parênteses.
 export const descreverResolvido = (
   resolvido: IResponsavelResolvido,
-  vinculos: IUsuarioAreaAdmin[]
+  vinculos: IUsuarioAreaAdmin[],
+  usuarios: Array<{ id: string; nome: string }> = []
 ): string => {
 
   if (resolvido.usuarioId) {
+    const usuario =
+      usuarios.find(item => guid(item.id) === guid(resolvido.usuarioId));
+
     const vinculo =
       vinculos.find(item => guid(item.usuarioId) === guid(resolvido.usuarioId));
 
-    return vinculo
-      ? `${resolvido.descricao} (${vinculo.usuarioNome})`
-      : resolvido.descricao;
+    const nome =
+      usuario ? usuario.nome : vinculo ? vinculo.usuarioNome : '';
+
+    return nome
+      ? `${nome} (${resolvido.descricao.toLowerCase()})`
+      : `${resolvido.descricao} (não identificado)`;
+  }
+
+  if (!resolvido.areaId && (resolvido.papelTeste || '').indexOf('autorRevisao') === 0) {
+    return `${resolvido.descricao} (não identificado)`;
   }
 
   if (resolvido.areaId) {

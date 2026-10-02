@@ -42,6 +42,10 @@ import {
 } from '../services/fluxo/FluxoEngine';
 
 import {
+  obterAutorDaRevisao
+} from '../services/fluxo/AutorRevisaoService';
+
+import {
   obterPersistenciaFluxo
 } from '../services/fluxo/persistenciaFluxo';
 
@@ -155,6 +159,10 @@ export const useDocumentosPendencias = (
   const [revisoesComFluxo, setRevisoesComFluxo] =
     React.useState<string[]>([]);
 
+  // Autor (quem criou) de cada revisão governada pelo fluxo.
+  const [autores, setAutores] =
+    React.useState<Record<string, string>>({});
+
   // Revisões governadas por um processo cujo fluxo ainda não começou
   // (ninguém abriu a aba "Fluxo de revisão"): a pendência é a 1ª etapa.
   const [etapasIniciais, setEtapasIniciais] =
@@ -259,7 +267,9 @@ export const useDocumentosPendencias = (
               responsaveis: resolverResponsaveis(
                 tarefa.responsaveis,
                 {
-                  revisaoResponsavelId: texto(registro, '_dgt_responsavel_value'),
+                  revisaoResponsavelId:
+                    (await obterAutorDaRevisao(dataverse, texto(registro, 'dgt_documentorevisaoid'))) ||
+                    texto(registro, '_dgt_responsavel_value'),
                   documentoAreaId: documento ? documento.areaId : undefined
                 }
               )
@@ -277,13 +287,37 @@ export const useDocumentosPendencias = (
 
           if (FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE && fluxoNoDataverse()) {
             try {
-              setTarefas(
+              const tarefasLidas =
                 await dataverse.listarRegistros(
                   TABELA_TAREFA_FLUXO,
                   `$select=${TAREFA.id},${TAREFA.revisaoValor},${TAREFA.etapaNome},${TAREFA.responsaveisJson},${TAREFA.prazo},${TAREFA.criadoEm}` +
                   `&$filter=${TAREFA.situacao} eq 'pendente'`
+                );
+
+              setTarefas(tarefasLidas);
+
+              // Autor = quem criou a revisão (resolvido sempre na hora,
+              // inclusive para pendências gravadas antes desta regra).
+              const idsRevisoes =
+                tarefasLidas
+                  .map(tarefa => guid(texto(tarefa, TAREFA.revisaoValor)))
+                  .concat(registrosLidos.map(registro => guid(texto(registro, 'dgt_documentorevisaoid'))))
+                  .filter((id, indice, lista) => !!id && lista.indexOf(id) === indice);
+
+              const mapa: Record<string, string> = {};
+
+              await Promise.all(
+                idsRevisoes.map(
+                  async id => {
+                    const autor = await obterAutorDaRevisao(dataverse, id);
+                    if (autor) {
+                      mapa[id] = autor;
+                    }
+                  }
                 )
               );
+
+              setAutores(mapa);
             } catch (erroTarefas) {
               // Tabela ainda não criada: segue só com as pendências antigas.
               console.error(erroTarefas);
@@ -432,8 +466,18 @@ export const useDocumentosPendencias = (
               responsaveis = [];
             }
 
-            // Só quem é responsável da etapa (o Administrador pode agir
-            // pela aba do fluxo, mas a pendência não é dele).
+            // Responsável "Autor da revisão" sem pessoa gravada: usa
+            // quem criou a revisão.
+            responsaveis =
+              responsaveis.map(
+                item =>
+                  autores[revisaoId] &&
+                  (item.papelTeste === 'autor' || (item.papelTeste || '').indexOf('autorRevisao') === 0)
+                    ? { ...item, usuarioId: autores[revisaoId] }
+                    : item
+              );
+
+            // Só quem é responsável da etapa recebe a pendência.
             const minha =
               responsaveis.some(item => usuarioAtende(item, meuId, usuariosAreas));
 
@@ -538,6 +582,7 @@ export const useDocumentosPendencias = (
       [
         registros,
         tarefas,
+        autores,
         revisoesComFluxo,
         etapasIniciais,
         documentos,

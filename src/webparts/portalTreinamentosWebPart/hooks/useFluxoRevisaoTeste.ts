@@ -50,6 +50,11 @@ import {
 } from '../services/fluxo/FluxoService';
 
 import {
+  carregarUsuariosPortal,
+  obterAutorDaRevisao
+} from '../services/fluxo/AutorRevisaoService';
+
+import {
   descreverResolvido,
   papeisDoUsuario,
   resolverResponsaveis
@@ -247,6 +252,16 @@ export const useFluxoRevisaoTeste = (
   const [vinculos, setVinculos] =
     React.useState<IDocumentoProcessoVinculo[]>([]);
 
+  // Autor da revisão = quem a criou (dgt_usuario), ver AutorRevisaoService.
+  const [autorId, setAutorId] =
+    React.useState<string | undefined>(undefined);
+
+  const autorIdRef =
+    React.useRef<string | undefined>(undefined);
+
+  const [usuariosPortal, setUsuariosPortal] =
+    React.useState<Array<{ id: string; nome: string }>>([]);
+
   const [vinculosUsuarios, setVinculosUsuarios] =
     React.useState<IUsuarioAreaAdmin[]>([]);
 
@@ -311,10 +326,10 @@ export const useFluxoRevisaoTeste = (
   const dadosResponsaveis =
     React.useMemo(
       () => ({
-        revisaoResponsavelId: revisaoEmAndamento ? revisaoEmAndamento.responsavelId : undefined,
+        revisaoResponsavelId: autorId || (revisaoEmAndamento ? revisaoEmAndamento.responsavelId : undefined),
         documentoAreaId: documento ? documento.areaId : undefined
       }),
-      [revisaoEmAndamento, documento]
+      [revisaoEmAndamento, documento, autorId]
     );
 
   const atores: IAtorSimulado[] =
@@ -338,10 +353,7 @@ export const useFluxoRevisaoTeste = (
             {
               chave: 'eu',
               rotulo: nomeReal,
-              descricao:
-                contexto?.perfil === 'Administrador'
-                  ? 'Administrador do portal: pode executar qualquer etapa.'
-                  : '',
+              descricao: '',
               ator: {
                 id: contexto?.usuarioId || '',
                 nome: nomeReal,
@@ -399,8 +411,16 @@ export const useFluxoRevisaoTeste = (
   ): IContextoExecucaoFluxo => ({
     rotuloRevisao: documento && revisaoAlvo ? `${documento.codigo} ${revisaoAlvo.revisao}` : undefined,
 
+    // Usa o autor já identificado (ref), mesmo que o estado ainda
+    // não tenha sido atualizado na tela.
     resolverResponsaveis: (responsaveis: IFluxoResponsavel[]): IResponsavelResolvido[] =>
-      resolverResponsaveis(responsaveis, dadosResponsaveis),
+      resolverResponsaveis(
+        responsaveis,
+        {
+          ...dadosResponsaveis,
+          revisaoResponsavelId: autorIdRef.current || dadosResponsaveis.revisaoResponsavelId
+        }
+      ),
 
     // Publicação REAL (só no Dataverse; no teste é apenas simulada).
     executarAcoesSistema: local || !dataverseService || !revisaoEmAndamento
@@ -493,14 +513,22 @@ export const useFluxoRevisaoTeste = (
 
         try {
 
-          const [dados, usuariosAreas] =
+          const [dados, usuariosAreas, usuarios, autor] =
             await Promise.all([
               persistencia.processos.carregar(
                 forcarReleitura,
                 [{ id: documento.id, codigo: documento.codigo }]
               ),
-              carregarVinculosUsuarios(dataverseService)
+              carregarVinculosUsuarios(dataverseService),
+              carregarUsuariosPortal(dataverseService),
+              local
+                ? Promise.resolve(undefined)
+                : obterAutorDaRevisao(dataverseService, revisaoEmAndamento ? revisaoEmAndamento.id : undefined)
             ]);
+
+          autorIdRef.current = autor;
+          setAutorId(autor);
+          setUsuariosPortal(usuarios.map(item => ({ id: item.id, nome: item.nome })));
 
           setProcessos(dados.processos);
           setVinculos(dados.vinculos);
@@ -777,11 +805,12 @@ export const useFluxoRevisaoTeste = (
           return [];
         }
 
+        // Sempre resolve com os dados atuais (autor = quem criou a
+        // revisão), também para pendências gravadas antes desta regra.
         const resolvidos =
-          tarefa.responsaveisResolvidos ||
           resolverResponsaveis(tarefa.responsaveis, dadosResponsaveis);
 
-        return resolvidos.map(item => descreverResolvido(item, vinculosUsuarios));
+        return resolvidos.map(item => descreverResolvido(item, vinculosUsuarios, usuariosPortal));
       })()
       : [];
 
