@@ -24,7 +24,9 @@ import {
 
 import {
   ChaveModuloPortal,
-  MODULOS_PORTAL
+  MODULOS_PADRAO,
+  MODULOS_PORTAL,
+  modulosEfetivos
 } from '../../utils/modulosPortal';
 
 import {
@@ -208,12 +210,17 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
     ).then(() => setNovaArea('')).catch(() => undefined);
   };
 
-  const todosModulos = !modulos || modulos.length === 0;
+  const efetivos =
+    modulosEfetivos(item.usuario.perfilAcesso, modulos);
+
+  const ehPadrao =
+    !modulos || modulos.length === 0;
 
   const alternarModulo = (chave: ChaveModuloPortal): void => {
-    const atual = modulos && modulos.length > 0 ? modulos : MODULOS_PORTAL.map(m => m.chave);
+    const atual = modulosEfetivos(undefined, modulos);
     const novo = atual.indexOf(chave) >= 0 ? atual.filter(m => m !== chave) : atual.concat([chave]);
-    setModulos(novo.length === MODULOS_PORTAL.length ? undefined : novo);
+    const igualPadrao = novo.length === MODULOS_PADRAO.length && novo.every(m => MODULOS_PADRAO.indexOf(m) >= 0);
+    setModulos(igualPadrao ? undefined : novo);
   };
 
   const modulosAlterados =
@@ -361,10 +368,10 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
                       {
                         MODULOS_PORTAL.map(modulo => {
-                          const marcado = todosModulos || (modulos || []).indexOf(modulo.chave) >= 0;
+                          const marcado = efetivos.indexOf(modulo.chave) >= 0;
                           return (
                             <label key={modulo.chave} title={modulo.descricao} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', padding: '8px 10px', border: `1px solid ${marcado ? '#05C3DD' : COR_BORDA}`, background: marcado ? '#E6F9FC' : '#FFFFFF', borderRadius: '8px', fontSize: '13px', cursor: admin ? 'pointer' : 'default' }}>
-                              <input type="checkbox" checked={marcado} disabled={!admin || ocupado} onChange={() => alternarModulo(modulo.chave)} />
+                              <input type="checkbox" checked={marcado} disabled={!admin || ocupado || item.usuario.perfilAcesso === 'Administrador'} onChange={() => alternarModulo(modulo.chave)} />
                               <span><strong>{modulo.nome}</strong><span style={{ display: 'block', fontSize: '11px', color: COR_TEXTO_2 }}>{modulo.descricao}</span></span>
                             </label>
                           );
@@ -373,7 +380,13 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '12px', color: COR_TEXTO_2, flex: 1 }}>
-                        {todosModulos ? 'Todos os módulos que o perfil permite.' : `${(modulos || []).length} de ${MODULOS_PORTAL.length} módulos.`}
+                        {
+                          item.usuario.perfilAcesso === 'Administrador'
+                            ? 'Administrador acessa todos os módulos.'
+                            : ehPadrao
+                              ? 'Módulos padrão (Licitações não incluída).'
+                              : `Personalizado: ${efetivos.length} de ${MODULOS_PORTAL.length} módulos.`
+                        }
                         {!admin && ' Somente administradores alteram os módulos (valem para o portal inteiro).'}
                       </span>
                       {
@@ -474,7 +487,7 @@ const UsuariosAcessosPage: React.FC<IUsuariosAcessosPageProps> = ({
       { titulo: admin ? 'Usuários' : 'Pessoas nas suas áreas', valor: dados.usuarios.length },
       { titulo: 'Gestores de área', valor: dados.usuarios.filter(item => item.vinculos.some(v => v.ativo && v.perfil !== 'Membro')).length },
       { titulo: 'Sem área', valor: dados.usuarios.filter(item => !item.vinculos.some(v => v.ativo)).length },
-      { titulo: 'Com módulos restritos', valor: dados.usuarios.filter(item => !!item.modulos).length }
+      { titulo: 'Com módulos personalizados', valor: dados.usuarios.filter(item => !!item.modulos).length }
     ]
     : [];
 
@@ -560,7 +573,7 @@ const UsuariosAcessosPage: React.FC<IUsuariosAcessosPageProps> = ({
                       <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COR_BORDA}`, verticalAlign: 'top' }}>
                         {
                           !item.modulos
-                            ? <span style={{ fontSize: '12.5px', color: COR_TEXTO_2 }}>Todos</span>
+                            ? <span style={{ fontSize: '12.5px', color: COR_TEXTO_2 }}>{item.usuario.perfilAcesso === 'Administrador' ? 'Todos' : 'Padrão'}</span>
                             : item.modulos.map(chave => (
                               <Chip key={chave} texto={(MODULOS_PORTAL.find(m => m.chave === chave) || { nome: chave }).nome} cor="#0B6B3A" fundo="#E7F6EC" />
                             ))

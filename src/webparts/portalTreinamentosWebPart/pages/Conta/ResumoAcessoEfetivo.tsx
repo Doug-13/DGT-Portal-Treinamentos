@@ -6,7 +6,8 @@ import {
 
 import {
   ChaveModuloPortal,
-  MODULOS_PORTAL
+  MODULOS_PORTAL,
+  moduloLiberado as moduloLiberadoPara
 } from '../../utils/modulosPortal';
 
 // ============================================================
@@ -69,7 +70,7 @@ export const ResumoAcessoEfetivo: React.FC<IResumoAcessoEfetivoProps> = ({
   const conteudo = admin || perfil === 'Editor';
 
   const moduloLiberado = (chave: ChaveModuloPortal): boolean =>
-    admin || !modulos || modulos.length === 0 || modulos.indexOf(chave) >= 0;
+    moduloLiberadoPara(perfil, modulos, chave);
 
   const escopo =
     gestaoGlobal ? 'todas as áreas' : gestorEm.join(', ');

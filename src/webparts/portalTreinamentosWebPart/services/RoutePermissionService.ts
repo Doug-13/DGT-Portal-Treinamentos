@@ -5,7 +5,8 @@ import {
 
 import {
   MODULOS_PORTAL,
-  moduloDaPagina
+  moduloDaPagina,
+  moduloLiberado
 } from '../utils/modulosPortal';
 
 // ============================================================
@@ -68,11 +69,13 @@ const SOMENTE_ADMIN: PerfilAcesso[] = [
   'Administrador'
 ];
 
-// Módulo Licitações (consulta pública ao PNCP).
-// Fase de teste: somente Administrador. Para liberar aos gestores,
-// acrescente 'Gestor' aqui. Quando houver um grupo próprio
-// (ex.: "DGT Comercial"), criar um perfil específico.
+// Módulo Licitações (consulta pública ao PNCP): qualquer perfil, desde
+// que o MÓDULO esteja liberado ao usuário (Usuários e acessos). Por
+// padrão o módulo NÃO é liberado (utils/modulosPortal.ts).
 const LICITACOES: PerfilAcesso[] = [
+  'Funcionario',
+  'Editor',
+  'Gestor',
   'Administrador'
 ];
 
@@ -180,9 +183,7 @@ export const verificarPermissaoRota = (
   if (
     modulo &&
     contexto &&
-    contexto.perfil !== 'Administrador' &&
-    contexto.modulosPermitidos &&
-    contexto.modulosPermitidos.indexOf(modulo) < 0
+    !moduloLiberado(contexto.perfil, contexto.modulosPermitidos, modulo)
   ) {
     const nome =
       (MODULOS_PORTAL.find(item => item.chave === modulo) || { nome: modulo }).nome;

@@ -11,10 +11,15 @@ import {
 //
 // Cada usuário pode ter uma lista de módulos liberados, gravada em
 // dgt_usuario.dgt_modulosacesso (texto JSON, ex.: ["treinamentos",
-// "documentos"]). Lista vazia ou coluna inexistente = TODOS os
-// módulos que o perfil permite (comportamento anterior).
+// "licitacoes"]). Vazio ou coluna inexistente = módulos PADRÃO
+// (os marcados com padrao: true). Licitações não é padrão: só
+// aparece para quem tiver o módulo liberado explicitamente.
 //
 // O Administrador sempre acessa todos os módulos.
+//
+// ESTA é a única regra de módulo do portal: o menu, as rotas
+// (RoutePermissionService), "Meu perfil" e "Usuários e acessos"
+// usam modulosEfetivos/moduloLiberado daqui.
 // ============================================================
 
 export type ChaveModuloPortal =
@@ -28,14 +33,16 @@ export interface IModuloPortal {
   chave: ChaveModuloPortal;
   nome: string;
   descricao: string;
+  // Liberado para todos quando o usuário não tem lista própria.
+  padrao: boolean;
 }
 
 export const MODULOS_PORTAL: IModuloPortal[] = [
-  { chave: 'treinamentos', nome: 'Treinamentos', descricao: 'Trilhas, cursos, avaliações, certificados e gestão de treinamentos.' },
-  { chave: 'documentos', nome: 'Documentos', descricao: 'Procedimentos, políticas, revisões e aprovações.' },
-  { chave: 'processos', nome: 'Processos', descricao: 'Mapeamento de processos e fluxos de revisão.' },
-  { chave: 'licitacoes', nome: 'Licitações', descricao: 'Busca de oportunidades no PNCP.' },
-  { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI).' }
+  { chave: 'treinamentos', nome: 'Treinamentos', descricao: 'Trilhas, cursos, avaliações, certificados e gestão de treinamentos.', padrao: true },
+  { chave: 'documentos', nome: 'Documentos', descricao: 'Procedimentos, políticas, revisões e aprovações.', padrao: true },
+  { chave: 'processos', nome: 'Processos', descricao: 'Mapeamento de processos e fluxos de revisão.', padrao: true },
+  { chave: 'licitacoes', nome: 'Licitações', descricao: 'Busca de oportunidades no PNCP. Liberar só para quem trabalha com licitações.', padrao: false },
+  { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI).', padrao: true }
 ];
 
 // Módulo a que uma página pertence (undefined = página geral, sempre
@@ -80,9 +87,35 @@ export const lerModulosAcesso = (
   }
 };
 
+export const MODULOS_PADRAO: ChaveModuloPortal[] =
+  MODULOS_PORTAL.filter(item => item.padrao).map(item => item.chave);
+
+const mesmoConjunto = (
+  a: ChaveModuloPortal[],
+  b: ChaveModuloPortal[]
+): boolean =>
+  a.length === b.length && a.every(item => b.indexOf(item) >= 0);
+
+// Módulos que o usuário realmente acessa.
+export const modulosEfetivos = (
+  perfil: string | undefined,
+  modulos: ChaveModuloPortal[] | undefined
+): ChaveModuloPortal[] =>
+  perfil === 'Administrador'
+    ? MODULOS_PORTAL.map(item => item.chave)
+    : (modulos && modulos.length > 0 ? modulos : MODULOS_PADRAO);
+
+export const moduloLiberado = (
+  perfil: string | undefined,
+  modulos: ChaveModuloPortal[] | undefined,
+  chave: ChaveModuloPortal
+): boolean =>
+  modulosEfetivos(perfil, modulos).indexOf(chave) >= 0;
+
+// Igual ao padrão → grava vazio (segue o padrão se ele mudar).
 export const gravarModulosAcesso = (
   modulos: ChaveModuloPortal[] | undefined
 ): string =>
-  modulos && modulos.length > 0 && modulos.length < MODULOS_PORTAL.length
+  modulos && modulos.length > 0 && !mesmoConjunto(modulos, MODULOS_PADRAO)
     ? JSON.stringify(modulos)
     : '';
