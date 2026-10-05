@@ -6,6 +6,10 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.2.0] - 2026-10-05
+
+- Melhoria: ajustes e correções internas.
+
 ## [1.1.0] - 2026-10-05
 
 - Novo: menu do usuário (clique no nome, no topo) com Meu perfil, Usuários e acessos e Áreas e acessos.
