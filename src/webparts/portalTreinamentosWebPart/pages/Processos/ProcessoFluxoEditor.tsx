@@ -890,13 +890,6 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   ): React.ReactNode =>
     edicaoVisivel && (
       <PainelPropriedadesFluxo
-        etapasDoFluxo={
-          snapshotAtual
-            ? snapshotAtual.formas
-              .filter(forma => tipoFluxoDoBpmn(forma.tipo) === 'tarefaHumana' && (!selecionado || forma.id !== selecionado.id))
-              .map(forma => ({ id: forma.id, nome: forma.nome || '(sem nome)' }))
-            : []
-        }
         key={`${selecionado ? selecionado.id : 'nenhum'}-${secao}`}
         secao={secao}
         extraCampos={extraCampos}

@@ -230,6 +230,12 @@ import IndicadoresPage from
 import LicitacoesBuscaPage from
   '../pages/Licitacoes/LicitacoesBuscaPage';
 
+import UsuariosAcessosPage from
+  '../pages/Conta/UsuariosAcessosPage';
+
+import MeuPerfilPage from
+  '../pages/Conta/MeuPerfilPage';
+
 import LicitacoesTesteConexaoPage from
   '../pages/Licitacoes/LicitacoesTesteConexaoPage';
 
@@ -2195,6 +2201,10 @@ const PortalRouter:
 
         return (
           <NovoTreinamentoPage
+            // Remonta o formulário ao trocar entre "novo" e "editar"
+            // (ou entre dois treinamentos): nenhum dado anterior fica.
+            key={props.fluxoCriacaoTreinamentoId || 'novo-treinamento'}
+
             areas={
               props.areasAdministrativas
             }
@@ -3004,6 +3014,30 @@ const PortalRouter:
                 'licitacoesTeste'
               )
             }
+          />
+        );
+
+      // ========================================================
+      // CONTA DO USUÁRIO (menu do nome, no topo)
+      // ========================================================
+
+      case 'meuPerfil':
+
+        return (
+          <MeuPerfilPage
+            contexto={props.contextoAcesso}
+            onIrParaUsuarios={() => props.navegar('usuariosAcessos')}
+            onVoltar={() => props.navegar('inicio')}
+          />
+        );
+
+      case 'usuariosAcessos':
+
+        return (
+          <UsuariosAcessosPage
+            dataverseService={props.dataverseService}
+            contexto={props.contextoAcesso}
+            onVoltar={() => props.navegar('meuPerfil')}
           />
         );
 

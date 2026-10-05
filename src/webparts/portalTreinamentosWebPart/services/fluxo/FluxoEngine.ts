@@ -456,6 +456,136 @@ const registrarPercurso = (
   );
 };
 
+// ------------------------------------------------------------
+// Retreinamento na publicação pela etapa "Vigente": decidido pelo
+// próprio fluxo, sem configuração:
+//
+//   1. Resposta de um campo de retreinamento (ex.: "Esta revisão
+//      exige retreinamento?" = Sim/Não), se houver.
+//   2. Caminho percorrido neste ciclo: passou por uma etapa OPCIONAL
+//      cujo nome fala de treinamento (ex.: "Revisar Treinamento", que
+//      só existe no caminho "Retreinar? → Sim") → com retreinamento.
+//   3. Última resposta dada numa etapa sobre treinamento
+//      (ex.: "Realizar retreinamento?" → Sim/Não).
+//   4. Sem nenhuma indicação → sem retreinamento.
+// ------------------------------------------------------------
+
+const PADRAO_TREINAMENTO = /trein/;
+const PADRAO_SIM = /(^|[^a-z])(sim|yes|retreinar|realizar|exige)([^a-z]|$)/;
+const PADRAO_NAO = /(^|[^a-z])(nao|no|sem|dispens|dispensar)([^a-z]|$)/;
+
+const textoNormal = (
+  valor?: string
+): string =>
+  (valor || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+// O alvo continua alcançável a partir do Início sem passar por "excluido"?
+const alcancavelSem = (
+  definicao: IFluxoDefinicao,
+  alvoId: string,
+  excluidoId: string
+): boolean => {
+
+  const inicio =
+    definicao.elementos.find(item => item.tipo === 'inicio');
+
+  if (!inicio) {
+    return false;
+  }
+
+  const visitados: string[] = [inicio.id];
+  const fila: string[] = [inicio.id];
+
+  while (fila.length > 0) {
+
+    const atual = fila.shift() as string;
+
+    if (atual === alvoId) {
+      return true;
+    }
+
+    definicao.transicoes
+      .filter(transicao => transicao.origemId === atual)
+      .forEach(transicao => {
+        if (
+          transicao.destinoId !== excluidoId &&
+          visitados.indexOf(transicao.destinoId) < 0
+        ) {
+          visitados.push(transicao.destinoId);
+          fila.push(transicao.destinoId);
+        }
+      });
+  }
+
+  return false;
+};
+
+const textoDoPasso = (
+  passo: { acaoRotulo: string; resultado: string; acaoChave: string }
+): string =>
+  `${passo.acaoRotulo} ${passo.resultado} ${passo.acaoChave}`;
+
+export const retreinamentoDecididoNoFluxo = (
+  definicao: IFluxoDefinicao,
+  instancia: IFluxoInstancia,
+  etapaVigenteId: string
+): boolean => {
+
+  // 1. Campo de retreinamento respondido
+  const chaveCampo =
+    Object.keys(instancia.valores || {}).find(
+      chave =>
+        PADRAO_TREINAMENTO.test(textoNormal(chave)) &&
+        !/justific|prazo/.test(textoNormal(chave))
+    );
+
+  if (chaveCampo) {
+    const valor = textoNormal(String(instancia.valores[chaveCampo]));
+    if (valor === 'sim' || valor === 'true') return true;
+    if (valor === 'nao' || valor === 'false') return false;
+  }
+
+  // 2. Passou por etapa opcional de treinamento neste ciclo
+  const passouPorOpcional =
+    instancia.percorridos.some(
+      id => {
+        const elemento = obterElemento(definicao, id);
+        return (
+          !!elemento &&
+          elemento.id !== etapaVigenteId &&
+          elemento.tipo === 'tarefaHumana' &&
+          PADRAO_TREINAMENTO.test(textoNormal(elemento.nome)) &&
+          alcancavelSem(definicao, etapaVigenteId, elemento.id)
+        );
+      }
+    );
+
+  if (passouPorOpcional) {
+    return true;
+  }
+
+  // 3. Última resposta numa etapa sobre treinamento (deste ciclo)
+  const resposta =
+    instancia.historico.find(
+      passo =>
+        !passo.sistema &&
+        instancia.percorridos.indexOf(passo.elementoId) >= 0 &&
+        PADRAO_TREINAMENTO.test(textoNormal(passo.elementoNome))
+    );
+
+  if (resposta) {
+    const texto = textoNormal(textoDoPasso(resposta));
+    if (PADRAO_NAO.test(texto)) return false;
+    if (PADRAO_SIM.test(texto)) return true;
+  }
+
+  // 4. Sem indicação
+  return false;
+};
+
 const limparTransicoesOrfas = (
   definicao: IFluxoDefinicao,
   instancia: IFluxoInstancia
@@ -572,14 +702,11 @@ const avancar = (
       destino.statusDocumento === 'Vigente'
     ) {
 
-      const regra =
-        destino.retreinamentoAoPublicar || 'nao';
-
       const comRetreinamento =
-        regra === 'sim' ||
-        (
-          regra.indexOf('etapa:') === 0 &&
-          instancia.percorridos.indexOf(regra.substring(6)) >= 0
+        retreinamentoDecididoNoFluxo(
+          definicao,
+          instancia,
+          destino.id
         );
 
       const acao: AcaoSistemaFluxo =

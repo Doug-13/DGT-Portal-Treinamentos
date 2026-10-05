@@ -3,6 +3,11 @@ import {
   IDataverseRecord
 } from './DataverseService';
 
+import {
+  ChaveModuloPortal,
+  lerModulosAcesso
+} from '../utils/modulosPortal';
+
 // ============================================================
 // PERFIS GLOBAIS DO PORTAL (campo dgt_usuario.dgt_perfilacesso)
 //
@@ -18,9 +23,25 @@ import {
 //                 (dgt_usuarioarea).
 // Administrador → tudo.
 //
+// PAPÉIS POR ÁREA (dgt_usuarioarea.dgt_perfilarea): Membro, Gestor,
+// Administrador da área. Quem é Gestor (ou Administrador) em pelo
+// menos uma área recebe os recursos de gestão (equipe, atribuição,
+// indicadores, usuários e acessos) LIMITADOS às suas áreas — mesmo
+// que o perfil global seja Funcionário. Assim uma pessoa pode ser
+// "usuária" em uma área e "gestora" em outra.
+//
+// MÓDULOS (dgt_usuario.dgt_modulosacesso, opcional): lista de módulos
+// liberados ao usuário. Vazio = todos os que o perfil permite.
+//
 // IMPORTANTE: isto organiza a TELA. A proteção real dos dados está nas
 // Security Roles do Dataverse (DGT - Treinamentos - <Perfil>).
 // ============================================================
+
+export interface IVinculoAcesso {
+  areaId: string;
+  areaNome: string;
+  perfil: string;
+}
 
 export type PerfilAcesso =
   | 'Funcionario'
@@ -44,7 +65,51 @@ export interface IContextoAcesso {
   podeAtribuirTreinamentos: boolean;
   podeVerEquipe: boolean;
   podeVerIndicadoresGerenciais: boolean;
+
+  // Papéis por área (ativos) e áreas em que o usuário é gestor.
+  vinculosArea?: IVinculoAcesso[];
+  areasGestor?: string[];
+
+  // Módulos liberados (undefined = todos os que o perfil permite).
+  modulosPermitidos?: ChaveModuloPortal[];
 }
+
+// Gestor de pelo menos uma área (ou Gestor/Administrador global).
+export const ehGestorEmAlgumaArea = (
+  contexto?: IContextoAcesso
+): boolean =>
+  !!contexto &&
+  (
+    contexto.perfil === 'Gestor' ||
+    contexto.perfil === 'Administrador' ||
+    (contexto.areasGestor || []).length > 0
+  );
+
+// Texto do perfil no topo: "Gestor (PRO) · Membro (DEV)", "Administrador"...
+export const descreverPerfil = (
+  contexto?: IContextoAcesso
+): string => {
+
+  if (!contexto) {
+    return '';
+  }
+
+  const global =
+    contexto.perfil === 'Funcionario' ? 'Colaborador' : contexto.perfil;
+
+  if (contexto.perfil === 'Administrador') {
+    return 'Administrador';
+  }
+
+  const gestorEm =
+    (contexto.vinculosArea || [])
+      .filter(item => item.perfil !== 'Membro')
+      .map(item => item.areaNome);
+
+  return gestorEm.length > 0 && contexto.perfil !== 'Gestor'
+    ? `${global} · Gestor em ${gestorEm.length === 1 ? gestorEm[0] : `${gestorEm.length} áreas`}`
+    : global;
+};
 
 const texto = (
   registro: IDataverseRecord,
@@ -245,10 +310,77 @@ export class AutorizacaoService {
       perfil ===
       'Administrador';
 
+    const usuarioId =
+      texto(
+        registro,
+        'dgt_usuarioid'
+      );
+
+    // Papéis por área (falha na leitura não impede o login).
+    let vinculosArea: IVinculoAcesso[] = [];
+
+    try {
+      const registrosArea =
+        await this.dataverse.getUsuariosAreasAdmin();
+
+      const meuId =
+        usuarioId.replace(/[{}]/g, '').toLowerCase();
+
+      vinculosArea =
+        registrosArea
+          .filter(
+            item =>
+              texto(item, '_dgt_usuario_value').replace(/[{}]/g, '').toLowerCase() === meuId &&
+              booleano(item, 'dgt_ativo', true)
+          )
+          .map(item => ({
+            areaId: texto(item, '_dgt_area_value'),
+            areaNome:
+              texto(item, '_dgt_area_value@OData.Community.Display.V1.FormattedValue') ||
+              'Área',
+            perfil:
+              texto(item, 'dgt_perfilarea@OData.Community.Display.V1.FormattedValue') ||
+              (Number(item.dgt_perfilarea) === 100000001
+                ? 'Gestor'
+                : Number(item.dgt_perfilarea) === 100000002
+                  ? 'Administrador da área'
+                  : 'Membro')
+          }));
+    } catch (error) {
+      console.error('Não foi possível ler os papéis por área:', error);
+    }
+
+    const areasGestor =
+      vinculosArea
+        .filter(item => item.perfil !== 'Membro')
+        .map(item => item.areaId);
+
+    // Módulos liberados (coluna opcional dgt_modulosacesso).
+    let modulosPermitidos: ChaveModuloPortal[] | undefined;
+
+    if (!admin && usuarioId) {
+      try {
+        const lido =
+          await this.dataverse.obterRegistro(
+            'dgt_usuario',
+            usuarioId,
+            ['dgt_modulosacesso']
+          );
+        modulosPermitidos =
+          lido && lido.registro
+            ? lerModulosAcesso((lido.registro as Record<string, unknown>).dgt_modulosacesso)
+            : undefined;
+      } catch {
+        // Coluna ainda não criada: sem restrição de módulos.
+        modulosPermitidos = undefined;
+      }
+    }
+
     const gestorOuAdmin =
       perfil ===
         'Gestor' ||
-      admin;
+      admin ||
+      areasGestor.length > 0;
 
     // Quem mantém conteúdo (treinamentos, trilhas, avaliações,
     // documentos). O Editor NÃO recebe permissões de gestão de pessoas
@@ -259,11 +391,7 @@ export class AutorizacaoService {
       admin;
 
     return {
-      usuarioId:
-        texto(
-          registro,
-          'dgt_usuarioid'
-        ),
+      usuarioId,
 
       nome:
         texto(
@@ -287,8 +415,10 @@ export class AutorizacaoService {
       podeGerenciarDocumentos:
         editorOuAdmin,
 
+      // Administrador: todos. Gestor de área: só as suas áreas
+      // (a tela "Usuários e acessos" aplica o recorte).
       podeGerenciarUsuarios:
-        admin,
+        admin || areasGestor.length > 0 || perfil === 'Gestor',
 
       podeGerenciarTrilhas:
         editorOuAdmin,
@@ -303,7 +433,11 @@ export class AutorizacaoService {
         gestorOuAdmin,
 
       podeVerIndicadoresGerenciais:
-        gestorOuAdmin
+        gestorOuAdmin,
+
+      vinculosArea,
+      areasGestor,
+      modulosPermitidos
     };
   }
 }

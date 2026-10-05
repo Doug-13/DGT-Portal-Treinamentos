@@ -32,6 +32,8 @@ import { UsuarioService } from '../services/UsuarioService';
 import { TrilhaService } from '../services/TrilhaService';
 import PortalRouter from './PortalRouter';
 import { Pagina } from '../constants/routes';
+import { descreverPerfil, ehGestorEmAlgumaArea } from '../services/AutorizacaoService';
+import { podeAcessarRota } from '../services/RoutePermissionService';
 import {
   obterModuloPagina,
   paginaEhTreinamentos,
@@ -665,16 +667,38 @@ const gestaoAreas =
         15
       );
     const perfilExibicao =
-      autorizacao.contexto?.perfil ===
-        'Administrador'
-        ? 'Administrador'
-        : autorizacao.contexto?.perfil ===
-          'Gestor'
-          ? 'Gestor'
-          : autorizacao.contexto?.perfil ===
-            'Editor'
-            ? 'Editor'
-            : 'Colaborador';
+      autorizacao.contexto
+        ? descreverPerfil(autorizacao.contexto)
+        : 'Colaborador';
+
+    // Menu do nome do usuário (Meu perfil, Usuários e acessos...).
+    const [menuUsuarioAberto, setMenuUsuarioAberto] =
+      React.useState<boolean>(false);
+
+    const menuUsuarioRef =
+      React.useRef<HTMLDivElement | null>(null);
+
+    React.useEffect(() => {
+      if (!menuUsuarioAberto) {
+        return undefined;
+      }
+      const fechar = (evento: MouseEvent): void => {
+        if (menuUsuarioRef.current && !menuUsuarioRef.current.contains(evento.target as Node)) {
+          setMenuUsuarioAberto(false);
+        }
+      };
+      const tecla = (evento: KeyboardEvent): void => {
+        if (evento.key === 'Escape') {
+          setMenuUsuarioAberto(false);
+        }
+      };
+      document.addEventListener('mousedown', fechar);
+      document.addEventListener('keydown', tecla);
+      return () => {
+        document.removeEventListener('mousedown', fechar);
+        document.removeEventListener('keydown', tecla);
+      };
+    }, [menuUsuarioAberto]);
 
     // ==========================================================
     // CARREGAR PORTAL
@@ -1845,6 +1869,14 @@ const gestaoAreas =
           pagina: Pagina
         ): void => {
 
+          // "Novo treinamento" pela navegação (botão, aba, atalho) é
+          // SEMPRE um cadastro novo: esquece o treinamento que estava
+          // sendo editado/criado. A edição e as etapas do assistente
+          // usam setPaginaAtual diretamente e mantêm o treinamento.
+          if (pagina === 'novoTreinamento') {
+            setFluxoCriacaoTreinamentoId('');
+          }
+
           setPaginaAtual(
             pagina
           );
@@ -2780,7 +2812,15 @@ const gestaoAreas =
             }
           >
 
-            {menuIntranet.map(
+            {menuIntranet
+              .filter(
+                item =>
+                  !autorizacao.contexto ||
+                  !item.pagina ||
+                  item.modulo === 'inicio' ||
+                  podeAcessarRota(item.pagina, autorizacao.contexto)
+              )
+              .map(
               item => (
 
                 <button
@@ -2939,9 +2979,26 @@ const gestaoAreas =
               </button>
 
               <div
+                ref={menuUsuarioRef}
+                style={{ position: 'relative' }}
+              >
+              <div
                 className={
                   styles.userBox
                 }
+                role="button"
+                tabIndex={0}
+                aria-haspopup="menu"
+                aria-expanded={menuUsuarioAberto}
+                title="Meu perfil e acessos"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setMenuUsuarioAberto(!menuUsuarioAberto)}
+                onKeyDown={evento => {
+                  if (evento.key === 'Enter' || evento.key === ' ') {
+                    evento.preventDefault();
+                    setMenuUsuarioAberto(!menuUsuarioAberto);
+                  }
+                }}
               >
 
                 <div
@@ -3011,6 +3068,79 @@ const gestaoAreas =
                   ⌄
                 </span>
 
+              </div>
+
+              {
+                menuUsuarioAberto && (
+                  <div
+                    role="menu"
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 'calc(100% + 8px)',
+                      width: '290px',
+                      background: '#FFFFFF',
+                      color: '#202A44',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '12px',
+                      boxShadow: '0 16px 40px rgba(32,42,68,.22)',
+                      zIndex: 1000,
+                      overflow: 'hidden',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <div style={{ padding: '14px 16px', borderBottom: '1px solid #E5E7EB', background: '#F7F9FB' }}>
+                      <strong style={{ display: 'block', fontSize: '14px' }}>{autorizacao.contexto?.nome || usuario.primeiroNome}</strong>
+                      <span style={{ display: 'block', fontSize: '12px', color: '#64748b', overflowWrap: 'anywhere' }}>{autorizacao.contexto?.email || ''}</span>
+                      <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0F6CBD', marginTop: '4px' }}>{perfilExibicao}</span>
+                      {
+                        (autorizacao.contexto?.vinculosArea || []).length > 0 && (
+                          <span style={{ display: 'block', fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+                            {(autorizacao.contexto?.vinculosArea || []).map(item => `${item.areaNome}: ${item.perfil}`).join(' · ')}
+                          </span>
+                        )
+                      }
+                    </div>
+                    {
+                      [
+                        { pagina: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', icone: '◉', visivel: true },
+                        { pagina: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', icone: '⚿', visivel: ehGestorEmAlgumaArea(autorizacao.contexto) },
+                        { pagina: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', icone: '▦', visivel: autorizacao.contexto?.perfil === 'Administrador' }
+                      ]
+                        .filter(item => item.visivel)
+                        .map(item => (
+                          <button
+                            key={item.pagina}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuUsuarioAberto(false);
+                              navegar(item.pagina);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              width: '100%',
+                              padding: '11px 16px',
+                              border: 0,
+                              borderBottom: '1px solid #F1F5F9',
+                              background: '#FFFFFF',
+                              color: '#202A44',
+                              fontSize: '13.5px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left'
+                            }}
+                          >
+                            <span aria-hidden="true" style={{ width: '18px', textAlign: 'center' }}>{item.icone}</span>
+                            {item.rotulo}
+                          </button>
+                        ))
+                    }
+                  </div>
+                )
+              }
               </div>
 
             </div>

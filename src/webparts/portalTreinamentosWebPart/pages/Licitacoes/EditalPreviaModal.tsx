@@ -105,11 +105,17 @@ const botaoSecundario: React.CSSProperties = {
 const linkBotao: React.CSSProperties = {
   ...botaoSecundario,
   display: 'inline-block',
-  textDecoration: 'none'
+  textDecoration: 'none',
+  whiteSpace: 'normal',
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+  textAlign: 'left',
+  boxSizing: 'border-box'
 };
 
 const secao: React.CSSProperties = {
-  marginBottom: 22
+  marginBottom: 22,
+  minWidth: 0
 };
 
 const tituloSecao: React.CSSProperties = {
@@ -144,7 +150,8 @@ const celulaTd: React.CSSProperties = {
   fontSize: 12,
   color: COR.azul,
   borderBottom: `1px solid ${COR.neutro}`,
-  verticalAlign: 'top'
+  verticalAlign: 'top',
+  overflowWrap: 'anywhere'
 };
 
 // ------------------------------------------------------------
@@ -286,11 +293,23 @@ const Indicador: React.FC<{
     <span style={{ display: 'block', fontSize: 11, color: COR.textoSecundario }}>
       {titulo}
     </span>
-    <strong style={{ display: 'block', fontSize: 17, color: COR.azul, fontWeight: 600, marginTop: 2 }}>
+    <strong style={{ display: 'block', fontSize: 17, color: COR.azul, fontWeight: 600, marginTop: 2, overflowWrap: 'anywhere' }}>
       {valor}
     </strong>
     {detalhe && (
-      <span style={{ display: 'block', fontSize: 11, color: COR.textoSecundario, marginTop: 2 }}>
+      <span
+        title={detalhe}
+        style={{
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+          fontSize: 11,
+          color: COR.textoSecundario,
+          marginTop: 2,
+          overflowWrap: 'anywhere'
+        }}
+      >
         {detalhe}
       </span>
     )}
@@ -582,7 +601,7 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))',
           gap: 22,
           alignItems: 'start'
         }}
@@ -610,7 +629,7 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
           )}
         </div>
 
-        <div>
+        <div style={{ minWidth: 0 }}>
           {/* Aderência */}
           <div style={secao}>
             <h3 style={tituloSecao}>Aderência à busca — {item.score}%</h3>
@@ -682,8 +701,8 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
                 Edital no PNCP ↗
               </a>
               {dados.linkSistemaOrigem && (
-                <a href={dados.linkSistemaOrigem} target="_blank" rel="noopener noreferrer" style={linkBotao}>
-                  {dados.sistemaOrigem ? `${dados.sistemaOrigem} ↗` : 'Sistema de origem ↗'}
+                <a href={dados.linkSistemaOrigem} target="_blank" rel="noopener noreferrer" style={linkBotao} title={dados.sistemaOrigem || 'Sistema de origem'}>
+                  Plataforma de origem ↗
                 </a>
               )}
               {dados.linkProcessoEletronico && (
@@ -962,7 +981,8 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 2000,
+        // Acima da barra superior do SharePoint (que também é fixa).
+        zIndex: 2147483000,
         background: 'rgba(32, 42, 68, 0.45)',
         display: 'flex',
         justifyContent: 'flex-end',
@@ -972,8 +992,11 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
       <div
         onClick={evento => evento.stopPropagation()}
         style={{
-          width: 'min(1200px, 100vw)',
+          width: 'min(1200px, 100%)',
+          maxWidth: '100%',
           height: '100%',
+          boxSizing: 'border-box',
+          overflow: 'hidden',
           background: '#F7F9FB',
           boxShadow: '-12px 0 40px rgba(32, 42, 68, 0.25)',
           display: 'flex',
@@ -1095,6 +1118,7 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
             flex: 1,
             minHeight: 0,
             overflowY: aba === 'edital' ? 'hidden' : 'auto',
+            overflowX: 'hidden',
             padding: 24,
             display: 'flex',
             flexDirection: 'column'

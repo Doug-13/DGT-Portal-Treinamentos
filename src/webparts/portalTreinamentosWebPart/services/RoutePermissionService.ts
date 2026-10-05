@@ -3,6 +3,11 @@ import {
   PerfilAcesso
 } from './AutorizacaoService';
 
+import {
+  MODULOS_PORTAL,
+  moduloDaPagina
+} from '../utils/modulosPortal';
+
 // ============================================================
 // PERMISSÃO DE ROTAS DO PORTAL
 //
@@ -120,6 +125,9 @@ const regras:
     { rota: 'gestaoAreas', perfis: SOMENTE_ADMIN },
 
     // Licitações (PNCP)
+    // Usuários e acessos: Administrador (todos) e gestores (suas áreas)
+    { rota: 'usuariosAcessos', perfis: GESTAO_PESSOAS },
+
     { rota: 'licitacoes', perfis: LICITACOES },
     { rota: 'licitacoesTeste', perfis: LICITACOES }
   ];
@@ -165,6 +173,25 @@ export const verificarPermissaoRota = (
   contexto?: IContextoAcesso
 ): IResultadoPermissaoRota => {
 
+  // Módulo não liberado para o usuário (Administrador sempre acessa).
+  const modulo =
+    moduloDaPagina(rota);
+
+  if (
+    modulo &&
+    contexto &&
+    contexto.perfil !== 'Administrador' &&
+    contexto.modulosPermitidos &&
+    contexto.modulosPermitidos.indexOf(modulo) < 0
+  ) {
+    const nome =
+      (MODULOS_PORTAL.find(item => item.chave === modulo) || { nome: modulo }).nome;
+    return {
+      permitido: false,
+      mensagem: `O módulo ${nome} não está liberado para o seu usuário. Fale com o gestor da sua área ou com um administrador.`
+    };
+  }
+
   const regra =
     regras.find(
       item =>
@@ -194,10 +221,17 @@ export const verificarPermissaoRota = (
     };
   }
 
+  // Gestor de alguma área conta como "Gestor" nas rotas de gestão
+  // (o recorte pelas áreas dele é feito em cada tela).
+  const perfisEfetivos: PerfilAcesso[] =
+    (contexto.areasGestor || []).length > 0 && contexto.perfil !== 'Administrador'
+      ? [contexto.perfil, 'Gestor']
+      : [contexto.perfil];
+
   if (
-    regra.perfis.indexOf(
-      contexto.perfil
-    ) >= 0
+    perfisEfetivos.some(
+      perfil => regra.perfis.indexOf(perfil) >= 0
+    )
   ) {
     return {
       permitido: true

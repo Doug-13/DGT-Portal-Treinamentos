@@ -29,7 +29,10 @@ export type Pagina =
 
   // Módulo Licitações (PNCP)
   | 'licitacoes'
-  | 'licitacoesTeste';
+  | 'licitacoesTeste'
+  // Conta do usuário (menu do nome, no topo)
+  | 'meuPerfil'
+  | 'usuariosAcessos';
 
 export const ROTAS = {
   INICIO: 'inicio',
@@ -61,6 +64,8 @@ export const ROTAS = {
   PROCESSOS: 'processos',
   LICITACOES: 'licitacoes',
   LICITACOES_TESTE: 'licitacoesTeste',
+  MEU_PERFIL: 'meuPerfil',
+  USUARIOS_ACESSOS: 'usuariosAcessos',
 } as const;
 
 

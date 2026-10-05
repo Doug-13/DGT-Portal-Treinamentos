@@ -569,10 +569,9 @@ export const montarDefinicao = (
           campos: humana ? camposSincronizados(config.campos, dados.metadados) : [],
           acaoSistema: tipo === 'tarefaSistema' ? config.acaoSistema : undefined,
           statusDocumento: humana ? config.statusDocumento : undefined,
-          retreinamentoAoPublicar:
-            humana && config.statusDocumento === 'Vigente'
-              ? (config.retreinamentoAoPublicar || 'nao')
-              : undefined,
+          // Retreinamento da etapa "Vigente": decidido pelo fluxo
+          // (FluxoEngine.retreinamentoDecididoNoFluxo).
+          retreinamentoAoPublicar: undefined,
           tipoRevisao: tipo === 'eventoRevisao' ? (config.tipoRevisao || 'revisao') : undefined,
           posicao: mover({ x: forma.x, y: forma.y, largura: forma.largura, altura: forma.altura }),
           rotuloPosicao: forma.rotulo ? mover(forma.rotulo) : undefined

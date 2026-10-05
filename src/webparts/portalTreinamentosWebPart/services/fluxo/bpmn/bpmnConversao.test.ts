@@ -453,37 +453,69 @@ describe('reprovação precisa voltar para uma etapa anterior', () => {
 
 describe('etapa com status Vigente', () => {
 
-  it('publica ao chegar, tira a letra e encerra o fluxo da revisão', () => {
+  // Elaboração → Realizar retreinamento? → Retreinar?
+  //   ├─ Sim → Revisar Treinamento → Documento Vigente
+  //   └─ Não → Documento Vigente
+  const fluxo = (): IFluxoDefinicao => {
 
     const definicao: IFluxoDefinicao =
       JSON.parse(JSON.stringify(FLUXO_EM_BRANCO));
 
     const base = definicao.elementos.filter(item => item.id === 'elaboracao')[0];
 
-    definicao.elementos.push({
+    const etapa = (id: string, nome: string, acoes: Array<[string, string, string]>, extra: Record<string, unknown> = {}): typeof base => ({
       ...JSON.parse(JSON.stringify(base)),
-      id: 'vigente',
-      nome: 'Documento Vigente',
-      statusDocumento: 'Vigente',
-      retreinamentoAoPublicar: 'etapa:elaboracao'
+      id,
+      nome,
+      acoes: acoes.map(([chave, rotulo, resultado]) => ({ chave, rotulo, resultado, principal: true, exigeComentario: false })),
+      ...extra
     });
 
-    definicao.transicoes.filter(item => item.id === 't-elaboracao-fim')[0].destinoId = 'vigente';
-    definicao.transicoes.push({ id: 't-vig-fim', origemId: 'vigente', destinoId: 'fim', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] });
+    definicao.elementos.push(
+      etapa('pergunta', 'Realizar retreinamento?', [['sim', 'Sim', 'sim'], ['nao', 'Não', 'nao']]),
+      etapa('revisarTreinamento', 'Revisar Treinamento', [['concluir', 'Concluir', 'concluido']]),
+      etapa('vigente', 'Documento Vigente', [['concluir', 'Concluir', 'concluido']], { statusDocumento: 'Vigente' }),
+      { ...JSON.parse(JSON.stringify(base)), id: 'retreinar', nome: 'Retreinar?', tipo: 'gateway', responsaveis: [], acoes: [], campos: [] }
+    );
 
-    const ator = { id: 'a', nome: 'A', papeisTeste: ['autor'] };
+    definicao.transicoes = [
+      { id: 't1', origemId: 'inicio', destinoId: 'elaboracao', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't2', origemId: 'elaboracao', destinoId: 'pergunta', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't3', origemId: 'pergunta', destinoId: 'retreinar', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't4', origemId: 'retreinar', destinoId: 'revisarTreinamento', tipoCondicao: 'resultado', resultado: 'sim', padrao: false, excecao: false, pontos: [] },
+      { id: 't5', origemId: 'retreinar', destinoId: 'vigente', tipoCondicao: 'resultado', resultado: 'nao', padrao: false, excecao: false, pontos: [] },
+      { id: 't6', origemId: 'revisarTreinamento', destinoId: 'vigente', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't7', origemId: 'vigente', destinoId: 'fim', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] }
+    ];
 
-    const inicio =
-      iniciarInstancia(definicao, { revisaoId: 'r', documentoId: 'd', revisao: 'Rev.01B', ator, simulado: true });
+    return definicao;
+  };
 
-    const resultado =
-      executarAcao(definicao, inicio.instancia as NonNullable<typeof inicio.instancia>, {
-        acaoChave: 'concluir', comentario: '', valores: {}, ator
-      });
+  const ator = { id: 'a', nome: 'A', papeisTeste: ['autor'] };
 
-    expect(resultado.ok).toBe(true);
-    expect(resultado.acoesSistema).toEqual(['publicarComRetreinamento']);
-    expect(resultado.instancia?.status).toBe('concluido');
-    expect(resultado.instancia?.revisao).toBe('Rev.01');
+  const agir = (definicao: IFluxoDefinicao, instancia: unknown, acaoChave: string): ReturnType<typeof executarAcao> =>
+    executarAcao(definicao, instancia as NonNullable<ReturnType<typeof executarAcao>['instancia']>, {
+      acaoChave, comentario: '', valores: {}, ator
+    });
+
+  it('com retreinamento quando o caminho passa por "Revisar Treinamento"', () => {
+    const definicao = fluxo();
+    const inicio = iniciarInstancia(definicao, { revisaoId: 'r', documentoId: 'd', revisao: 'Rev.01B', ator, simulado: true });
+    const r1 = agir(definicao, inicio.instancia, 'concluir');
+    const r2 = agir(definicao, r1.instancia, 'sim');
+    expect(r2.instancia?.elementoAtualId).toBe('revisarTreinamento');
+    const r3 = agir(definicao, r2.instancia, 'concluir');
+    expect(r3.acoesSistema).toEqual(['publicarComRetreinamento']);
+    expect(r3.instancia?.status).toBe('concluido');
+    expect(r3.instancia?.revisao).toBe('Rev.01');
+  });
+
+  it('sem retreinamento quando segue direto para "Documento Vigente"', () => {
+    const definicao = fluxo();
+    const inicio = iniciarInstancia(definicao, { revisaoId: 'r', documentoId: 'd', revisao: 'Rev.00A', ator, simulado: true });
+    const r1 = agir(definicao, inicio.instancia, 'concluir');
+    const r2 = agir(definicao, r1.instancia, 'nao');
+    expect(r2.acoesSistema).toEqual(['publicarSemRetreinamento']);
+    expect(r2.instancia?.revisao).toBe('Rev.00');
   });
 });

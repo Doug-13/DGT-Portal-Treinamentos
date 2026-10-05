@@ -81,9 +81,6 @@ export interface IPainelPropriedadesFluxoProps {
   onDefinirPadraoSaida: (id: string | undefined) => void;
   onRenomearSaida: (id: string, nome: string) => void;
   onSelecionarSaida: (id: string) => void;
-
-  // Etapas com responsável do fluxo (para "retreinamento se passou por").
-  etapasDoFluxo?: Array<{ id: string; nome: string }>;
 }
 
 const COR_AZUL = '#202A44';
@@ -221,7 +218,6 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   onDefinirPadraoSaida,
   onRenomearSaida,
   onSelecionarSaida,
-  etapasDoFluxo,
   secao = 'tudo',
   extraCampos,
   areas = [],
@@ -696,29 +692,12 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         {
           config.statusDocumento === 'Vigente' && (
             <div style={{ marginTop: '10px', padding: '10px 12px', background: '#E7F6EC', border: '1px solid #107C10', borderRadius: '6px' }}>
-              <label htmlFor="prop-retreinamento" style={estiloRotuloPainel}>Retreinamento ao publicar</label>
-              <select
-                id="prop-retreinamento"
-                value={config.retreinamentoAoPublicar || 'nao'}
-                disabled={!editavel}
-                onChange={evento => alterar({ retreinamentoAoPublicar: evento.target.value })}
-                style={estiloEntradaPainel}
-              >
-                <option value="nao">Não — publicar sem retreinamento</option>
-                <option value="sim">Sim — sempre gerar retreinamento</option>
-                {
-                  (etapasDoFluxo || []).map(
-                    etapa => (
-                      <option key={etapa.id} value={`etapa:${etapa.id}`}>
-                        Sim, se o documento passou por “{etapa.nome}”
-                      </option>
-                    )
-                  )
-                }
-              </select>
+              <div style={estiloRotuloPainel}>Publicação nesta etapa</div>
               <div style={{ fontSize: '12px', lineHeight: '17px', marginTop: '6px' }}>
-                Ao chegar nesta etapa, a revisão é <strong>publicada</strong>: fica vigente, a anterior vira obsoleta
-                e, com retreinamento, os treinamentos são atribuídos. O número perde a letra (Rev.01B → Rev.01) e
+                Ao chegar nesta etapa, a revisão é <strong>publicada</strong>: fica vigente e a anterior vira obsoleta.
+                <strong> O retreinamento é decidido pelo fluxo</strong>: com retreinamento quando o documento passou
+                por uma etapa opcional de treinamento (ex.: “Revisar Treinamento”) ou quando a resposta sobre
+                retreinamento foi “Sim”; caso contrário, sem retreinamento. O número perde a letra (Rev.01B → Rev.01) e
                 <strong> o fluxo desta revisão termina aqui</strong> — os botões desta etapa não são usados.
                 Para revisar depois, use <strong>“Criar nova revisão”</strong> no documento (nasce Rev.02A, com o próprio fluxo).
               </div>
