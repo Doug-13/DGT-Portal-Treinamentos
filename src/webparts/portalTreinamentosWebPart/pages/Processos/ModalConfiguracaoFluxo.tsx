@@ -28,6 +28,8 @@ export interface IModalConfiguracaoFluxoProps {
   abaInicial?: string;
   onFechar: () => void;
   rodape?: React.ReactNode;
+  // Texto do botão do rodapé (padrão: "Concluir").
+  rotuloFechar?: string;
 }
 
 const COR_AZUL = '#202A44';
@@ -40,7 +42,8 @@ const ModalConfiguracaoFluxo: React.FC<IModalConfiguracaoFluxoProps> = ({
   abas,
   abaInicial,
   onFechar,
-  rodape
+  rodape,
+  rotuloFechar
 }) => {
 
   const [abaAtual, setAbaAtual] =
@@ -280,7 +283,7 @@ const ModalConfiguracaoFluxo: React.FC<IModalConfiguracaoFluxoProps> = ({
               cursor: 'pointer'
             }}
           >
-            Concluir
+            {rotuloFechar || 'Concluir'}
           </button>
         </div>
       </div>

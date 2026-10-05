@@ -83,10 +83,14 @@ export interface IResponsavelResolvido {
 
 // Status do documento (dgt_documentorevisao.dgt_status) enquanto a
 // revisão está nesta etapa.
+// 'Vigente': ao CHEGAR nesta etapa a revisão é publicada (fica
+// vigente) e o fluxo desta revisão termina. Revisões seguintes são
+// novas revisões (Rev.01A...), com o próprio fluxo.
 export type StatusDocumentoEtapa =
   | 'Elaboração'
   | 'Revisão'
-  | 'Aprovação';
+  | 'Aprovação'
+  | 'Vigente';
 
 // Ação de sistema executada por uma tarefa de sistema.
 export type AcaoSistemaFluxo =
@@ -95,7 +99,8 @@ export type AcaoSistemaFluxo =
   // Gerados pelo evento de revisão (não aparecem na lista da
   // tarefa de sistema).
   | 'novaRevisao'
-  | 'novaSubRevisao';
+  | 'novaSubRevisao'
+  | 'proximaRevisao';
 
 export interface IFluxoAcao {
   chave: string;
@@ -246,6 +251,11 @@ export interface IFluxoElemento {
 
   // eventoRevisao: como o número da revisão muda ao passar aqui.
   tipoRevisao?: TipoEventoRevisao;
+
+  // tarefaHumana com status 'Vigente': retreinamento na publicação.
+  //   'nao' (padrão) · 'sim' · 'etapa:<id>' = sim, se o fluxo passou
+  //   por aquela etapa neste ciclo (ex.: "Revisar Treinamento").
+  retreinamentoAoPublicar?: string;
 }
 
 export type TipoCondicaoTransicao =
@@ -360,6 +370,10 @@ export interface IFluxoHistorico {
   executadoPorNome: string;
 
   sistema: boolean;
+
+  // Número da revisão no momento do passo (ex.: Rev.00A). Registros
+  // antigos não têm este campo.
+  revisao?: string;
 }
 
 export interface IFluxoTarefa {

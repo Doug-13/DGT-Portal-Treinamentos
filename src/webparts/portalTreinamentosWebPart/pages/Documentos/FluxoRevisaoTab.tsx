@@ -1,11 +1,17 @@
 import * as React from 'react';
 
 import {
+  ESTILO_PASSO_FLUXO,
+  categoriaDoPasso
+} from '../../services/fluxo/categoriaPasso';
+
+import {
   IDocumento,
   IDocumentoRevisao
 } from '../../models/Documento';
 
 import {
+  IFluxoAcao,
   IFluxoCampo,
   IFluxoElemento
 } from '../../models/Fluxo';
@@ -32,6 +38,9 @@ import {
 
 import FluxoDiagrama from
   '../../components/fluxo/FluxoDiagrama';
+
+import ConfirmarAcaoModal from
+  './ConfirmarAcaoModal';
 
 import TabelaCampoFluxo from
   '../../components/fluxo/TabelaCampoFluxo';
@@ -184,11 +193,15 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   const [processoEscolhido, setProcessoEscolhido] =
     React.useState<string>('');
 
-  const [comentario, setComentario] =
-    React.useState<string>('');
-
   const [valores, setValores] =
     React.useState<Record<string, string>>({});
+
+  // Ação aguardando confirmação no modal (próxima atividade + comentário).
+  const [acaoConfirmando, setAcaoConfirmando] =
+    React.useState<IFluxoAcao | undefined>(undefined);
+
+  const fecharConfirmacao =
+    React.useCallback(() => setAcaoConfirmando(undefined), []);
 
   const elementoAtual: IFluxoElemento | undefined =
     fluxo.definicao && fluxo.instancia
@@ -198,8 +211,8 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   // Ao mudar de etapa, limpa o formulário.
   React.useEffect(
     () => {
-      setComentario('');
       setValores({});
+      setAcaoConfirmando(undefined);
     },
     [fluxo.instancia?.elementoAtualId, fluxo.instancia?.historico.length]
   );
@@ -494,12 +507,6 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   const tarefa =
     tarefaPendente(instancia);
 
-  const exigeComentarioEmAlguma =
-    !!elementoAtual &&
-    elementoAtual.acoes.some(
-      acao => acao.exigeComentario
-    );
-
   const definirValor = (
     chave: string,
     valor: string
@@ -510,26 +517,35 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
     fluxo.limparErros();
   };
 
+  // Clique no botão: abre a confirmação com a prévia da próxima
+  // atividade e o comentário.
   const executar = (
-    acaoChave: string,
-    mensagemConfirmacao?: string
+    acao: IFluxoAcao
   ): void => {
+    fluxo.limparErros();
+    setAcaoConfirmando(acao);
+  };
 
-    if (
-      mensagemConfirmacao &&
-      !window.confirm(mensagemConfirmacao)
-    ) {
-      return;
+  const confirmarAcao = async (
+    comentarioModal: string
+  ): Promise<boolean> => {
+
+    if (!acaoConfirmando) {
+      return false;
     }
 
-    fluxo.executar(
-      acaoChave,
-      comentario,
-      valores
-    )
-      .catch(
-        (error: unknown) => console.error(error)
+    const ok =
+      await fluxo.executar(
+        acaoConfirmando.chave,
+        comentarioModal,
+        valores
       );
+
+    if (ok) {
+      setAcaoConfirmando(undefined);
+    }
+
+    return ok;
   };
 
   const reiniciar = (): void => {
@@ -1110,33 +1126,9 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                     )
                   }
 
-                  {(podeAgir || fluxo.local) && <div>
-                    <label htmlFor="fluxo-comentario" style={estiloRotuloCampo}>
-                      Comentário {exigeComentarioEmAlguma ? '(obrigatório para devolver ou reprovar)' : '(opcional)'}
-                    </label>
-                    <textarea
-                      id="fluxo-comentario"
-                      rows={3}
-                      value={comentario}
-                      disabled={!podeAgir || fluxo.processando}
-                      onChange={evento => {
-                        setComentario(evento.target.value);
-                        fluxo.limparErros();
-                      }}
-                      style={{
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        border: `1px solid ${COR_BORDA}`,
-                        borderRadius: '6px',
-                        padding: '8px 10px',
-                        fontFamily: 'inherit',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>}
 
                   {
-                    fluxo.errosAcao.length > 0 && (
+                    fluxo.errosAcao.length > 0 && !acaoConfirmando && (
                       <div
                         role="alert"
                         style={{
@@ -1171,7 +1163,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                               key={acao.chave}
                               type="button"
                               disabled={desabilitado}
-                              onClick={() => executar(acao.chave, acao.mensagemConfirmacao)}
+                              onClick={() => executar(acao)}
                               style={estiloBotao(acao.principal, desabilitado)}
                             >
                               {acao.rotulo}
@@ -1181,6 +1173,23 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                       )
                     }
                   </div>
+
+                  {
+                    acaoConfirmando && ator && (
+                      <ConfirmarAcaoModal
+                        definicao={definicao}
+                        instancia={instancia}
+                        etapaAtual={elementoAtual}
+                        acao={acaoConfirmando}
+                        ator={ator.ator}
+                        valores={valores}
+                        processando={fluxo.processando}
+                        errosExecucao={fluxo.errosAcao}
+                        onConfirmar={confirmarAcao}
+                        onCancelar={fecharConfirmacao}
+                      />
+                    )
+                  }
                 </div>
               )
           }
@@ -1226,19 +1235,47 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
           <ol style={{ listStyle: 'none', margin: 0, padding: '4px 20px 12px' }}>
             {
               instancia.historico.map(
-                item => (
+                item => {
+                  const estiloPasso =
+                    ESTILO_PASSO_FLUXO[categoriaDoPasso(item)];
+                  return (
                   <li
                     key={item.id}
                     style={{
-                      padding: '10px 0',
-                      borderBottom: `1px solid ${COR_BORDA}`
+                      padding: '10px 0 10px 12px',
+                      borderBottom: `1px solid ${COR_BORDA}`,
+                      borderLeft: `4px solid ${estiloPasso.cor}`,
+                      marginBottom: '2px'
                     }}
                   >
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', fontSize: '12.5px' }}>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', fontSize: '12.5px' }}>
+                      <span
+                        title={estiloPasso.rotulo}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          background: estiloPasso.fundo,
+                          color: estiloPasso.cor,
+                          border: `1.5px solid ${estiloPasso.cor}`,
+                          fontSize: '11px',
+                          fontWeight: 800
+                        }}
+                      >
+                        {estiloPasso.icone}
+                      </span>
                       <strong>{formatarDataHora(item.data)}</strong>
                       <span>{item.elementoNome}</span>
+                      {item.revisao && (
+                        <span style={{ fontSize: '11px', fontWeight: 700, background: '#202A44', color: '#FFFFFF', borderRadius: '5px', padding: '1px 6px' }}>
+                          {item.revisao}
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '14px', color: estiloPasso.cor }}>
                       {item.acaoRotulo}
                     </div>
                     <div style={{ fontSize: '13px' }}>
@@ -1261,7 +1298,8 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                       )
                     }
                   </li>
-                )
+                  );
+                }
               )
             }
           </ol>

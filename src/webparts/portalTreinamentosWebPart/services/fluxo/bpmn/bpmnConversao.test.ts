@@ -276,6 +276,8 @@ describe('evento de revisão', () => {
 
     expect(concluido.ok).toBe(true);
     expect(concluido.acoesSistema).toEqual(['novaSubRevisao']);
+    // O motor já calcula o novo rótulo: Rev.01 → Rev.01A.
+    expect(concluido.instancia?.revisao).toBe('Rev.01A');
     expect(concluido.instancia?.status).toBe('concluido');
   });
 
@@ -314,5 +316,174 @@ describe('evento de revisão', () => {
     expect(evento.tipo).toBe('eventoRevisao');
     expect(evento.tipoRevisao).toBe('revisao');
     expect(definicaoParaBpmnXml(montada).indexOf('bpmn:intermediateThrowEvent')).toBeGreaterThan(0);
+  });
+});
+
+describe('reprovação nunca conclui nem publica', () => {
+
+  // Em branco + botão "Reprovar" cujo caminho (errado) vai para o Fim.
+  const comReprovarErrado = (): IFluxoDefinicao => {
+
+    const definicao: IFluxoDefinicao =
+      JSON.parse(JSON.stringify(FLUXO_EM_BRANCO));
+
+    const etapa =
+      definicao.elementos.filter(item => item.id === 'elaboracao')[0];
+
+    etapa.acoes.push({
+      chave: 'reprovar',
+      rotulo: 'Reprovar',
+      resultado: 'reprovado',
+      principal: false,
+      exigeComentario: false
+    });
+
+    return definicao;
+  };
+
+  it('a validação impede publicar o fluxo', () => {
+
+    const erros =
+      validarDefinicao(comReprovarErrado());
+
+    expect(erros.some(erro => erro.indexOf('"Reprovar"') >= 0 && erro.indexOf('reprovação') >= 0)).toBe(true);
+  });
+
+  it('o motor bloqueia a ação mesmo num fluxo já publicado', () => {
+
+    const definicao =
+      comReprovarErrado();
+
+    const inicio =
+      iniciarInstancia(definicao, {
+        revisaoId: 'r', documentoId: 'd', revisao: 'Rev.00',
+        ator: { id: 'a', nome: 'A', papeisTeste: ['autor'] }, simulado: true
+      });
+
+    const reprovado =
+      executarAcao(definicao, inicio.instancia as NonNullable<typeof inicio.instancia>, {
+        acaoChave: 'reprovar',
+        comentario: '',
+        valores: {},
+        ator: { id: 'a', nome: 'A', papeisTeste: ['autor'] }
+      });
+
+    expect(reprovado.ok).toBe(false);
+    expect(reprovado.instancia).toBeUndefined();
+
+    // O botão normal continua concluindo.
+    const concluido =
+      executarAcao(definicao, inicio.instancia as NonNullable<typeof inicio.instancia>, {
+        acaoChave: 'concluir',
+        comentario: '',
+        valores: {},
+        ator: { id: 'a', nome: 'A', papeisTeste: ['autor'] }
+      });
+
+    expect(concluido.ok).toBe(true);
+  });
+});
+
+describe('reprovação precisa voltar para uma etapa anterior', () => {
+
+  // Elaboração → Avaliação → decisão → (Aprovar) Elaboração [trocado]
+  //                                  → (Reprovar) Documento vigente [trocado]
+  const trocado = (): IFluxoDefinicao => {
+
+    const definicao: IFluxoDefinicao =
+      JSON.parse(JSON.stringify(FLUXO_EM_BRANCO));
+
+    const base = definicao.elementos.filter(item => item.id === 'elaboracao')[0];
+
+    const etapa = (id: string, nome: string, acoes: Array<[string, string, string]>): typeof base => ({
+      ...JSON.parse(JSON.stringify(base)),
+      id,
+      nome,
+      acoes: acoes.map(([chave, rotulo, resultado]) => ({ chave, rotulo, resultado, principal: true, exigeComentario: false }))
+    });
+
+    definicao.elementos.push(
+      etapa('avaliacao', 'Avaliação', [['aprovar', 'Aprovar', 'aprovado'], ['reprovar', 'Reprovar', 'reprovado']]),
+      etapa('vigente', 'Documento vigente', [['concluir', 'Concluir', 'concluido']]),
+      { ...JSON.parse(JSON.stringify(base)), id: 'decisao', nome: 'Aprovado?', tipo: 'gateway', responsaveis: [], acoes: [], campos: [] }
+    );
+
+    definicao.transicoes = [
+      { id: 't1', origemId: 'inicio', destinoId: 'elaboracao', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't2', origemId: 'elaboracao', destinoId: 'avaliacao', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't3', origemId: 'avaliacao', destinoId: 'decisao', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't4', origemId: 'decisao', destinoId: 'elaboracao', tipoCondicao: 'resultado', resultado: 'aprovado', padrao: false, excecao: false, pontos: [] },
+      { id: 't5', origemId: 'decisao', destinoId: 'vigente', tipoCondicao: 'resultado', resultado: 'reprovado', padrao: false, excecao: false, pontos: [] },
+      { id: 't6', origemId: 'vigente', destinoId: 'elaboracao', tipoCondicao: 'resultado', resultado: 'concluido', padrao: false, excecao: false, pontos: [] },
+      { id: 't7', origemId: 'vigente', destinoId: 'fim', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] }
+    ];
+
+    return definicao;
+  };
+
+  it('a validação aponta o caminho trocado', () => {
+    const erros = validarDefinicao(trocado());
+    expect(erros.some(erro => erro.indexOf('"Reprovar"') >= 0 && erro.indexOf('Documento vigente') >= 0)).toBe(true);
+  });
+
+  it('o motor bloqueia a reprovação que iria para uma etapa nova', () => {
+
+    const definicao = trocado();
+    const ator = { id: 'a', nome: 'A', papeisTeste: ['autor'] };
+
+    const inicio =
+      iniciarInstancia(definicao, { revisaoId: 'r', documentoId: 'd', revisao: 'Rev.00', ator, simulado: true });
+
+    const enviado =
+      executarAcao(definicao, inicio.instancia as NonNullable<typeof inicio.instancia>, {
+        acaoChave: 'concluir', comentario: '', valores: {}, ator
+      });
+
+    expect(enviado.instancia?.elementoAtualId).toBe('avaliacao');
+
+    const reprovado =
+      executarAcao(definicao, enviado.instancia as NonNullable<typeof enviado.instancia>, {
+        acaoChave: 'reprovar', comentario: '', valores: {}, ator
+      });
+
+    expect(reprovado.ok).toBe(false);
+    expect(reprovado.erros[0].indexOf('Documento vigente')).toBeGreaterThan(0);
+  });
+});
+
+describe('etapa com status Vigente', () => {
+
+  it('publica ao chegar, tira a letra e encerra o fluxo da revisão', () => {
+
+    const definicao: IFluxoDefinicao =
+      JSON.parse(JSON.stringify(FLUXO_EM_BRANCO));
+
+    const base = definicao.elementos.filter(item => item.id === 'elaboracao')[0];
+
+    definicao.elementos.push({
+      ...JSON.parse(JSON.stringify(base)),
+      id: 'vigente',
+      nome: 'Documento Vigente',
+      statusDocumento: 'Vigente',
+      retreinamentoAoPublicar: 'etapa:elaboracao'
+    });
+
+    definicao.transicoes.filter(item => item.id === 't-elaboracao-fim')[0].destinoId = 'vigente';
+    definicao.transicoes.push({ id: 't-vig-fim', origemId: 'vigente', destinoId: 'fim', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] });
+
+    const ator = { id: 'a', nome: 'A', papeisTeste: ['autor'] };
+
+    const inicio =
+      iniciarInstancia(definicao, { revisaoId: 'r', documentoId: 'd', revisao: 'Rev.01B', ator, simulado: true });
+
+    const resultado =
+      executarAcao(definicao, inicio.instancia as NonNullable<typeof inicio.instancia>, {
+        acaoChave: 'concluir', comentario: '', valores: {}, ator
+      });
+
+    expect(resultado.ok).toBe(true);
+    expect(resultado.acoesSistema).toEqual(['publicarComRetreinamento']);
+    expect(resultado.instancia?.status).toBe('concluido');
+    expect(resultado.instancia?.revisao).toBe('Rev.01');
   });
 });

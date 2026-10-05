@@ -212,6 +212,23 @@ const formatarData = (
   );
 };
 
+const estiloSeta = (
+  desabilitado: boolean
+): React.CSSProperties => ({
+  width: '28px',
+  height: '28px',
+  borderRadius: '50%',
+  border: '1px solid #D9D9D6',
+  background: '#FFFFFF',
+  color: '#202A44',
+  fontSize: '18px',
+  lineHeight: '24px',
+  fontWeight: 700,
+  padding: 0,
+  cursor: desabilitado ? 'not-allowed' : 'pointer',
+  opacity: desabilitado ? 0.35 : 1
+});
+
 const valorOuTraco = (
   valor?: string
 ): string =>
@@ -676,10 +693,15 @@ const DocumentoDetalhePage:
       ]
     );
 
+    // Lista dos números anteriores desta revisão (aberta/fechada).
+    const [mostrarNumeros, setMostrarNumeros] =
+      React.useState<boolean>(false);
+
     // Voltou para outro documento → recomeça pela vigente.
     React.useEffect(
       () => {
         setRevisaoSelecionadaId('');
+        setMostrarNumeros(false);
       },
       [
         documento?.id
@@ -693,6 +715,52 @@ const DocumentoDetalhePage:
       revisaoVigente ||
       revisaoEmAndamento ||
       revisoes[0];
+
+    // Navegação ‹ › entre as revisões (registros) do documento, da
+    // mais antiga para a mais recente.
+    const revisoesEmOrdem =
+      revisoes
+        .slice()
+        .sort((a, b) => compararRevisoes(a.revisao, b.revisao));
+
+    const posicaoExibida =
+      revisaoExibida
+        ? revisoesEmOrdem.findIndex(item => item.id === revisaoExibida.id)
+        : -1;
+
+    // Números que ESTA revisão já teve (00A → 00B → 00 → 01A...),
+    // tirados dos passos do fluxo, do mais antigo para o mais recente.
+    const numerosAnteriores = (
+      revisao: IDocumentoRevisao
+    ): Array<{ rotulo: string; data: string; origem: string }> => {
+
+      const id =
+        (revisao.id || '').replace(/[{}]/g, '').toLowerCase();
+
+      const passos =
+        fluxo.eventos
+          .filter(
+            evento =>
+              evento.tipo === 'FLUXO' &&
+              !!evento.revisaoNoMomento &&
+              (evento.revisaoId || '').replace(/[{}]/g, '').toLowerCase() === id
+          )
+          .slice()
+          .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+
+      const lista: Array<{ rotulo: string; data: string; origem: string }> = [];
+
+      passos.forEach(
+        passo => {
+          const rotulo = passo.revisaoNoMomento as string;
+          if (lista.length === 0 || lista[lista.length - 1].rotulo !== rotulo) {
+            lista.push({ rotulo, data: passo.data, origem: passo.titulo });
+          }
+        }
+      );
+
+      return lista;
+    };
 
     // Revisão vigente que tornou esta obsoleta: a vigente de menor
     // número acima dela.
@@ -1464,14 +1532,119 @@ const DocumentoDetalhePage:
                               }}
                             >
                               <div>
-                                <h3
-                                  style={{
-                                    margin: 0,
-                                    color: '#1f2937'
-                                  }}
-                                >
-                                  Revisão {revisao.revisao}
-                                </h3>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  {
+                                    revisoesEmOrdem.length > 1 && (
+                                      <button
+                                        type="button"
+                                        title="Revisão anterior"
+                                        aria-label="Revisão anterior"
+                                        disabled={posicaoExibida <= 0}
+                                        onClick={() => setRevisaoSelecionadaId(revisoesEmOrdem[posicaoExibida - 1].id)}
+                                        style={estiloSeta(posicaoExibida <= 0)}
+                                      >
+                                        ‹
+                                      </button>
+                                    )
+                                  }
+
+                                  <h3
+                                    style={{
+                                      margin: 0,
+                                      color: '#1f2937'
+                                    }}
+                                  >
+                                    Revisão {revisao.revisao}
+                                  </h3>
+
+                                  {
+                                    revisoesEmOrdem.length > 1 && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          title="Próxima revisão"
+                                          aria-label="Próxima revisão"
+                                          disabled={posicaoExibida >= revisoesEmOrdem.length - 1}
+                                          onClick={() => setRevisaoSelecionadaId(revisoesEmOrdem[posicaoExibida + 1].id)}
+                                          style={estiloSeta(posicaoExibida >= revisoesEmOrdem.length - 1)}
+                                        >
+                                          ›
+                                        </button>
+                                        <span style={{ fontSize: '12px', color: '#64748b' }}>
+                                          {posicaoExibida + 1} de {revisoesEmOrdem.length}
+                                        </span>
+                                      </>
+                                    )
+                                  }
+
+                                  {
+                                    numerosAnteriores(revisao).length > 1 && (
+                                      <button
+                                        type="button"
+                                        aria-expanded={mostrarNumeros}
+                                        onClick={() => setMostrarNumeros(!mostrarNumeros)}
+                                        style={{
+                                          border: '1px solid #D9D9D6',
+                                          background: mostrarNumeros ? '#EDF0F5' : '#FFFFFF',
+                                          color: '#202A44',
+                                          borderRadius: '999px',
+                                          padding: '3px 10px',
+                                          fontSize: '12px',
+                                          fontWeight: 600,
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        {mostrarNumeros ? '▾' : '▸'} Números anteriores ({numerosAnteriores(revisao).length - 1})
+                                      </button>
+                                    )
+                                  }
+                                </div>
+
+                                {
+                                  mostrarNumeros && numerosAnteriores(revisao).length > 1 && (
+                                    <ol
+                                      style={{
+                                        listStyle: 'none',
+                                        margin: '10px 0 0',
+                                        padding: '10px 12px',
+                                        background: '#F7F9FB',
+                                        border: '1px solid #E5E7EB',
+                                        borderRadius: '10px',
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                      }}
+                                    >
+                                      {
+                                        numerosAnteriores(revisao).map(
+                                          (item, indice, lista) => (
+                                            <li
+                                              key={`${item.rotulo}-${indice}`}
+                                              title={`${formatarData(item.data)} · ${item.origem}`}
+                                              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                                            >
+                                              <span
+                                                style={{
+                                                  padding: '2px 8px',
+                                                  borderRadius: '6px',
+                                                  fontSize: '12px',
+                                                  fontWeight: 700,
+                                                  background: indice === lista.length - 1 ? '#202A44' : '#FFFFFF',
+                                                  color: indice === lista.length - 1 ? '#FFFFFF' : '#202A44',
+                                                  border: '1px solid #202A44'
+                                                }}
+                                              >
+                                                {item.rotulo}
+                                              </span>
+                                              {indice < lista.length - 1 && <span style={{ color: '#94a3b8' }}>→</span>}
+                                            </li>
+                                          )
+                                        )
+                                      }
+                                    </ol>
+                                  )
+                                }
 
                                 <span
                                   style={{

@@ -4,6 +4,10 @@ import {
   IFluxoTransicao
 } from '../../models/Fluxo';
 
+import {
+  ehAcaoDeDevolucao
+} from './FluxoEngine';
+
 // ============================================================
 // VALIDAÇÃO DE UM FLUXO ANTES DE PUBLICAR
 //
@@ -62,6 +66,196 @@ const rotaExiste = (
         : true;
     }
   );
+};
+
+// A partir de uma etapa, o resultado de uma ação pode chegar ao Fim
+// ou a uma tarefa de publicação sem passar por outra etapa humana?
+// Considera todos os caminhos possíveis (inclusive os que dependem
+// do valor de campos).
+const levaAoFimOuPublicacao = (
+  definicao: IFluxoDefinicao,
+  origemId: string,
+  resultado: string,
+  visitados: string[]
+): boolean => {
+
+  if (visitados.indexOf(origemId) >= 0) {
+    return false;
+  }
+
+  const saidas =
+    saidasDe(definicao, origemId);
+
+  const porResultado =
+    saidas.filter(
+      transicao =>
+        transicao.tipoCondicao === 'resultado' &&
+        transicao.resultado === resultado
+    );
+
+  let candidatas =
+    porResultado.concat(
+      saidas.filter(transicao => transicao.tipoCondicao === 'campo')
+    );
+
+  if (porResultado.length === 0) {
+    const sempre =
+      saidas.filter(transicao => transicao.tipoCondicao === 'sempre');
+
+    candidatas =
+      candidatas.concat(
+        sempre.length > 0
+          ? [sempre[0]]
+          : saidas.filter(transicao => transicao.padrao)
+      );
+  }
+
+  return candidatas.some(
+    transicao => {
+
+      const destino =
+        elemento(definicao, transicao.destinoId);
+
+      if (
+        destino &&
+        destino.tipo === 'tarefaHumana' &&
+        destino.statusDocumento === 'Vigente'
+      ) {
+        return true; // chegar aqui publica a revisão
+      }
+
+      if (!destino || destino.tipo === 'tarefaHumana') {
+        return false;
+      }
+
+      if (
+        destino.tipo === 'fim' ||
+        (destino.tipo === 'tarefaSistema' && !!destino.acaoSistema)
+      ) {
+        return true;
+      }
+
+      return levaAoFimOuPublicacao(
+        definicao,
+        destino.id,
+        destino.tipo === 'tarefaSistema' ? 'concluido' : resultado,
+        visitados.concat(origemId)
+      );
+    }
+  );
+};
+
+// Etapas com responsável alcançadas a partir de um resultado de ação
+// (atravessando decisões, eventos e tarefas de sistema).
+const etapasAlcancadas = (
+  definicao: IFluxoDefinicao,
+  origemId: string,
+  resultado: string,
+  visitados: string[]
+): IFluxoElemento[] => {
+
+  if (visitados.indexOf(origemId) >= 0) {
+    return [];
+  }
+
+  const saidas =
+    saidasDe(definicao, origemId);
+
+  const porResultado =
+    saidas.filter(
+      transicao =>
+        transicao.tipoCondicao === 'resultado' &&
+        transicao.resultado === resultado
+    );
+
+  let candidatas =
+    porResultado.concat(
+      saidas.filter(transicao => transicao.tipoCondicao === 'campo')
+    );
+
+  if (porResultado.length === 0) {
+    const sempre =
+      saidas.filter(transicao => transicao.tipoCondicao === 'sempre');
+
+    candidatas =
+      candidatas.concat(
+        sempre.length > 0
+          ? [sempre[0]]
+          : saidas.filter(transicao => transicao.padrao)
+      );
+  }
+
+  let lista: IFluxoElemento[] = [];
+
+  candidatas.forEach(
+    transicao => {
+
+      const destino =
+        elemento(definicao, transicao.destinoId);
+
+      if (!destino || destino.tipo === 'fim') {
+        return;
+      }
+
+      if (destino.tipo === 'tarefaHumana') {
+        // Etapa "Vigente" publica e encerra: não é uma volta.
+        if (destino.statusDocumento !== 'Vigente') {
+          lista.push(destino);
+        }
+        return;
+      }
+
+      lista = lista.concat(
+        etapasAlcancadas(
+          definicao,
+          destino.id,
+          destino.tipo === 'tarefaSistema' ? 'concluido' : resultado,
+          visitados.concat(origemId)
+        )
+      );
+    }
+  );
+
+  return lista;
+};
+
+// Elementos que podem acontecer ANTES de um elemento: os alcançáveis
+// a partir do Início sem passar por ele. (Uma etapa que só é
+// alcançada depois dele — mesmo que um laço volte ao começo — não
+// conta como anterior.)
+const anterioresDe = (
+  definicao: IFluxoDefinicao,
+  id: string
+): string[] => {
+
+  const inicio =
+    definicao.elementos.find(item => item.tipo === 'inicio');
+
+  if (!inicio || inicio.id === id) {
+    return [];
+  }
+
+  const anteriores: string[] = [inicio.id];
+  const fila: string[] = [inicio.id];
+
+  while (fila.length > 0) {
+
+    const atual = fila.shift() as string;
+
+    saidasDe(definicao, atual).forEach(
+      transicao => {
+        if (
+          transicao.destinoId !== id &&
+          anteriores.indexOf(transicao.destinoId) < 0
+        ) {
+          anteriores.push(transicao.destinoId);
+          fila.push(transicao.destinoId);
+        }
+      }
+    );
+  }
+
+  return anteriores;
 };
 
 export const validarDefinicao = (
@@ -226,6 +420,36 @@ export const validarDefinicao = (
             }
 
             resultados.push(acao.resultado);
+
+            // Devolução precisa VOLTAR: as etapas alcançadas devem vir
+            // antes desta (ou ser ela mesma).
+            if (acao.resultado && ehAcaoDeDevolucao(acao)) {
+
+              const anteriores =
+                anterioresDe(definicao, item.id);
+
+              etapasAlcancadas(definicao, item.id, acao.resultado, [])
+                .filter(etapa => etapa.id !== item.id && anteriores.indexOf(etapa.id) < 0)
+                .forEach(
+                  etapa => {
+                    erros.push(
+                      `A ação "${acao.rotulo}" da etapa "${item.nome}" é uma reprovação/devolução, mas leva para "${etapa.nome}", que vem depois e não antes. ` +
+                      'Confira os caminhos da decisão: a reprovação deve voltar para uma etapa anterior (ex.: Elaboração).'
+                    );
+                  }
+                );
+            }
+
+            if (
+              acao.resultado &&
+              ehAcaoDeDevolucao(acao) &&
+              levaAoFimOuPublicacao(definicao, item.id, acao.resultado, [])
+            ) {
+              erros.push(
+                `A ação "${acao.rotulo}" da etapa "${item.nome}" é uma reprovação/devolução, mas pode levar ao fim do fluxo ou à publicação. ` +
+                `Faça o caminho dela voltar para uma etapa anterior: na decisão seguinte, configure a condição "Resultado = ${acao.rotulo}" no caminho de volta.`
+              );
+            }
 
             if (
               acao.resultado &&

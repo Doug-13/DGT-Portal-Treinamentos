@@ -1,4 +1,8 @@
 import {
+  NOME_PADRAO_EVENTO_REVISAO
+} from '../../../utils/numeracaoRevisao';
+
+import {
   IFluxoAcao,
   IFluxoCampo,
   IFluxoDefinicao,
@@ -51,7 +55,7 @@ export interface IBpmnSnapshot {
 // Configuração de negócio de uma etapa (o que não está no desenho).
 export type IConfigElemento = Pick<
   IFluxoElemento,
-  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao'
+  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar'
 >;
 
 // Configuração de negócio de uma ligação.
@@ -118,6 +122,49 @@ const TIPO_BPMN_DO_FLUXO: Record<TipoElementoFluxo, string> = {
   tarefaSistema: 'bpmn:serviceTask',
   eventoRevisao: 'bpmn:intermediateThrowEvent'
 };
+
+// Tipo BPMN (como o editor informa) de um elemento da definição.
+const TIPO_BPMN_EDITOR: Record<TipoElementoFluxo, string> = {
+  inicio: 'bpmn:StartEvent',
+  fim: 'bpmn:EndEvent',
+  tarefaHumana: 'bpmn:UserTask',
+  gateway: 'bpmn:ExclusiveGateway',
+  tarefaSistema: 'bpmn:ServiceTask',
+  eventoRevisao: 'bpmn:IntermediateThrowEvent'
+};
+
+export const tipoBpmnDoElemento = (
+  tipo: TipoElementoFluxo
+): string =>
+  TIPO_BPMN_EDITOR[tipo];
+
+// "Retrato" montado a partir de uma definição salva (versão publicada
+// ou arquivada, que é exibida sem o editor visual).
+export const snapshotDaDefinicao = (
+  definicao: IFluxoDefinicao
+): IBpmnSnapshot => ({
+  formas: definicao.elementos.map(
+    elemento => ({
+      id: elemento.id,
+      tipo: TIPO_BPMN_EDITOR[elemento.tipo],
+      nome: elemento.nome,
+      x: elemento.posicao.x,
+      y: elemento.posicao.y,
+      largura: elemento.posicao.largura,
+      altura: elemento.posicao.altura
+    })
+  ),
+  conexoes: definicao.transicoes.map(
+    transicao => ({
+      id: transicao.id,
+      tipo: 'bpmn:SequenceFlow',
+      nome: transicao.rotulo || '',
+      origemId: transicao.origemId,
+      destinoId: transicao.destinoId,
+      pontos: transicao.pontos
+    })
+  )
+});
 
 // ------------------------------------------------------------
 // Configurações padrão para elementos novos
@@ -188,7 +235,8 @@ export const configDoElemento = (
   campos: elemento.campos,
   acaoSistema: elemento.acaoSistema,
   statusDocumento: elemento.statusDocumento,
-  tipoRevisao: elemento.tipoRevisao
+  tipoRevisao: elemento.tipoRevisao,
+  retreinamentoAoPublicar: elemento.retreinamentoAoPublicar
 });
 
 export const configDaTransicao = (
@@ -511,7 +559,7 @@ export const montarDefinicao = (
               : tipo === 'fim'
                 ? 'Fim'
                 : tipo === 'eventoRevisao'
-                  ? (config.tipoRevisao === 'subrevisao' ? 'Nova sub-revisão' : 'Nova revisão')
+                  ? NOME_PADRAO_EVENTO_REVISAO[config.tipoRevisao || 'revisao']
                   : 'Etapa sem nome'),
           subtitulo: humana || tipo === 'tarefaSistema' ? config.subtitulo : undefined,
           instrucoes: humana ? config.instrucoes : undefined,
@@ -521,6 +569,10 @@ export const montarDefinicao = (
           campos: humana ? camposSincronizados(config.campos, dados.metadados) : [],
           acaoSistema: tipo === 'tarefaSistema' ? config.acaoSistema : undefined,
           statusDocumento: humana ? config.statusDocumento : undefined,
+          retreinamentoAoPublicar:
+            humana && config.statusDocumento === 'Vigente'
+              ? (config.retreinamentoAoPublicar || 'nao')
+              : undefined,
           tipoRevisao: tipo === 'eventoRevisao' ? (config.tipoRevisao || 'revisao') : undefined,
           posicao: mover({ x: forma.x, y: forma.y, largura: forma.largura, altura: forma.altura }),
           rotuloPosicao: forma.rotulo ? mover(forma.rotulo) : undefined

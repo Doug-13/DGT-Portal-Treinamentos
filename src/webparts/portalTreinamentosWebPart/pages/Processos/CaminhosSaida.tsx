@@ -28,6 +28,9 @@ export interface ISaidaElemento {
   nome: string;
   destinoNome: string;
   destinoTipo?: TipoElementoFluxo;
+  // Percurso depois do destino, atravessando eventos de revisão
+  // (ex.: ['Documento Vigente']). Diferencia destinos com o mesmo nome.
+  depoisDoDestino?: string[];
   config: IConfigTransicao;
 }
 
@@ -63,6 +66,7 @@ const NOME_TIPO_DESTINO: Partial<Record<TipoElementoFluxo, string>> = {
   tarefaHumana: 'etapa',
   tarefaSistema: 'tarefa de sistema',
   gateway: 'decisão',
+  eventoRevisao: 'evento de revisão',
   fim: 'fim'
 };
 
@@ -411,6 +415,13 @@ const CaminhosSaida: React.FC<ICaminhosSaidaProps> = ({
                       {
                         saida.destinoTipo && NOME_TIPO_DESTINO[saida.destinoTipo] && (
                           <span style={{ fontWeight: 400, fontSize: '12px' }}> ({NOME_TIPO_DESTINO[saida.destinoTipo]})</span>
+                        )
+                      }
+                      {
+                        (saida.depoisDoDestino || []).map(
+                          (nome, posicao) => (
+                            <span key={`${nome}-${posicao}`}> → {nome}</span>
+                          )
                         )
                       }
                     </div>

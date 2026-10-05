@@ -16,6 +16,12 @@ import {
   validarTabela
 } from './valoresTabela';
 
+import {
+  ROTULO_HISTORICO_EVENTO_REVISAO,
+  revisaoInteira,
+  rotuloPeloEvento
+} from '../../utils/numeracaoRevisao';
+
 // ============================================================
 // MOTOR DO FLUXO (lógica pura, sem acesso a dados)
 //
@@ -386,6 +392,38 @@ export const escolherTransicao = (
 };
 
 // ------------------------------------------------------------
+// Reprovação / devolução
+//
+// Regra de segurança: uma ação de reprovação ou devolução NUNCA
+// pode levar a revisão ao fim do fluxo nem à publicação, mesmo que
+// os caminhos do fluxo tenham sido configurados errado. A ação é
+// reconhecida pelo texto (chave, resultado ou nome do botão).
+// ------------------------------------------------------------
+
+const PADRAO_DEVOLUCAO =
+  /reprov|ajust|devol|rejeit|recus|corrig|negad|indefer|nao aprov|retorn/;
+
+const normalizarTexto = (
+  valor?: string
+): string =>
+  (valor || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+export const ehAcaoDeDevolucao = (
+  acao: Pick<IFluxoAcao, 'chave' | 'resultado' | 'rotulo'>
+): boolean =>
+  PADRAO_DEVOLUCAO.test(
+    normalizarTexto(`${acao.chave} ${acao.resultado} ${acao.rotulo}`)
+  );
+
+export const ACOES_DE_PUBLICACAO: AcaoSistemaFluxo[] = [
+  'publicarComRetreinamento',
+  'publicarSemRetreinamento'
+];
+
+// ------------------------------------------------------------
 // Movimentação
 // ------------------------------------------------------------
 
@@ -462,9 +500,11 @@ const DESCRICAO_ACAO_SISTEMA: Record<AcaoSistemaFluxo, string> = {
   publicarSemRetreinamento:
     'Publicação com dispensa de retreinamento (simulada)',
   novaRevisao:
-    'Número da revisão definido: nova revisão (00 → 01)',
+    'Revisão fechada na revisão inteira',
   novaSubRevisao:
-    'Número da revisão definido: nova sub-revisão (00 → 00A)'
+    'Nova sub-revisão',
+  proximaRevisao:
+    'Nova revisão'
 };
 
 // Avança automaticamente por gateways e tarefas de sistema até
@@ -524,6 +564,67 @@ const avancar = (
     instancia.elementoAtualId =
       destino.id;
 
+    // Etapa com status "Vigente": ao chegar, a revisão é PUBLICADA
+    // (com ou sem retreinamento) e o fluxo desta revisão termina.
+    // Revisar depois = nova revisão (Rev.01A...), com o próprio fluxo.
+    if (
+      destino.tipo === 'tarefaHumana' &&
+      destino.statusDocumento === 'Vigente'
+    ) {
+
+      const regra =
+        destino.retreinamentoAoPublicar || 'nao';
+
+      const comRetreinamento =
+        regra === 'sim' ||
+        (
+          regra.indexOf('etapa:') === 0 &&
+          instancia.percorridos.indexOf(regra.substring(6)) >= 0
+        );
+
+      const acao: AcaoSistemaFluxo =
+        comRetreinamento
+          ? 'publicarComRetreinamento'
+          : 'publicarSemRetreinamento';
+
+      acoesSistema.push(
+        acao
+      );
+
+      // Revisão publicada nunca tem letra.
+      instancia.revisao =
+        revisaoInteira(instancia.revisao);
+
+      instancia.historico.unshift({
+        revisao: instancia.revisao,
+        id: gerarId('hist'),
+        data: agora,
+        elementoId: destino.id,
+        elementoNome: destino.nome,
+        acaoChave: acao,
+        acaoRotulo:
+          `Revisão ${instancia.revisao} publicada — vigente ` +
+          (comRetreinamento ? '(com retreinamento)' : '(sem retreinamento)'),
+        resultado: 'publicado',
+        executadoPorId: 'sistema',
+        executadoPorNome: 'Sistema',
+        sistema: true
+      });
+
+      instancia.status =
+        'concluido';
+
+      instancia.concluidoEm =
+        agora;
+
+      limparTransicoesOrfas(
+        definicao,
+        instancia
+      );
+
+      return [];
+    }
+
     if (destino.tipo === 'tarefaHumana') {
 
       instancia.tarefas.push(
@@ -560,6 +661,7 @@ const avancar = (
     ) {
 
       instancia.historico.unshift({
+        revisao: instancia.revisao,
         id: gerarId('hist'),
         data: agora,
         elementoId: destino.id,
@@ -586,6 +688,7 @@ const avancar = (
       );
 
       instancia.historico.unshift({
+        revisao: instancia.revisao,
         id: gerarId('hist'),
         data: agora,
         elementoId: destino.id,
@@ -610,19 +713,46 @@ const avancar = (
       const acao: AcaoSistemaFluxo =
         destino.tipoRevisao === 'subrevisao'
           ? 'novaSubRevisao'
-          : 'novaRevisao';
+          : destino.tipoRevisao === 'novaRevisao'
+            ? 'proximaRevisao'
+            : 'novaRevisao';
 
       acoesSistema.push(
         acao
       );
 
+      // O motor já define o novo rótulo (00 → 00A, 00B → 00);
+      // quem grava em dgt_revisao é a tarefa automática.
+      const rotuloAnterior =
+        instancia.revisao;
+
+      // Já houve um fechamento de revisão neste fluxo? (Sem isso, uma
+      // revisão antiga criada sem letra pularia número na aprovação.)
+      const jaFechada =
+        instancia.historico.some(
+          passo =>
+            passo.sistema &&
+            (passo.acaoChave === 'novaRevisao' || passo.acaoChave === 'proximaRevisao')
+        );
+
+      instancia.revisao =
+        rotuloPeloEvento(
+          destino.tipoRevisao || 'revisao',
+          rotuloAnterior,
+          jaFechada
+        );
+
       instancia.historico.unshift({
+        revisao: instancia.revisao,
         id: gerarId('hist'),
         data: agora,
         elementoId: destino.id,
         elementoNome: destino.nome,
         acaoChave: acao,
-        acaoRotulo: DESCRICAO_ACAO_SISTEMA[acao],
+        acaoRotulo:
+          rotuloAnterior === instancia.revisao
+            ? `${ROTULO_HISTORICO_EVENTO_REVISAO[destino.tipoRevisao || 'revisao']}: ${instancia.revisao} (sem alteração)`
+            : `${ROTULO_HISTORICO_EVENTO_REVISAO[destino.tipoRevisao || 'revisao']}: ${rotuloAnterior} → ${instancia.revisao}`,
         resultado: 'concluido',
         executadoPorId: 'sistema',
         executadoPorNome: 'Sistema',
@@ -688,7 +818,8 @@ export const iniciarInstancia = (
         resultado: 'iniciado',
         executadoPorId: dados.ator.id,
         executadoPorNome: dados.ator.nome,
-        sistema: false
+        sistema: false,
+        revisao: dados.revisao
       }
     ],
     iniciadoEm: agora,
@@ -896,7 +1027,8 @@ export const executarAcao = (
         : undefined,
     executadoPorId: execucao.ator.id,
     executadoPorNome: execucao.ator.nome,
-    sistema: false
+    sistema: false,
+    revisao: instancia.revisao
   };
 
   instancia.historico.unshift(
@@ -921,6 +1053,50 @@ export const executarAcao = (
       erros: errosAvanco,
       acoesSistema: []
     };
+  }
+
+  // Trava de segurança: reprovação nunca conclui nem publica.
+  if (ehAcaoDeDevolucao(acao)) {
+
+    const publicaria =
+      acoesSistema.some(item => ACOES_DE_PUBLICACAO.indexOf(item) >= 0);
+
+    // Devolver é VOLTAR: a próxima etapa precisa ser uma das já
+    // percorridas por esta revisão (ex.: Elaboração). Ir para uma
+    // etapa nova (ex.: "Documento Vigente") é caminho trocado.
+    const destino =
+      obterElemento(definicao, instancia.elementoAtualId);
+
+    const avancaria =
+      instancia.status !== 'concluido' &&
+      !!destino &&
+      destino.tipo === 'tarefaHumana' &&
+      instanciaOriginal.percorridos.indexOf(destino.id) < 0;
+
+    if (avancaria && destino) {
+      return {
+        ok: false,
+        erros: [
+          `A ação "${acao.rotulo}" é uma reprovação/devolução, mas o fluxo deste processo a levaria para a etapa ` +
+          `"${destino.nome}", que ainda não foi percorrida por esta revisão (ela deveria voltar para uma etapa anterior). ` +
+          'A ação foi bloqueada e nada foi gravado. Confira os caminhos da decisão no fluxo do processo e publique uma nova versão.'
+        ],
+        acoesSistema: []
+      };
+    }
+
+    if (publicaria || instancia.status === 'concluido') {
+      return {
+        ok: false,
+        erros: [
+          `A ação "${acao.rotulo}" é uma reprovação/devolução, mas o fluxo deste processo a levaria ` +
+          `${publicaria ? 'à publicação' : 'ao fim'} da revisão. A ação foi bloqueada e nada foi gravado. ` +
+          'Corrija os caminhos da decisão no fluxo do processo (o caminho de reprovação deve voltar para uma etapa anterior) ' +
+          'e publique uma nova versão do fluxo.'
+        ],
+        acoesSistema: []
+      };
+    }
   }
 
   // Ao voltar para uma etapa já percorrida, o valor dos campos

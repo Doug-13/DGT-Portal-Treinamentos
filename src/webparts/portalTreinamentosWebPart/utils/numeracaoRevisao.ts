@@ -9,21 +9,33 @@
 //
 // Ordem: 00 < 00A < 00B < ... < 00Z < 00AA < 01 < 01A ...
 //
-// Quem define o rótulo final é o EVENTO DE REVISÃO do fluxo do
-// processo, ao ser percorrido:
+// REGRA GERAL
+//   • Revisão EM TRABALHO sempre tem letra: o documento nasce Rev.00A
+//     e cada nova revisão nasce com a próxima numeração + A (Rev.01A).
+//   • Revisão APROVADA/PUBLICADA nunca tem letra: Rev.00, Rev.01...
+//     (a publicação tira a letra que tiver sobrado).
 //
-//   Nova revisão     → próximo inteiro da última revisão publicada
-//                      (00 → 01 · 00B → 01)
-//   Nova sub-revisão → próxima letra da última revisão publicada
-//                      (00 → 00A · 00A → 00B · 01 → 01A)
+// EVENTO DE REVISÃO do fluxo do processo (muda o rótulo da própria
+// revisão quando é percorrido):
 //
-//   Sem nenhuma revisão publicada, as duas regras dão "Rev.00"
-//   (a primeira emissão é sempre a revisão inteira).
+//   Sub-revisão    → próxima letra:   00A → 00B · 00 → 00A
+//   Revisão        → com letra:       tira a letra      (00B → 00)
+//                    sem letra:       próxima revisão   (00 → 01A)
+//                    (só avança se a revisão já foi fechada antes
+//                    neste fluxo; revisões antigas criadas sem letra
+//                    continuam com o mesmo número)
+//   Nova revisão   → sempre a próxima revisão: 00B → 01A · 00 → 01A
+//   Fechar revisão → só tira a letra:          00B → 00 · 00 continua 00
+//
+// Assim uma aprovação nunca "pula" número: 00A → 00 (aprovou),
+// 00 → 01A (revisar), 01A → 01 (aprovou de novo).
 // ============================================================
 
 export type TipoEventoRevisao =
+  | 'subrevisao'
   | 'revisao'
-  | 'subrevisao';
+  | 'novaRevisao'
+  | 'fechar';
 
 export interface IRevisaoInterpretada {
   prefixo: string;
@@ -168,27 +180,80 @@ export const proximaSubRevisao = (
   });
 };
 
-// Rótulo que a revisão recebe ao passar pelo evento de revisão.
-// publicadas: rótulos das revisões já publicadas (vigente e
-// obsoletas), SEM a revisão que está passando pelo evento.
-export const rotuloPeloEvento = (
-  tipo: TipoEventoRevisao,
-  publicadas: string[]
+// Revisão inteira, sem a sub-revisão: "Rev.00B" → "Rev.00".
+export const revisaoInteira = (
+  rotulo?: string
 ): string => {
 
-  const base =
-    maiorRevisao(publicadas);
+  const atual =
+    interpretarRevisao(rotulo);
 
-  if (!base) {
-    return `${PREFIXO_PADRAO}00`;
+  return atual
+    ? formatarRevisao({ ...atual, sub: '' })
+    : `${PREFIXO_PADRAO}00`;
+};
+
+// Rótulo de uma revisão em trabalho a partir de outra: próxima
+// numeração com a letra A ("Rev.00" → "Rev.01A"; nada → "Rev.00A").
+export const proximaRevisaoEmTrabalho = (
+  base?: string
+): string =>
+  base
+    ? `${proximaRevisaoInteira(base)}A`
+    : `${PREFIXO_PADRAO}00A`;
+
+// Rótulo que a revisão recebe ao passar pelo evento de revisão.
+// jaFechada: a revisão já passou por um fechamento neste fluxo (ou
+// seja, "00" é um número aprovado, não um rascunho antigo sem letra).
+export const rotuloPeloEvento = (
+  tipo: TipoEventoRevisao,
+  rotuloAtual: string,
+  jaFechada: boolean = true
+): string => {
+
+  const atual =
+    interpretarRevisao(rotuloAtual);
+
+  if (tipo === 'subrevisao') {
+    return proximaSubRevisao(rotuloAtual);
   }
 
-  return tipo === 'subrevisao'
-    ? proximaSubRevisao(base)
-    : proximaRevisaoInteira(base);
+  if (tipo === 'fechar') {
+    return revisaoInteira(rotuloAtual);
+  }
+
+  if (tipo === 'novaRevisao') {
+    return proximaRevisaoEmTrabalho(revisaoInteira(rotuloAtual));
+  }
+
+  // 'revisao'
+  if (atual && atual.sub) {
+    return revisaoInteira(rotuloAtual);
+  }
+
+  return jaFechada
+    ? proximaRevisaoEmTrabalho(rotuloAtual)
+    : rotuloAtual;
 };
 
 export const DESCRICAO_TIPO_EVENTO_REVISAO: Record<TipoEventoRevisao, string> = {
-  revisao: 'Nova revisão (00 → 01)',
-  subrevisao: 'Nova sub-revisão (00 → 00A)'
+  subrevisao: 'Sub-revisão: próxima letra (00 → 00A → 00B)',
+  revisao: 'Revisão: tira a letra ou abre a próxima revisão (00A → 00 · 00 → 01A)',
+  novaRevisao: 'Nova revisão: sempre abre a próxima revisão (00B → 01A · 00 → 01A)',
+  fechar: 'Fechar revisão: só tira a letra (00B → 00 · 00 continua 00)'
+};
+
+export const NOME_PADRAO_EVENTO_REVISAO: Record<TipoEventoRevisao, string> = {
+  subrevisao: 'Sub-revisão',
+  revisao: 'Revisão',
+  novaRevisao: 'Nova revisão',
+  fechar: 'Fechar revisão'
+};
+
+// Texto do passo no histórico.
+export const ROTULO_HISTORICO_EVENTO_REVISAO: Record<TipoEventoRevisao, string> = {
+  subrevisao: 'Nova sub-revisão',
+  revisao: 'Revisão',
+  novaRevisao: 'Nova revisão',
+  fechar: 'Revisão fechada'
 };

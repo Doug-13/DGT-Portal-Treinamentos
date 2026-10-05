@@ -349,7 +349,8 @@ const NovoDocumentoPage:
       setRevisaoInicial
     ] =
       React.useState(
-        'Rev.00'
+        // Documento nasce em trabalho: Rev.00A (vira Rev.00 na aprovação).
+        'Rev.00A'
       );
 
     // O status inicial NUNCA é escolhido pelo usuário: todo documento
@@ -745,7 +746,7 @@ const NovoDocumentoPage:
                 aprovadorSelecionado.usuarioNome,
               revisaoInicial:
                 revisaoInicial.trim() ||
-                'Rev.00',
+                'Rev.00A',
               status,
               ativo:
                 true,

@@ -1,6 +1,7 @@
 import {
   maiorRevisao,
-  proximaRevisaoInteira
+  proximaRevisaoEmTrabalho,
+  revisaoInteira
 } from '../utils/numeracaoRevisao';
 
 import {
@@ -181,11 +182,9 @@ export const numeroRevisao = (
     : -1;
 };
 
-// Próxima revisão INTEIRA: "Rev.00" → "Rev.01" · "Rev.00B" → "Rev.01"
-// · "03" → "04". Usa a MAIOR revisão existente (considerando as
-// sub-revisões), preservando o prefixo. Sem revisões → "Rev.00".
-// A sub-revisão (00A, 00B...) é definida pelo evento de revisão do
-// fluxo do processo — ver utils/numeracaoRevisao.ts.
+// Rótulo de uma revisão NOVA (em trabalho, sempre com letra):
+// sem revisões → "Rev.00A" · maior "Rev.00" ou "Rev.00B" → "Rev.01A".
+// Ver utils/numeracaoRevisao.ts.
 export const calcularProximaRevisao = (
   revisoes: IDocumentoRevisao[]
 ): string => {
@@ -195,9 +194,9 @@ export const calcularProximaRevisao = (
       revisoes.map(revisao => revisao.revisao)
     );
 
-  return maior
-    ? proximaRevisaoInteira(maior)
-    : 'Rev.00';
+  return proximaRevisaoEmTrabalho(
+    maior ? revisaoInteira(maior) : undefined
+  );
 };
 
 // Revisão que está em andamento (Elaboração / Aprovação / legado

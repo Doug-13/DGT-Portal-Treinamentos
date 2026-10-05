@@ -40,6 +40,8 @@ import {
   IConfigElemento,
   IConfigTransicao,
   montarDefinicao,
+  snapshotDaDefinicao,
+  tipoBpmnDoElemento,
   tipoFluxoDoBpmn
 } from '../../services/fluxo/bpmn/bpmnConversao';
 
@@ -319,6 +321,20 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     },
     [assinatura]
   );
+
+  // Versão publicada/arquivada: a configuração salva é exibida no
+  // mesmo modal, somente leitura (nada pode ser alterado).
+  const edicaoLeitura =
+    React.useMemo(
+      () =>
+        !editavel && definicaoSelecionada
+          ? estadoInicial(definicaoSelecionada)
+          : undefined,
+      [assinatura, editavel]
+    );
+
+  const edicaoVisivel: IEstadoEdicao | undefined =
+    edicao || edicaoLeitura;
 
   const trocarVersao = (
     versao: number
@@ -619,9 +635,11 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       : undefined;
 
   const snapshotAtual =
-    editavel && selecionado && editorRef.current
-      ? editorRef.current.obterSnapshot()
-      : undefined;
+    !selecionado
+      ? undefined
+      : editavel
+        ? (editorRef.current ? editorRef.current.obterSnapshot() : undefined)
+        : (definicaoSelecionada ? snapshotDaDefinicao(definicaoSelecionada) : undefined);
 
   const tipoDe = (
     id: string
@@ -643,7 +661,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     id: string
   ): IResultadoDisponivel[] => {
     const config =
-      edicao ? edicao.configsElementos[id] : undefined;
+      edicaoVisivel ? edicaoVisivel.configsElementos[id] : undefined;
     return tipoDe(id) === 'tarefaHumana'
       ? (config || configPadraoElemento('tarefaHumana')).acoes.map(
         acao => ({ resultado: acao.resultado, descricao: `${acao.rotulo} (${nomeDe(id)})` })
@@ -711,9 +729,45 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     }
   }
 
+  // Depois de um evento de revisão (uma única saída), para onde vai?
+  // Mostra o percurso até a próxima etapa/decisão, para diferenciar
+  // destinos com o mesmo nome (ex.: dois eventos "Revisão").
+  const depoisDe = (
+    id: string
+  ): string[] => {
+
+    const percurso: string[] = [];
+    let atual = id;
+
+    const retrato = snapshotAtual;
+
+    if (!retrato) {
+      return percurso;
+    }
+
+    for (let passo = 0; passo < 5 && tipoDe(atual) === 'eventoRevisao'; passo++) {
+
+      const proxima =
+        retrato.conexoes.filter(
+          conexao =>
+            conexao.origemId === atual &&
+            conexao.tipo === 'bpmn:SequenceFlow'
+        );
+
+      if (proxima.length !== 1) {
+        break;
+      }
+
+      atual = proxima[0].destinoId;
+      percurso.push(nomeDe(atual));
+    }
+
+    return percurso;
+  };
+
   // Caminhos que saem do elemento selecionado (decisão ou etapa).
   const saidas: ISaidaElemento[] =
-    selecionado && !selecionado.conexao && snapshotAtual && edicao
+    selecionado && !selecionado.conexao && snapshotAtual && edicaoVisivel
       ? snapshotAtual.conexoes
         .filter(
           conexao =>
@@ -726,7 +780,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
             nome: conexao.nome,
             destinoNome: nomeDe(conexao.destinoId),
             destinoTipo: tipoDe(conexao.destinoId),
-            config: edicao.configsTransicoes[conexao.id] || configPadraoTransicao()
+            depoisDoDestino: depoisDe(conexao.destinoId),
+            config: edicaoVisivel.configsTransicoes[conexao.id] || configPadraoTransicao()
           })
         )
       : [];
@@ -825,16 +880,23 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   );
 
   const configSelecionado: IConfigElemento | undefined =
-    edicao && selecionado && tipoSelecionado
-      ? edicao.configsElementos[selecionado.id] || configPadraoElemento(tipoSelecionado)
+    edicaoVisivel && selecionado && tipoSelecionado
+      ? edicaoVisivel.configsElementos[selecionado.id] || configPadraoElemento(tipoSelecionado)
       : undefined;
 
   const painel = (
     secao: SecaoPainelFluxo,
     extraCampos?: React.ReactNode
   ): React.ReactNode =>
-    edicao && (
+    edicaoVisivel && (
       <PainelPropriedadesFluxo
+        etapasDoFluxo={
+          snapshotAtual
+            ? snapshotAtual.formas
+              .filter(forma => tipoFluxoDoBpmn(forma.tipo) === 'tarefaHumana' && (!selecionado || forma.id !== selecionado.id))
+              .map(forma => ({ id: forma.id, nome: forma.nome || '(sem nome)' }))
+            : []
+        }
         key={`${selecionado ? selecionado.id : 'nenhum'}-${secao}`}
         secao={secao}
         extraCampos={extraCampos}
@@ -845,7 +907,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         editavel={editavel}
         configElemento={configSelecionado}
         onAlterarElemento={config => {
-          if (!selecionado) {
+          if (!selecionado || !edicao || !editavel) {
             return;
           }
           setEdicao({
@@ -856,11 +918,11 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         }}
         configTransicao={
           selecionado && selecionado.conexao
-            ? edicao.configsTransicoes[selecionado.id] || configPadraoTransicao()
+            ? edicaoVisivel.configsTransicoes[selecionado.id] || configPadraoTransicao()
             : undefined
         }
         onAlterarTransicao={config => {
-          if (selecionado) {
+          if (selecionado && editavel) {
             alterarConfigTransicao(selecionado.id, config);
           }
         }}
@@ -873,6 +935,26 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
           }
         }}
         onSelecionarSaida={id => {
+
+          // Somente leitura: abre a ligação a partir da versão salva.
+          if (!editavel) {
+            const transicao =
+              definicaoSelecionada
+                ? definicaoSelecionada.transicoes.find(item => item.id === id)
+                : undefined;
+            if (transicao) {
+              setSelecionado({
+                id: transicao.id,
+                tipoBpmn: 'bpmn:SequenceFlow',
+                nome: transicao.rotulo || '',
+                conexao: true,
+                origemId: transicao.origemId,
+                destinoId: transicao.destinoId
+              });
+            }
+            return;
+          }
+
           // Abre a ligação no próprio modal.
           if (editorRef.current) {
             editorRef.current.selecionar(id);
@@ -886,7 +968,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         resultadosDisponiveis={resultadosDisponiveis}
         metadados={metadadosAtuais}
         onRenomear={nome => {
-          if (selecionado && editorRef.current) {
+          if (selecionado && editavel && editorRef.current) {
             editorRef.current.renomear(selecionado.id, nome);
           }
         }}
@@ -1044,7 +1126,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
             {
               editavel
                 ? 'Dê duplo clique em uma etapa, decisão ou ligação (ou use ⚙ no menu do elemento) para configurar responsáveis, botões, prazo, metadados e caminhos.'
-                : 'Versão somente leitura.'
+                : 'Versão somente leitura. Clique em uma etapa, decisão ou evento para ver a configuração.'
             }
           </span>
         </div>
@@ -1078,7 +1160,28 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
             )
             : (
               <div style={{ padding: '8px 0' }}>
-                <FluxoDiagrama definicao={definicaoSelecionada} />
+                <FluxoDiagrama
+                  definicao={definicaoSelecionada}
+                  elementoDestacadoId={
+                    modal && modal.tipo === 'elemento' && selecionado && !selecionado.conexao
+                      ? selecionado.id
+                      : undefined
+                  }
+                  onClicarElemento={id => {
+                    const elemento =
+                      definicaoSelecionada.elementos.find(item => item.id === id);
+                    if (!elemento) {
+                      return;
+                    }
+                    setSelecionado({
+                      id: elemento.id,
+                      tipoBpmn: tipoBpmnDoElemento(elemento.tipo),
+                      nome: elemento.nome,
+                      conexao: false
+                    });
+                    setModal({ tipo: 'elemento' });
+                  }}
+                />
                 {
                   podeEditar && (
                     <div style={{ padding: '8px 20px', fontSize: '13px' }}>
@@ -1100,11 +1203,21 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         modal &&
         modal.tipo === 'elemento' &&
         selecionado &&
-        edicao && (
+        edicaoVisivel && (
           <ModalConfiguracaoFluxo
             key={`modal-${selecionado.id}`}
             titulo={selecionado.nome || '(sem nome)'}
-            subtitulo={nomeTipoSelecionado}
+            subtitulo={
+              editavel
+                ? nomeTipoSelecionado
+                : `${nomeTipoSelecionado} · somente leitura (v${definicaoSelecionada ? definicaoSelecionada.versao : ''})`
+            }
+            rodape={
+              editavel
+                ? undefined
+                : 'Configuração da versão publicada, somente para consulta. Para alterar, use “Criar nova versão”.'
+            }
+            rotuloFechar={editavel ? undefined : 'Fechar'}
             abas={abasDoModal}
             onFechar={() => setModal(undefined)}
           />

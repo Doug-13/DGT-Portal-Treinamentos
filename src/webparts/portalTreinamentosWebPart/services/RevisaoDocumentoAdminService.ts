@@ -2,6 +2,11 @@ import {
   DataverseService
 } from './DataverseService';
 
+import {
+  interpretarRevisao,
+  revisaoInteira
+} from '../utils/numeracaoRevisao';
+
 export interface IPublicarRevisao {
   documentoRevisaoId: string;
   requerRetreinamento: boolean;
@@ -67,10 +72,52 @@ export class RevisaoDocumentoAdminService {
       );
     }
 
+    // Revisão publicada nunca tem letra: Rev.00B → Rev.00.
+    const camposRotulo: Record<string, string> = {};
+
+    let lido: { registro?: unknown } | undefined;
+
+    try {
+      lido =
+        await this.dataverse.obterRegistro(
+          'dgt_documentorevisao',
+          dados.documentoRevisaoId,
+          ['dgt_revisao', 'dgt_name']
+        );
+    } catch (error) {
+      // Sem leitura do rótulo: publica como está (não bloqueia).
+      console.error(error);
+      lido = undefined;
+    }
+
+    const rotuloAtual =
+      lido && lido.registro
+        ? String((lido.registro as Record<string, unknown>).dgt_revisao || '')
+        : '';
+
+    const interpretado =
+      interpretarRevisao(rotuloAtual);
+
+    if (interpretado && interpretado.sub) {
+
+      const rotuloFinal =
+        revisaoInteira(rotuloAtual);
+
+      const nome =
+        String((lido && lido.registro && (lido.registro as Record<string, unknown>).dgt_name) || '');
+
+      camposRotulo.dgt_revisao = rotuloFinal;
+
+      if (nome && nome.indexOf(rotuloAtual) >= 0) {
+        camposRotulo.dgt_name = nome.replace(rotuloAtual, rotuloFinal).substring(0, 100);
+      }
+    }
+
     await this.dataverse
       .atualizarDocumentoRevisao(
         dados.documentoRevisaoId,
         {
+          ...camposRotulo,
           dgt_requerretreinamento:
             dados.requerRetreinamento,
 

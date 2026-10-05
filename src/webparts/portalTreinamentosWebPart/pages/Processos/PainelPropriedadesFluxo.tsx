@@ -81,6 +81,9 @@ export interface IPainelPropriedadesFluxoProps {
   onDefinirPadraoSaida: (id: string | undefined) => void;
   onRenomearSaida: (id: string, nome: string) => void;
   onSelecionarSaida: (id: string) => void;
+
+  // Etapas com responsável do fluxo (para "retreinamento se passou por").
+  etapasDoFluxo?: Array<{ id: string; nome: string }>;
 }
 
 const COR_AZUL = '#202A44';
@@ -161,7 +164,8 @@ const DESCRICAO_PADRAO_RESPONSAVEL: Record<TipoResponsavelFluxo, string> = {
 const STATUS_DOCUMENTO: Array<{ valor: StatusDocumentoEtapa; rotulo: string }> = [
   { valor: 'Elaboração', rotulo: 'Elaboração' },
   { valor: 'Revisão', rotulo: 'Revisão' },
-  { valor: 'Aprovação', rotulo: 'Aprovação' }
+  { valor: 'Aprovação', rotulo: 'Aprovação' },
+  { valor: 'Vigente', rotulo: 'Vigente (publica a revisão ao chegar nesta etapa)' }
 ];
 
 const ACOES_SISTEMA: Array<{ valor: '' | AcaoSistemaFluxo; rotulo: string }> = [
@@ -217,6 +221,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   onDefinirPadraoSaida,
   onRenomearSaida,
   onSelecionarSaida,
+  etapasDoFluxo,
   secao = 'tudo',
   extraCampos,
   areas = [],
@@ -453,10 +458,22 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
     const tipoRevisao: TipoEventoRevisao =
       config.tipoRevisao || 'revisao';
 
+    const EXEMPLOS: Record<TipoEventoRevisao, string> = {
+      subrevisao: 'Rev.00 → Rev.00A → Rev.00B · Rev.01 → Rev.01A',
+      revisao: 'Rev.00A → Rev.00 · Rev.00 → Rev.01A · Rev.01B → Rev.01',
+      novaRevisao: 'Rev.00 → Rev.01A · Rev.00B → Rev.01A',
+      fechar: 'Rev.00B → Rev.00 · Rev.00 continua Rev.00'
+    };
+
+    const USO: Record<TipoEventoRevisao, string> = {
+      subrevisao: 'Use no caminho de ajustes/reprovação: cada volta gera uma nova letra.',
+      revisao: 'Com letra, fecha no número aprovado (use na aprovação); sem letra, abre a próxima revisão em trabalho (use no "Revisar").',
+      novaRevisao: 'Sempre abre a próxima revisão em trabalho, mesmo havendo letra.',
+      fechar: 'Só fecha a sub-revisão e nunca avança o número (ex.: aprovação sem ajustes continua Rev.00).'
+    };
+
     const exemplo =
-      tipoRevisao === 'subrevisao'
-        ? 'Última publicada Rev.00 → Rev.00A · Rev.00A → Rev.00B · Rev.01 → Rev.01A'
-        : 'Última publicada Rev.00 → Rev.01 · Rev.00B → Rev.01';
+      EXEMPLOS[tipoRevisao];
 
     return (
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', color: COR_AZUL }}>
@@ -466,7 +483,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           <legend style={estiloLegenda}>Numeração da revisão</legend>
 
           {
-            (['revisao', 'subrevisao'] as TipoEventoRevisao[]).map(
+            (['subrevisao', 'revisao', 'novaRevisao', 'fechar'] as TipoEventoRevisao[]).map(
               opcao => (
                 <label
                   key={opcao}
@@ -486,18 +503,17 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           }
 
           <div style={{ fontSize: '12.5px', lineHeight: '18px', background: '#EDF0F5', borderRadius: '6px', padding: '8px 10px', marginTop: '4px' }}>
-            Quando o documento passa por este evento, a revisão recebe o número
-            calculado a partir da <strong>última revisão publicada</strong>.
+            Quando o documento passa por este evento, o número da revisão muda:
             <br />
-            {exemplo}
+            <strong>{exemplo}</strong>
             <br />
-            Sem revisão publicada, o documento recebe <strong>Rev.00</strong>.
+            {USO[tipoRevisao]}
           </div>
         </fieldset>
 
         <div style={{ fontSize: '12px', lineHeight: '17px' }}>
-          Coloque o evento <strong>antes</strong> da tarefa que publica a revisão, para que
-          ela seja publicada já com o número certo. O evento não tem responsável e tem
+          Regra geral: revisão em trabalho sempre tem letra (o documento nasce Rev.00A) e revisão
+          aprovada/publicada nunca tem letra. O evento não tem responsável e tem
           apenas uma saída; para escolher caminhos, use uma decisão depois dele.
         </div>
       </div>
@@ -676,6 +692,39 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         <div style={{ fontSize: '12px', marginTop: '4px' }}>
           É o status que aparece na lista de documentos e nos indicadores enquanto a revisão está nesta etapa.
         </div>
+
+        {
+          config.statusDocumento === 'Vigente' && (
+            <div style={{ marginTop: '10px', padding: '10px 12px', background: '#E7F6EC', border: '1px solid #107C10', borderRadius: '6px' }}>
+              <label htmlFor="prop-retreinamento" style={estiloRotuloPainel}>Retreinamento ao publicar</label>
+              <select
+                id="prop-retreinamento"
+                value={config.retreinamentoAoPublicar || 'nao'}
+                disabled={!editavel}
+                onChange={evento => alterar({ retreinamentoAoPublicar: evento.target.value })}
+                style={estiloEntradaPainel}
+              >
+                <option value="nao">Não — publicar sem retreinamento</option>
+                <option value="sim">Sim — sempre gerar retreinamento</option>
+                {
+                  (etapasDoFluxo || []).map(
+                    etapa => (
+                      <option key={etapa.id} value={`etapa:${etapa.id}`}>
+                        Sim, se o documento passou por “{etapa.nome}”
+                      </option>
+                    )
+                  )
+                }
+              </select>
+              <div style={{ fontSize: '12px', lineHeight: '17px', marginTop: '6px' }}>
+                Ao chegar nesta etapa, a revisão é <strong>publicada</strong>: fica vigente, a anterior vira obsoleta
+                e, com retreinamento, os treinamentos são atribuídos. O número perde a letra (Rev.01B → Rev.01) e
+                <strong> o fluxo desta revisão termina aqui</strong> — os botões desta etapa não são usados.
+                Para revisar depois, use <strong>“Criar nova revisão”</strong> no documento (nasce Rev.02A, com o próprio fluxo).
+              </div>
+            </div>
+          )
+        }
       </div>
 
 </>

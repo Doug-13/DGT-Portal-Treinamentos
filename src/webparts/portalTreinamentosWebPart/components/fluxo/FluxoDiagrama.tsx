@@ -1,6 +1,10 @@
 import * as React from 'react';
 
 import {
+  DESCRICAO_TIPO_EVENTO_REVISAO
+} from '../../utils/numeracaoRevisao';
+
+import {
   IFluxoDefinicao,
   IFluxoElemento,
   IFluxoInstancia,
@@ -43,6 +47,10 @@ export interface IFluxoDiagramaProps {
 
   // Etapa destacada (ex.: a que está sendo editada).
   elementoDestacadoId?: string;
+
+  // Clique em uma etapa, decisão ou evento (ex.: ver a configuração
+  // de uma versão publicada). Sem esta função o diagrama não reage.
+  onClicarElemento?: (elementoId: string) => void;
 }
 
 interface IEstiloNo {
@@ -309,7 +317,7 @@ const renderizarElemento = (
 
     return (
       <g key={elemento.id}>
-        <title>{`${titulo} · ${elemento.tipoRevisao === 'subrevisao' ? 'Nova sub-revisão (00 → 00A)' : 'Nova revisão (00 → 01)'}`}</title>
+        <title>{`${titulo} · ${DESCRICAO_TIPO_EVENTO_REVISAO[elemento.tipoRevisao || 'revisao']}`}</title>
         <circle
           cx={x + largura / 2}
           cy={y + altura / 2}
@@ -480,7 +488,8 @@ const marcador = (
 const FluxoDiagrama: React.FC<IFluxoDiagramaProps> = ({
   definicao,
   instancia,
-  elementoDestacadoId
+  elementoDestacadoId,
+  onClicarElemento
 }) => {
 
   const percorrida = (
@@ -569,11 +578,36 @@ const FluxoDiagrama: React.FC<IFluxoDiagramaProps> = ({
         {
           definicao.elementos.map(
             elemento =>
-              renderizarElemento(
-                elemento,
-                status(elemento.id),
-                elemento.id === elementoDestacadoId
-              )
+              onClicarElemento
+                ? (
+                  <g
+                    key={`clique-${elemento.id}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Ver configuração de ${elemento.nome}`}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => onClicarElemento(elemento.id)}
+                    onKeyDown={evento => {
+                      if (evento.key === 'Enter' || evento.key === ' ') {
+                        evento.preventDefault();
+                        onClicarElemento(elemento.id);
+                      }
+                    }}
+                  >
+                    {
+                      renderizarElemento(
+                        elemento,
+                        status(elemento.id),
+                        elemento.id === elementoDestacadoId
+                      )
+                    }
+                  </g>
+                )
+                : renderizarElemento(
+                  elemento,
+                  status(elemento.id),
+                  elemento.id === elementoDestacadoId
+                )
           )
         }
       </svg>

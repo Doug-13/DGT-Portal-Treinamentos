@@ -95,7 +95,20 @@ export type TipoEventoDocumento =
   | 'REPROVADA'
   | 'APROVADA_PUBLICADA'
   | 'REVISAO_SUBSTITUIDA'
+  // Passo do fluxo de revisão do processo (etapa concluída, decisão,
+  // renumeração, publicação). Lido do estado do fluxo da revisão.
+  | 'FLUXO'
   | 'OUTRO';
+
+export type CategoriaPassoFluxo =
+  | 'aprovado'
+  | 'reprovado'
+  | 'publicado'
+  | 'subrevisao'
+  | 'revisao'
+  | 'inicio'
+  | 'fim'
+  | 'avanco';
 
 export interface IDocumentoEvento {
   id: string;
@@ -112,7 +125,15 @@ export interface IDocumentoEvento {
 
   revisaoId?: string;
 
+  // Rótulo ATUAL da revisão (usado no filtro por revisão).
   revisao?: string;
+
+  // Número da revisão no momento do evento (ex.: Rev.00A), quando
+  // diferente do atual. Exibido no selo do evento.
+  revisaoNoMomento?: string;
+
+  // Passos do fluxo: categoria para cor e ícone no histórico.
+  categoriaFluxo?: CategoriaPassoFluxo;
 
   statusAnterior?: string;
 

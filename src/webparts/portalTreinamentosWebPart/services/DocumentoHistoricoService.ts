@@ -9,6 +9,14 @@ import {
   TipoEventoDocumento
 } from '../models/Documento';
 
+import {
+  IFluxoInstancia
+} from '../models/Fluxo';
+
+import {
+  categoriaDoPasso
+} from './fluxo/categoriaPasso';
+
 // ============================================================
 // HISTÓRICO DO DOCUMENTO
 //
@@ -72,6 +80,8 @@ const ROTULOS_ACAO:
   APROVADA_PUBLICADA:
     ['Aprovação', 'Aprovacao', 'Publicação', 'Publicacao', 'Alteração', 'Atualização', 'Update'],
   REVISAO_SUBSTITUIDA:
+    ['Alteração', 'Alteracao', 'Atualização', 'Atualizacao', 'Update'],
+  FLUXO:
     ['Alteração', 'Alteracao', 'Atualização', 'Atualizacao', 'Update'],
   OUTRO:
     ['Alteração', 'Alteracao', 'Atualização', 'Update']
@@ -301,9 +311,18 @@ export class DocumentoHistoricoService {
         gravados
       );
 
+    // Passos do fluxo do processo (Elaboração, Avaliação, decisões,
+    // sub-revisões, publicação). Ficam no estado do fluxo de cada
+    // revisão (dgt_documentorevisao.dgt_estadofluxojson).
+    const doFluxo =
+      await this.eventosDoFluxo(
+        revisoes
+      );
+
     return [
       ...gravados,
-      ...derivados
+      ...derivados,
+      ...doFluxo
     ].sort(
       (a, b) =>
         (new Date(b.data).getTime() || 0) -
@@ -386,6 +405,68 @@ export class DocumentoHistoricoService {
       derivado:
         false
     };
+  }
+
+  private async eventosDoFluxo(
+    revisoes: IDocumentoRevisao[]
+  ): Promise<IDocumentoEvento[]> {
+
+    const listas =
+      await Promise.all(
+        revisoes.map(
+          async revisao => {
+
+            try {
+              const lido =
+                await this.dataverse.obterRegistro(
+                  'dgt_documentorevisao',
+                  guid(revisao.id),
+                  ['dgt_estadofluxojson']
+                );
+
+              const json =
+                lido ? texto(lido.registro, 'dgt_estadofluxojson') : '';
+
+              if (!json) {
+                return [];
+              }
+
+              const instancia =
+                JSON.parse(json) as IFluxoInstancia;
+
+              return (instancia.historico || []).map(
+                (passo): IDocumentoEvento => ({
+                  id: `fluxo-${passo.id}`,
+                  tipo: 'FLUXO',
+                  titulo:
+                    passo.elementoNome && passo.acaoRotulo.indexOf(passo.elementoNome) < 0
+                      ? `${passo.elementoNome} — ${passo.acaoRotulo}`
+                      : passo.acaoRotulo,
+                  descricao: passo.comentario || '',
+                  data: passo.data,
+                  usuario: passo.sistema ? 'Sistema' : (passo.executadoPorNome || '-'),
+                  revisaoId: guid(revisao.id),
+                  // Rótulo atual da revisão (filtro) e o número no momento.
+                  revisao: revisao.revisao,
+                  revisaoNoMomento: passo.revisao,
+                  categoriaFluxo: categoriaDoPasso(passo),
+                  derivado: false
+                })
+              );
+            } catch (error) {
+              // Sem permissão de leitura ou JSON inválido: o restante do
+              // histórico continua aparecendo.
+              console.error(error);
+              return [];
+            }
+          }
+        )
+      );
+
+    return listas.reduce(
+      (todos, lista) => todos.concat(lista),
+      [] as IDocumentoEvento[]
+    );
   }
 
   // Documentos criados antes do histórico existir não têm eventos

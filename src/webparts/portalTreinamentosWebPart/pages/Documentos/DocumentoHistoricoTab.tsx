@@ -1,9 +1,14 @@
 import * as React from 'react';
 
 import {
+  CategoriaPassoFluxo,
   IDocumentoEvento,
   TipoEventoDocumento
 } from '../../models/Documento';
+
+import {
+  ESTILO_PASSO_FLUXO
+} from '../../services/fluxo/categoriaPasso';
 
 // ============================================================
 // ABA "HISTÓRICO" DO DOCUMENTO — linha do tempo de auditoria
@@ -27,6 +32,7 @@ const ESTILO_EVENTO:
   REPROVADA: { cor: '#B42318', fundo: '#FDE7E9', icone: '✕', rotulo: 'Reprovação' },
   APROVADA_PUBLICADA: { cor: '#107C10', fundo: '#E7F6EC', icone: '✓', rotulo: 'Publicação' },
   REVISAO_SUBSTITUIDA: { cor: '#64748B', fundo: '#F1F5F9', icone: '⟲', rotulo: 'Substituição' },
+  FLUXO: { cor: '#202A44', fundo: '#DFF6FA', icone: '▸', rotulo: 'Fluxo' },
   OUTRO: { cor: '#64748B', fundo: '#F1F5F9', icone: '•', rotulo: 'Evento' }
 };
 
@@ -112,6 +118,33 @@ const DocumentoHistoricoTab:
             }}
           >
             Todos os eventos do documento, do mais recente para o mais antigo. Nenhum registro é apagado.
+            <span style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+              {
+                (['aprovado', 'reprovado', 'subrevisao', 'revisao', 'publicado', 'avanco'] as CategoriaPassoFluxo[]).map(
+                  categoria => {
+                    const item = ESTILO_PASSO_FLUXO[categoria];
+                    return (
+                      <span
+                        key={categoria}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: item.fundo,
+                          color: item.cor,
+                          fontSize: '11px',
+                          fontWeight: 700
+                        }}
+                      >
+                        {item.icone} {item.rotulo}
+                      </span>
+                    );
+                  }
+                )
+              }
+            </span>
           </span>
 
           <div
@@ -217,8 +250,9 @@ const DocumentoHistoricoTab:
                       (evento, indice) => {
 
                         const estilo =
-                          ESTILO_EVENTO[evento.tipo] ||
-                          ESTILO_EVENTO.OUTRO;
+                          evento.tipo === 'FLUXO' && evento.categoriaFluxo
+                            ? ESTILO_PASSO_FLUXO[evento.categoriaFluxo]
+                            : ESTILO_EVENTO[evento.tipo] || ESTILO_EVENTO.OUTRO;
 
                         const ultimo =
                           indice === filtrados.length - 1;
@@ -279,6 +313,7 @@ const DocumentoHistoricoTab:
                                 padding: '12px 16px',
                                 background: '#FFFFFF',
                                 border: '1px solid #E5E7EB',
+                                borderLeft: `4px solid ${estilo.cor}`,
                                 borderRadius: '12px'
                               }}
                             >
@@ -306,7 +341,7 @@ const DocumentoHistoricoTab:
                                           fontWeight: 700
                                         }}
                                       >
-                                        {evento.revisao}
+                                        {evento.revisaoNoMomento || evento.revisao}
                                       </span>
                                     )
                                   }
