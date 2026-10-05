@@ -6,6 +6,8 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.1.0] - 2026-10-05
+
 - Novo: menu do usuário (clique no nome, no topo) com Meu perfil, Usuários e acessos e Áreas e acessos.
 - Novo: tela Meu perfil, com as áreas, o papel em cada área e o que o usuário acessa no portal.
 - Novo: tela Usuários e acessos para administradores (todos os usuários) e gestores (somente as pessoas das suas áreas), com perfil no portal, papéis por área e módulos.
@@ -59,3 +61,4 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Novo: aba Catálogo e modo de teste do treinamento (visão do colaborador, sem registros).
 - Correção: editar um treinamento não cria mais uma cópia.
 - Correção: validação do tamanho e conversão automática do link da imagem do SharePoint.
+
