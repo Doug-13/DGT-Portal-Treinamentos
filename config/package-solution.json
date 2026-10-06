@@ -3,7 +3,7 @@
   "solution": {
     "name": "DGT-Portal-Treinamentos-client-side-solution",
     "id": "97600d66-4cd9-4258-bb8f-6daabbef7253",
-    "version": "1.2.0.0",
+    "version": "1.3.0.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -30,7 +30,7 @@
         "title": "DGT-Portal-Treinamentos Feature",
         "description": "The feature that activates elements of the DGT-Portal-Treinamentos solution.",
         "id": "612cd74c-3fa5-4cc6-94b3-0d224cad1fd2",
-        "version": "1.2.0.0"
+        "version": "1.3.0.0"
       }
     ],
     "webApiPermissionRequests": [

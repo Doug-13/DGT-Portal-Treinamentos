@@ -17,15 +17,61 @@ export interface INovidadeVersao {
   itens: INovidadeItem[];
 }
 
-export const VERSAO_PORTAL = "1.2.0";
+export const VERSAO_PORTAL = "1.3.0";
 
-export const VERSAO_SOLUCAO = "1.2.0.0";
+export const VERSAO_SOLUCAO = "1.3.0.0";
 
-export const DATA_BUILD = "2026-10-05T21:42:19.508Z";
+export const DATA_BUILD = "2026-10-06T13:53:18.272Z";
 
-export const COMMIT_BUILD = "815c43e";
+export const COMMIT_BUILD = "852ff61";
 
 export const NOVIDADES: INovidadeVersao[] = [
+  {
+    "versao": "1.3.0",
+    "data": "2026-10-06",
+    "itens": [
+      {
+        "tipo": "Melhoria",
+        "texto": "histórico único na aba Histórico, no formato da tramitação, com quem executou cada ação e quem disparou os passos automáticos."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "o primeiro evento do histórico aparece como \"Documento criado\"."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "ao criar um documento, ele abre direto na primeira etapa do fluxo, e a lista de documentos já mostra o novo documento."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "no Novo documento, o campo Aprovador passou a ser \"Gestor da área\"; quem executa cada etapa é definido no fluxo do processo."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "a aba Fluxo de revisão mostra o desenho do fluxo; a etapa atual, os metadados e os botões ficam na aba Revisão."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "a aba Fluxo de revisão sempre mostra o fluxo; sem revisão em andamento, exibe o caminho percorrido pela última revisão."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "a caixa de responsável mostra quem responde pela etapa atual — o criador, o usuário, a área (todos da área podem executar) ou o gestor da área."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "os metadados preenchidos em uma etapa seguem para as próximas etapas."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "o novo documento é vinculado ao processo antes de abrir, e a aba Revisão já mostra a etapa do fluxo."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "a publicação do fluxo é bloqueada quando uma etapa \"Vigente\" leva a outra etapa \"Vigente\"."
+      }
+    ]
+  },
   {
     "versao": "1.2.0",
     "data": "2026-10-05",

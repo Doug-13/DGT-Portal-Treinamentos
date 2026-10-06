@@ -5,6 +5,9 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 `.\Gerar-Versao.ps1` elas passam para a nova versão e aparecem em "Novidades".
 
 ## [Não publicado]
+
+## [1.3.0] - 2026-10-06
+
 - Melhoria: histórico único na aba Histórico, no formato da tramitação, com quem executou cada ação e quem disparou os passos automáticos.
 - Melhoria: o primeiro evento do histórico aparece como "Documento criado".
 - Melhoria: ao criar um documento, ele abre direto na primeira etapa do fluxo, e a lista de documentos já mostra o novo documento.
