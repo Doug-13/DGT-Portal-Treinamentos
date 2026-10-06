@@ -5,6 +5,16 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 `.\Gerar-Versao.ps1` elas passam para a nova versão e aparecem em "Novidades".
 
 ## [Não publicado]
+- Melhoria: histórico único na aba Histórico, no formato da tramitação, com quem executou cada ação e quem disparou os passos automáticos.
+- Melhoria: o primeiro evento do histórico aparece como "Documento criado".
+- Melhoria: ao criar um documento, ele abre direto na primeira etapa do fluxo, e a lista de documentos já mostra o novo documento.
+- Melhoria: no Novo documento, o campo Aprovador passou a ser "Gestor da área"; quem executa cada etapa é definido no fluxo do processo.
+- Melhoria: a aba Fluxo de revisão mostra o desenho do fluxo; a etapa atual, os metadados e os botões ficam na aba Revisão.
+- Melhoria: a aba Fluxo de revisão sempre mostra o fluxo; sem revisão em andamento, exibe o caminho percorrido pela última revisão.
+- Melhoria: a caixa de responsável mostra quem responde pela etapa atual — o criador, o usuário, a área (todos da área podem executar) ou o gestor da área.
+- Correção: os metadados preenchidos em uma etapa seguem para as próximas etapas.
+- Correção: o novo documento é vinculado ao processo antes de abrir, e a aba Revisão já mostra a etapa do fluxo.
+- Correção: a publicação do fluxo é bloqueada quando uma etapa "Vigente" leva a outra etapa "Vigente".
 
 ## [1.2.0] - 2026-10-05
 
