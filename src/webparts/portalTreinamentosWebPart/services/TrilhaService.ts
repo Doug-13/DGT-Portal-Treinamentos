@@ -214,6 +214,82 @@ export class TrilhaService {
   }
 
   // ============================================================
+  // TRILHAS COM MATRÍCULA (dgt_usuariotrilha)
+  // ============================================================
+  // Matrículas são criadas pela tela "Atribuir treinamento /
+  // trilha". Falha de leitura (ex.: permissão) não quebra a página.
+  // ============================================================
+
+  private async carregarIdsTrilhasMatriculadas(
+    emailUsuario: string
+  ): Promise<Set<string>> {
+
+    const ids =
+      new Set<string>();
+
+    const email =
+      (emailUsuario || '')
+        .trim()
+        .toLowerCase();
+
+    if (!email) {
+      return ids;
+    }
+
+    try {
+
+      const usuarios =
+        await this.dataverse.getUsuarioAcessoPorEmail(
+          email
+        );
+
+      const usuarioId =
+        usuarios[0]
+          ? this.limparGuid(
+              this.texto(
+                usuarios[0],
+                'dgt_usuarioid'
+              )
+            )
+          : '';
+
+      if (!usuarioId) {
+        return ids;
+      }
+
+      const matriculas =
+        await this.dataverse.listarRegistros(
+          'dgt_usuariotrilha',
+          '$select=_dgt_trilha_value,dgt_ativa' +
+          `&$filter=_dgt_usuario_value eq ${usuarioId}` +
+          ' and dgt_ativa eq true'
+        );
+
+      matriculas.forEach(registro => {
+        const trilhaId =
+          this.limparGuid(
+            this.texto(
+              registro,
+              '_dgt_trilha_value'
+            )
+          );
+
+        if (trilhaId) {
+          ids.add(trilhaId);
+        }
+      });
+
+    } catch (e) {
+      console.warn(
+        'Não foi possível ler as matrículas em trilhas (dgt_usuariotrilha).',
+        e
+      );
+    }
+
+    return ids;
+  }
+
+  // ============================================================
   // TRILHAS VISÍVEIS POR ÁREA
   // ============================================================
   // Regra de visibilidade configurada em Gestão > Trilhas >
@@ -447,11 +523,15 @@ export class TrilhaService {
     const [
       trilhas,
       relacoes,
-      trilhasIdsVisiveis
+      trilhasIdsVisiveis,
+      trilhasIdsMatriculadas
     ] = await Promise.all([
       this.dataverse.getTrilhas(),
       this.dataverse.getTrilhaTreinamentos(),
       this.carregarIdsTrilhasVisiveisPorArea(
+        emailUsuario
+      ),
+      this.carregarIdsTrilhasMatriculadas(
         emailUsuario
       )
     ]);
@@ -498,8 +578,15 @@ export class TrilhaService {
       // - o usuário possui atribuição vinculada a ela; OU
       // - a trilha está liberada para todas as áreas ou para
       //   uma área da qual o usuário é membro ativo.
+      // Atribuída = possui treinamento vinculado à trilha OU
+      // matrícula ativa na trilha (dgt_usuariotrilha). A matrícula
+      // cobre o caso em que todos os treinamentos foram
+      // reaproveitados de conclusões anteriores.
       const atribuida =
         trilhasIdsUsuario.has(
+          trilhaId
+        ) ||
+        trilhasIdsMatriculadas.has(
           trilhaId
         );
 

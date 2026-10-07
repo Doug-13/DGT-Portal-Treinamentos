@@ -12,8 +12,7 @@ import {
   IResultadoAtribuicao,
   ITrilhaAtribuicao,
   IUsuarioAtribuicao,
-  OrigemAtribuicao,
-  TODOS_TREINAMENTOS_TRILHA
+  OrigemAtribuicao
 } from '../../services/AtribuicaoAdminService';
 
 import {
@@ -27,6 +26,27 @@ import {
 
 import AtribuicaoPorAreaPanel from
   './AtribuicaoPorAreaPanel';
+
+import AtribuicaoTrilhaPanel from
+  './AtribuicaoTrilhaPanel';
+
+import {
+  AtribuicaoTrilhaService
+} from '../../services/AtribuicaoTrilhaService';
+
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
+// O AtribuicaoAreaService já recebido pela tela guarda a instância
+// do DataverseService. Reaproveitamos essa instância para não exigir
+// mudanças no PortalRouter / PortalTreinamentos.
+const obterDataverse = (
+  servico?: AtribuicaoAreaService
+): DataverseService | undefined =>
+  servico
+    ? (servico as unknown as { dataverse?: DataverseService }).dataverse
+    : undefined;
 
 export interface IAtribuirTreinamentoPageProps {
   usuarios: IUsuarioAtribuicao[];
@@ -125,6 +145,34 @@ const AtribuirTreinamentoPage:
           : 'pessoa'
       );
 
+    // O que atribuir: um treinamento ou uma trilha completa.
+    const [
+      tipo,
+      setTipo
+    ] =
+      React.useState<
+        'treinamento' | 'trilha'
+      >('treinamento');
+
+    const trilhaService =
+      React.useMemo(
+        () => {
+          const dataverse =
+            obterDataverse(
+              props.atribuicaoAreaService
+            );
+
+          return dataverse
+            ? new AtribuicaoTrilhaService(
+                dataverse
+              )
+            : undefined;
+        },
+        [
+          props.atribuicaoAreaService
+        ]
+      );
+
     const [
       treinamentoId,
       setTreinamentoId
@@ -188,17 +236,6 @@ const AtribuirTreinamentoPage:
           return;
         }
 
-        if (
-          treinamentoId ===
-            TODOS_TREINAMENTOS_TRILHA &&
-          !trilhaId
-        ) {
-          setErroLocal(
-            'Selecione a trilha para atribuir todos os treinamentos dela.'
-          );
-          return;
-        }
-
         try {
 
           await props
@@ -245,8 +282,8 @@ const AtribuirTreinamentoPage:
       <section>
 
         <PageHeader
-          titulo="Atribuir treinamento"
-          subtitulo="Atribua por área (todos os membros, inclusive futuros) ou por pessoa, preservando regras, histórico e rastreabilidade."
+          titulo="Atribuir treinamento / trilha"
+          subtitulo="Atribua um treinamento ou uma trilha completa, por área (todos os membros) ou por pessoa, preservando regras, histórico e rastreabilidade."
         />
 
         <div
@@ -281,15 +318,83 @@ const AtribuirTreinamentoPage:
           </button>
         </div>
 
+        {trilhaService && (
+          <div
+            role="tablist"
+            style={{
+              display: 'flex',
+              gap: '6px',
+              marginBottom: '10px',
+              alignItems: 'center'
+            }}
+          >
+            <span
+              style={{
+                fontSize: '13px',
+                fontWeight: 700,
+                color: '#18324A',
+                minWidth: '110px'
+              }}
+            >
+              O que atribuir:
+            </span>
+            {([
+              ['treinamento', 'Treinamento'],
+              ['trilha', 'Trilha completa']
+            ] as Array<['treinamento' | 'trilha', string]>).map(
+              ([valor, rotulo]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  role="tab"
+                  aria-selected={tipo === valor}
+                  onClick={() => setTipo(valor)}
+                  style={{
+                    ...buttonSecondary,
+                    fontWeight: 700,
+                    background:
+                      tipo === valor
+                        ? '#0B2D4D'
+                        : '#fff',
+                    color:
+                      tipo === valor
+                        ? '#fff'
+                        : '#18324A',
+                    borderColor:
+                      tipo === valor
+                        ? '#0B2D4D'
+                        : '#cbd5e1'
+                  }}
+                >
+                  {rotulo}
+                </button>
+              )
+            )}
+          </div>
+        )}
+
         {props.atribuicaoAreaService && (
           <div
             role="tablist"
             style={{
               display: 'flex',
               gap: '6px',
-              marginBottom: '16px'
+              marginBottom: '16px',
+              alignItems: 'center'
             }}
           >
+            {trilhaService && (
+              <span
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  color: '#18324A',
+                  minWidth: '110px'
+                }}
+              >
+                Para quem:
+              </span>
+            )}
             {([
               ['area', 'Por área'],
               ['pessoa', 'Por pessoa']
@@ -325,7 +430,18 @@ const AtribuirTreinamentoPage:
           </div>
         )}
 
-        {props.atribuicaoAreaService && modo === 'area' && (
+        {tipo === 'trilha' && trilhaService && (
+          <AtribuicaoTrilhaPanel
+            modo={modo}
+            service={trilhaService}
+            trilhas={props.trilhas}
+            usuarios={props.usuarios}
+            areas={props.areas || []}
+            usuariosAreas={props.usuariosAreas || []}
+          />
+        )}
+
+        {tipo === 'treinamento' && props.atribuicaoAreaService && modo === 'area' && (
           <AtribuicaoPorAreaPanel
             service={
               props.atribuicaoAreaService
@@ -342,7 +458,7 @@ const AtribuirTreinamentoPage:
           />
         )}
 
-        {modo === 'pessoa' && (
+        {tipo === 'treinamento' && modo === 'pessoa' && (
         <>
 
         {(
@@ -511,16 +627,6 @@ const AtribuirTreinamentoPage:
                       Selecione
                     </option>
 
-                    {trilhaId && (
-                      <option
-                        value={
-                          TODOS_TREINAMENTOS_TRILHA
-                        }
-                      >
-                        ★ Todos os treinamentos da trilha
-                      </option>
-                    )}
-
                     {props.treinamentos
                       .filter(
                         item =>
@@ -557,34 +663,10 @@ const AtribuirTreinamentoPage:
                       trilhaId
                     }
                     onChange={
-                      event => {
-
-                        const valor =
-                          event.target.value;
-
+                      event =>
                         setTrilhaId(
-                          valor
-                        );
-
-                        // Ao escolher uma trilha com o treinamento
-                        // ainda vazio, já sugere a trilha completa.
-                        if (
-                          valor &&
-                          !treinamentoId
-                        ) {
-                          setTreinamentoId(
-                            TODOS_TREINAMENTOS_TRILHA
-                          );
-                        }
-
-                        if (
-                          !valor &&
-                          treinamentoId ===
-                            TODOS_TREINAMENTOS_TRILHA
-                        ) {
-                          setTreinamentoId('');
-                        }
-                      }
+                          event.target.value
+                        )
                     }
                     style={{
                       ...inputStyle,
@@ -700,27 +782,6 @@ const AtribuirTreinamentoPage:
 
               </div>
 
-              {treinamentoId ===
-                TODOS_TREINAMENTOS_TRILHA && (
-                <div
-                  style={{
-                    marginTop: '14px',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    background: '#eef6ff',
-                    color: '#1e3a5f',
-                    fontSize: '13px'
-                  }}
-                >
-                  Todos os treinamentos ativos da trilha serão atribuídos
-                  na ordem da trilha. Apenas o primeiro pendente fica
-                  liberado; os seguintes são liberados conforme as
-                  conclusões. Treinamentos já atribuídos não são
-                  duplicados. Sem data limite informada, vale o prazo
-                  configurado em cada treinamento da trilha.
-                </div>
-              )}
-
               <div
                 style={{
                   marginTop: '16px'
@@ -774,10 +835,7 @@ const AtribuirTreinamentoPage:
                 {
                   props.processando
                     ? 'Processando...'
-                    : treinamentoId ===
-                        TODOS_TREINAMENTOS_TRILHA
-                      ? 'Atribuir trilha completa'
-                      : 'Atribuir treinamento'
+                    : 'Atribuir treinamento'
                 }
               </button>
             </>

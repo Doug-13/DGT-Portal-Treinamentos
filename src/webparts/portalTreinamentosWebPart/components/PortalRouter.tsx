@@ -737,35 +737,35 @@ export interface IPortalRouterProps {
 
   // Atribuição por área (regras dgt_treinamentoarea).
   atribuicaoAreaService?:
-    AtribuicaoAreaService;
+  AtribuicaoAreaService;
 
   // Remoção de treinamento (somente Administrador).
   analisarRemocaoTreinamento?:
-    (
-      treinamento:
-        ITreinamentoAdmin
-    ) => Promise<IImpactoRemocao>;
+  (
+    treinamento:
+      ITreinamentoAdmin
+  ) => Promise<IImpactoRemocao>;
 
   removerTreinamento?:
-    (
-      treinamento:
-        ITreinamentoAdmin,
-      aoProgredir:
-        (mensagem: string) => void
-    ) => Promise<void>;
+  (
+    treinamento:
+      ITreinamentoAdmin,
+    aoProgredir:
+      (mensagem: string) => void
+  ) => Promise<void>;
 
   // Modo de teste do treinamento (visão do colaborador, sem registros).
   treinamentoEmTesteId?:
-    string;
+  string;
 
   testarTreinamento?:
-    (
-      treinamento:
-        ITreinamentoAdmin
-    ) => void;
+  (
+    treinamento:
+      ITreinamentoAdmin
+  ) => void;
 
   sairModoTeste?:
-    () => void;
+  () => void;
 
   // Histórico do treinamento (dgt_auditorianegocio).
   carregarHistoricoTreinamento?:
@@ -1222,63 +1222,63 @@ const PortalRouter:
               )
             }
 
-          <InicioIntranetPage
-            primeiroNome={
-              props.primeiroNome
-            }
+            <InicioIntranetPage
+              primeiroNome={
+                props.primeiroNome
+              }
 
-            treinamentos={
-              props.treinamentos
-            }
+              treinamentos={
+                props.treinamentos
+              }
 
-            documentos={
-              props.documentos
-            }
+              documentos={
+                props.documentos
+              }
 
-            carregando={
-              props.carregandoDataverse
-            }
+              carregando={
+                props.carregandoDataverse
+              }
 
-            erro={
-              props.erroDataverse
-            }
+              erro={
+                props.erroDataverse
+              }
 
-            quantidadeTrilhas={
-              props.trilhas.length
-            }
+              quantidadeTrilhas={
+                props.trilhas.length
+              }
 
-            onAbrirTreinamento={
-              props.abrirTreinamento
-            }
+              onAbrirTreinamento={
+                props.abrirTreinamento
+              }
 
-            onVerTreinamentos={() =>
-              props.navegar(
-                'treinamentos'
-              )
-            }
+              onVerTreinamentos={() =>
+                props.navegar(
+                  'treinamentos'
+                )
+              }
 
-            onVerDocumentos={() =>
-              props.navegar(
-                'documentos'
-              )
-            }
-          
-            onAbrirDocumento={
-              props.abrirDocumento
-            }
+              onVerDocumentos={() =>
+                props.navegar(
+                  'documentos'
+                )
+              }
 
-            eventosCalendario={
-              props.eventosCalendario
-            }
+              onAbrirDocumento={
+                props.abrirDocumento
+              }
 
-            carregandoCalendario={
-              props.carregandoCalendario
-            }
+              eventosCalendario={
+                props.eventosCalendario
+              }
 
-            erroCalendario={
-              props.erroCalendario
-            }
-          />
+              carregandoCalendario={
+                props.carregandoCalendario
+              }
+
+              erroCalendario={
+                props.erroCalendario
+              }
+            />
           </>
         );
       // ========================================================
@@ -1699,7 +1699,7 @@ const PortalRouter:
             onAbrirDocumento={
               props.abrirDocumento
             }
-          
+
             onNovoDocumento={
               podeAcessarRota(
                 'novoDocumento',
@@ -2083,14 +2083,14 @@ const PortalRouter:
             // Remover: somente Administrador.
             onAnalisarRemocao={
               props.contextoAcesso?.perfil ===
-              'Administrador'
+                'Administrador'
                 ? props.analisarRemocaoTreinamento
                 : undefined
             }
 
             onRemoverTreinamento={
               props.contextoAcesso?.perfil ===
-              'Administrador'
+                'Administrador'
                 ? props.removerTreinamento
                 : undefined
             }
@@ -2594,14 +2594,14 @@ const PortalRouter:
             // Remover módulo: somente Administrador.
             onAnalisarRemocaoModulo={
               props.contextoAcesso?.perfil ===
-              'Administrador'
+                'Administrador'
                 ? props.analisarRemocaoModulo
                 : undefined
             }
 
             onRemoverModulo={
               props.contextoAcesso?.perfil ===
-              'Administrador'
+                'Administrador'
                 ? props.removerModulo
                 : undefined
             }
@@ -2840,45 +2840,45 @@ const PortalRouter:
               props
                 .limparResultadoPublicacao
             }
-          
-          vinculosTreinamentos={
-            props.treinamentosDocumentoAdministrativos
-          }
 
-          treinamentosDisponiveis={
-            props.treinamentosAdministrativos
-          }
+            vinculosTreinamentos={
+              props.treinamentosDocumentoAdministrativos
+            }
 
-          carregandoTreinamentos={
-            props.carregandoTreinamentosDocumento
-          }
+            treinamentosDisponiveis={
+              props.treinamentosAdministrativos
+            }
 
-          processandoTreinamentos={
-            props.processandoTreinamentosDocumento
-          }
+            carregandoTreinamentos={
+              props.carregandoTreinamentosDocumento
+            }
 
-          erroTreinamentos={
-            props.erroTreinamentosDocumento
-          }
+            processandoTreinamentos={
+              props.processandoTreinamentosDocumento
+            }
 
-          onVincularTreinamento={
-            props.vincularTreinamentoDocumento
-          }
+            erroTreinamentos={
+              props.erroTreinamentosDocumento
+            }
 
-          onDesativarTreinamento={
-            props.desativarTreinamentoDocumento
-          }        
-          onEnviarRevisao={
-            props.enviarRevisaoParaRevisao
-          }
+            onVincularTreinamento={
+              props.vincularTreinamentoDocumento
+            }
 
-          onEnviarAprovacao={
-            props.enviarRevisaoParaAprovacao
-          }
+            onDesativarTreinamento={
+              props.desativarTreinamentoDocumento
+            }
+            onEnviarRevisao={
+              props.enviarRevisaoParaRevisao
+            }
 
-          onDevolverElaboracao={
-            props.devolverRevisaoParaElaboracao
-          }        />
+            onEnviarAprovacao={
+              props.enviarRevisaoParaAprovacao
+            }
+
+            onDevolverElaboracao={
+              props.devolverRevisaoParaElaboracao
+            } />
         );
 
       // ========================================================
@@ -2938,7 +2938,7 @@ const PortalRouter:
                 'documentos'
               )
             }
-          
+
             eventosCalendario={
               props.eventosCalendario
             }
@@ -2991,6 +2991,17 @@ const PortalRouter:
 
             resumo={
               props.resumoConformidade
+            }
+
+            dataverseService={
+              props.dataverseService
+            }
+
+            perfil={
+              (props.contextoAcesso?.areasGestor || []).length > 0 &&
+                props.contextoAcesso?.perfil !== 'Administrador'
+                ? 'Gestor'
+                : props.contextoAcesso?.perfil
             }
 
             onVoltar={() =>
