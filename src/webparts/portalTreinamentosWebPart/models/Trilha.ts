@@ -43,4 +43,9 @@ export interface ITrilha {
   concluidos: number;
 
   total: number;
+
+  // true  -> o usuário possui atribuição nesta trilha;
+  // false -> a trilha aparece apenas por visibilidade de área
+  //          e ainda não foi atribuída ao usuário.
+  atribuida?: boolean;
 }

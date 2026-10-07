@@ -319,9 +319,36 @@ export class DocumentoHistoricoService {
         revisoes
       );
 
+    // A criação da PRIMEIRA revisão é a criação do documento.
+    const primeira =
+      revisoes
+        .slice()
+        .sort((a, b) => {
+          const da = new Date(a.criadoEm || a.dataRevisao || 0).getTime();
+          const db = new Date(b.criadoEm || b.dataRevisao || 0).getTime();
+          return da - db;
+        })[0];
+
+    const idPrimeira =
+      primeira ? guid(primeira.id) : '';
+
+    const marcarCriacaoDocumento = (
+      evento: IDocumentoEvento
+    ): IDocumentoEvento =>
+      evento.tipo === 'REVISAO_CRIADA' &&
+      !!idPrimeira &&
+      guid(evento.revisaoId || '') === idPrimeira
+        ? {
+          ...evento,
+          titulo: 'Documento criado',
+          acao: 'Documento criado',
+          etapa: 'Criação'
+        }
+        : evento;
+
     return [
-      ...gravados,
-      ...derivados,
+      ...gravados.map(marcarCriacaoDocumento),
+      ...derivados.map(marcarCriacaoDocumento),
       ...doFluxo
     ].sort(
       (a, b) =>
@@ -434,8 +461,25 @@ export class DocumentoHistoricoService {
               const instancia =
                 JSON.parse(json) as IFluxoInstancia;
 
-              return (instancia.historico || []).map(
-                (passo): IDocumentoEvento => ({
+              const passos =
+                instancia.historico || [];
+
+              // Passo automático → a ação humana que o disparou é o
+              // próximo passo não automático (o histórico vem do mais
+              // recente para o mais antigo).
+              const acionadoPor = (
+                indice: number
+              ): string | undefined => {
+                for (let j = indice + 1; j < passos.length; j++) {
+                  if (!passos[j].sistema) {
+                    return passos[j].executadoPorNome || undefined;
+                  }
+                }
+                return undefined;
+              };
+
+              return passos.map(
+                (passo, indice): IDocumentoEvento => ({
                   id: `fluxo-${passo.id}`,
                   tipo: 'FLUXO',
                   titulo:
@@ -450,6 +494,9 @@ export class DocumentoHistoricoService {
                   revisao: revisao.revisao,
                   revisaoNoMomento: passo.revisao,
                   categoriaFluxo: categoriaDoPasso(passo),
+                  etapa: passo.elementoNome,
+                  acao: passo.acaoRotulo,
+                  acionadoPor: passo.sistema ? acionadoPor(indice) : undefined,
                   derivado: false
                 })
               );

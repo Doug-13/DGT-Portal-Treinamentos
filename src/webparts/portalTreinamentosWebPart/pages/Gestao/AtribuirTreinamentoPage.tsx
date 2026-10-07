@@ -12,7 +12,8 @@ import {
   IResultadoAtribuicao,
   ITrilhaAtribuicao,
   IUsuarioAtribuicao,
-  OrigemAtribuicao
+  OrigemAtribuicao,
+  TODOS_TREINAMENTOS_TRILHA
 } from '../../services/AtribuicaoAdminService';
 
 import {
@@ -183,6 +184,17 @@ const AtribuirTreinamentoPage:
         if (!treinamentoId) {
           setErroLocal(
             'Selecione o treinamento.'
+          );
+          return;
+        }
+
+        if (
+          treinamentoId ===
+            TODOS_TREINAMENTOS_TRILHA &&
+          !trilhaId
+        ) {
+          setErroLocal(
+            'Selecione a trilha para atribuir todos os treinamentos dela.'
           );
           return;
         }
@@ -499,6 +511,16 @@ const AtribuirTreinamentoPage:
                       Selecione
                     </option>
 
+                    {trilhaId && (
+                      <option
+                        value={
+                          TODOS_TREINAMENTOS_TRILHA
+                        }
+                      >
+                        ★ Todos os treinamentos da trilha
+                      </option>
+                    )}
+
                     {props.treinamentos
                       .filter(
                         item =>
@@ -535,10 +557,34 @@ const AtribuirTreinamentoPage:
                       trilhaId
                     }
                     onChange={
-                      event =>
+                      event => {
+
+                        const valor =
+                          event.target.value;
+
                         setTrilhaId(
-                          event.target.value
-                        )
+                          valor
+                        );
+
+                        // Ao escolher uma trilha com o treinamento
+                        // ainda vazio, já sugere a trilha completa.
+                        if (
+                          valor &&
+                          !treinamentoId
+                        ) {
+                          setTreinamentoId(
+                            TODOS_TREINAMENTOS_TRILHA
+                          );
+                        }
+
+                        if (
+                          !valor &&
+                          treinamentoId ===
+                            TODOS_TREINAMENTOS_TRILHA
+                        ) {
+                          setTreinamentoId('');
+                        }
+                      }
                     }
                     style={{
                       ...inputStyle,
@@ -654,6 +700,27 @@ const AtribuirTreinamentoPage:
 
               </div>
 
+              {treinamentoId ===
+                TODOS_TREINAMENTOS_TRILHA && (
+                <div
+                  style={{
+                    marginTop: '14px',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    background: '#eef6ff',
+                    color: '#1e3a5f',
+                    fontSize: '13px'
+                  }}
+                >
+                  Todos os treinamentos ativos da trilha serão atribuídos
+                  na ordem da trilha. Apenas o primeiro pendente fica
+                  liberado; os seguintes são liberados conforme as
+                  conclusões. Treinamentos já atribuídos não são
+                  duplicados. Sem data limite informada, vale o prazo
+                  configurado em cada treinamento da trilha.
+                </div>
+              )}
+
               <div
                 style={{
                   marginTop: '16px'
@@ -707,7 +774,10 @@ const AtribuirTreinamentoPage:
                 {
                   props.processando
                     ? 'Processando...'
-                    : 'Atribuir treinamento'
+                    : treinamentoId ===
+                        TODOS_TREINAMENTOS_TRILHA
+                      ? 'Atribuir trilha completa'
+                      : 'Atribuir treinamento'
                 }
               </button>
             </>

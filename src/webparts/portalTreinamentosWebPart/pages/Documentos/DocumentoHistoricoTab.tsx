@@ -237,213 +237,158 @@ const DocumentoHistoricoTab:
                 </div>
               )
               : (
-                <ol
+                <section
                   style={{
-                    listStyle: 'none',
-                    margin: 0,
-                    padding: 0,
-                    position: 'relative'
+                    background: '#FFFFFF',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '12px',
+                    overflow: 'hidden'
                   }}
                 >
-                  {
-                    filtrados.map(
-                      (evento, indice) => {
+                  <div
+                    style={{
+                      background: COR_AZUL,
+                      color: '#FFFFFF',
+                      padding: '12px 20px',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      letterSpacing: '.06em',
+                      textTransform: 'uppercase'
+                    }}
+                  >
+                    Histórico da tramitação
+                  </div>
 
-                        const estilo =
-                          evento.tipo === 'FLUXO' && evento.categoriaFluxo
-                            ? ESTILO_PASSO_FLUXO[evento.categoriaFluxo]
-                            : ESTILO_EVENTO[evento.tipo] || ESTILO_EVENTO.OUTRO;
+                  <ol style={{ listStyle: 'none', margin: 0, padding: '4px 20px 12px' }}>
+                    {
+                      filtrados.map(
+                        evento => {
 
-                        const ultimo =
-                          indice === filtrados.length - 1;
+                          const estilo =
+                            evento.tipo === 'FLUXO' && evento.categoriaFluxo
+                              ? ESTILO_PASSO_FLUXO[evento.categoriaFluxo]
+                              : ESTILO_EVENTO[evento.tipo] || ESTILO_EVENTO.OUTRO;
 
-                        return (
-                          <li
-                            key={evento.id}
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: '36px 1fr',
-                              gap: '12px'
-                            }}
-                          >
-                            <div
+                          // Contexto (etapa) e ação: passos do fluxo têm
+                          // os dois; eventos antigos usam o tipo + título.
+                          const contexto =
+                            evento.etapa || estilo.rotulo;
+
+                          const acao =
+                            evento.acao || evento.titulo;
+
+                          const rotuloRevisao =
+                            evento.revisaoNoMomento || evento.revisao;
+
+                          return (
+                            <li
+                              key={evento.id}
                               style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <span
-                                style={{
-                                  width: '30px',
-                                  height: '30px',
-                                  borderRadius: '50%',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  background: estilo.fundo,
-                                  color: estilo.cor,
-                                  fontWeight: 800,
-                                  fontSize: '14px',
-                                  border: `2px solid ${estilo.cor}`,
-                                  flexShrink: 0
-                                }}
-                              >
-                                {estilo.icone}
-                              </span>
-
-                              {
-                                !ultimo &&
-                                (
-                                  <span
-                                    style={{
-                                      flex: 1,
-                                      width: '2px',
-                                      minHeight: '18px',
-                                      background: '#E2E8F0'
-                                    }}
-                                  />
-                                )
-                              }
-                            </div>
-
-                            <div
-                              style={{
-                                marginBottom: ultimo ? 0 : '14px',
-                                padding: '12px 16px',
-                                background: '#FFFFFF',
-                                border: '1px solid #E5E7EB',
+                                padding: '10px 0 10px 12px',
+                                borderBottom: '1px solid #E5E7EB',
                                 borderLeft: `4px solid ${estilo.cor}`,
-                                borderRadius: '12px'
+                                marginBottom: '2px'
                               }}
                             >
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  gap: '10px',
-                                  flexWrap: 'wrap'
-                                }}
-                              >
-                                <div>
-                                  {
-                                    evento.revisao &&
-                                    (
-                                      <span
-                                        style={{
-                                          display: 'inline-block',
-                                          marginRight: '8px',
-                                          padding: '2px 8px',
-                                          borderRadius: '6px',
-                                          background: COR_AZUL,
-                                          color: '#FFFFFF',
-                                          fontSize: '11px',
-                                          fontWeight: 700
-                                        }}
-                                      >
-                                        {evento.revisaoNoMomento || evento.revisao}
-                                      </span>
-                                    )
-                                  }
-
-                                  <strong
-                                    style={{
-                                      color: '#1F2937',
-                                      fontSize: '13.5px'
-                                    }}
-                                  >
-                                    {evento.titulo}
-                                  </strong>
-                                </div>
-
+                              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', fontSize: '12.5px', color: COR_AZUL }}>
                                 <span
+                                  title={estilo.rotulo}
+                                  aria-hidden="true"
                                   style={{
-                                    color: '#64748B',
-                                    fontSize: '12px',
-                                    whiteSpace: 'nowrap'
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '20px',
+                                    height: '20px',
+                                    borderRadius: '50%',
+                                    background: estilo.fundo,
+                                    color: estilo.cor,
+                                    border: `1.5px solid ${estilo.cor}`,
+                                    fontSize: '11px',
+                                    fontWeight: 800
                                   }}
                                 >
-                                  {formatarDataHora(evento.data)}
+                                  {estilo.icone}
                                 </span>
-                              </div>
-
-                              <div
-                                style={{
-                                  marginTop: '6px',
-                                  color: '#64748B',
-                                  fontSize: '12px'
-                                }}
-                              >
-                                Por <strong style={{ color: '#334155' }}>{evento.usuario}</strong>
+                                <strong>{formatarDataHora(evento.data)}</strong>
+                                <span>{contexto}</span>
                                 {
-                                  evento.statusAnterior && evento.statusNovo &&
-                                  (
-                                    <> · {evento.statusAnterior} → <strong style={{ color: estilo.cor }}>{evento.statusNovo}</strong></>
+                                  rotuloRevisao && (
+                                    <span style={{ fontSize: '11px', fontWeight: 700, background: COR_AZUL, color: '#FFFFFF', borderRadius: '5px', padding: '1px 6px' }}>
+                                      {rotuloRevisao}
+                                    </span>
                                   )
                                 }
                                 {
-                                  evento.derivado &&
-                                  (
-                                    <span
-                                      title="Evento reconstruído a partir dos dados da revisão (registrado antes do histórico existir)."
-                                      style={{
-                                        marginLeft: '8px',
-                                        padding: '1px 6px',
-                                        borderRadius: '6px',
-                                        background: '#F1F5F9',
-                                        color: '#64748B',
-                                        fontSize: '10.5px'
-                                      }}
-                                    >
+                                  evento.derivado && (
+                                    <span style={{ fontSize: '11px', color: '#64748B', background: '#F1F5F9', borderRadius: '5px', padding: '1px 6px' }}>
                                       registro anterior
                                     </span>
                                   )
                                 }
                               </div>
 
+                              <div style={{ fontWeight: 700, fontSize: '14px', color: estilo.cor, marginTop: '2px' }}>
+                                {acao}
+                              </div>
+
+                              <div style={{ fontSize: '12.5px', color: '#334155' }}>
+                                {
+                                  evento.usuario === 'Sistema'
+                                    ? (
+                                      <>
+                                        Automático
+                                        {
+                                          evento.acionadoPor && (
+                                            <> · ação de <strong>{evento.acionadoPor}</strong></>
+                                          )
+                                        }
+                                      </>
+                                    )
+                                    : (
+                                      <>
+                                        Executado por{' '}
+                                        <strong>
+                                          {evento.usuario && evento.usuario !== '-' ? evento.usuario : 'usuário não identificado'}
+                                        </strong>
+                                      </>
+                                    )
+                                }
+                              </div>
+
                               {
-                                evento.descricao &&
-                                (
-                                  <p
-                                    style={{
-                                      margin: '8px 0 0',
-                                      color: '#475569',
-                                      fontSize: '13px',
-                                      lineHeight: 1.5,
-                                      whiteSpace: 'pre-wrap'
-                                    }}
-                                  >
-                                    {evento.descricao}
-                                  </p>
+                                evento.statusAnterior && evento.statusNovo && evento.statusAnterior !== evento.statusNovo && (
+                                  <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px' }}>
+                                    Status: {evento.statusAnterior} → {evento.statusNovo}
+                                  </div>
                                 )
                               }
 
                               {
-                                evento.arquivoUrl &&
-                                (
-                                  <a
-                                    href={evento.arquivoUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                evento.descricao && (
+                                  <div
                                     style={{
-                                      display: 'inline-block',
-                                      marginTop: '8px',
-                                      color: '#485CC7',
-                                      fontSize: '12.5px',
-                                      fontWeight: 700
+                                      marginTop: '6px',
+                                      padding: '6px 10px',
+                                      background: '#F2F2F2',
+                                      borderLeft: '3px solid #05C3DD',
+                                      borderRadius: '4px',
+                                      fontSize: '13px',
+                                      color: COR_AZUL,
+                                      whiteSpace: 'pre-wrap'
                                     }}
                                   >
-                                    Abrir arquivo
-                                  </a>
+                                    {evento.descricao}
+                                  </div>
                                 )
                               }
-                            </div>
-                          </li>
-                        );
-                      }
-                    )
-                  }
-                </ol>
+                            </li>
+                          );
+                        }
+                      )
+                    }
+                  </ol>
+                </section>
               )
         }
       </div>

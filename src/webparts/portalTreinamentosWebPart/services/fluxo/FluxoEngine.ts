@@ -1226,20 +1226,34 @@ export const executarAcao = (
     }
   }
 
-  // Ao voltar para uma etapa já percorrida, o valor dos campos
-  // das etapas seguintes deixa de valer (será respondido de novo).
+  // Ao VOLTAR para uma etapa já percorrida, as respostas dadas nas
+  // etapas seguintes deixam de valer (serão respondidas de novo).
+  //
+  // Só é apagado o valor de um campo que é PREENCHIDO (editável) em
+  // etapas fora do caminho atual e em NENHUMA etapa do caminho. Assim
+  // um metadado preenchido na Elaboração e exibido (somente leitura)
+  // nas etapas seguintes nunca é apagado ao avançar.
   if (instancia.status !== 'concluido') {
-    definicao.elementos.forEach(
-      item => {
-        if (instancia.percorridos.indexOf(item.id) < 0) {
-          item.campos.forEach(
-            campo => {
-              delete instancia.valores[campo.chave];
-            }
-          );
-        }
-      }
-    );
+
+    const chavesDoCaminho: string[] = [];
+
+    definicao.elementos
+      .filter(item => instancia.percorridos.indexOf(item.id) >= 0)
+      .forEach(item =>
+        item.campos
+          .filter(campo => !campo.somenteLeitura)
+          .forEach(campo => chavesDoCaminho.push(campo.chave))
+      );
+
+    definicao.elementos
+      .filter(item => instancia.percorridos.indexOf(item.id) < 0)
+      .forEach(item =>
+        item.campos
+          .filter(campo => !campo.somenteLeitura && chavesDoCaminho.indexOf(campo.chave) < 0)
+          .forEach(campo => {
+            delete instancia.valores[campo.chave];
+          })
+      );
   }
 
   return {

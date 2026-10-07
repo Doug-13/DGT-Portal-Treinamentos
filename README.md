@@ -275,6 +275,7 @@ Projeto: `server/DGT.Treinamentos.Plugins` (assembly **DGT.Treinamentos.Plugins*
 | `GerarCodigoTreinamentoPlugin` | `dgt_treinamento`: Create (Pre, síncrono) e Update de `dgt_sequencial`/`dgt_codigo` (Pre, síncrono) | Gera o código `ÁREA-TRN-SEQUENCIAL`. Só o Administrador altera o sequencial, e não pode haver sequencial repetido na área. |
 | `AuditarTreinamentoPlugin` | Create/Update/Delete (Post, **assíncrono**) em 10 tabelas do treinamento | Grava o histórico completo do treinamento em `dgt_auditorianegocio`. |
 | `AtribuirPorAreaPlugin` | `dgt_treinamentoarea` e `dgt_usuarioarea` (Post, **assíncrono**) | Atribui o treinamento a todos os membros da área, inclusive a quem entrar depois. |
+| `AtribuirTrilhaPorAreaPlugin` | `dgt_trilhaarea`, `dgt_usuarioarea`, `dgt_trilhatreinamento`, `dgt_trilha` e `dgt_usuario` (Post, **assíncrono**) | Atribui todos os treinamentos da trilha aos membros das áreas vinculadas (ou a todos, se "Todas as áreas"), inclusive a quem entrar depois e a novos treinamentos incluídos na trilha. |
 
 Todas as Custom APIs recebem `PayloadJson` (texto JSON) e devolvem `ResultadoJson`.
 
@@ -436,6 +437,11 @@ Steps registrados:
 | AuditarTreinamento | 10 tabelas do treinamento | Create / Update / Delete | Post · Assíncrono | Post / Pre+Post / Pre |
 | AtribuirPorArea | dgt_treinamentoarea | Create · Update (`dgt_ativo`) | Post · Assíncrono | Post |
 | AtribuirPorArea | dgt_usuarioarea | Create · Update (`dgt_ativo`, `dgt_area`) | Post · Assíncrono | Post |
+| AtribuirTrilhaPorArea | dgt_trilhaarea | Create · Update (`dgt_ativo`, `dgt_area`, `dgt_trilha`) | Post · Assíncrono | Post |
+| AtribuirTrilhaPorArea | dgt_usuarioarea | Create · Update (`dgt_ativo`, `dgt_area`) | Post · Assíncrono | Post |
+| AtribuirTrilhaPorArea | dgt_trilhatreinamento | Create · Update (`dgt_ativo`) | Post · Assíncrono | Post |
+| AtribuirTrilhaPorArea | dgt_trilha | Update (`dgt_todasareas`, `dgt_ativa`) | Post · Assíncrono | Post |
+| AtribuirTrilhaPorArea | dgt_usuario | Create · Update (`dgt_ativo`) | Post · Assíncrono | Post |
 
 As falhas dos steps assíncronos aparecem em **Configurações → Trabalhos do Sistema**. O log de rastreamento fica em **Personalização → Log de rastreamento de plug-in**.
 

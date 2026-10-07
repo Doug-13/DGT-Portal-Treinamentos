@@ -19,11 +19,6 @@ import {
 } from '../../services/fluxo/persistenciaFluxo';
 
 import {
-  etapaDeAprovacao,
-  usuariosElegiveis
-} from '../../services/fluxo/ResolvedorResponsaveis';
-
-import {
   useProcessos
 } from '../../hooks/useProcessos';
 
@@ -66,10 +61,18 @@ export interface INovoDocumentoPageProps {
   onVoltar:
     () => void;
 
+  // Cria o documento e devolve o id dele (quando disponível).
   onSalvar:
     (
       dados:
         INovoDocumentoCompleto
+    ) => Promise<string | void>;
+
+  // Chamado depois de TUDO pronto (documento, revisão e vínculo com o
+  // processo): abre o documento na primeira etapa do fluxo.
+  onConcluido?:
+    (
+      documentoId: string | undefined
     ) => Promise<void>;
 }
 
@@ -535,59 +538,13 @@ const NovoDocumentoPage:
     };
 
     // --------------------------------------------------------
-    // Aprovador: com processo de fluxo publicado, são os
-    // responsáveis da ETAPA DE APROVAÇÃO do fluxo; sem processo,
-    // continua sendo o Gestor da área (regra antiga).
+    // Gestor da área: é o responsável pelo documento (dono). Quem
+    // executa cada etapa (elaborar, avaliar, aprovar...) é definido
+    // no FLUXO DO PROCESSO, não aqui.
     // --------------------------------------------------------
 
-    const aprovacaoDoFluxo =
-      React.useMemo(
-        () => {
-
-          if (!processoId) {
-            return undefined;
-          }
-
-          const publicada =
-            (dadosProcessos.fluxosPorProcesso[processoId] || []).find(
-              versao => versao.status === 'publicado'
-            );
-
-          const etapa =
-            publicada ? etapaDeAprovacao(publicada) : undefined;
-
-          if (!etapa) {
-            return undefined;
-          }
-
-          return {
-            etapa,
-            usuarios: usuariosElegiveis(
-              etapa.responsaveis,
-              { documentoAreaId: areaId },
-              props.usuariosAreas
-            )
-          };
-        },
-        [
-          processoId,
-          dadosProcessos.fluxosPorProcesso,
-          areaId,
-          props.usuariosAreas
-        ]
-      );
-
     const aprovadoresElegiveis =
-      aprovacaoDoFluxo && aprovacaoDoFluxo.usuarios.length > 0
-        ? aprovacaoDoFluxo.usuarios
-        : gestoresDaArea;
-
-    const origemAprovador =
-      aprovacaoDoFluxo && aprovacaoDoFluxo.usuarios.length > 0
-        ? `Definido pelo fluxo do processo: responsável da etapa “${aprovacaoDoFluxo.etapa.nome}” (${aprovacaoDoFluxo.etapa.responsaveis.map(item => item.descricao).join(', ')}).`
-        : aprovacaoDoFluxo
-          ? `A etapa “${aprovacaoDoFluxo.etapa.nome}” do fluxo não tem pessoas cadastradas para os responsáveis definidos; usando o Gestor da área.`
-          : '';
+      gestoresDaArea;
 
     // Ao trocar de processo, a escolha anterior não vale mais.
     React.useEffect(
@@ -723,14 +680,15 @@ const NovoDocumentoPage:
           setErroLocal(
             aprovadoresElegiveis.length === 0
               ? `A área "${areaSelecionada.nome}" não possui um Gestor definido. Cadastre um Gestor em "Áreas e acessos" antes de criar o documento.`
-              : 'Selecione o Gestor responsável pela aprovação.'
+              : 'Selecione o Gestor da área.'
           );
 
           return;
         }
 
         try {
-          await props
+          const documentoId =
+            await props
             .onSalvar({
               codigo:
                 codigoGerado,
@@ -775,6 +733,24 @@ const NovoDocumentoPage:
                   : 'O documento foi criado, mas não foi possível vinculá-lo ao processo. Vincule pela tela do processo.'
               );
             }
+
+            // O vínculo acabou de ser gravado: relê os processos para
+            // que a tela do documento já saiba que ele segue o fluxo.
+            try {
+              await obterPersistenciaFluxo(props.dataverseService)
+                .processos
+                .carregar(true, []);
+            } catch (erroReleitura) {
+              console.error(erroReleitura);
+            }
+          }
+
+          // Só agora (documento + revisão + vínculo prontos) abre o
+          // documento na primeira etapa do fluxo.
+          if (props.onConcluido) {
+            await props.onConcluido(
+              documentoId || undefined
+            );
           }
         } catch (e) {
 
@@ -1088,7 +1064,7 @@ const NovoDocumentoPage:
 
               <div>
                 <label style={label}>
-                  Aprovador
+                  Gestor da área
                 </label>
 
                 {
@@ -1164,7 +1140,11 @@ const NovoDocumentoPage:
                           lineHeight: 1.4
                         }}
                       >
-                        {origemAprovador || 'Definido automaticamente: é o Gestor cadastrado para esta área.'}
+                        {
+                          processoId
+                            ? 'Gestor cadastrado para esta área (Áreas e acessos). Quem executa cada etapa é definido no fluxo do processo.'
+                            : 'Definido automaticamente: é o Gestor cadastrado para esta área.'
+                        }
                       </div>
                     </>
                   )
@@ -1191,7 +1171,7 @@ const NovoDocumentoPage:
                         }
                       >
                         <option value="">
-                          {origemAprovador ? 'Selecione o aprovador' : 'Selecione o Gestor responsável'}
+                          Selecione o Gestor da área
                         </option>
 
                         {
@@ -1223,8 +1203,8 @@ const NovoDocumentoPage:
                         }}
                       >
                         {
-                          origemAprovador
-                            ? `${origemAprovador} Selecione quem vai aprovar este documento.`
+                          processoId
+                            ? 'Esta área tem mais de um Gestor; selecione o responsável pelo documento. As etapas seguem o fluxo do processo.'
                             : 'Esta área tem mais de um Gestor cadastrado; selecione quem vai aprovar este documento.'
                         }
                       </div>
@@ -1708,7 +1688,7 @@ const NovoDocumentoPage:
                     fontSize: '18px'
                   }}
                 >
-                  Este documento irá para validação do Gestor!
+                  {processoId ? 'Este documento seguirá o fluxo do processo' : 'Este documento irá para validação do Gestor!'}
                 </h2>
 
                 <p
@@ -1720,12 +1700,24 @@ const NovoDocumentoPage:
                   }}
                 >
                   Ele será criado como <strong>Em elaboração</strong> e só
-                  se torna <strong>Vigente</strong> depois de ser revisado
-                  e aprovado por{' '}
-                  <strong>
-                    {aprovadorSelecionado.usuarioNome}
-                  </strong>
-                  , Gestor da área {areaSelecionada?.nome}.
+                  se torna <strong>Vigente</strong>{' '}
+                  {
+                    processoId
+                      ? (
+                        <>
+                          ao concluir o <strong>fluxo do processo</strong>: cada etapa
+                          vai para o responsável definido no fluxo. Gestor da
+                          área: <strong>{aprovadorSelecionado.usuarioNome}</strong>.
+                        </>
+                      )
+                      : (
+                        <>
+                          depois de ser revisado e aprovado por{' '}
+                          <strong>{aprovadorSelecionado.usuarioNome}</strong>
+                          , Gestor da área {areaSelecionada?.nome}.
+                        </>
+                      )
+                  }
                 </p>
 
                 <div

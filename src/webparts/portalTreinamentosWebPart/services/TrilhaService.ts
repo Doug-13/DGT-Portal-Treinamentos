@@ -214,20 +214,246 @@ export class TrilhaService {
   }
 
   // ============================================================
+  // TRILHAS VISÍVEIS POR ÁREA
+  // ============================================================
+  // Regra de visibilidade configurada em Gestão > Trilhas >
+  // Etapa 3 (Público / Áreas):
+  //   dgt_trilha.dgt_todasareas = true  -> visível a todos;
+  //   dgt_trilhaarea (ativo)            -> visível aos membros
+  //                                        ativos da área
+  //                                        (dgt_usuarioarea).
+  // Falhas de leitura (ex.: permissão da Security Role) não
+  // impedem a página: o usuário continua vendo as trilhas
+  // atribuídas a ele.
+  // ============================================================
+
+  private async carregarIdsTrilhasVisiveisPorArea(
+    emailUsuario: string
+  ): Promise<Set<string>> {
+
+    const visiveis =
+      new Set<string>();
+
+    const email =
+      (emailUsuario || '')
+        .trim()
+        .toLowerCase();
+
+    if (!email) {
+      return visiveis;
+    }
+
+    try {
+
+      const [
+        usuarios,
+        trilhasFluxo
+      ] = await Promise.all([
+        this.dataverse.getUsuarioAcessoPorEmail(
+          email
+        ),
+        this.dataverse.getTrilhasFluxo()
+      ]);
+
+      const usuario =
+        usuarios[0];
+
+      if (!usuario) {
+        return visiveis;
+      }
+
+      const usuarioId =
+        this.limparGuid(
+          this.texto(
+            usuario,
+            'dgt_usuarioid'
+          )
+        );
+
+      // --------------------------------------------------------
+      // ÁREAS DO USUÁRIO
+      // --------------------------------------------------------
+
+      let areasUsuario =
+        new Set<string>();
+
+      try {
+
+        const vinculos =
+          await this.dataverse.getUsuariosAreasAdmin();
+
+        areasUsuario =
+          new Set<string>(
+            vinculos
+              .filter(vinculo =>
+                this.limparGuid(
+                  this.texto(
+                    vinculo,
+                    '_dgt_usuario_value'
+                  )
+                ) === usuarioId &&
+                this.booleano(
+                  vinculo,
+                  'dgt_ativo',
+                  true
+                )
+              )
+              .map(vinculo =>
+                this.limparGuid(
+                  this.texto(
+                    vinculo,
+                    '_dgt_area_value'
+                  )
+                )
+              )
+              .filter(Boolean)
+          );
+
+      } catch (e) {
+        console.warn(
+          'Não foi possível ler as áreas do usuário (dgt_usuarioarea).',
+          e
+        );
+      }
+
+      // --------------------------------------------------------
+      // TRILHAS ATIVAS
+      // --------------------------------------------------------
+
+      const trilhasAtivas =
+        trilhasFluxo.filter(trilha =>
+          this.booleano(
+            trilha,
+            'dgt_ativa',
+            true
+          )
+        );
+
+      const trilhasRestritas:
+        string[] = [];
+
+      trilhasAtivas.forEach(trilha => {
+
+        const trilhaId =
+          this.limparGuid(
+            this.texto(
+              trilha,
+              'dgt_trilhaid'
+            )
+          );
+
+        if (!trilhaId) {
+          return;
+        }
+
+        if (
+          this.booleano(
+            trilha,
+            'dgt_todasareas',
+            false
+          )
+        ) {
+          visiveis.add(
+            trilhaId
+          );
+        } else {
+          trilhasRestritas.push(
+            trilhaId
+          );
+        }
+      });
+
+      if (
+        areasUsuario.size === 0 ||
+        trilhasRestritas.length === 0
+      ) {
+        return visiveis;
+      }
+
+      // --------------------------------------------------------
+      // ÁREAS DE CADA TRILHA RESTRITA
+      // --------------------------------------------------------
+
+      const areasPorTrilha =
+        await Promise.all(
+          trilhasRestritas.map(async trilhaId => {
+            try {
+              return {
+                trilhaId,
+                areas:
+                  await this.dataverse.getTrilhaAreasFluxo(
+                    trilhaId
+                  )
+              };
+            } catch (e) {
+              console.warn(
+                `Não foi possível ler as áreas da trilha ${trilhaId} (dgt_trilhaarea).`,
+                e
+              );
+              return {
+                trilhaId,
+                areas: [] as IDataverseRecord[]
+              };
+            }
+          })
+        );
+
+      areasPorTrilha.forEach(item => {
+
+        const liberada =
+          item.areas.some(relacao =>
+            this.booleano(
+              relacao,
+              'dgt_ativo',
+              true
+            ) &&
+            areasUsuario.has(
+              this.limparGuid(
+                this.texto(
+                  relacao,
+                  '_dgt_area_value'
+                )
+              )
+            )
+          );
+
+        if (liberada) {
+          visiveis.add(
+            item.trilhaId
+          );
+        }
+      });
+
+    } catch (e) {
+      console.warn(
+        'Não foi possível calcular as trilhas visíveis por área.',
+        e
+      );
+    }
+
+    return visiveis;
+  }
+
+  // ============================================================
   // CARREGAR TRILHAS DO USUÁRIO
   // ============================================================
 
   public async carregarTrilhasUsuario(
     atribuicoesUsuario: IDataverseRecord[],
-    catalogo: ITreinamento[]
+    catalogo: ITreinamento[],
+    emailUsuario = ''
   ): Promise<ITrilha[]> {
 
     const [
       trilhas,
-      relacoes
+      relacoes,
+      trilhasIdsVisiveis
     ] = await Promise.all([
       this.dataverse.getTrilhas(),
-      this.dataverse.getTrilhaTreinamentos()
+      this.dataverse.getTrilhaTreinamentos(),
+      this.carregarIdsTrilhasVisiveisPorArea(
+        emailUsuario
+      )
     ]);
 
     // ==========================================================
@@ -268,10 +494,23 @@ export class TrilhaService {
         return;
       }
 
-      if (
-        !trilhasIdsUsuario.has(
+      // A trilha aparece quando:
+      // - o usuário possui atribuição vinculada a ela; OU
+      // - a trilha está liberada para todas as áreas ou para
+      //   uma área da qual o usuário é membro ativo.
+      const atribuida =
+        trilhasIdsUsuario.has(
           trilhaId
-        )
+        );
+
+      const visivelPorArea =
+        trilhasIdsVisiveis.has(
+          trilhaId
+        );
+
+      if (
+        !atribuida &&
+        !visivelPorArea
       ) {
         return;
       }
@@ -322,7 +561,7 @@ export class TrilhaService {
             // ATRIBUIÇÃO
             // --------------------------------------------------
 
-            const atribuicao =
+            const atribuicaoNaTrilha =
               atribuicoesUsuario.find(
                 registro => {
 
@@ -349,6 +588,26 @@ export class TrilhaService {
                       trilhaId
                   );
                 }
+              );
+
+            // Quando o usuário já concluiu este treinamento em outra
+            // trilha (ou individualmente) e a conclusão ainda é
+            // válida, a Custom API dgt_ProcessarAtribuicao reaproveita
+            // essa conclusão em vez de criar um novo registro. Nesse
+            // caso a trilha deve exibir o treinamento como Concluído.
+            const atribuicao =
+              atribuicaoNaTrilha ||
+              atribuicoesUsuario.find(
+                registro =>
+                  this.limparGuid(
+                    this.texto(
+                      registro,
+                      '_dgt_treinamento_value'
+                    )
+                  ) === treinamentoId &&
+                  this.obterStatus(
+                    registro
+                  ) === 'Concluído'
               );
 
             // --------------------------------------------------
@@ -517,7 +776,9 @@ export class TrilhaService {
 
         total,
 
-        progresso
+        progresso,
+
+        atribuida
       });
     });
 

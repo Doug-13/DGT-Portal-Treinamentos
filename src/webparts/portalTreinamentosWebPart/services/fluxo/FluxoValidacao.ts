@@ -479,6 +479,38 @@ export const validarDefinicao = (
         }
       }
 
+      // Etapa "Vigente" publica e ENCERRA o fluxo da revisão. Se depois
+      // dela houver outra etapa "Vigente", tudo entre as duas nunca é
+      // executado (ex.: status Vigente marcado na etapa errada).
+      if (item.tipo === 'tarefaHumana' && item.statusDocumento === 'Vigente') {
+
+        const vistos: string[] = [item.id];
+        const fila: string[] = [item.id];
+        const outrasVigentes: string[] = [];
+
+        while (fila.length > 0) {
+          const atual = fila.shift() as string;
+          saidasDe(definicao, atual).forEach(transicao => {
+            if (vistos.indexOf(transicao.destinoId) < 0) {
+              vistos.push(transicao.destinoId);
+              fila.push(transicao.destinoId);
+              const destino = elemento(definicao, transicao.destinoId);
+              if (destino && destino.tipo === 'tarefaHumana' && destino.statusDocumento === 'Vigente' && destino.id !== item.id) {
+                outrasVigentes.push(destino.nome);
+              }
+            }
+          });
+        }
+
+        if (outrasVigentes.length > 0) {
+          erros.push(
+            `A etapa "${item.nome}" está com o status "Vigente": ao chegar nela a revisão é publicada e o fluxo termina. ` +
+            `Por isso "${outrasVigentes.join('", "')}" e as etapas entre elas nunca seriam executadas. ` +
+            'Deixe o status "Vigente" somente na última etapa (ex.: "Documento Vigente").'
+          );
+        }
+      }
+
       if (item.tipo === 'eventoRevisao') {
 
         if (saidas.length > 1) {

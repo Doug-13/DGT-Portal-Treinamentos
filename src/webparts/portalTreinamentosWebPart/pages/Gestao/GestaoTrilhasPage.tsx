@@ -7,7 +7,8 @@ import FluxoTrilhaEtapas from
   '../../components/common/FluxoTrilhaEtapas';
 
 import {
-  IAreaAdmin
+  IAreaAdmin,
+  IUsuarioAreaAdmin
 } from '../../services/AreaAdminService';
 
 import {
@@ -42,6 +43,11 @@ export interface IGestaoTrilhasPageProps {
 
   areas:
     IAreaAdmin[];
+
+  // Vínculos usuário/área (dgt_usuarioarea). Usado para exibir
+  // a quantidade de membros em cada card de área.
+  usuariosAreas?:
+    IUsuarioAreaAdmin[];
 
   carregando:
     boolean;
@@ -294,6 +300,93 @@ const GestaoTrilhasPage:
 
     const trilhaAtual =
       props.trilhaSelecionada;
+
+    // ==========================================================
+    // MEMBROS POR ÁREA (vínculos ativos, sem repetir pessoa)
+    // ==========================================================
+
+    const normalizarId =
+      (valor: string): string =>
+        (valor || '')
+          .replace(/[{}]/g, '')
+          .trim()
+          .toLowerCase();
+
+    const membrosPorArea =
+      React.useMemo(
+        (): Map<string, Set<string>> => {
+
+          const mapa =
+            new Map<string, Set<string>>();
+
+          (props.usuariosAreas || [])
+            .filter(vinculo =>
+              vinculo.ativo &&
+              !!vinculo.usuarioId &&
+              !!vinculo.areaId
+            )
+            .forEach(vinculo => {
+
+              const areaId =
+                normalizarId(vinculo.areaId);
+
+              const membros =
+                mapa.get(areaId) ||
+                new Set<string>();
+
+              membros.add(
+                normalizarId(vinculo.usuarioId)
+              );
+
+              mapa.set(
+                areaId,
+                membros
+              );
+            });
+
+          return mapa;
+        },
+        [props.usuariosAreas]
+      );
+
+    const totalMembrosArea =
+      (areaId: string): number =>
+        (
+          membrosPorArea.get(
+            normalizarId(areaId)
+          ) ||
+          new Set<string>()
+        ).size;
+
+    // Pessoas distintas que receberão a trilha com a seleção atual
+    const totalPublicoSelecionado =
+      React.useMemo(
+        (): number => {
+
+          const pessoas =
+            new Set<string>();
+
+          areasSelecionadas.forEach(areaId => {
+            (
+              membrosPorArea.get(
+                normalizarId(areaId)
+              ) ||
+              new Set<string>()
+            ).forEach(usuarioId =>
+              pessoas.add(usuarioId)
+            );
+          });
+
+          return pessoas.size;
+        },
+        [areasSelecionadas, membrosPorArea]
+      );
+
+    const textoMembros =
+      (quantidade: number): string =>
+        quantidade === 1
+          ? '1 membro'
+          : `${quantidade} membros`;
 
     const iniciarNova =
       (): void => {
@@ -1729,16 +1822,52 @@ const GestaoTrilhasPage:
                                     }
                                   />
 
-                                  <span>
-                                    <strong>
+                                  <span
+                                    style={{
+                                      display:
+                                        'flex',
+
+                                      flexDirection:
+                                        'column',
+
+                                      gap:
+                                        '3px',
+
+                                      minWidth:
+                                        0
+                                    }}
+                                  >
+                                    <span>
+                                      <strong>
+                                        {
+                                          area.sigla
+                                        }
+                                      </strong>
+                                      {' - '}
                                       {
-                                        area.sigla
+                                        area.nome
                                       }
-                                    </strong>
-                                    {' - '}
-                                    {
-                                      area.nome
-                                    }
+                                    </span>
+
+                                    <span
+                                      style={{
+                                        fontSize:
+                                          '12px',
+
+                                        color:
+                                          totalMembrosArea(area.id) > 0
+                                            ? '#475569'
+                                            : '#94a3b8'
+                                      }}
+                                    >
+                                      {
+                                        totalMembrosArea(area.id) > 0
+                                          ? textoMembros(
+                                              totalMembrosArea(area.id)
+                                            )
+                                          : 'Nenhum membro'
+                                      }
+                                    </span>
                                   </span>
                                 </label>
                               );
@@ -1746,6 +1875,31 @@ const GestaoTrilhasPage:
                           )
                       }
                     </div>
+                  )
+                }
+
+                {
+                  !todasAreas &&
+                  areasSelecionadas.length > 0 &&
+                  (
+                    <p
+                      style={{
+                        margin:
+                          '14px 0 0',
+
+                        fontSize:
+                          '13px',
+
+                        color:
+                          '#334155'
+                      }}
+                    >
+                      {
+                        totalPublicoSelecionado === 1
+                          ? '1 colaborador receberá esta trilha.'
+                          : `${totalPublicoSelecionado} colaboradores receberão esta trilha.`
+                      }
+                    </p>
                   )
                 }
 

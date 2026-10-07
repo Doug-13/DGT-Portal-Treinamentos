@@ -38,6 +38,7 @@ import {
 } from '../services/DocumentoRevisaoFluxoService';
 
 import {
+  compararRevisoes,
   revisaoInteira
 } from '../utils/numeracaoRevisao';
 
@@ -95,6 +96,10 @@ export interface IRevisaoAlvoFluxo {
   // true = não existe revisão em andamento; a simulação usa uma
   // revisão "virtual" (próximo número). Só no modo de teste.
   virtual: boolean;
+
+  // true = sem revisão em andamento: mostra o fluxo da última revisão
+  // (ex.: a vigente) só para consulta. Nunca inicia um fluxo novo.
+  somenteConsulta?: boolean;
 }
 
 // Em que ponto a tela está:
@@ -313,9 +318,21 @@ export const useFluxoRevisaoTeste = (
         }
 
         // No Dataverse não há revisão "virtual": é preciso criar a
-        // revisão (aba Revisão) para começar o fluxo.
+        // revisão (aba Revisão) para começar o fluxo. Enquanto isso, a
+        // aba mostra o fluxo da última revisão, só para consulta.
         if (!local) {
-          return undefined;
+          const ultima =
+            (revisoes || [])
+              .slice()
+              .sort((a, b) => compararRevisoes(b.revisao, a.revisao))[0];
+          return ultima
+            ? {
+              id: ultima.id,
+              revisao: ultima.revisao,
+              virtual: false,
+              somenteConsulta: true
+            }
+            : undefined;
         }
 
         return {
@@ -597,6 +614,13 @@ export const useFluxoRevisaoTeste = (
 
           setInstancia(undefined);
           setDefinicao(undefined);
+
+          // Só consulta (sem revisão em andamento) e a última revisão
+          // não teve fluxo: nada a mostrar; nunca inicia fluxo aqui.
+          if (revisaoAlvo.somenteConsulta) {
+            setSituacao('semRevisao');
+            return;
+          }
 
           // 2) Qual processo governa o documento?
           const doDocumento =

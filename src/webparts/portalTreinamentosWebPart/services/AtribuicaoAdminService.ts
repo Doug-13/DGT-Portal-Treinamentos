@@ -24,6 +24,11 @@ export interface ITrilhaAtribuicao {
   ativa: boolean;
 }
 
+// Valor especial de treinamentoId: atribui TODOS os treinamentos
+// ativos da trilha informada, na ordem da trilha.
+export const TODOS_TREINAMENTOS_TRILHA =
+  '__todos_da_trilha__';
+
 export interface IAtribuicaoManual {
   usuarioId: string;
   treinamentoId: string;
@@ -196,6 +201,15 @@ export class AtribuicaoAdminService {
       );
     }
 
+    if (
+      dados.treinamentoId ===
+      TODOS_TREINAMENTOS_TRILHA
+    ) {
+      return this.atribuirTrilha(
+        dados
+      );
+    }
+
     if (!dados.origem) {
       throw new Error(
         'Informe a origem da atribuição.'
@@ -219,5 +233,194 @@ export class AtribuicaoAdminService {
         Observacao:
           dados.observacao || ''
       });
+  }
+
+  // ============================================================
+  // ATRIBUIR A TRILHA INTEIRA PARA UM USUÁRIO
+  // ============================================================
+  // Chama a Custom API dgt_ProcessarAtribuicao para cada
+  // treinamento ativo da trilha, em ordem crescente de dgt_ordem.
+  // A API já cuida de: duplicidade, reaproveitamento de conclusões
+  // válidas e liberação respeitando a sequência da trilha (só o
+  // primeiro treinamento pendente fica Disponível).
+  // ============================================================
+
+  public async atribuirTrilha(
+    dados: IAtribuicaoManual
+  ): Promise<IResultadoAtribuicao> {
+
+    if (!dados.trilhaId) {
+      throw new Error(
+        'Selecione a trilha para atribuir todos os treinamentos dela.'
+      );
+    }
+
+    const relacoes =
+      (
+        await this.dataverse
+          .getTrilhaTreinamentosAdmin(
+            dados.trilhaId
+          )
+      )
+        .filter(
+          registro =>
+            booleano(
+              registro,
+              'dgt_ativo',
+              true
+            ) &&
+            !!texto(
+              registro,
+              '_dgt_treinamento_value'
+            )
+        )
+        .sort(
+          (a, b) =>
+            Number(
+              texto(a, 'dgt_ordem', '0')
+            ) -
+            Number(
+              texto(b, 'dgt_ordem', '0')
+            )
+        );
+
+    if (relacoes.length === 0) {
+      throw new Error(
+        'Esta trilha não possui treinamentos ativos.'
+      );
+    }
+
+    let criados = 0;
+    let reaproveitados = 0;
+    let existentes = 0;
+    let liberados = 0;
+
+    const falhas: string[] = [];
+
+    for (const relacao of relacoes) {
+
+      const treinamentoId =
+        texto(
+          relacao,
+          '_dgt_treinamento_value'
+        );
+
+      const nomeTreinamento =
+        texto(
+          relacao,
+          '_dgt_treinamento_value@OData.Community.Display.V1.FormattedValue',
+          texto(
+            relacao,
+            'dgt_name',
+            'Treinamento'
+          )
+        );
+
+      // Data limite: a informada na tela prevalece; senão usa o
+      // prazo (dias) configurado no treinamento dentro da trilha.
+      let dataLimite =
+        dados.dataLimite || '';
+
+      const dias =
+        Number(
+          texto(
+            relacao,
+            'dgt_diasparaconclusao',
+            '0'
+          )
+        );
+
+      if (
+        !dataLimite &&
+        dias > 0
+      ) {
+        const limite =
+          new Date();
+
+        limite.setDate(
+          limite.getDate() +
+          dias
+        );
+
+        dataLimite =
+          limite
+            .toISOString()
+            .substring(0, 10);
+      }
+
+      try {
+
+        const retorno =
+          await this.dataverse
+            .processarAtribuicao({
+              UsuarioId:
+                dados.usuarioId,
+              TreinamentoId:
+                treinamentoId,
+              TrilhaId:
+                dados.trilhaId,
+              Origem:
+                dados.origem,
+              OrigemId:
+                dados.origemId ||
+                dados.trilhaId,
+              DataLimite:
+                dataLimite,
+              Observacao:
+                dados.observacao ||
+                'Atribuição manual da trilha completa.'
+            });
+
+        if (retorno.criado) {
+          criados++;
+        } else if (retorno.reutilizado) {
+          reaproveitados++;
+        } else {
+          existentes++;
+        }
+
+        if (retorno.liberado) {
+          liberados++;
+        }
+
+      } catch (e) {
+
+        falhas.push(
+          `${nomeTreinamento}: ${
+            e instanceof Error
+              ? e.message
+              : 'erro desconhecido'
+          }`
+        );
+      }
+    }
+
+    const partes: string[] = [
+      `${relacoes.length} treinamento(s) da trilha processado(s)`,
+      `${criados} atribuído(s)`,
+      `${reaproveitados} reaproveitado(s) de conclusão válida`,
+      `${existentes} já existia(m)`,
+      `${liberados} liberado(s)`
+    ];
+
+    let mensagem =
+      partes.join(' · ') + '.';
+
+    if (falhas.length > 0) {
+      mensagem +=
+        ` Falhas: ${falhas.join(' | ')}`;
+    }
+
+    return {
+      sucesso:
+        falhas.length === 0,
+      mensagem,
+      criado:
+        criados > 0,
+      reutilizado:
+        reaproveitados > 0,
+      liberado:
+        liberados > 0
+    };
   }
 }

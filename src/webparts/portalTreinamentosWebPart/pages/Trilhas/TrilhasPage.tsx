@@ -140,16 +140,16 @@ const TrilhasPage:
           titulo="Trilhas"
           subtitulo={
             trilhas.length === 1
-              ? 'Você possui 1 trilha de aprendizagem vinculada.'
-              : `Você possui ${trilhas.length} trilhas de aprendizagem vinculadas.`
+              ? 'Você possui 1 trilha de aprendizagem disponível.'
+              : `Você possui ${trilhas.length} trilhas de aprendizagem disponíveis.`
           }
         />
 
         {trilhas.length === 0 ? (
 
           <EmptyState
-            titulo="Nenhuma trilha vinculada"
-            descricao="Quando uma trilha for atribuída a você, ela será exibida nesta página."
+            titulo="Nenhuma trilha disponível"
+            descricao="Quando uma trilha for atribuída a você ou liberada para a sua área, ela será exibida nesta página."
           />
 
         ) : (
@@ -285,6 +285,26 @@ const TrilhasPage:
                   </div>
 
                 </div>
+
+                {/* AVISO: TRILHA VISÍVEL, AINDA NÃO ATRIBUÍDA */}
+
+                {trilha.atribuida === false && (
+                  <div
+                    style={{
+                      margin: '16px 24px 0',
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      background: '#fff8e6',
+                      border: '1px solid #f5d48a',
+                      color: '#7a5600',
+                      fontSize: '13px'
+                    }}
+                  >
+                    Esta trilha está disponível para a sua área, mas
+                    ainda não foi atribuída a você. Os treinamentos
+                    serão liberados assim que a atribuição for feita.
+                  </div>
+                )}
 
                 {/* CURSOS */}
 

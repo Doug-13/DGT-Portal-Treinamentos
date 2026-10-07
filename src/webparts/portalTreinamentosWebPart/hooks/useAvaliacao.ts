@@ -148,24 +148,52 @@ export const useAvaliacao = (
         })
       );
 
-      let questoes = questoesComAlternativas.slice();
+      // ------------------------------------------------------
+      // SELEÇÃO DAS QUESTÕES DA PROVA
+      // ------------------------------------------------------
+      // Regra:
+      // - "Questões da prova" (dgt_quantidadequestoes) SEMPRE limita
+      //   a quantidade apresentada ao colaborador.
+      // - "Sortear questões" define COMO o subconjunto é escolhido:
+      //     marcado     -> N questões aleatórias do banco;
+      //     desmarcado  -> as N primeiras pela ordem cadastrada.
+      // - "Embaralhar questões" define apenas a ORDEM de exibição
+      //   das questões já selecionadas.
+      // - Quantidade 0, vazia ou maior que o banco -> usa todas.
+      // ------------------------------------------------------
 
-      if (booleano(registro, 'dgt_embaralharquestoes')) {
-        questoes = embaralhar(questoes);
-      }
+      const bancoOrdenado = questoesComAlternativas
+        .slice()
+        .sort((a, b) => a.ordem - b.ordem);
 
-      const quantidadeConfigurada = numero(
+      const totalDisponivel = bancoOrdenado.length;
+
+      const quantidadeCadastrada = numero(
         registro,
         'dgt_quantidadequestoes',
-        questoes.length
+        0
       );
 
-      if (
-        booleano(registro, 'dgt_sortearquestoes') &&
-        quantidadeConfigurada > 0 &&
-        quantidadeConfigurada < questoes.length
-      ) {
-        questoes = questoes.slice(0, quantidadeConfigurada);
+      const quantidadeConfigurada =
+        quantidadeCadastrada > 0 && quantidadeCadastrada < totalDisponivel
+          ? Math.floor(quantidadeCadastrada)
+          : totalDisponivel;
+
+      const sortearQuestoes = booleano(registro, 'dgt_sortearquestoes');
+      const embaralharQuestoes = booleano(registro, 'dgt_embaralharquestoes');
+
+      let questoes: IQuestaoAvaliacao[] = sortearQuestoes
+        ? embaralhar(bancoOrdenado).slice(0, quantidadeConfigurada)
+        : bancoOrdenado.slice(0, quantidadeConfigurada);
+
+      if (embaralharQuestoes) {
+        questoes = embaralhar(questoes);
+      } else {
+        questoes = questoes.slice().sort((a, b) => a.ordem - b.ordem);
+      }
+
+      if (questoes.length === 0) {
+        throw new Error('Esta avaliação não possui questões ativas cadastradas.');
       }
 
       const tentativasPermitidas = numero(
@@ -199,11 +227,11 @@ export const useAvaliacao = (
         nome: texto(registro, 'dgt_name', 'Avaliação'),
         descricao: texto(registro, 'dgt_descricao'),
         notaMinima: numero(registro, 'dgt_notaminima', 70),
-        quantidadeQuestoes: quantidadeConfigurada,
+        quantidadeQuestoes: questoes.length,
         tentativasPermitidas,
         tempoLimiteMin: numero(registro, 'dgt_tempolimitemin', 0),
-        sortearQuestoes: booleano(registro, 'dgt_sortearquestoes'),
-        embaralharQuestoes: booleano(registro, 'dgt_embaralharquestoes'),
+        sortearQuestoes,
+        embaralharQuestoes,
         embaralharAlternativas: booleano(
           registro,
           'dgt_embaralharalternativas'

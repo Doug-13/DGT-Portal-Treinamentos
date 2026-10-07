@@ -519,3 +519,75 @@ describe('etapa com status Vigente', () => {
     expect(r2.instancia?.revisao).toBe('Rev.00');
   });
 });
+
+describe('metadados preenchidos seguem para as próximas etapas', () => {
+
+  it('não apaga o valor quando o mesmo metadado aparece em etapas seguintes', () => {
+
+    const definicao: IFluxoDefinicao =
+      JSON.parse(JSON.stringify(FLUXO_EM_BRANCO));
+
+    const base = definicao.elementos.filter(item => item.id === 'elaboracao')[0];
+
+    base.campos = [
+      { chave: 'dataCriacao', rotulo: 'Data de criação', tipo: 'data', obrigatorio: true },
+      { chave: 'classificacao', rotulo: 'Classificação', tipo: 'lista', opcoes: ['Restrito', 'Confidencial'], obrigatorio: true }
+    ];
+
+    const leitura = base.campos.map(campo => ({ ...campo, obrigatorio: false, somenteLeitura: true }));
+
+    definicao.elementos.push(
+      { ...JSON.parse(JSON.stringify(base)), id: 'avaliacao', nome: 'Avaliação', campos: leitura },
+      { ...JSON.parse(JSON.stringify(base)), id: 'vigente', nome: 'Documento Vigente', campos: leitura }
+    );
+
+    definicao.transicoes = [
+      { id: 't1', origemId: 'inicio', destinoId: 'elaboracao', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't2', origemId: 'elaboracao', destinoId: 'avaliacao', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't3', origemId: 'avaliacao', destinoId: 'vigente', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't4', origemId: 'vigente', destinoId: 'fim', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] }
+    ];
+
+    const ator = { id: 'a', nome: 'A', papeisTeste: ['autor'] };
+
+    const inicio =
+      iniciarInstancia(definicao, { revisaoId: 'r', documentoId: 'd', revisao: 'Rev.00A', ator, simulado: true });
+
+    const resultado =
+      executarAcao(definicao, inicio.instancia as NonNullable<typeof inicio.instancia>, {
+        acaoChave: 'concluir', comentario: '', valores: { dataCriacao: '2026-10-09', classificacao: 'Confidencial' }, ator
+      });
+
+    expect(resultado.ok).toBe(true);
+    expect(resultado.instancia?.elementoAtualId).toBe('avaliacao');
+    expect(resultado.instancia?.valores).toEqual({ dataCriacao: '2026-10-09', classificacao: 'Confidencial' });
+  });
+});
+
+describe('status Vigente na etapa errada', () => {
+
+  it('a validação aponta quando uma etapa Vigente leva a outra etapa Vigente', () => {
+
+    const definicao: IFluxoDefinicao =
+      JSON.parse(JSON.stringify(FLUXO_EM_BRANCO));
+
+    const base = definicao.elementos.filter(item => item.id === 'elaboracao')[0];
+
+    definicao.elementos.push(
+      { ...JSON.parse(JSON.stringify(base)), id: 'pergunta', nome: 'Realizar retreinamento?', statusDocumento: 'Vigente' },
+      { ...JSON.parse(JSON.stringify(base)), id: 'vigente', nome: 'Documento Vigente', statusDocumento: 'Vigente' }
+    );
+
+    definicao.transicoes = [
+      { id: 't1', origemId: 'inicio', destinoId: 'elaboracao', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't2', origemId: 'elaboracao', destinoId: 'pergunta', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't3', origemId: 'pergunta', destinoId: 'vigente', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] },
+      { id: 't4', origemId: 'vigente', destinoId: 'fim', tipoCondicao: 'sempre', padrao: true, excecao: false, pontos: [] }
+    ];
+
+    const erros = validarDefinicao(definicao);
+
+    expect(erros.some(erro => erro.indexOf('"Realizar retreinamento?"') >= 0 && erro.indexOf('Documento Vigente') >= 0)).toBe(true);
+    expect(erros.some(erro => erro.indexOf('A etapa "Documento Vigente"') >= 0)).toBe(false);
+  });
+});

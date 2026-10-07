@@ -135,6 +135,14 @@ export interface IDocumentoEvento {
   // Passos do fluxo: categoria para cor e ícone no histórico.
   categoriaFluxo?: CategoriaPassoFluxo;
 
+  // Passos do fluxo: etapa (ex.: "Avaliação do documento") e ação
+  // (ex.: "Aprovar") separadas, para a linha do tempo.
+  etapa?: string;
+  acao?: string;
+
+  // Passos automáticos (Sistema): quem executou a ação que os disparou.
+  acionadoPor?: string;
+
   statusAnterior?: string;
 
   statusNovo?: string;

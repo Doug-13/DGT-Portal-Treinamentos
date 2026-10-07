@@ -157,13 +157,24 @@ export const papeisDoUsuario = (
   return papeis;
 };
 
-// Nomes legíveis de quem pode executar (para a tela): a pessoa
-// primeiro, o papel entre parênteses.
+// Quem responde pela etapa, do jeito que aparece nas telas:
+//
+//   Criador da revisão   → "Maria Silva (criador)"
+//   Usuário específico   → "João Souza"
+//   Área (todos)         → "Área PROCESSOS (todos da área)"
+//   Gestor da área       → "Gestor da área PROCESSOS: Anaelise Cunha"
+//
+// Na área, QUALQUER membro ativo pode executar a etapa (ver
+// usuarioAtende); no gestor, só Gestor/Administrador da área.
 export const descreverResolvido = (
   resolvido: IResponsavelResolvido,
   vinculos: IUsuarioAreaAdmin[],
   usuarios: Array<{ id: string; nome: string }> = []
 ): string => {
+
+  const ehCriador =
+    (resolvido.papelTeste || '').indexOf('autorRevisao') === 0 ||
+    /autor|criador/i.test(resolvido.descricao || '');
 
   if (resolvido.usuarioId) {
     const usuario =
@@ -175,30 +186,44 @@ export const descreverResolvido = (
     const nome =
       usuario ? usuario.nome : vinculo ? vinculo.usuarioNome : '';
 
-    return nome
-      ? `${nome} (${resolvido.descricao.toLowerCase()})`
-      : `${resolvido.descricao} (não identificado)`;
+    if (!nome) {
+      return `${resolvido.descricao} (não identificado)`;
+    }
+
+    return ehCriador ? `${nome} (criador)` : nome;
   }
 
-  if (!resolvido.areaId && (resolvido.papelTeste || '').indexOf('autorRevisao') === 0) {
+  if (!resolvido.areaId && ehCriador) {
     return `${resolvido.descricao} (não identificado)`;
   }
 
   if (resolvido.areaId) {
-    const pessoas =
-      vinculos
-        .filter(
-          vinculo =>
-            vinculo.ativo &&
-            guid(vinculo.areaId) === guid(resolvido.areaId) &&
-            (!resolvido.somenteGestores || vinculo.perfil === 'Gestor' || vinculo.perfil === 'Administrador da área')
-        )
+
+    const daArea =
+      vinculos.filter(
+        vinculo =>
+          vinculo.ativo &&
+          guid(vinculo.areaId) === guid(resolvido.areaId)
+      );
+
+    const nomeArea =
+      (daArea[0] && daArea[0].areaNome) ||
+      (vinculos.find(vinculo => guid(vinculo.areaId) === guid(resolvido.areaId)) || { areaNome: '' }).areaNome ||
+      resolvido.descricao;
+
+    if (!resolvido.somenteGestores) {
+      return `Área ${nomeArea} (todos da área)`;
+    }
+
+    const gestores =
+      daArea
+        .filter(vinculo => vinculo.perfil === 'Gestor' || vinculo.perfil === 'Administrador da área')
         .map(vinculo => vinculo.usuarioNome)
         .filter((nome, indice, lista) => !!nome && lista.indexOf(nome) === indice);
 
-    return pessoas.length > 0
-      ? `${resolvido.descricao} (${pessoas.slice(0, 4).join(', ')}${pessoas.length > 4 ? ` e mais ${pessoas.length - 4}` : ''})`
-      : `${resolvido.descricao} (ninguém cadastrado)`;
+    return gestores.length > 0
+      ? `Gestor da área ${nomeArea}: ${gestores.slice(0, 4).join(', ')}${gestores.length > 4 ? ` e mais ${gestores.length - 4}` : ''}`
+      : `Gestor da área ${nomeArea} (ninguém cadastrado)`;
   }
 
   return resolvido.descricao;

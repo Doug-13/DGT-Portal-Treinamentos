@@ -36,11 +36,12 @@ export interface IUseGestaoDocumentos {
   selecionarDocumento:
     (documento: IDocumentoAdmin) => Promise<void>;
 
+  // Devolve o id do documento criado (para abrir direto nele).
   criarDocumentoCompleto:
     (
       dados:
         INovoDocumentoCompleto
-    ) => Promise<void>;
+    ) => Promise<string>;
   criarDocumento:
     (
       dados:
@@ -261,7 +262,7 @@ export const useGestaoDocumentos = (
       async (
         dados:
           INovoDocumentoCompleto
-      ): Promise<void> => {
+      ): Promise<string> => {
 
         setProcessando(
           true
@@ -345,6 +346,8 @@ export const useGestaoDocumentos = (
             await service
               .listarDocumentos()
           );
+
+          return documentoCriado.id;
 
         } catch (e) {
 

@@ -702,6 +702,9 @@ const DocumentoDetalhePage:
       () => {
         setRevisaoSelecionadaId('');
         setMostrarNumeros(false);
+        // Abrir outro documento (ou um recém-criado) sempre começa pela
+        // aba Revisão, onde está a etapa atual do fluxo.
+        setAba('revisoes');
       },
       [
         documento?.id
@@ -1039,9 +1042,23 @@ const DocumentoDetalhePage:
                   )
                 }
 
-                <ItemResumo titulo="Responsável pelo documento">
-                  {valorOuTraco(documento.responsavel)}
-                </ItemResumo>
+                {
+                  // Revisão no fluxo: quem responde pela ETAPA ATUAL
+                  // (criador, usuário, área ou gestor da área).
+                  revisaoEmAndamento &&
+                  segueFluxo.segue &&
+                  segueFluxo.responsaveisAtuais.length > 0
+                    ? (
+                      <ItemResumo titulo={`Responsável${segueFluxo.etapaAtual ? ` — ${segueFluxo.etapaAtual}` : ''}`}>
+                        {segueFluxo.responsaveisAtuais.join(' · ')}
+                      </ItemResumo>
+                    )
+                    : (
+                      <ItemResumo titulo="Responsável pelo documento">
+                        {valorOuTraco(documento.responsavel)}
+                      </ItemResumo>
+                    )
+                }
               </div>
             );
           })()

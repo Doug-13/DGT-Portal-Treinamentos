@@ -461,8 +461,13 @@ export class TrilhaAdminService {
         dgt_ativa:
           dados.ativa,
 
+        // A trilha nasce SEM público. O público é definido na
+        // Etapa 3 (Público / Áreas). Isso evita que o plugin
+        // AtribuirTrilhaPorAreaPlugin atribua os treinamentos a
+        // todos os colaboradores enquanto a Etapa 2 ainda está
+        // sendo montada.
         dgt_todasareas:
-          true
+          false
       });
 
     const trilhas =

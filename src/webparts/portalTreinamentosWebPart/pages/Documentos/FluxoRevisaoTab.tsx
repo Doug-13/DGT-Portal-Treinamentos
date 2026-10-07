@@ -989,6 +989,25 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       </>
       )}
 
+      {
+        fluxo.revisaoAlvo?.somenteConsulta && !compacto && (
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: '8px',
+              background: '#E7F6EC',
+              border: '1px solid #107C10',
+              fontSize: '13px',
+              color: '#202A44'
+            }}
+          >
+            <strong>Nenhuma revisão em andamento.</strong> Abaixo está o fluxo percorrido pela{' '}
+            <strong>{instancia.revisao}</strong>. Para revisar o documento, use{' '}
+            <strong>“Criar nova revisão”</strong> na aba Revisão — ela seguirá o fluxo publicado do processo.
+          </div>
+        )
+      }
+
       {/* PAINEL + HISTÓRICO */}
       <div
         style={{
@@ -999,6 +1018,13 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
         }}
       >
 
+        {/*
+          ETAPA ATUAL: aparece só na aba Revisão (modo compacto), onde
+          ficam os metadados e os botões da etapa. A aba "Fluxo de
+          revisão" mostra apenas o desenho do fluxo — exceto no modo de
+          teste (simulação), em que as ações são feitas aqui.
+        */}
+        {(compacto || fluxo.local) && (
         <section style={estiloCartao}>
           <div style={{ ...estiloBarraSecao, display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
             <span>
@@ -1025,7 +1051,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                     cursor: 'pointer'
                   }}
                 >
-                  Ver fluxo completo e histórico
+                  Ver fluxo completo
                 </button>
               )
             }
@@ -1194,15 +1220,21 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
               )
           }
         </section>
+        )}
 
-        {!compacto && <section style={estiloCartao}>
+        {/*
+          O histórico da tramitação fica só na aba "Histórico" do documento
+          (um histórico único). Aqui ficam os metadados da revisão e, no
+          modo de teste (simulação local), o histórico simulado.
+        */}
+        {!compacto && (fluxo.local || metadadosPreenchidos.length > 0) && <section style={estiloCartao}>
           <div style={estiloBarraSecao}>
-            {fluxo.local ? 'Histórico da tramitação (simulado)' : 'Histórico da tramitação'}
+            {fluxo.local ? 'Histórico da tramitação (simulado)' : 'Metadados desta revisão'}
           </div>
           {
             metadadosPreenchidos.length > 0 && (
               <div style={{ padding: '12px 20px', borderBottom: `1px solid ${COR_BORDA}`, background: '#EDF0F5' }}>
-                <div style={estiloRotuloCampo}>Metadados desta revisão</div>
+                {fluxo.local && <div style={estiloRotuloCampo}>Metadados desta revisão</div>}
                 <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr)', gap: '4px 12px', fontSize: '13.5px' }}>
                   {
                     metadadosPreenchidos.map(
@@ -1232,6 +1264,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
               </div>
             )
           }
+          {fluxo.local && (
           <ol style={{ listStyle: 'none', margin: 0, padding: '4px 20px 12px' }}>
             {
               instancia.historico.map(
@@ -1303,6 +1336,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
               )
             }
           </ol>
+          )}
         </section>}
       </div>
     </div>
