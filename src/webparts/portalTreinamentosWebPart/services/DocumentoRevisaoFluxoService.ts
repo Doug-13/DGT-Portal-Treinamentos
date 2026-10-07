@@ -128,7 +128,9 @@ export const resumirErro = (
 // Periodicidade da revisão periódica de documentos (ISO 9001: revisar
 // criticamente em intervalos planejados). Ajuste aqui se a política
 // da DGT for outra.
-export const PERIODICIDADE_REVISAO_MESES = 24;
+// Revisão periódica dos documentos: 1 ano (também usado no cálculo do
+// vencimento exibido na lista — utils/vencimentoDocumento.ts).
+export const PERIODICIDADE_REVISAO_MESES = 12;
 
 // Vigência + periodicidade → "AAAA-MM-DD".
 export const calcularPrazoRevisao = (

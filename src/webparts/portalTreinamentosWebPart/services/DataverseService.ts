@@ -1527,7 +1527,8 @@ export class DataverseService {
       'dgt_revisaoatual',
       'dgt_ativo',
       '_dgt_responsavel_value',
-      '_dgt_area_value'
+      '_dgt_area_value',
+      'createdon'
     ];
 
     const consultar = (

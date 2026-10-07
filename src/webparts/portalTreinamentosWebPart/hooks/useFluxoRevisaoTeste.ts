@@ -33,6 +33,7 @@ import {
 } from '../services/DataverseService';
 
 import {
+  calcularPrazoRevisao,
   calcularProximaRevisao,
   obterRevisaoEmAndamento
 } from '../services/DocumentoRevisaoFluxoService';
@@ -499,6 +500,19 @@ export const useFluxoRevisaoTeste = (
                 ? ((valores.prazoRetreinamento || '').trim() || dataIso(30))
                 : undefined
           });
+
+        // Nova revisão vigente → o prazo da próxima revisão periódica
+        // recomeça (vigência + 12 meses). Sem a coluna, apenas não grava.
+        if (documento) {
+          try {
+            await dataverseService.atualizarPrazoRevisaoDocumento(
+              documento.id,
+              calcularPrazoRevisao(dataIso(0))
+            );
+          } catch (error) {
+            console.error('Não foi possível definir o prazo da próxima revisão:', error);
+          }
+        }
       }
   });
 

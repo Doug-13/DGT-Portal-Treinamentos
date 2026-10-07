@@ -230,6 +230,10 @@ import IndicadoresPage from
 import LicitacoesBuscaPage from
   '../pages/Licitacoes/LicitacoesBuscaPage';
 
+import {
+  areaNoEscopo
+} from '../utils/regrasAcesso';
+
 import UsuariosAcessosPage from
   '../pages/Conta/UsuariosAcessosPage';
 
@@ -2286,7 +2290,10 @@ const PortalRouter:
 
             onVoltar={() =>
               props.navegar(
-                'gestao'
+                // Gestor não acessa a Gestão (conteúdo): volta para a equipe.
+                props.contextoAcesso?.podeGerenciarTreinamentos
+                  ? 'gestao'
+                  : 'equipe'
               )
             }
 
@@ -2299,7 +2306,14 @@ const PortalRouter:
             }
 
             areas={
-              props.areasAdministrativas
+              // Gestor/Editor de área: só as áreas dele.
+              props.areasAdministrativas.filter(
+                area =>
+                  areaNoEscopo(
+                    props.contextoAcesso?.escopoAreas,
+                    area.id
+                  )
+              )
             }
 
             usuariosAreas={
@@ -2998,10 +3012,16 @@ const PortalRouter:
             }
 
             perfil={
-              (props.contextoAcesso?.areasGestor || []).length > 0 &&
-                props.contextoAcesso?.perfil !== 'Administrador'
+              // Gestor/Editor (global ou de área) vê a Visão geral,
+              // já recortada pelas áreas dele.
+              props.contextoAcesso?.perfil !== 'Administrador' &&
+                props.contextoAcesso?.podeVerIndicadoresGerenciais
                 ? 'Gestor'
                 : props.contextoAcesso?.perfil
+            }
+
+            podeGerenciarDashboards={
+              !!props.contextoAcesso?.podeGerenciarDashboards
             }
 
             onVoltar={() =>

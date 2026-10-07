@@ -1,8 +1,5 @@
 import * as React from 'react';
 
-import PageHeader from
-  '../../components/layout/PageHeader';
-
 import {
   IItemConformidade,
   IResumoConformidade
@@ -21,6 +18,22 @@ import {
 import GerenciarDashboardsModal from
   './GerenciarDashboardsModal';
 
+// ============================================================
+// INDICADORES
+//
+// A página mostra apenas as abas de dashboards (tabela
+// dgt_dashboard), uma por dashboard, sem cabeçalho nem "Visão geral".
+//
+// - Entrar na página: módulo "Indicadores" liberado ao usuário
+//   (RoutePermissionService).
+// - Abas visíveis: conforme o campo "Quem vê" de cada dashboard.
+// - Gerenciar dashboards: Administrador ou Editor com o módulo
+//   Indicadores liberado.
+//
+// itens/resumo/onVoltar continuam no contrato por compatibilidade
+// com o PortalRouter (não são mais exibidos aqui).
+// ============================================================
+
 export interface IIndicadoresPageProps {
   itens:
     IItemConformidade[];
@@ -31,204 +44,26 @@ export interface IIndicadoresPageProps {
   onVoltar:
     () => void;
 
-  // Opcionais: habilitam as abas de dashboards (tabela dgt_dashboard).
   dataverseService?:
     DataverseService;
 
-  // Perfil global do usuário (Funcionario | Editor | Gestor |
-  // Administrador). Administrador gerencia os dashboards.
+  // Perfil para a regra "Quem vê" (Funcionario | Editor | Gestor |
+  // Administrador). Gestor/Editor de área chegam aqui como "Gestor".
   perfil?:
     string;
+
+  podeGerenciarDashboards?:
+    boolean;
 }
-
-const ABA_GERAL = '__geral__';
-
-const Indicador:
-  React.FC<{
-    titulo: string;
-    valor: string | number;
-    detalhe?: string;
-  }> = ({
-    titulo,
-    valor,
-    detalhe
-  }) => (
-    <article
-      style={{
-        background:
-          '#ffffff',
-        border:
-          '1px solid #e5e7eb',
-        borderRadius:
-          '16px',
-        padding:
-          '20px',
-        minHeight:
-          '118px'
-      }}
-    >
-      <span
-        style={{
-          display:
-            'block',
-          fontSize:
-            '12px',
-          color:
-            '#64748b',
-          marginBottom:
-            '8px'
-        }}
-      >
-        {titulo}
-      </span>
-
-      <strong
-        style={{
-          display:
-            'block',
-          fontSize:
-            '30px',
-          lineHeight:
-            1.1,
-          color:
-            '#0b1f3a'
-        }}
-      >
-        {valor}
-      </strong>
-
-      {detalhe && (
-        <small
-          style={{
-            display:
-              'block',
-            marginTop:
-              '8px',
-            color:
-              '#64748b'
-          }}
-        >
-          {detalhe}
-        </small>
-      )}
-    </article>
-  );
-
-const Barra:
-  React.FC<{
-    label: string;
-    valor: number;
-    total: number;
-  }> = ({
-    label,
-    valor,
-    total
-  }) => {
-
-    const percentual =
-      total > 0
-        ? Math.round(
-            (
-              valor /
-              total
-            ) *
-            100
-          )
-        : 0;
-
-    return (
-      <div
-        style={{
-          marginBottom:
-            '14px'
-        }}
-      >
-        <div
-          style={{
-            display:
-              'flex',
-            justifyContent:
-              'space-between',
-            gap:
-              '12px',
-            marginBottom:
-              '6px'
-          }}
-        >
-          <span>
-            {label}
-          </span>
-
-          <strong>
-            {valor} ({percentual}%)
-          </strong>
-        </div>
-
-        <div
-          style={{
-            height:
-              '10px',
-            borderRadius:
-              '999px',
-            background:
-              '#eef2f7',
-            overflow:
-              'hidden'
-          }}
-        >
-          <div
-            style={{
-              width:
-                `${percentual}%`,
-              height:
-                '100%',
-              background:
-                '#0091ff',
-              borderRadius:
-                '999px'
-            }}
-          />
-        </div>
-      </div>
-    );
-  };
 
 const IndicadoresPage:
   React.FC<IIndicadoresPageProps> = (
     props
   ) => {
 
-    const total =
-      props.resumo.total;
-
-    // ==========================================================
-    // DASHBOARDS (abas)
-    // ==========================================================
-
-    // ==========================================================
-    // REGRAS DE ACESSO DA PÁGINA
-    // ==========================================================
-    // - Entrar na página: módulo "Indicadores" liberado ao usuário
-    //   (Usuários e acessos) — validado no RoutePermissionService.
-    // - Visão geral (dados de conformidade da equipe/empresa):
-    //   somente Gestor (inclusive gestor de área) e Administrador.
-    // - Abas de dashboards: conforme o campo "Quem vê" de cada uma.
-    // - Gerenciar dashboards: somente Administrador.
-    // ==========================================================
-
-    const perfilNormalizado =
-      (props.perfil || '').toLowerCase();
-
-    const ehAdministrador =
-      perfilNormalizado ===
-      'administrador';
-
-    // Sem perfil informado (versão antiga do PortalRouter) mantém o
-    // comportamento anterior: visão geral visível.
-    const podeVerVisaoGeral =
-      !props.perfil ||
-      ehAdministrador ||
-      perfilNormalizado === 'gestor';
+    const podeGerenciar =
+      (props.perfil || '').toLowerCase() === 'administrador' ||
+      !!props.podeGerenciarDashboards;
 
     const dashboardService =
       React.useMemo(
@@ -241,40 +76,19 @@ const IndicadoresPage:
         [props.dataverseService]
       );
 
-    const [
-      dashboards,
-      setDashboards
-    ] =
+    const [dashboards, setDashboards] =
       React.useState<IDashboard[]>([]);
 
-    const [
-      erroDashboards,
-      setErroDashboards
-    ] =
+    const [erroDashboards, setErroDashboards] =
       React.useState('');
 
-    const [
-      abaAtiva,
-      setAbaAtiva
-    ] =
-      React.useState(
-        podeVerVisaoGeral
-          ? ABA_GERAL
-          : ''
-      );
+    const [abaAtiva, setAbaAtiva] =
+      React.useState('');
 
-    const [
-      carregandoDashboards,
-      setCarregandoDashboards
-    ] =
-      React.useState(
-        !!props.dataverseService
-      );
+    const [carregando, setCarregando] =
+      React.useState(!!props.dataverseService);
 
-    const [
-      gerenciando,
-      setGerenciando
-    ] =
+    const [gerenciando, setGerenciando] =
       React.useState(false);
 
     const carregarDashboards =
@@ -282,6 +96,7 @@ const IndicadoresPage:
         async (): Promise<void> => {
 
           if (!dashboardService) {
+            setCarregando(false);
             return;
           }
 
@@ -296,7 +111,7 @@ const IndicadoresPage:
               'Não foi possível carregar os dashboards. Confira se a tabela dgt_dashboard foi criada e se o seu perfil tem permissão de leitura.'
             );
           } finally {
-            setCarregandoDashboards(false);
+            setCarregando(false);
           }
         },
         [dashboardService]
@@ -325,34 +140,22 @@ const IndicadoresPage:
         d => d.id === abaAtiva
       );
 
-    // Aba inválida (removida, sem permissão ou ainda não escolhida):
-    // vai para a visão geral, se permitida, ou para o 1º dashboard.
     const primeiroDashboardId =
       abasVisiveis.length > 0
         ? abasVisiveis[0].id
         : '';
 
+    // Sem aba válida (início, removida ou sem permissão): abre a 1ª.
     React.useEffect(
       () => {
-
-        const valida =
-          (abaAtiva === ABA_GERAL && podeVerVisaoGeral) ||
-          !!dashboardAtivo;
-
-        if (valida) {
-          return;
-        }
-
-        const destino =
-          podeVerVisaoGeral
-            ? ABA_GERAL
-            : primeiroDashboardId;
-
-        if (destino !== abaAtiva) {
-          setAbaAtiva(destino);
+        if (
+          !dashboardAtivo &&
+          primeiroDashboardId !== abaAtiva
+        ) {
+          setAbaAtiva(primeiroDashboardId);
         }
       },
-      [abaAtiva, dashboardAtivo, podeVerVisaoGeral, primeiroDashboardId]
+      [abaAtiva, dashboardAtivo, primeiroDashboardId]
     );
 
     const estiloAba =
@@ -368,92 +171,18 @@ const IndicadoresPage:
         whiteSpace: 'nowrap'
       });
 
-    const notas =
-      props.itens
-        .map(
-          item =>
-            item.nota
-        )
-        .filter(
-          (
-            nota
-          ): nota is number =>
-            typeof nota ===
-              'number'
-        );
-
-    const notaMedia =
-      notas.length > 0
-        ? Math.round(
-            notas.reduce(
-              (
-                soma,
-                nota
-              ) =>
-                soma +
-                nota,
-              0
-            ) /
-            notas.length
-          )
-        : 0;
-
-    const retreinamentos =
-      props.itens.filter(
-        item =>
-          item.origem
-            .toLowerCase()
-            .indexOf(
-              'revis'
-            ) >= 0 ||
-          item.origem
-            .toLowerCase()
-            .indexOf(
-              'reciclag'
-            ) >= 0
-      ).length;
-
-    const pessoas =
-      new Set(
-        props.itens.map(
-          item =>
-            item.usuario
-        )
-      ).size;
-
-    const treinamentos =
-      new Set(
-        props.itens.map(
-          item =>
-            item.treinamento
-        )
-      ).size;
-
     return (
       <section>
-        <PageHeader
-          titulo="Indicadores"
-          subtitulo="Visão consolidada da operação de treinamentos."
-        />
-
-        <button
-          type="button"
-          onClick={
-            props.onVoltar
-          }
-        >
-          ← Voltar
-        </button>
 
         {/* ===================== ABAS ===================== */}
 
-        {(abasVisiveis.length > 0 || ehAdministrador) && (
+        {(abasVisiveis.length > 0 || podeGerenciar) && (
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              margin: '16px 0',
+              margin: '0 0 16px',
               borderBottom: '1px solid #e2e8f0'
             }}
           >
@@ -465,18 +194,6 @@ const IndicadoresPage:
                 flex: 1
               }}
             >
-              {podeVerVisaoGeral && (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={abaAtiva === ABA_GERAL}
-                  onClick={() => setAbaAtiva(ABA_GERAL)}
-                  style={estiloAba(abaAtiva === ABA_GERAL)}
-                >
-                  Visão geral
-                </button>
-              )}
-
               {abasVisiveis.map(d => (
                 <button
                   key={d.id}
@@ -491,7 +208,7 @@ const IndicadoresPage:
               ))}
             </div>
 
-            {ehAdministrador && dashboardService && (
+            {podeGerenciar && dashboardService && (
               <button
                 type="button"
                 onClick={() => setGerenciando(true)}
@@ -513,7 +230,7 @@ const IndicadoresPage:
           </div>
         )}
 
-        {erroDashboards && ehAdministrador && (
+        {erroDashboards && podeGerenciar && (
           <div
             style={{
               marginBottom: '14px',
@@ -544,21 +261,14 @@ const IndicadoresPage:
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'flex-start',
+                alignItems: 'center',
                 gap: '12px',
-                marginBottom: '12px'
+                marginBottom: '10px'
               }}
             >
-              <div>
-                <h3 style={{ margin: 0, color: '#0b1f3a' }}>
-                  {dashboardAtivo.nome}
-                </h3>
-                {dashboardAtivo.descricao && (
-                  <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>
-                    {dashboardAtivo.descricao}
-                  </p>
-                )}
-              </div>
+              <span style={{ color: '#64748b', fontSize: '13px' }}>
+                {dashboardAtivo.descricao}
+              </span>
 
               <a
                 href={dashboardAtivo.url}
@@ -586,14 +296,17 @@ const IndicadoresPage:
           </article>
         )}
 
-        {/* ===================== SEM CONTEÚDO PARA O PERFIL ===================== */}
+        {/* ===================== SEM DASHBOARDS ===================== */}
 
-        {!podeVerVisaoGeral &&
-          !carregandoDashboards &&
-          abasVisiveis.length === 0 && (
+        {carregando && (
+          <div style={{ color: '#64748b', fontSize: '13px' }}>
+            Carregando indicadores...
+          </div>
+        )}
+
+        {!carregando && abasVisiveis.length === 0 && (
           <article
             style={{
-              marginTop: '16px',
               background: '#fff',
               border: '1px solid #e5e7eb',
               borderRadius: '16px',
@@ -606,306 +319,11 @@ const IndicadoresPage:
               Nenhum indicador disponível
             </h3>
             <p style={{ margin: 0, fontSize: '13px' }}>
-              Ainda não há dashboards publicados para o seu perfil.
+              {podeGerenciar && dashboardService
+                ? 'Use “Gerenciar dashboards” para adicionar as abas com os relatórios do Power BI.'
+                : 'Ainda não há dashboards publicados para o seu perfil.'}
             </p>
           </article>
-        )}
-
-        {!podeVerVisaoGeral &&
-          carregandoDashboards && (
-          <div style={{ marginTop: '16px', color: '#64748b', fontSize: '13px' }}>
-            Carregando indicadores...
-          </div>
-        )}
-
-        {/* ===================== VISÃO GERAL ===================== */}
-
-        {abaAtiva === ABA_GERAL && podeVerVisaoGeral && (
-          <>
-
-        <div
-          style={{
-            display:
-              'grid',
-            gridTemplateColumns:
-              'repeat(auto-fit,minmax(170px,1fr))',
-            gap:
-              '14px',
-            marginTop:
-              '18px'
-          }}
-        >
-          <Indicador
-            titulo="Conformidade"
-            valor={
-              `${props.resumo.conformidadePercentual}%`
-            }
-          />
-
-          <Indicador
-            titulo="Pessoas"
-            valor={
-              pessoas
-            }
-          />
-
-          <Indicador
-            titulo="Treinamentos"
-            valor={
-              treinamentos
-            }
-          />
-
-          <Indicador
-            titulo="Concluídos"
-            valor={
-              props.resumo.concluidos
-            }
-          />
-
-          <Indicador
-            titulo="Pendentes"
-            valor={
-              props.resumo.pendentes
-            }
-          />
-
-          <Indicador
-            titulo="Vencidos"
-            valor={
-              props.resumo.vencidos
-            }
-          />
-
-          <Indicador
-            titulo="A vencer"
-            valor={
-              props.resumo.aVencer
-            }
-            detalhe="Próximos 30 dias"
-          />
-
-          <Indicador
-            titulo="Nota média"
-            valor={
-              `${notaMedia}%`
-            }
-          />
-
-          <Indicador
-            titulo="Retreinamentos"
-            valor={
-              retreinamentos
-            }
-          />
-        </div>
-
-        <div
-          style={{
-            display:
-              'grid',
-            gridTemplateColumns:
-              'repeat(auto-fit,minmax(320px,1fr))',
-            gap:
-              '16px',
-            marginTop:
-              '18px'
-          }}
-        >
-          <article
-            style={{
-              background:
-                '#fff',
-              border:
-                '1px solid #e5e7eb',
-              borderRadius:
-                '16px',
-              padding:
-                '20px'
-            }}
-          >
-            <h3
-              style={{
-                marginTop:
-                  0,
-                color:
-                  '#0b1f3a'
-              }}
-            >
-              Distribuição por status
-            </h3>
-
-            <Barra
-              label="Concluídos"
-              valor={
-                props.resumo.concluidos
-              }
-              total={
-                total
-              }
-            />
-
-            <Barra
-              label="Pendentes"
-              valor={
-                props.resumo.pendentes
-              }
-              total={
-                total
-              }
-            />
-
-            <Barra
-              label="Vencidos"
-              valor={
-                props.resumo.vencidos
-              }
-              total={
-                total
-              }
-            />
-
-            <Barra
-              label="A vencer"
-              valor={
-                props.resumo.aVencer
-              }
-              total={
-                total
-              }
-            />
-
-            <Barra
-              label="Em andamento"
-              valor={
-                props.resumo.emAndamento
-              }
-              total={
-                total
-              }
-            />
-
-            <Barra
-              label="Reprovados"
-              valor={
-                props.resumo.reprovados
-              }
-              total={
-                total
-              }
-            />
-          </article>
-
-          <article
-            style={{
-              background:
-                '#fff',
-              border:
-                '1px solid #e5e7eb',
-              borderRadius:
-                '16px',
-              padding:
-                '20px'
-            }}
-          >
-            <h3
-              style={{
-                marginTop:
-                  0,
-                color:
-                  '#0b1f3a'
-              }}
-            >
-              Power BI
-            </h3>
-
-            <p
-              style={{
-                color:
-                  '#475569',
-                lineHeight:
-                  1.6
-              }}
-            >
-              {abasVisiveis.length > 0
-                ? 'Os dashboards do Power BI estão disponíveis nas abas acima.'
-                : ehAdministrador && dashboardService
-                  ? 'Nenhum dashboard publicado ainda. Use “Gerenciar dashboards” para adicionar as abas com os relatórios do Power BI.'
-                  : 'Os dashboards do Power BI serão publicados nesta página em breve.'}
-            </p>
-
-            <div
-              style={{
-                marginTop:
-                  '18px',
-                minHeight:
-                  '220px',
-                border:
-                  '1px dashed #cbd5e1',
-                borderRadius:
-                  '12px',
-                display:
-                  'flex',
-                alignItems:
-                  'center',
-                justifyContent:
-                  'center',
-                textAlign:
-                  'center',
-                padding:
-                  '20px',
-                background:
-                  '#f8fafc',
-                color:
-                  '#64748b'
-              }}
-            >
-              {abasVisiveis.length > 0 ? (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
-                  {abasVisiveis.map(d => (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => setAbaAtiva(d.id)}
-                      style={{
-                        padding: '8px 12px',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '8px',
-                        background: '#fff',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: '#1f4e96'
-                      }}
-                    >
-                      {d.nome}
-                    </button>
-                  ))}
-                </div>
-              ) : ehAdministrador && dashboardService ? (
-                <button
-                  type="button"
-                  onClick={() => setGerenciando(true)}
-                  style={{
-                    padding: '9px 14px',
-                    border: 'none',
-                    borderRadius: '8px',
-                    background: '#1f4e96',
-                    color: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: 700
-                  }}
-                >
-                  + Adicionar dashboard
-                </button>
-              ) : (
-                'Nenhum dashboard publicado.'
-              )}
-            </div>
-          </article>
-        </div>
-          </>
         )}
 
         {gerenciando && dashboardService && (

@@ -11,7 +11,8 @@ import {
 export type PerfilArea =
   | 'Membro'
   | 'Gestor'
-  | 'Administrador da área';
+  | 'Administrador da área'
+  | 'Editor';
 
 export interface IAreaAdmin {
   id: string;
@@ -71,7 +72,9 @@ const PERFIL_AREA: Record<
 > = {
   Membro: 100000000,
   Gestor: 100000001,
-  'Administrador da área': 100000002
+  'Administrador da área': 100000002,
+  // Opção criada por scripts/dataverse/adicionar-papel-editor-area.ps1
+  Editor: 100000003
 };
 
 const PERFIL_AREA_REVERSO: Record<
@@ -80,7 +83,8 @@ const PERFIL_AREA_REVERSO: Record<
 > = {
   100000000: 'Membro',
   100000001: 'Gestor',
-  100000002: 'Administrador da área'
+  100000002: 'Administrador da área',
+  100000003: 'Editor'
 };
 
 const texto = (
@@ -142,7 +146,8 @@ const perfilArea = (
   if (
     formatado === 'Membro' ||
     formatado === 'Gestor' ||
-    formatado === 'Administrador da área'
+    formatado === 'Administrador da área' ||
+    formatado === 'Editor'
   ) {
     return formatado;
   }

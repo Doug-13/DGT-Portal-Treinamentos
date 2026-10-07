@@ -36,10 +36,9 @@ import {
 // ============================================================
 // USUÁRIOS E ACESSOS (menu do nome do usuário, no topo)
 //
-// Administrador: todos os usuários; perfil do portal, papéis em
-// qualquer área e módulos liberados.
-// Gestor de área: só as pessoas das áreas que gerencia; inclui ou
-// retira pessoas dessas áreas e define Membro ou Gestor nelas.
+// Somente Administrador: perfil do portal, papéis por área (Membro,
+// Gestor, Administrador da área, Editor) e módulos liberados.
+// Regras do que cada combinação libera: utils/regrasAcesso.ts.
 // ============================================================
 
 export interface IUsuariosAcessosPageProps {
@@ -54,9 +53,9 @@ const COR_TEXTO_2 = '#64748b';
 
 const PERFIS_PORTAL: Array<{ valor: PerfilAcesso; rotulo: string; descricao: string }> = [
   { valor: 'Funcionario', rotulo: 'Colaborador', descricao: 'Faz os próprios treinamentos e consulta documentos.' },
-  { valor: 'Editor', rotulo: 'Editor', descricao: 'Mantém conteúdo: treinamentos, trilhas, avaliações e documentos.' },
-  { valor: 'Gestor', rotulo: 'Gestor', descricao: 'Recursos de gestão em todo o portal (equipe, atribuição, indicadores).' },
-  { valor: 'Administrador', rotulo: 'Administrador', descricao: 'Acesso total.' }
+  { valor: 'Editor', rotulo: 'Editor', descricao: 'Cria e mantém o conteúdo dos módulos liberados e acompanha a equipe das áreas em que é Editor (sem área de Editor = todas). Não cadastra usuários nem altera acessos.' },
+  { valor: 'Gestor', rotulo: 'Gestor', descricao: 'Acompanha a equipe, atribui treinamentos, vê conformidade e aprova documentos em todo o portal. Não cria conteúdo.' },
+  { valor: 'Administrador', rotulo: 'Administrador', descricao: 'Acesso total, inclusive usuários, acessos e permissões.' }
 ];
 
 const rotuloPerfil = (
@@ -67,7 +66,8 @@ const rotuloPerfil = (
 const COR_PERFIL_AREA: Record<string, { cor: string; fundo: string }> = {
   Membro: { cor: '#334155', fundo: '#F1F5F9' },
   Gestor: { cor: '#0F6CBD', fundo: '#E8F2FF' },
-  'Administrador da área': { cor: '#485CC7', fundo: '#E8EAF8' }
+  'Administrador da área': { cor: '#485CC7', fundo: '#E8EAF8' },
+  Editor: { cor: '#0E7C66', fundo: '#E3F6F1' }
 };
 
 const guid = (valor?: string): string =>
@@ -170,7 +170,7 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
   };
 
   const perfisAreaPermitidos: PerfilArea[] =
-    admin ? ['Membro', 'Gestor', 'Administrador da área'] : ['Membro', 'Gestor'];
+    admin ? ['Membro', 'Gestor', 'Administrador da área', 'Editor'] : [];
 
   const areasDisponiveis: IAreaAdmin[] =
     dados.areasGerenciaveis.filter(
@@ -292,8 +292,9 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
           <div style={secao}>
             <h3 style={titulo}>Papéis por área</h3>
             <p style={{ fontSize: '12px', color: COR_TEXTO_2, margin: '0 0 8px' }}>
-              A mesma pessoa pode ser <strong>Membro</strong> em uma área e <strong>Gestor</strong> em outra. Ser Gestor de uma área libera
-              equipe, atribuição, aprovação de documentos e esta tela — somente para aquela área.
+              A mesma pessoa pode ter papéis diferentes em cada área. <strong>Gestor</strong> (ou Administrador da área) libera equipe,
+              atribuição e aprovação de documentos naquela área. <strong>Editor</strong> libera criar conteúdo (nos módulos marcados abaixo)
+              e acompanhar a equipe daquela área.
             </p>
 
             <div style={{ border: `1px solid ${COR_BORDA}`, borderRadius: '10px', background: '#FFFFFF', overflow: 'hidden' }}>
@@ -485,7 +486,8 @@ const UsuariosAcessosPage: React.FC<IUsuariosAcessosPageProps> = ({
   const indicadores = dados
     ? [
       { titulo: admin ? 'Usuários' : 'Pessoas nas suas áreas', valor: dados.usuarios.length },
-      { titulo: 'Gestores de área', valor: dados.usuarios.filter(item => item.vinculos.some(v => v.ativo && v.perfil !== 'Membro')).length },
+      { titulo: 'Gestores de área', valor: dados.usuarios.filter(item => item.vinculos.some(v => v.ativo && (v.perfil === 'Gestor' || v.perfil === 'Administrador da área'))).length },
+      { titulo: 'Editores', valor: dados.usuarios.filter(item => item.usuario.perfilAcesso === 'Editor' || item.vinculos.some(v => v.ativo && v.perfil === 'Editor')).length },
       { titulo: 'Sem área', valor: dados.usuarios.filter(item => !item.vinculos.some(v => v.ativo)).length },
       { titulo: 'Com módulos personalizados', valor: dados.usuarios.filter(item => !!item.modulos).length }
     ]

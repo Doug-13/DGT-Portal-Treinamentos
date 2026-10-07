@@ -61,6 +61,11 @@ import {
   compararRevisoes
 } from '../../utils/numeracaoRevisao';
 
+import {
+  formatarDataCurta,
+  vencimentoDocumento
+} from '../../utils/vencimentoDocumento';
+
 import PreviaDocumentoModal from
   './PreviaDocumentoModal';
 
@@ -1018,6 +1023,49 @@ const DocumentoDetalhePage:
                         </span>
                       )
                       : statusDocumento
+                  }
+                </ItemResumo>
+
+                <ItemResumo titulo="Criado em">
+                  {formatarDataCurta(documento.criadoEm)}
+                </ItemResumo>
+
+                <ItemResumo titulo="Vencimento (revisão periódica)">
+                  {
+                    (() => {
+                      const vencimento = vencimentoDocumento(documento);
+                      if (!vencimento) {
+                        return '-';
+                      }
+                      const hoje = new Date();
+                      hoje.setHours(0, 0, 0, 0);
+                      const [ano, mes, dia] = vencimento.data.split('-').map(Number);
+                      const dias = Math.round((new Date(ano, mes - 1, dia).getTime() - hoje.getTime()) / 86400000);
+                      const aviso =
+                        dias < 0
+                          ? { texto: `vencido há ${Math.abs(dias)} dia(s)`, cor: '#B42318', fundo: '#FDE7E9' }
+                          : dias <= 30
+                            ? { texto: dias === 0 ? 'vence hoje' : `vence em ${dias} dia(s)`, cor: '#B45309', fundo: '#FFF4E5' }
+                            : undefined;
+                      return (
+                        <span
+                          title={
+                            vencimento.origem === 'criacao'
+                              ? '1 ano após a criação do documento (ainda sem publicação).'
+                              : '1 ano após a vigência da última revisão publicada.'
+                          }
+                        >
+                          {formatarDataCurta(vencimento.data)}
+                          {
+                            aviso && (
+                              <span style={{ marginLeft: '6px', padding: '1px 7px', borderRadius: '8px', background: aviso.fundo, color: aviso.cor, fontSize: '11px', fontWeight: 700 }}>
+                                {aviso.texto}
+                              </span>
+                            )
+                          }
+                        </span>
+                      );
+                    })()
                   }
                 </ItemResumo>
 

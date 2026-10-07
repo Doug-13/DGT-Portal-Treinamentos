@@ -15,6 +15,8 @@ export type StatusConformidade =
 export interface IItemConformidade {
   id: string;
   usuario: string;
+  // Id do dgt_usuario (usado no recorte por área)
+  usuarioId?: string;
   treinamento: string;
   trilha: string;
   status: StatusConformidade;
@@ -253,6 +255,94 @@ const status = (
   return 'Pendente';
 };
 
+// Usado também para recalcular o resumo após o recorte por área.
+export const calcularResumoConformidade = (
+  itens:
+    IItemConformidade[]
+): IResumoConformidade => {
+
+  const total =
+    itens.length;
+
+  const concluidos =
+    itens.filter(
+      x =>
+        x.status ===
+        'Concluído'
+    ).length;
+
+  const vencidos =
+    itens.filter(
+      x =>
+        x.status ===
+        'Vencido'
+    ).length;
+
+  const aVencer =
+    itens.filter(
+      x =>
+        x.status ===
+        'A vencer'
+    ).length;
+
+  const bloqueados =
+    itens.filter(
+      x =>
+        x.status ===
+        'Bloqueado'
+    ).length;
+
+  const emAndamento =
+    itens.filter(
+      x =>
+        x.status ===
+        'Em andamento'
+    ).length;
+
+  const reprovados =
+    itens.filter(
+      x =>
+        x.status ===
+        'Reprovado'
+    ).length;
+
+  const pendentes =
+    total -
+    concluidos -
+    vencidos -
+    aVencer -
+    bloqueados -
+    emAndamento -
+    reprovados;
+
+  const conformidadePercentual =
+    total > 0
+      ? Math.round(
+          (
+            concluidos /
+            total
+          ) *
+          100
+        )
+      : 0;
+
+  return {
+    total,
+    concluidos,
+    pendentes:
+      Math.max(
+        pendentes,
+        0
+      ),
+    vencidos,
+    aVencer,
+    bloqueados,
+    emAndamento,
+    reprovados,
+    conformidadePercentual
+  };
+};
+
 export class ConformidadeService {
 
   private readonly dataverse:
@@ -298,6 +388,15 @@ export class ConformidadeService {
                   'dgt_usuariotreinamentoid'
                 ],
                 `registro-${indice}`
+              ),
+
+            usuarioId:
+              texto(
+                registro,
+                [
+                  '_dgt_usuario_value'
+                ],
+                ''
               ),
 
             usuario:
@@ -384,100 +483,13 @@ export class ConformidadeService {
       );
 
     const resumo =
-      this.calcularResumo(
+      calcularResumoConformidade(
         itens
       );
 
     return {
       itens,
       resumo
-    };
-  }
-
-  private calcularResumo(
-    itens:
-      IItemConformidade[]
-  ): IResumoConformidade {
-
-    const total =
-      itens.length;
-
-    const concluidos =
-      itens.filter(
-        x =>
-          x.status ===
-          'Concluído'
-      ).length;
-
-    const vencidos =
-      itens.filter(
-        x =>
-          x.status ===
-          'Vencido'
-      ).length;
-
-    const aVencer =
-      itens.filter(
-        x =>
-          x.status ===
-          'A vencer'
-      ).length;
-
-    const bloqueados =
-      itens.filter(
-        x =>
-          x.status ===
-          'Bloqueado'
-      ).length;
-
-    const emAndamento =
-      itens.filter(
-        x =>
-          x.status ===
-          'Em andamento'
-      ).length;
-
-    const reprovados =
-      itens.filter(
-        x =>
-          x.status ===
-          'Reprovado'
-      ).length;
-
-    const pendentes =
-      total -
-      concluidos -
-      vencidos -
-      aVencer -
-      bloqueados -
-      emAndamento -
-      reprovados;
-
-    const conformidadePercentual =
-      total > 0
-        ? Math.round(
-            (
-              concluidos /
-              total
-            ) *
-            100
-          )
-        : 0;
-
-    return {
-      total,
-      concluidos,
-      pendentes:
-        Math.max(
-          pendentes,
-          0
-        ),
-      vencidos,
-      aVencer,
-      bloqueados,
-      emAndamento,
-      reprovados,
-      conformidadePercentual
     };
   }
 }

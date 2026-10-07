@@ -10,6 +10,12 @@ import {
   moduloLiberado as moduloLiberadoPara
 } from '../../utils/modulosPortal';
 
+import {
+  calcularRegrasAcesso,
+  ehPapelEditor,
+  ehPapelGestor
+} from '../../utils/regrasAcesso';
+
 // ============================================================
 // RESUMO DO ACESSO EFETIVO
 //
@@ -57,23 +63,35 @@ export const ResumoAcessoEfetivo: React.FC<IResumoAcessoEfetivoProps> = ({
   modulos
 }) => {
 
-  const admin = perfil === 'Administrador';
+  const regras =
+    calcularRegrasAcesso(perfil, vinculos, modulos);
+
+  const admin = regras.admin;
 
   const gestorEm =
-    vinculos.filter(item => item.perfil !== 'Membro').map(item => item.areaNome);
+    vinculos.filter(item => ehPapelGestor(item.perfil)).map(item => item.areaNome);
+
+  const editorEm =
+    vinculos.filter(item => ehPapelEditor(item.perfil)).map(item => item.areaNome);
 
   const membroEm =
     vinculos.filter(item => item.perfil === 'Membro').map(item => item.areaNome);
 
-  const gestaoGlobal = admin || perfil === 'Gestor';
-  const gestaoDeArea = gestaoGlobal || gestorEm.length > 0;
-  const conteudo = admin || perfil === 'Editor';
-
   const moduloLiberado = (chave: ChaveModuloPortal): boolean =>
     moduloLiberadoPara(perfil, modulos, chave);
 
-  const escopo =
-    gestaoGlobal ? 'todas as áreas' : gestorEm.join(', ');
+  const nomesEscopo =
+    regras.escopoAreas === undefined
+      ? 'todas as áreas'
+      : gestorEm.concat(editorEm).filter((nome, i, lista) => lista.indexOf(nome) === i).join(', ') || '—';
+
+  const modulosConteudo =
+    [
+      regras.podeGerenciarTreinamentos ? 'Treinamentos' : '',
+      regras.podeGerenciarDocumentos ? 'Documentos' : '',
+      regras.podeGerenciarProcessos ? 'Processos' : '',
+      regras.podeGerenciarDashboards ? 'Dashboards de Indicadores' : ''
+    ].filter(Boolean);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '10px', padding: '12px 14px' }}>
@@ -90,11 +108,11 @@ export const ResumoAcessoEfetivo: React.FC<IResumoAcessoEfetivoProps> = ({
         <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#64748b', marginBottom: '4px' }}>Pode fazer</div>
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           <Linha ok={true} titulo="Fazer os próprios treinamentos e consultar documentos" detalhe={membroEm.length > 0 ? `Membro em: ${membroEm.join(', ')}` : undefined} />
-          <Linha ok={gestaoDeArea} titulo="Acompanhar equipe e atribuir treinamentos" detalhe={gestaoDeArea ? `Em: ${escopo}` : undefined} />
-          <Linha ok={gestaoDeArea} titulo="Aprovar documentos" detalhe={gestaoDeArea ? `Áreas em que é Gestor: ${gestorEm.join(', ') || (admin ? 'todas' : '—')}` : undefined} />
-          <Linha ok={gestaoDeArea} titulo="Gerenciar usuários e papéis" detalhe={gestaoDeArea ? `Em: ${escopo}` : undefined} />
-          <Linha ok={conteudo} titulo="Manter conteúdo (treinamentos, trilhas, avaliações, documentos)" />
-          <Linha ok={admin} titulo="Administrar o portal (perfis, módulos, áreas, configurações)" />
+          <Linha ok={regras.podeVerEquipe} titulo="Acompanhar equipe e atribuir treinamentos" detalhe={regras.podeVerEquipe ? `Em: ${nomesEscopo}` : undefined} />
+          <Linha ok={regras.podeAprovarDocumentos} titulo="Aprovar documentos" detalhe={regras.podeAprovarDocumentos ? (admin || perfil === 'Gestor' ? 'Todas as áreas' : `Áreas em que é Gestor: ${gestorEm.join(', ')}`) : undefined} />
+          <Linha ok={modulosConteudo.length > 0} titulo="Criar e manter conteúdo" detalhe={modulosConteudo.length > 0 ? `Módulos: ${modulosConteudo.join(', ')}` : (regras.editor ? 'Nenhum módulo de conteúdo liberado' : undefined)} />
+          <Linha ok={regras.podeGerenciarUsuarios} titulo="Cadastrar usuários e alterar acessos" />
+          <Linha ok={admin} titulo="Administrar o portal (perfis, módulos, áreas, permissões)" />
         </ul>
       </div>
     </div>

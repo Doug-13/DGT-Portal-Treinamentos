@@ -143,14 +143,14 @@ export class UsuariosAcessosService {
     };
   }
 
+  // Somente o Administrador cadastra pessoas nas áreas e altera
+  // papéis (regra do portal: Editor e Gestor não gerenciam acessos).
   public podeGerenciarArea(
     contexto: IContextoAcesso | undefined,
-    areaId: string
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _areaId: string
   ): boolean {
-    return (
-      this.ehAdministrador(contexto) ||
-      (contexto?.areasGestor || []).map(guid).indexOf(guid(areaId)) >= 0
-    );
+    return this.ehAdministrador(contexto);
   }
 
   public async definirPerfilGlobal(
@@ -201,7 +201,7 @@ export class UsuariosAcessosService {
   ): Promise<void> {
 
     if (!this.podeGerenciarArea(contexto, dados.areaId)) {
-      throw new Error('Você só pode gerenciar pessoas das áreas em que é gestor.');
+      throw new Error('Somente administradores incluem pessoas nas áreas e alteram papéis.');
     }
 
     if (dados.perfil === 'Administrador da área' && !this.ehAdministrador(contexto)) {

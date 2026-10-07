@@ -8,33 +8,19 @@ import {
   lerModulosAcesso
 } from '../utils/modulosPortal';
 
+import {
+  calcularRegrasAcesso
+} from '../utils/regrasAcesso';
+
 // ============================================================
-// PERFIS GLOBAIS DO PORTAL (campo dgt_usuario.dgt_perfilacesso)
+// CONTEXTO DE ACESSO DO USUÁRIO LOGADO
 //
-// Funcionario   → realiza os próprios treinamentos e consulta documentos.
-// Editor        → cria e mantém conteúdo: treinamentos, módulos,
-//                 avaliações, trilhas, documentos e revisões (elaboração
-//                 e envio para aprovação). NÃO aprova nem publica
-//                 revisões, NÃO atribui treinamentos, NÃO vê equipe/
-//                 indicadores e NÃO administra áreas e acessos.
-// Gestor        → acompanha equipe, atribui treinamentos, vê
-//                 conformidade/indicadores. A aprovação de documentos
-//                 continua dependendo de ser Gestor DA ÁREA do documento
-//                 (dgt_usuarioarea).
-// Administrador → tudo.
-//
-// PAPÉIS POR ÁREA (dgt_usuarioarea.dgt_perfilarea): Membro, Gestor,
-// Administrador da área. Quem é Gestor (ou Administrador) em pelo
-// menos uma área recebe os recursos de gestão (equipe, atribuição,
-// indicadores, usuários e acessos) LIMITADOS às suas áreas — mesmo
-// que o perfil global seja Funcionário. Assim uma pessoa pode ser
-// "usuária" em uma área e "gestora" em outra.
-//
-// MÓDULOS (dgt_usuario.dgt_modulosacesso, opcional): lista de módulos
-// liberados ao usuário. Vazio = todos os que o perfil permite.
+// As regras (o que cada perfil, papel por área e módulo libera)
+// ficam em utils/regrasAcesso.ts — fonte única usada também pelas
+// rotas e pela tela "Usuários e acessos".
 //
 // IMPORTANTE: isto organiza a TELA. A proteção real dos dados está nas
-// Security Roles do Dataverse (DGT - Treinamentos - <Perfil>).
+// Security Roles do Dataverse e nos plugins do servidor.
 // ============================================================
 
 export interface IVinculoAcesso {
@@ -66,9 +52,20 @@ export interface IContextoAcesso {
   podeVerEquipe: boolean;
   podeVerIndicadoresGerenciais: boolean;
 
-  // Papéis por área (ativos) e áreas em que o usuário é gestor.
+  // Novos (regras de Editor/Gestor por área e módulo)
+  podeAprovarDocumentos?: boolean;
+  podeGerenciarProcessos?: boolean;
+  podeGerenciarDashboards?: boolean;
+
+  // Papéis por área (ativos) e áreas em que o usuário é gestor
+  // (Gestor ou Administrador da área) ou editor.
   vinculosArea?: IVinculoAcesso[];
   areasGestor?: string[];
+  areasEditor?: string[];
+
+  // Áreas cujas pessoas o usuário acompanha (equipe, atribuição,
+  // conformidade). undefined = todas.
+  escopoAreas?: string[];
 
   // Módulos liberados (undefined = todos os que o perfil permite).
   modulosPermitidos?: ChaveModuloPortal[];
@@ -84,6 +81,13 @@ export const ehGestorEmAlgumaArea = (
     contexto.perfil === 'Administrador' ||
     (contexto.areasGestor || []).length > 0
   );
+
+// Somente o Administrador cadastra usuários e altera acessos.
+export const podeAdministrarAcessos = (
+  contexto?: IContextoAcesso
+): boolean =>
+  !!contexto &&
+  contexto.perfil === 'Administrador';
 
 // Texto do perfil no topo: "Gestor (PRO) · Membro (DEV)", "Administrador"...
 export const descreverPerfil = (
@@ -101,14 +105,30 @@ export const descreverPerfil = (
     return 'Administrador';
   }
 
+  const resumir = (lista: string[]): string =>
+    lista.length === 1 ? lista[0] : `${lista.length} áreas`;
+
   const gestorEm =
     (contexto.vinculosArea || [])
-      .filter(item => item.perfil !== 'Membro')
+      .filter(item => item.perfil === 'Gestor' || item.perfil === 'Administrador da área')
       .map(item => item.areaNome);
 
-  return gestorEm.length > 0 && contexto.perfil !== 'Gestor'
-    ? `${global} · Gestor em ${gestorEm.length === 1 ? gestorEm[0] : `${gestorEm.length} áreas`}`
-    : global;
+  const editorEm =
+    (contexto.vinculosArea || [])
+      .filter(item => item.perfil === 'Editor')
+      .map(item => item.areaNome);
+
+  const partes: string[] = [global];
+
+  if (gestorEm.length > 0 && contexto.perfil !== 'Gestor') {
+    partes.push(`Gestor em ${resumir(gestorEm)}`);
+  }
+
+  if (editorEm.length > 0) {
+    partes.push(`Editor em ${resumir(editorEm)}`);
+  }
+
+  return partes.join(' · ');
 };
 
 const texto = (
@@ -344,16 +364,13 @@ export class AutorizacaoService {
                 ? 'Gestor'
                 : Number(item.dgt_perfilarea) === 100000002
                   ? 'Administrador da área'
-                  : 'Membro')
+                  : Number(item.dgt_perfilarea) === 100000003
+                    ? 'Editor'
+                    : 'Membro')
           }));
     } catch (error) {
       console.error('Não foi possível ler os papéis por área:', error);
     }
-
-    const areasGestor =
-      vinculosArea
-        .filter(item => item.perfil !== 'Membro')
-        .map(item => item.areaId);
 
     // Módulos liberados (coluna opcional dgt_modulosacesso).
     let modulosPermitidos: ChaveModuloPortal[] | undefined;
@@ -376,19 +393,12 @@ export class AutorizacaoService {
       }
     }
 
-    const gestorOuAdmin =
-      perfil ===
-        'Gestor' ||
-      admin ||
-      areasGestor.length > 0;
-
-    // Quem mantém conteúdo (treinamentos, trilhas, avaliações,
-    // documentos). O Editor NÃO recebe permissões de gestão de pessoas
-    // nem de aprovação.
-    const editorOuAdmin =
-      perfil ===
-        'Editor' ||
-      admin;
+    const regras =
+      calcularRegrasAcesso(
+        perfil,
+        vinculosArea,
+        modulosPermitidos
+      );
 
     return {
       usuarioId,
@@ -410,33 +420,48 @@ export class AutorizacaoService {
       ativo,
 
       podeGerenciarTreinamentos:
-        editorOuAdmin,
+        regras.podeGerenciarTreinamentos,
 
       podeGerenciarDocumentos:
-        editorOuAdmin,
+        regras.podeGerenciarDocumentos,
 
-      // Administrador: todos. Gestor de área: só as suas áreas
-      // (a tela "Usuários e acessos" aplica o recorte).
       podeGerenciarUsuarios:
-        admin || areasGestor.length > 0 || perfil === 'Gestor',
+        regras.podeGerenciarUsuarios,
 
       podeGerenciarTrilhas:
-        editorOuAdmin,
+        regras.podeGerenciarTreinamentos,
 
       podeGerenciarAvaliacoes:
-        editorOuAdmin,
+        regras.podeGerenciarTreinamentos,
 
       podeAtribuirTreinamentos:
-        gestorOuAdmin,
+        regras.podeAtribuirTreinamentos,
 
       podeVerEquipe:
-        gestorOuAdmin,
+        regras.podeVerEquipe,
 
       podeVerIndicadoresGerenciais:
-        gestorOuAdmin,
+        regras.podeVerIndicadoresGerenciais,
+
+      podeAprovarDocumentos:
+        regras.podeAprovarDocumentos,
+
+      podeGerenciarProcessos:
+        regras.podeGerenciarProcessos,
+
+      podeGerenciarDashboards:
+        regras.podeGerenciarDashboards,
+
+      areasGestor:
+        regras.areasGestor,
+
+      areasEditor:
+        regras.areasEditor,
+
+      escopoAreas:
+        regras.escopoAreas,
 
       vinculosArea,
-      areasGestor,
       modulosPermitidos
     };
   }

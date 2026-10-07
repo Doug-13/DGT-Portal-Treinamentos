@@ -60,6 +60,13 @@ const todosItens:
       label: 'Conformidade',
       icon: 'checkCircle'
     },
+    // Atribuir treinamento/trilha: Gestor e Editor (nas suas áreas)
+    // e Administrador. Antes só era acessível pela Gestão.
+    {
+      pagina: 'atribuirTreinamento',
+      label: 'Atribuir',
+      icon: 'filePlus'
+    },
     {
       pagina: 'catalogoTreinamentos',
       label: 'Catálogo',

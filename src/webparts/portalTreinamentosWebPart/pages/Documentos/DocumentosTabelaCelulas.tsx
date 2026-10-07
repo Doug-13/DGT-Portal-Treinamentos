@@ -110,9 +110,12 @@ export const PrazoCelula:
   React.FC<{
     prazo?: string;
     publicado: boolean;
+    // 'criacao' = calculado como criação + 1 ano (ainda sem publicação).
+    origem?: 'publicacao' | 'criacao';
   }> = ({
     prazo,
-    publicado
+    publicado,
+    origem
   }) => {
 
     if (
@@ -156,6 +159,11 @@ export const PrazoCelula:
 
     return (
       <span
+        title={
+          origem === 'criacao'
+            ? 'Revisão periódica: 1 ano após a criação do documento.'
+            : 'Revisão periódica: 1 ano após a vigência da revisão publicada.'
+        }
         style={{
           display: 'inline-flex',
           flexDirection: 'column',

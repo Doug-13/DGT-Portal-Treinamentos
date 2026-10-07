@@ -1,6 +1,11 @@
 import * as React from 'react';
 
 import {
+  formatarDataCurta,
+  vencimentoDocumento
+} from '../../utils/vencimentoDocumento';
+
+import {
   IDocumento
 } from '../../models/Documento';
 
@@ -1222,11 +1227,15 @@ const DocumentosHomePage:
                                 Revisão
                               </th>
 
+                              <th style={th}>
+                                Criado em
+                              </th>
+
                               <th
                                 style={th}
-                                title="Prazo da próxima revisão periódica do documento"
+                                title="Data limite da próxima revisão periódica (1 ano após a criação ou a última publicação)"
                               >
-                                Prazo
+                                Vencimento
                               </th>
 
                               <th style={th}>
@@ -1300,10 +1309,22 @@ const DocumentosHomePage:
                                     </td>
 
                                     <td style={td}>
-                                      <PrazoCelula
-                                        prazo={documento.prazoRevisao}
-                                        publicado={statusEhVigente(documento.status)}
-                                      />
+                                      {formatarDataCurta(documento.criadoEm)}
+                                    </td>
+
+                                    <td style={td}>
+                                      {
+                                        (() => {
+                                          const vencimento = vencimentoDocumento(documento);
+                                          return (
+                                            <PrazoCelula
+                                              prazo={vencimento ? vencimento.data : undefined}
+                                              origem={vencimento ? vencimento.origem : undefined}
+                                              publicado={statusEhVigente(documento.status)}
+                                            />
+                                          );
+                                        })()
+                                      }
                                     </td>
 
                                     <td style={td}>

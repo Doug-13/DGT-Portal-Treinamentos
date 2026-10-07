@@ -2502,6 +2502,10 @@ const GestaoAreasPage:
                   Administrador da área
                 </option>
 
+                <option value="Editor">
+                  Editor
+                </option>
+
               </select>
 
               <span

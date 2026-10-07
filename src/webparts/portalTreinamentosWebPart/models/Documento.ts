@@ -23,6 +23,9 @@ export interface IDocumento {
   // automaticamente na publicação de cada revisão.
   prazoRevisao?: string;
 
+  // Data de criação do documento (createdon), AAAA-MM-DD.
+  criadoEm?: string;
+
   tipo: string;
 
   status: string;

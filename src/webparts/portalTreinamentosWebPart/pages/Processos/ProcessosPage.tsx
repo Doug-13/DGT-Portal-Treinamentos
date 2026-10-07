@@ -263,11 +263,15 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
   const [documentoParaVincular, setDocumentoParaVincular] =
     React.useState<string>('');
 
+  // Administrador ou Editor com o módulo Processos liberado
+  // (regra em utils/regrasAcesso.ts). Fallback para contextos antigos.
   const podeEditar =
     !!contexto &&
     (
       contexto.perfil === 'Administrador' ||
-      contexto.podeGerenciarDocumentos
+      (contexto.podeGerenciarProcessos !== undefined
+        ? contexto.podeGerenciarProcessos
+        : contexto.podeGerenciarDocumentos)
     );
 
   const contagemDocumentos = (

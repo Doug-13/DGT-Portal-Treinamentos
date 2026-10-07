@@ -247,6 +247,12 @@ export class DocumentoService {
               'dgt_prazorevisao'
             ).substring(0, 10),
 
+          criadoEm:
+            this.texto(
+              registro,
+              'createdon'
+            ).substring(0, 10),
+
           tipo:
             tipo || '-',
 

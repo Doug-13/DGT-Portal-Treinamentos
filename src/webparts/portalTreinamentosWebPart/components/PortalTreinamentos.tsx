@@ -32,7 +32,9 @@ import { UsuarioService } from '../services/UsuarioService';
 import { TrilhaService } from '../services/TrilhaService';
 import PortalRouter from './PortalRouter';
 import { Pagina } from '../constants/routes';
-import { descreverPerfil, ehGestorEmAlgumaArea } from '../services/AutorizacaoService';
+import { descreverPerfil, podeAdministrarAcessos } from '../services/AutorizacaoService';
+import { calcularResumoConformidade } from '../services/ConformidadeService';
+import { montarEscopoPessoas, pessoaNoEscopo } from '../utils/regrasAcesso';
 import { podeAcessarRota } from '../services/RoutePermissionService';
 import {
   obterModuloPagina,
@@ -659,6 +661,66 @@ const PortalTreinamentos:
     const conformidade =
       useConformidade(
         dataverseService
+      );
+
+    // ==========================================================
+    // RECORTE DE PESSOAS PELAS ÁREAS DO USUÁRIO
+    // ==========================================================
+    // Gestor e Editor de área veem e atribuem apenas para pessoas
+    // das suas áreas (Administrador e Gestor/Editor global: todos).
+    // Regra em utils/regrasAcesso.ts.
+    // ==========================================================
+
+    const escopoPessoas =
+      React.useMemo(
+        () =>
+          montarEscopoPessoas(
+            autorizacao.contexto?.escopoAreas,
+            gestaoAreas.usuariosAreas
+          ),
+        [
+          autorizacao.contexto,
+          gestaoAreas.usuariosAreas
+        ]
+      );
+
+    const conformidadeVisivel =
+      React.useMemo(
+        () => {
+
+          if (!escopoPessoas) {
+            return {
+              itens: conformidade.itens,
+              resumo: conformidade.resumo
+            };
+          }
+
+          const itens =
+            conformidade.itens.filter(
+              item =>
+                pessoaNoEscopo(
+                  escopoPessoas,
+                  {
+                    id: item.usuarioId,
+                    nome: item.usuario,
+                    email: item.usuario
+                  }
+                )
+            );
+
+          return {
+            itens,
+            resumo:
+              calcularResumoConformidade(
+                itens
+              )
+          };
+        },
+        [
+          escopoPessoas,
+          conformidade.itens,
+          conformidade.resumo
+        ]
       );
 
     const calendario =
@@ -2613,6 +2675,16 @@ const PortalTreinamentos:
         paginaAtual
       );
 
+    // Item do menu lateral em destaque. Os itens "avulsos" (módulo
+    // 'outro': Indicadores, RH, Sistemas, Comunicados, Sobre) só
+    // ficam ativos quando a própria página está aberta — antes,
+    // abrir Indicadores destacava todos eles de uma vez.
+    const itemMenuAtivo =
+      (item: { modulo: string; pagina?: Pagina }): boolean =>
+        item.modulo === 'outro'
+          ? !!item.pagina && item.pagina === paginaAtual
+          : moduloAtual === item.modulo;
+
     const menuIntranet:
       Array<{
         label:
@@ -2830,14 +2902,12 @@ const PortalTreinamentos:
                     }
                     type="button"
                     className={
-                      moduloAtual ===
-                        item.modulo
+                      itemMenuAtivo(item)
                         ? styles.intranetMenuActive
                         : styles.intranetMenuItem
                     }
                     title={
-                      moduloAtual ===
-                        item.modulo
+                      itemMenuAtivo(item)
                         ? 'Módulo atual'
                         : 'Módulo da Intranet DGT'
                     }
@@ -3105,7 +3175,7 @@ const PortalTreinamentos:
                       {
                         [
                           { pagina: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', icone: '◉', visivel: true },
-                          { pagina: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', icone: '⚿', visivel: ehGestorEmAlgumaArea(autorizacao.contexto) },
+                          { pagina: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', icone: '⚿', visivel: podeAdministrarAcessos(autorizacao.contexto) },
                           { pagina: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', icone: '▦', visivel: autorizacao.contexto?.perfil === 'Administrador' }
                         ]
                           .filter(item => item.visivel)
@@ -3330,7 +3400,13 @@ const PortalTreinamentos:
                 }
 
                 colaboradores={
-                  colaboradores
+                  colaboradores.filter(
+                    colaborador =>
+                      pessoaNoEscopo(
+                        escopoPessoas,
+                        colaborador
+                      )
+                  )
                 }
 
                 trilhas={
@@ -3890,7 +3966,13 @@ const PortalTreinamentos:
                 }
 
                 usuariosAtribuicao={
-                  gestaoAtribuicoes.usuarios
+                  gestaoAtribuicoes.usuarios.filter(
+                    usuario =>
+                      pessoaNoEscopo(
+                        escopoPessoas,
+                        usuario
+                      )
+                  )
                 }
 
                 trilhasAtribuicao={
@@ -4137,11 +4219,11 @@ const PortalTreinamentos:
                 }
 
                 itensConformidade={
-                  conformidade.itens
+                  conformidadeVisivel.itens
                 }
 
                 resumoConformidade={
-                  conformidade.resumo
+                  conformidadeVisivel.resumo
                 }
 
                 carregandoConformidade={

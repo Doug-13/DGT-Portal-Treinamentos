@@ -3,7 +3,7 @@ import * as React from 'react';
 import {
   IContextoAcesso,
   descreverPerfil,
-  ehGestorEmAlgumaArea
+  podeAdministrarAcessos
 } from '../../services/AutorizacaoService';
 
 import {
@@ -55,7 +55,7 @@ const MeuPerfilPage: React.FC<IMeuPerfilPageProps> = ({
           <div style={{ marginTop: '6px', fontSize: '13px', fontWeight: 700, color: '#0F6CBD' }}>{descreverPerfil(contexto)}</div>
         </div>
         {
-          ehGestorEmAlgumaArea(contexto) && (
+          podeAdministrarAcessos(contexto) && (
             <button type="button" onClick={onIrParaUsuarios} style={{ background: '#0877c9', color: '#FFFFFF', border: 0, borderRadius: '6px', padding: '8px 16px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}>
               Usuários e acessos →
             </button>
@@ -91,7 +91,7 @@ const MeuPerfilPage: React.FC<IMeuPerfilPageProps> = ({
       </div>
 
       <p style={{ fontSize: '12px', color: '#64748b' }}>
-        Precisa de outro acesso? Fale com o gestor da sua área. Perfil no portal e módulos são definidos por um administrador.
+        Precisa de outro acesso? Fale com um administrador do portal: ele define o perfil, os papéis por área e os módulos de cada pessoa.
       </p>
     </section>
   );

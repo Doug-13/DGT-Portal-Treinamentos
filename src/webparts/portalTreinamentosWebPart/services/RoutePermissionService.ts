@@ -53,14 +53,10 @@ const CONTEUDO: PerfilAcesso[] = [
   'Administrador'
 ];
 
-// Quem pode cadastrar novos documentos.
-const CRIAR_DOCUMENTO: PerfilAcesso[] = [
+// Acompanhar equipe, atribuir e ver conformidade: Gestor e Editor
+// (cada um no seu escopo de áreas) e Administrador.
+const ACOMPANHAR_PESSOAS: PerfilAcesso[] = [
   'Editor',
-  'Gestor',
-  'Administrador'
-];
-
-const GESTAO_PESSOAS: PerfilAcesso[] = [
   'Gestor',
   'Administrador'
 ];
@@ -100,15 +96,19 @@ const regras:
     // Editor e Administrador alteram fluxos (controlado na tela).
     { rota: 'processos', perfis: TODOS },
 
-    // Gestão de pessoas (Gestor e Administrador)
-    { rota: 'equipe', perfis: GESTAO_PESSOAS },
-    { rota: 'atribuirTreinamento', perfis: GESTAO_PESSOAS },
-    { rota: 'gestaoConformidade', perfis: GESTAO_PESSOAS },
+    // Acompanhamento de pessoas (Editor, Gestor e Administrador; o
+    // recorte pelas áreas de cada um é aplicado nos dados).
+    { rota: 'equipe', perfis: ACOMPANHAR_PESSOAS },
+    { rota: 'atribuirTreinamento', perfis: ACOMPANHAR_PESSOAS },
+    { rota: 'gestaoConformidade', perfis: ACOMPANHAR_PESSOAS },
+
+    // Indicadores: a entrada é controlada pelo MÓDULO (Usuários e
+    // acessos). O que cada perfil vê lá dentro é tratado na página.
     { rota: 'indicadores', perfis: TODOS },
 
-    // Cadastro de documentos (Editor, Gestor e Administrador).
-    // O Funcionário continua consultando documentos, mas não os cria.
-    { rota: 'novoDocumento', perfis: CRIAR_DOCUMENTO },
+    // Cadastro de documentos: quem mantém conteúdo (Editor e
+    // Administrador). O Gestor aprova, não cria.
+    { rota: 'novoDocumento', perfis: CONTEUDO },
 
     // Gestão de conteúdo (Editor e Administrador)
     { rota: 'gestao', perfis: CONTEUDO },
@@ -127,9 +127,10 @@ const regras:
     // (antes não havia regra para esta rota, o que a tornava pública)
     { rota: 'gestaoAreas', perfis: SOMENTE_ADMIN },
 
+    // Usuários e acessos: somente Administrador
+    { rota: 'usuariosAcessos', perfis: SOMENTE_ADMIN },
+
     // Licitações (PNCP)
-    // Usuários e acessos: Administrador (todos) e gestores (suas áreas)
-    { rota: 'usuariosAcessos', perfis: GESTAO_PESSOAS },
 
     { rota: 'licitacoes', perfis: LICITACOES },
     { rota: 'licitacoesTeste', perfis: LICITACOES }
@@ -222,12 +223,19 @@ export const verificarPermissaoRota = (
     };
   }
 
-  // Gestor de alguma área conta como "Gestor" nas rotas de gestão
-  // (o recorte pelas áreas dele é feito em cada tela).
+  // Gestor de alguma área conta como "Gestor" e Editor de alguma
+  // área conta como "Editor" (o recorte pelas áreas é feito nos dados).
   const perfisEfetivos: PerfilAcesso[] =
-    (contexto.areasGestor || []).length > 0 && contexto.perfil !== 'Administrador'
-      ? [contexto.perfil, 'Gestor']
-      : [contexto.perfil];
+    [contexto.perfil];
+
+  if (contexto.perfil !== 'Administrador') {
+    if ((contexto.areasGestor || []).length > 0) {
+      perfisEfetivos.push('Gestor');
+    }
+    if ((contexto.areasEditor || []).length > 0) {
+      perfisEfetivos.push('Editor');
+    }
+  }
 
   if (
     perfisEfetivos.some(
