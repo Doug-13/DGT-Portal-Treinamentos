@@ -5,6 +5,9 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 `.\Gerar-Versao.ps1` elas passam para a nova versão e aparecem em "Novidades".
 
 ## [Não publicado]
+
+## [1.4.0] - 2026-10-08
+
 - Novo: tela Registros de Oportunidade no módulo Arquitetura de Soluções, centralizando as oportunidades vinculadas aos B.O.M.
 - Novo: integração com registros de oportunidade (R.O.) para carregar e utilizar dados da demanda no fluxo de Arquitetura de Soluções.
 - Melhoria: Matriz Go/No-Go atualizada para utilizar as informações da oportunidade e apoiar a avaliação da demanda.

@@ -200,6 +200,223 @@ const Kpi: React.FC<{ titulo: string; valor: string; detalhe?: string; cor: stri
 // Página
 // ------------------------------------------------------------
 
+const PainelRo: React.FC<{
+  servico: RoService;
+  dados: IRoEdicao;
+  registro?: IRegistroOportunidade;
+  executivos: string[];
+  podeDesativar: boolean;
+  onFechar: () => void;
+  onSalvo: (texto: string) => Promise<void>;
+}> = ({ servico, dados, registro, executivos, podeDesativar, onFechar, onSalvo }) => {
+
+  const [form, setForm] = React.useState<IRoEdicao>(dados);
+  const [valorTexto, setValorTexto] = React.useState<string>(
+    dados.valor === undefined ? '' : dados.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+  );
+  const [salvando, setSalvando] = React.useState(false);
+  const [erro, setErro] = React.useState('');
+  const [aba, setAba] = React.useState<'dados' | 'historico'>('dados');
+  const [historico, setHistorico] = React.useState<IAlteracaoRo[] | undefined>(undefined);
+  const [erroHistorico, setErroHistorico] = React.useState('');
+
+  const novo = !form.id;
+
+  const alterar = <K extends keyof IRoEdicao>(c: K, v: IRoEdicao[K]): void => setForm(f => ({ ...f, [c]: v }));
+
+  React.useEffect(() => {
+    if (aba !== 'historico' || !form.id || historico) return;
+    servico.historico(form.id)
+      .then(setHistorico)
+      .catch((e: Error) => setErroHistorico(`Histórico indisponível: ${e.message}. A auditoria precisa estar ligada e o seu perfil precisa poder exibir o histórico de auditoria.`));
+  }, [aba, form.id, historico, servico]);
+
+  const lerValor = (t: string): number | undefined => {
+    const limpo = t.replace(/[^\d,.-]/g, '');
+    if (!limpo) return undefined;
+    const n = Number(limpo.replace(/\./g, '').replace(',', '.'));
+    return isNaN(n) ? undefined : n;
+  };
+
+  const executar = async (acao: () => Promise<void>, texto: string): Promise<void> => {
+    setSalvando(true);
+    setErro('');
+    try {
+      await acao();
+      await onSalvo(texto);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const salvar = (): void => {
+    executar(() => servico.salvar({ ...form, valor: lerValor(valorTexto) }), novo ? 'RO cadastrado.' : 'RO atualizado.').catch(() => undefined);
+  };
+
+  const g2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' };
+  const bloco: React.CSSProperties = { display: 'grid', gap: '12px', padding: '14px', border: `1px solid ${COR.borda}`, borderRadius: '12px', background: '#FFFFFF' };
+  const titBloco: React.CSSProperties = { margin: 0, fontSize: '12px', fontWeight: 800, letterSpacing: '.04em', color: COR.texto2, textTransform: 'uppercase' };
+
+  return ReactDOM.createPortal(
+    <div role="dialog" aria-modal="true" aria-label={novo ? 'Novo RO' : `RO ${form.numero}`}
+      onClick={() => { if (!salvando) onFechar(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 2147483000, background: 'rgba(15,23,42,.35)', display: 'flex', justifyContent: 'flex-end', fontFamily: FONTE }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: '560px', height: '100%', background: '#F7F9FB', boxShadow: '-12px 0 40px rgba(15,23,42,.18)', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Topo */}
+        <div style={{ padding: '16px 20px', background: '#FFFFFF', borderBottom: `1px solid ${COR.borda}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+            <div>
+              <span style={{ fontSize: '11.5px', fontWeight: 700, color: COR.texto2 }}>{novo ? 'NOVO REGISTRO DE OPORTUNIDADE' : 'REGISTRO DE OPORTUNIDADE'}</span>
+              <h3 style={{ margin: '2px 0 0', fontSize: '18px', color: COR.azul }}>{novo ? 'Novo RO' : form.numero}</h3>
+              {!novo && <div style={{ marginTop: '4px' }}><Fabricante nome={form.fabricante} /> <span style={{ fontSize: '12.5px', color: COR.texto2 }}>· {form.projeto}</span></div>}
+            </div>
+            <button type="button" aria-label="Fechar" onClick={onFechar} style={{ border: 0, background: 'transparent', fontSize: '20px', cursor: 'pointer', color: COR.texto2 }}>✕</button>
+          </div>
+          {!novo && (
+            <div style={{ display: 'flex', gap: '4px', marginTop: '12px' }}>
+              {(['dados', 'historico'] as const).map(a => (
+                <button key={a} type="button" onClick={() => setAba(a)}
+                  style={{ padding: '6px 12px', border: 0, borderBottom: `3px solid ${aba === a ? '#0B5CAB' : 'transparent'}`, background: 'transparent', color: aba === a ? '#0B5CAB' : COR.texto2, fontWeight: 700, fontSize: '13px', cursor: 'pointer', fontFamily: FONTE }}>
+                  {a === 'dados' ? 'Dados' : 'Histórico'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Conteúdo */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'grid', gap: '14px', alignContent: 'start' }}>
+
+          {erro && <div role="alert" style={{ padding: '10px 12px', borderRadius: '10px', background: '#FDECEC', color: '#B42318', fontSize: '13px' }}>{erro}</div>}
+
+          {aba === 'dados' && (
+            <>
+              <div style={bloco}>
+                <p style={titBloco}>Identificação</p>
+                <div style={g2}>
+                  <label><span style={rotulo}>Nº do RO *</span><input style={campo} value={form.numero} onChange={e => alterar('numero', e.target.value)} placeholder="Ex.: OP-0690583" /></label>
+                  <label><span style={rotulo}>Fabricante *</span>
+                    <select style={campo} value={form.fabricante} onChange={e => alterar('fabricante', e.target.value)}>
+                      {FABRICANTES.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <label><span style={rotulo}>Cliente / projeto</span><input style={campo} value={form.projeto} onChange={e => alterar('projeto', e.target.value)} placeholder="Ex.: PROCERGS - Escolas" /></label>
+                <div style={g2}>
+                  <label><span style={rotulo}>Nº do projeto no fabricante</span><input style={campo} value={form.numeroProjeto} onChange={e => alterar('numeroProjeto', e.target.value)} placeholder="Opcional (ex.: Hikvision EP-PRJ…)" /></label>
+                  <label><span style={rotulo}>Executivo</span>
+                    <input style={campo} list="ro-executivos" value={form.executivo} onChange={e => alterar('executivo', e.target.value)} />
+                    <datalist id="ro-executivos">{executivos.map(x => <option key={x} value={x} />)}</datalist>
+                  </label>
+                </div>
+              </div>
+
+              <div style={bloco}>
+                <p style={titBloco}>Oportunidade</p>
+                <div style={g2}>
+                  <label><span style={rotulo}>Modalidade</span>
+                    <select style={campo} value={form.modalidade} onChange={e => alterar('modalidade', e.target.value)}>
+                      <option value="">Não informada</option>
+                      {MODALIDADES.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </label>
+                  <label><span style={rotulo}>Valor registrado (R$)</span><input style={{ ...campo, textAlign: 'right' }} inputMode="decimal" value={valorTexto} onChange={e => setValorTexto(e.target.value)} placeholder="0,00" /></label>
+                </div>
+                <label><span style={rotulo}>Edital / pregão</span><input style={campo} value={form.editalPregao} onChange={e => alterar('editalPregao', e.target.value)} placeholder="Ex.: Pregão 8/2026" /></label>
+                <label><span style={rotulo}>Substitui / substituído por</span><input style={campo} value={form.vinculo} onChange={e => alterar('vinculo', e.target.value)} placeholder="Ex.: Substitui a OP-0534195" /></label>
+              </div>
+
+              <div style={bloco}>
+                <p style={titBloco}>Situação e prazos</p>
+                <div style={g2}>
+                  <label><span style={rotulo}>Status do RO</span>
+                    <select style={campo} value={form.statusRo} onChange={e => alterar('statusRo', e.target.value)}>
+                      {STATUS_RO.map(s => <option key={s} value={s}>{(ESTILO_STATUS[s] || { texto: s }).texto}</option>)}
+                    </select>
+                  </label>
+                  <label><span style={rotulo}>Situação do projeto</span>
+                    <select style={campo} value={form.situacao} onChange={e => alterar('situacao', e.target.value)}>
+                      {SITUACOES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div style={{ ...g2, gridTemplateColumns: '1fr 1fr 1fr' }}>
+                  <label><span style={rotulo}>Criação do RO</span><input type="date" style={campo} value={form.dataCriacao} onChange={e => alterar('dataCriacao', e.target.value)} /></label>
+                  <label><span style={rotulo}>Validade</span><input type="date" style={campo} value={form.validade} onChange={e => alterar('validade', e.target.value)} /></label>
+                  <label><span style={rotulo}>Últ. atualização</span><input type="date" style={campo} value={form.dataAtualizacao} onChange={e => alterar('dataAtualizacao', e.target.value)} /></label>
+                </div>
+                <label><span style={rotulo}>Observações</span><textarea rows={3} style={{ ...campo, resize: 'vertical' }} value={form.observacao} onChange={e => alterar('observacao', e.target.value)} /></label>
+              </div>
+
+              {registro && (
+                <p style={{ margin: 0, fontSize: '11.5px', color: COR.texto2 }}>
+                  Criado por <strong>{registro.criadoPor || '—'}</strong> em {dataHoraBr(registro.criadoEm)} · Alterado por <strong>{registro.alteradoPor || '—'}</strong> em {dataHoraBr(registro.alteradoEm)}
+                </p>
+              )}
+            </>
+          )}
+
+          {aba === 'historico' && (
+            <div style={bloco}>
+              <p style={titBloco}>Histórico de alterações</p>
+              {erroHistorico && <p style={{ margin: 0, fontSize: '12.5px', color: '#B45309' }}>{erroHistorico}</p>}
+              {!erroHistorico && !historico && <p style={{ margin: 0, fontSize: '12.5px', color: COR.texto2 }}>Carregando…</p>}
+              {historico && historico.length === 0 && <p style={{ margin: 0, fontSize: '12.5px', color: COR.texto2 }}>Nenhuma alteração registrada ainda.</p>}
+              {historico && historico.length > 0 && (
+                <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {historico.map((h, i) => (
+                    <li key={i} style={{ position: 'relative', padding: '0 0 14px 20px', borderLeft: `2px solid ${COR.borda}`, marginLeft: '6px' }}>
+                      <span style={{ position: 'absolute', left: '-7px', top: '2px', width: '12px', height: '12px', borderRadius: '50%', background: '#FFFFFF', border: '2px solid #0B5CAB' }} />
+                      <div style={{ fontSize: '12.5px', color: COR.azul }}><strong>{h.usuario}</strong> · {h.acao}</div>
+                      <div style={{ fontSize: '11.5px', color: COR.texto2 }}>{dataHoraBr(h.data)}</div>
+                      {h.campos.map((c, j) => (
+                        <div key={j} style={{ marginTop: '4px', fontSize: '12px', color: '#334155' }}>
+                          <strong>{c.campo}:</strong> <span style={{ textDecoration: 'line-through', color: COR.texto2 }}>{c.antes || 'vazio'}</span> → {c.depois || 'vazio'}
+                        </div>
+                      ))}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Rodapé */}
+        {aba === 'dados' && (
+          <div style={{ padding: '12px 20px', background: '#FFFFFF', borderTop: `1px solid ${COR.borda}`, display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {!novo && (
+              <button type="button" style={botao('secundario', salvando)} disabled={salvando}
+                title="Registra que o RO foi atualizado hoje junto ao fabricante"
+                onClick={() => { executar(() => servico.marcarAtualizado(form.id as string), 'RO marcado como atualizado hoje.').catch(() => undefined); }}>
+                ↻ Atualizado hoje
+              </button>
+            )}
+            {!novo && podeDesativar && (
+              <button type="button" style={{ ...botao('secundario', salvando), color: '#B42318' }} disabled={salvando}
+                onClick={() => {
+                  if (window.confirm(form.ativo ? 'Remover este RO da lista? Ele fica guardado no histórico e pode ser reativado.' : 'Reativar este RO?')) {
+                    executar(() => servico.definirAtivo(form.id as string, !form.ativo), form.ativo ? 'RO removido da lista.' : 'RO reativado.').catch(() => undefined);
+                  }
+                }}>
+                {form.ativo ? 'Remover da lista' : 'Reativar'}
+              </button>
+            )}
+            <span style={{ flex: 1 }} />
+            <button type="button" style={botao('secundario', salvando)} disabled={salvando} onClick={onFechar}>Cancelar</button>
+            <button type="button" style={botao('principal', salvando)} disabled={salvando} onClick={salvar}>{salvando ? 'Salvando…' : novo ? 'Cadastrar RO' : 'Salvar'}</button>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ dataverseService, contexto }) => {
 
   const servico = React.useMemo(
@@ -589,222 +806,5 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
 // ------------------------------------------------------------
 // Painel lateral (cadastro / edição / histórico)
 // ------------------------------------------------------------
-
-const PainelRo: React.FC<{
-  servico: RoService;
-  dados: IRoEdicao;
-  registro?: IRegistroOportunidade;
-  executivos: string[];
-  podeDesativar: boolean;
-  onFechar: () => void;
-  onSalvo: (texto: string) => Promise<void>;
-}> = ({ servico, dados, registro, executivos, podeDesativar, onFechar, onSalvo }) => {
-
-  const [form, setForm] = React.useState<IRoEdicao>(dados);
-  const [valorTexto, setValorTexto] = React.useState<string>(
-    dados.valor === undefined ? '' : dados.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-  );
-  const [salvando, setSalvando] = React.useState(false);
-  const [erro, setErro] = React.useState('');
-  const [aba, setAba] = React.useState<'dados' | 'historico'>('dados');
-  const [historico, setHistorico] = React.useState<IAlteracaoRo[] | undefined>(undefined);
-  const [erroHistorico, setErroHistorico] = React.useState('');
-
-  const novo = !form.id;
-
-  const alterar = <K extends keyof IRoEdicao>(c: K, v: IRoEdicao[K]): void => setForm(f => ({ ...f, [c]: v }));
-
-  React.useEffect(() => {
-    if (aba !== 'historico' || !form.id || historico) return;
-    servico.historico(form.id)
-      .then(setHistorico)
-      .catch((e: Error) => setErroHistorico(`Histórico indisponível: ${e.message}. A auditoria precisa estar ligada e o seu perfil precisa poder exibir o histórico de auditoria.`));
-  }, [aba, form.id, historico, servico]);
-
-  const lerValor = (t: string): number | undefined => {
-    const limpo = t.replace(/[^\d,.-]/g, '');
-    if (!limpo) return undefined;
-    const n = Number(limpo.replace(/\./g, '').replace(',', '.'));
-    return isNaN(n) ? undefined : n;
-  };
-
-  const executar = async (acao: () => Promise<void>, texto: string): Promise<void> => {
-    setSalvando(true);
-    setErro('');
-    try {
-      await acao();
-      await onSalvo(texto);
-    } catch (e) {
-      setErro((e as Error).message);
-    } finally {
-      setSalvando(false);
-    }
-  };
-
-  const salvar = (): void => {
-    executar(() => servico.salvar({ ...form, valor: lerValor(valorTexto) }), novo ? 'RO cadastrado.' : 'RO atualizado.').catch(() => undefined);
-  };
-
-  const g2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' };
-  const bloco: React.CSSProperties = { display: 'grid', gap: '12px', padding: '14px', border: `1px solid ${COR.borda}`, borderRadius: '12px', background: '#FFFFFF' };
-  const titBloco: React.CSSProperties = { margin: 0, fontSize: '12px', fontWeight: 800, letterSpacing: '.04em', color: COR.texto2, textTransform: 'uppercase' };
-
-  return ReactDOM.createPortal(
-    <div role="dialog" aria-modal="true" aria-label={novo ? 'Novo RO' : `RO ${form.numero}`}
-      onClick={() => { if (!salvando) onFechar(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 2147483000, background: 'rgba(15,23,42,.35)', display: 'flex', justifyContent: 'flex-end', fontFamily: FONTE }}>
-      <div onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: '560px', height: '100%', background: '#F7F9FB', boxShadow: '-12px 0 40px rgba(15,23,42,.18)', display: 'flex', flexDirection: 'column' }}>
-
-        {/* Topo */}
-        <div style={{ padding: '16px 20px', background: '#FFFFFF', borderBottom: `1px solid ${COR.borda}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-            <div>
-              <span style={{ fontSize: '11.5px', fontWeight: 700, color: COR.texto2 }}>{novo ? 'NOVO REGISTRO DE OPORTUNIDADE' : 'REGISTRO DE OPORTUNIDADE'}</span>
-              <h3 style={{ margin: '2px 0 0', fontSize: '18px', color: COR.azul }}>{novo ? 'Novo RO' : form.numero}</h3>
-              {!novo && <div style={{ marginTop: '4px' }}><Fabricante nome={form.fabricante} /> <span style={{ fontSize: '12.5px', color: COR.texto2 }}>· {form.projeto}</span></div>}
-            </div>
-            <button type="button" aria-label="Fechar" onClick={onFechar} style={{ border: 0, background: 'transparent', fontSize: '20px', cursor: 'pointer', color: COR.texto2 }}>✕</button>
-          </div>
-          {!novo && (
-            <div style={{ display: 'flex', gap: '4px', marginTop: '12px' }}>
-              {(['dados', 'historico'] as const).map(a => (
-                <button key={a} type="button" onClick={() => setAba(a)}
-                  style={{ padding: '6px 12px', border: 0, borderBottom: `3px solid ${aba === a ? '#0B5CAB' : 'transparent'}`, background: 'transparent', color: aba === a ? '#0B5CAB' : COR.texto2, fontWeight: 700, fontSize: '13px', cursor: 'pointer', fontFamily: FONTE }}>
-                  {a === 'dados' ? 'Dados' : 'Histórico'}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Conteúdo */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'grid', gap: '14px', alignContent: 'start' }}>
-
-          {erro && <div role="alert" style={{ padding: '10px 12px', borderRadius: '10px', background: '#FDECEC', color: '#B42318', fontSize: '13px' }}>{erro}</div>}
-
-          {aba === 'dados' && (
-            <>
-              <div style={bloco}>
-                <p style={titBloco}>Identificação</p>
-                <div style={g2}>
-                  <label><span style={rotulo}>Nº do RO *</span><input style={campo} value={form.numero} onChange={e => alterar('numero', e.target.value)} placeholder="Ex.: OP-0690583" /></label>
-                  <label><span style={rotulo}>Fabricante *</span>
-                    <select style={campo} value={form.fabricante} onChange={e => alterar('fabricante', e.target.value)}>
-                      {FABRICANTES.map(f => <option key={f} value={f}>{f}</option>)}
-                    </select>
-                  </label>
-                </div>
-                <label><span style={rotulo}>Cliente / projeto</span><input style={campo} value={form.projeto} onChange={e => alterar('projeto', e.target.value)} placeholder="Ex.: PROCERGS - Escolas" /></label>
-                <div style={g2}>
-                  <label><span style={rotulo}>Nº do projeto no fabricante</span><input style={campo} value={form.numeroProjeto} onChange={e => alterar('numeroProjeto', e.target.value)} placeholder="Opcional (ex.: Hikvision EP-PRJ…)" /></label>
-                  <label><span style={rotulo}>Executivo</span>
-                    <input style={campo} list="ro-executivos" value={form.executivo} onChange={e => alterar('executivo', e.target.value)} />
-                    <datalist id="ro-executivos">{executivos.map(x => <option key={x} value={x} />)}</datalist>
-                  </label>
-                </div>
-              </div>
-
-              <div style={bloco}>
-                <p style={titBloco}>Oportunidade</p>
-                <div style={g2}>
-                  <label><span style={rotulo}>Modalidade</span>
-                    <select style={campo} value={form.modalidade} onChange={e => alterar('modalidade', e.target.value)}>
-                      <option value="">Não informada</option>
-                      {MODALIDADES.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </label>
-                  <label><span style={rotulo}>Valor registrado (R$)</span><input style={{ ...campo, textAlign: 'right' }} inputMode="decimal" value={valorTexto} onChange={e => setValorTexto(e.target.value)} placeholder="0,00" /></label>
-                </div>
-                <label><span style={rotulo}>Edital / pregão</span><input style={campo} value={form.editalPregao} onChange={e => alterar('editalPregao', e.target.value)} placeholder="Ex.: Pregão 8/2026" /></label>
-                <label><span style={rotulo}>Substitui / substituído por</span><input style={campo} value={form.vinculo} onChange={e => alterar('vinculo', e.target.value)} placeholder="Ex.: Substitui a OP-0534195" /></label>
-              </div>
-
-              <div style={bloco}>
-                <p style={titBloco}>Situação e prazos</p>
-                <div style={g2}>
-                  <label><span style={rotulo}>Status do RO</span>
-                    <select style={campo} value={form.statusRo} onChange={e => alterar('statusRo', e.target.value)}>
-                      {STATUS_RO.map(s => <option key={s} value={s}>{(ESTILO_STATUS[s] || { texto: s }).texto}</option>)}
-                    </select>
-                  </label>
-                  <label><span style={rotulo}>Situação do projeto</span>
-                    <select style={campo} value={form.situacao} onChange={e => alterar('situacao', e.target.value)}>
-                      {SITUACOES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </label>
-                </div>
-                <div style={{ ...g2, gridTemplateColumns: '1fr 1fr 1fr' }}>
-                  <label><span style={rotulo}>Criação do RO</span><input type="date" style={campo} value={form.dataCriacao} onChange={e => alterar('dataCriacao', e.target.value)} /></label>
-                  <label><span style={rotulo}>Validade</span><input type="date" style={campo} value={form.validade} onChange={e => alterar('validade', e.target.value)} /></label>
-                  <label><span style={rotulo}>Últ. atualização</span><input type="date" style={campo} value={form.dataAtualizacao} onChange={e => alterar('dataAtualizacao', e.target.value)} /></label>
-                </div>
-                <label><span style={rotulo}>Observações</span><textarea rows={3} style={{ ...campo, resize: 'vertical' }} value={form.observacao} onChange={e => alterar('observacao', e.target.value)} /></label>
-              </div>
-
-              {registro && (
-                <p style={{ margin: 0, fontSize: '11.5px', color: COR.texto2 }}>
-                  Criado por <strong>{registro.criadoPor || '—'}</strong> em {dataHoraBr(registro.criadoEm)} · Alterado por <strong>{registro.alteradoPor || '—'}</strong> em {dataHoraBr(registro.alteradoEm)}
-                </p>
-              )}
-            </>
-          )}
-
-          {aba === 'historico' && (
-            <div style={bloco}>
-              <p style={titBloco}>Histórico de alterações</p>
-              {erroHistorico && <p style={{ margin: 0, fontSize: '12.5px', color: '#B45309' }}>{erroHistorico}</p>}
-              {!erroHistorico && !historico && <p style={{ margin: 0, fontSize: '12.5px', color: COR.texto2 }}>Carregando…</p>}
-              {historico && historico.length === 0 && <p style={{ margin: 0, fontSize: '12.5px', color: COR.texto2 }}>Nenhuma alteração registrada ainda.</p>}
-              {historico && historico.length > 0 && (
-                <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  {historico.map((h, i) => (
-                    <li key={i} style={{ position: 'relative', padding: '0 0 14px 20px', borderLeft: `2px solid ${COR.borda}`, marginLeft: '6px' }}>
-                      <span style={{ position: 'absolute', left: '-7px', top: '2px', width: '12px', height: '12px', borderRadius: '50%', background: '#FFFFFF', border: '2px solid #0B5CAB' }} />
-                      <div style={{ fontSize: '12.5px', color: COR.azul }}><strong>{h.usuario}</strong> · {h.acao}</div>
-                      <div style={{ fontSize: '11.5px', color: COR.texto2 }}>{dataHoraBr(h.data)}</div>
-                      {h.campos.map((c, j) => (
-                        <div key={j} style={{ marginTop: '4px', fontSize: '12px', color: '#334155' }}>
-                          <strong>{c.campo}:</strong> <span style={{ textDecoration: 'line-through', color: COR.texto2 }}>{c.antes || 'vazio'}</span> → {c.depois || 'vazio'}
-                        </div>
-                      ))}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Rodapé */}
-        {aba === 'dados' && (
-          <div style={{ padding: '12px 20px', background: '#FFFFFF', borderTop: `1px solid ${COR.borda}`, display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            {!novo && (
-              <button type="button" style={botao('secundario', salvando)} disabled={salvando}
-                title="Registra que o RO foi atualizado hoje junto ao fabricante"
-                onClick={() => { executar(() => servico.marcarAtualizado(form.id as string), 'RO marcado como atualizado hoje.').catch(() => undefined); }}>
-                ↻ Atualizado hoje
-              </button>
-            )}
-            {!novo && podeDesativar && (
-              <button type="button" style={{ ...botao('secundario', salvando), color: '#B42318' }} disabled={salvando}
-                onClick={() => {
-                  if (window.confirm(form.ativo ? 'Remover este RO da lista? Ele fica guardado no histórico e pode ser reativado.' : 'Reativar este RO?')) {
-                    executar(() => servico.definirAtivo(form.id as string, !form.ativo), form.ativo ? 'RO removido da lista.' : 'RO reativado.').catch(() => undefined);
-                  }
-                }}>
-                {form.ativo ? 'Remover da lista' : 'Reativar'}
-              </button>
-            )}
-            <span style={{ flex: 1 }} />
-            <button type="button" style={botao('secundario', salvando)} disabled={salvando} onClick={onFechar}>Cancelar</button>
-            <button type="button" style={botao('principal', salvando)} disabled={salvando} onClick={salvar}>{salvando ? 'Salvando…' : novo ? 'Cadastrar RO' : 'Salvar'}</button>
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body
-  );
-};
 
 export default RegistrosOportunidadePage;

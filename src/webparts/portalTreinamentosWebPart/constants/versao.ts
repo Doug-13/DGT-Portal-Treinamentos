@@ -17,15 +17,93 @@ export interface INovidadeVersao {
   itens: INovidadeItem[];
 }
 
-export const VERSAO_PORTAL = "1.3.0";
+export const VERSAO_PORTAL = "1.4.0";
 
-export const VERSAO_SOLUCAO = "1.3.0.0";
+export const VERSAO_SOLUCAO = "1.4.0.0";
 
-export const DATA_BUILD = "2026-10-08T18:32:34.809Z";
+export const DATA_BUILD = "2026-10-08T18:47:00.037Z";
 
-export const COMMIT_BUILD = "0b816c5";
+export const COMMIT_BUILD = "226b673";
 
 export const NOVIDADES: INovidadeVersao[] = [
+  {
+    "versao": "1.4.0",
+    "data": "2026-10-08",
+    "itens": [
+      {
+        "tipo": "Novo",
+        "texto": "tela Registros de Oportunidade no módulo Arquitetura de Soluções, centralizando as oportunidades vinculadas aos B.O.M."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "integração com registros de oportunidade (R.O.) para carregar e utilizar dados da demanda no fluxo de Arquitetura de Soluções."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "Matriz Go/No-Go atualizada para utilizar as informações da oportunidade e apoiar a avaliação da demanda."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "navegação do módulo Arquitetura de Soluções ampliada com novas rotas e acesso aos Registros de Oportunidade."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "controle de acesso ao módulo Arquitetura ajustado nas telas Usuários e acessos, menus e permissões de rota."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "interface e ícones do módulo Arquitetura atualizados para manter o padrão visual do Portal DGT."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "integração dos Indicadores com o ClickUp, com sincronização de dados para acompanhamento das iniciativas e resultados no portal."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "plugin de sincronização com o ClickUp e documentação técnica da integração dos Indicadores."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "configuração avançada da Pergunta rápida nos módulos, com modal próprio para definir e editar as opções da atividade."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "gestão de módulos e avaliações aprimorada, com ações reorganizadas e edição de conteúdos mais consistente."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "controle de acesso aos Indicadores refinado, respeitando perfil do usuário, permissões por módulo e papéis por área."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "tela Usuários e acessos atualizada para facilitar a administração das permissões dos módulos do portal."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "navegação e permissões das rotas ajustadas para refletir corretamente os módulos disponíveis para cada usuário."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "script para adicionar o papel de Editor de Área no Dataverse, permitindo ampliar a configuração de permissões por área."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "Indicadores (dados sensíveis) liberados por padrão só para Gestores e Administradores; Colaboradores e Editores acessam apenas com o módulo marcado em Usuários e acessos."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "módulo Arquitetura de Soluções, com a Visão geral dos B.O.M., Novo B.O.M., Dados da demanda e Matriz Go/No-Go (seleção de kit e cálculo de HH em definição)."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "colunas \"Criado em\" e \"Vencimento\" na lista de documentos e no detalhe; o documento deve ser revisado 1 ano após a criação ou a última publicação, com aviso nos últimos 30 dias e quando vencido."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "a publicação pelo fluxo do processo passa a definir o prazo da próxima revisão (periodicidade de 12 meses)."
+      }
+    ]
+  },
   {
     "versao": "1.3.0",
     "data": "2026-10-06",
@@ -303,53 +381,4 @@ export const NOVIDADES: INovidadeVersao[] = [
 ];
 
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
-export const NOVIDADES_PENDENTES: INovidadeItem[] = [
-  {
-    "tipo": "Novo",
-    "texto": "integração dos Indicadores com o ClickUp, com sincronização de dados para acompanhamento das iniciativas e resultados no portal."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "plugin de sincronização com o ClickUp e documentação técnica da integração dos Indicadores."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "configuração avançada da Pergunta rápida nos módulos, com modal próprio para definir e editar as opções da atividade."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "gestão de módulos e avaliações aprimorada, com ações reorganizadas e edição de conteúdos mais consistente."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "controle de acesso aos Indicadores refinado, respeitando perfil do usuário, permissões por módulo e papéis por área."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "tela Usuários e acessos atualizada para facilitar a administração das permissões dos módulos do portal."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "navegação e permissões das rotas ajustadas para refletir corretamente os módulos disponíveis para cada usuário."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "script para adicionar o papel de Editor de Área no Dataverse, permitindo ampliar a configuração de permissões por área."
-  },
-  {
-    "tipo": "Correção",
-    "texto": "Indicadores (dados sensíveis) liberados por padrão só para Gestores e Administradores; Colaboradores e Editores acessam apenas com o módulo marcado em Usuários e acessos."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "módulo Arquitetura de Soluções, com a Visão geral dos B.O.M., Novo B.O.M., Dados da demanda e Matriz Go/No-Go (seleção de kit e cálculo de HH em definição)."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "colunas \"Criado em\" e \"Vencimento\" na lista de documentos e no detalhe; o documento deve ser revisado 1 ano após a criação ou a última publicação, com aviso nos últimos 30 dias e quando vencido."
-  },
-  {
-    "tipo": "Correção",
-    "texto": "a publicação pelo fluxo do processo passa a definir o prazo da próxima revisão (periodicidade de 12 meses)."
-  }
-];
+export const NOVIDADES_PENDENTES: INovidadeItem[] = [];
