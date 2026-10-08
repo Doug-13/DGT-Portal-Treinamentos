@@ -36,6 +36,7 @@ export interface IModuloPortal {
   descricao: string;
   // Liberado para todos quando o usuário não tem lista própria.
   padrao: boolean;
+  padraoPerfis?: string[];
 }
 
 export const MODULOS_PORTAL: IModuloPortal[] = [
@@ -44,7 +45,7 @@ export const MODULOS_PORTAL: IModuloPortal[] = [
   { chave: 'processos', nome: 'Processos', descricao: 'Mapeamento de processos e fluxos de revisão.', padrao: true },
   { chave: 'licitacoes', nome: 'Licitações', descricao: 'Busca de oportunidades no PNCP. Liberar só para quem trabalha com licitações.', padrao: false },
   { chave: 'arquitetura', nome: 'Arquitetura de Soluções', descricao: 'Demandas, Matriz Go/No-Go e B.O.M. Liberar para a equipe de Arquitetura.', padrao: false },
-  { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI).', padrao: true }
+  { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI). Dados sensíveis: Colaborador e Editor só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] }
 ];
 
 // Módulo a que uma página pertence (undefined = página geral, sempre
@@ -98,14 +99,21 @@ const mesmoConjunto = (
 ): boolean =>
   a.length === b.length && a.every(item => b.indexOf(item) >= 0);
 
-// Módulos que o usuário realmente acessa.
+// Módulos padrão de um perfil (quando o usuário não tem lista própria).
+export const modulosPadraoDoPerfil = (
+  perfil: string | undefined
+): ChaveModuloPortal[] =>
+  MODULOS_PORTAL
+    .filter(item => item.padrao || (!!perfil && (item.padraoPerfis || []).indexOf(perfil) >= 0))
+    .map(item => item.chave);
+
 export const modulosEfetivos = (
   perfil: string | undefined,
   modulos: ChaveModuloPortal[] | undefined
 ): ChaveModuloPortal[] =>
   perfil === 'Administrador'
     ? MODULOS_PORTAL.map(item => item.chave)
-    : (modulos && modulos.length > 0 ? modulos : MODULOS_PADRAO);
+    : (modulos && modulos.length > 0 ? modulos : modulosPadraoDoPerfil(perfil));
 
 export const moduloLiberado = (
   perfil: string | undefined,

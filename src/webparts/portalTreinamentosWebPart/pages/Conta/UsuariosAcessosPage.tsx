@@ -217,7 +217,7 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
     !modulos || modulos.length === 0;
 
   const alternarModulo = (chave: ChaveModuloPortal): void => {
-    const atual = modulosEfetivos(undefined, modulos);
+    const atual = modulosEfetivos(item.usuario.perfilAcesso, modulos);
     const novo = atual.indexOf(chave) >= 0 ? atual.filter(m => m !== chave) : atual.concat([chave]);
     const igualPadrao = novo.length === MODULOS_PADRAO.length && novo.every(m => MODULOS_PADRAO.indexOf(m) >= 0);
     setModulos(igualPadrao ? undefined : novo);
