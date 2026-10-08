@@ -5,6 +5,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 `.\Gerar-Versao.ps1` elas passam para a nova versão e aparecem em "Novidades".
 
 ## [Não publicado]
+- Novo: módulo Arquitetura de Soluções, com a Visão geral dos B.O.M., Novo B.O.M., Dados da demanda e Matriz Go/No-Go (seleção de kit e cálculo de HH em definição).
 - Novo: colunas "Criado em" e "Vencimento" na lista de documentos e no detalhe; o documento deve ser revisado 1 ano após a criação ou a última publicação, com aviso nos últimos 30 dias e quando vencido.
 - Correção: a publicação pelo fluxo do processo passa a definir o prazo da próxima revisão (periodicidade de 12 meses).
 

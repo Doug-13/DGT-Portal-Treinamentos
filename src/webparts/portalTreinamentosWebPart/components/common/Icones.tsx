@@ -40,7 +40,8 @@ export type IconeChave =
   | 'workflow'
   | 'search'
   | 'activity'
-  | 'gavel';
+  | 'gavel'
+  | 'building';
 
 export const Icones:
   Record<IconeChave, React.FC> = {
@@ -196,6 +197,15 @@ export const Icones:
   activity: () => (
     <svg {...base}>
       <polyline points="3 12 7.5 12 10 5 14 19 16.5 12 21 12" />
+    </svg>
+  ),
+
+  // Arquitetura de Soluções
+  building: () => (
+    <svg {...base}>
+      <path d="M3 21h18" />
+      <path d="M5 21V9l7-5 7 5v12" />
+      <path d="M9 21v-5h6v5" />
     </svg>
   ),
 

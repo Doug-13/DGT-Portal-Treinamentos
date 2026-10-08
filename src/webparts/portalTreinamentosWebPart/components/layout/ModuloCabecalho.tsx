@@ -43,6 +43,7 @@ export const CABECALHOS_MODULO: {
   documentos: IConfigCabecalhoModulo;
   processos: IConfigCabecalhoModulo;
   licitacoes: IConfigCabecalhoModulo;
+  arquitetura: IConfigCabecalhoModulo;
 } = {
   inicio: {
     icone: 'home',
@@ -71,6 +72,13 @@ export const CABECALHOS_MODULO: {
     subtitulo: 'Cada processo com o seu fluxo de revisão.',
     descricao: 'Processos, fluxos de aprovação e documentos vinculados em um só lugar.',
     citacao: 'Processo claro é processo que se cumpre.'
+  },
+  arquitetura: {
+    icone: 'building',
+    titulo: 'Arquitetura de Soluções',
+    subtitulo: 'Demanda, Go/No-Go e seleção de kit',
+    descricao: 'Da demanda ao B.O.M. pronto, com as regras do Catálogo Técnico Bridgefy.',
+    citacao: 'O que funciona com o quê, e em que condição.'
   },
   licitacoes: {
     icone: 'gavel',

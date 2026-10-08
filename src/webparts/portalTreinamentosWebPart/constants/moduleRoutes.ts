@@ -8,6 +8,7 @@ export type ModuloIntranet =
   | 'documentos'
   | 'processos'
   | 'licitacoes'
+  | 'arquitetura'
   | 'outro';
 
 const paginasTreinamentos:
@@ -98,6 +99,10 @@ export const obterModuloPagina =
       return 'licitacoes';
     }
 
+    if (pagina === 'arquitetura') {
+      return 'arquitetura';
+    }
+
     return 'outro';
   };
 
@@ -140,3 +145,13 @@ export const paginaEhLicitacoes =
       pagina
     ) ===
     'licitacoes';
+
+export const paginaEhArquitetura =
+  (
+    pagina:
+      Pagina
+  ): boolean =>
+    obterModuloPagina(
+      pagina
+    ) ===
+    'arquitetura';

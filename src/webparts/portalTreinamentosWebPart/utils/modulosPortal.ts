@@ -27,6 +27,7 @@ export type ChaveModuloPortal =
   | 'documentos'
   | 'processos'
   | 'licitacoes'
+  | 'arquitetura'
   | 'indicadores';
 
 export interface IModuloPortal {
@@ -42,6 +43,7 @@ export const MODULOS_PORTAL: IModuloPortal[] = [
   { chave: 'documentos', nome: 'Documentos', descricao: 'Procedimentos, políticas, revisões e aprovações.', padrao: true },
   { chave: 'processos', nome: 'Processos', descricao: 'Mapeamento de processos e fluxos de revisão.', padrao: true },
   { chave: 'licitacoes', nome: 'Licitações', descricao: 'Busca de oportunidades no PNCP. Liberar só para quem trabalha com licitações.', padrao: false },
+  { chave: 'arquitetura', nome: 'Arquitetura de Soluções', descricao: 'Demandas, Matriz Go/No-Go e B.O.M. Liberar para a equipe de Arquitetura.', padrao: false },
   { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI).', padrao: true }
 ];
 

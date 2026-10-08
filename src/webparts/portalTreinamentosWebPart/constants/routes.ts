@@ -32,7 +32,9 @@ export type Pagina =
   | 'licitacoesTeste'
   // Conta do usuário (menu do nome, no topo)
   | 'meuPerfil'
-  | 'usuariosAcessos';
+  | 'usuariosAcessos'
+  // Arquitetura de Soluções (B.O.M.)
+  | 'arquitetura';
 
 export const ROTAS = {
   INICIO: 'inicio',
@@ -66,6 +68,7 @@ export const ROTAS = {
   LICITACOES_TESTE: 'licitacoesTeste',
   MEU_PERFIL: 'meuPerfil',
   USUARIOS_ACESSOS: 'usuariosAcessos',
+  ARQUITETURA: 'arquitetura',
 } as const;
 
 
