@@ -5,6 +5,12 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 `.\Gerar-Versao.ps1` elas passam para a nova versão e aparecem em "Novidades".
 
 ## [Não publicado]
+- Novo: tela Registros de Oportunidade no módulo Arquitetura de Soluções, centralizando as oportunidades vinculadas aos B.O.M.
+- Novo: integração com registros de oportunidade (R.O.) para carregar e utilizar dados da demanda no fluxo de Arquitetura de Soluções.
+- Melhoria: Matriz Go/No-Go atualizada para utilizar as informações da oportunidade e apoiar a avaliação da demanda.
+- Melhoria: navegação do módulo Arquitetura de Soluções ampliada com novas rotas e acesso aos Registros de Oportunidade.
+- Melhoria: controle de acesso ao módulo Arquitetura ajustado nas telas Usuários e acessos, menus e permissões de rota.
+- Melhoria: interface e ícones do módulo Arquitetura atualizados para manter o padrão visual do Portal DGT.
 - Novo: integração dos Indicadores com o ClickUp, com sincronização de dados para acompanhamento das iniciativas e resultados no portal.
 - Novo: plugin de sincronização com o ClickUp e documentação técnica da integração dos Indicadores.
 - Novo: configuração avançada da Pergunta rápida nos módulos, com modal próprio para definir e editar as opções da atividade.

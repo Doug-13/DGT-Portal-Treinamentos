@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import Icones, { IconeChave } from './common/Icones';
 import VersaoPortal from './common/VersaoPortal';
 
 import {
@@ -41,7 +42,8 @@ import {
   paginaEhTreinamentos,
   paginaEhDocumentos,
   paginaEhProcessos,
-  paginaEhLicitacoes
+  paginaEhLicitacoes,
+  paginaEhArquitetura
 } from '../constants/moduleRoutes';
 import { FEATURE_FLAGS } from '../constants/featureFlags';
 import {
@@ -80,7 +82,7 @@ import { useGestaoDocumentos } from '../hooks/useGestaoDocumentos';
 import { useDocumentoTreinamentos } from '../hooks/useDocumentoTreinamentos';
 import { useGestaoAreas } from '../hooks/useGestaoAreas';
 import { useConformidade } from '../hooks/useConformidade';
-import { obterMenuTreinamento, obterMenuDocumentos, obterMenuLicitacoes } from '../services/MenuPermissionService';
+import { obterMenuTreinamento, obterMenuDocumentos, obterMenuLicitacoes, obterMenuArquitetura } from '../services/MenuPermissionService';
 import { IModuloImportJson, ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
 import { SharePointDocumentoService } from '../services/sharepoint/SharePointDocumentoService';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
@@ -637,12 +639,12 @@ const PortalTreinamentos:
         sharePointDocumentoService
       );
 
-
+    
     const documentoTreinamentos =
       useDocumentoTreinamentos(
         dataverseService
       );
-    const gestaoAreas =
+const gestaoAreas =
       useGestaoAreas(
         dataverseService
       );
@@ -1756,7 +1758,7 @@ const PortalTreinamentos:
 
           if (
             etapa ===
-            1
+              1
           ) {
 
             setPaginaAtual(
@@ -1773,7 +1775,7 @@ const PortalTreinamentos:
 
           if (
             etapa ===
-            2
+              2
           ) {
 
             void gestaoModulos
@@ -1896,7 +1898,7 @@ const PortalTreinamentos:
 
           if (
             gestaoAvaliacoes.avaliacoes.length ===
-            0
+              0
           ) {
             throw new Error(
               'Cadastre ou importe pelo menos uma avaliação antes de encerrar.'
@@ -2304,6 +2306,41 @@ const PortalTreinamentos:
         ]
       );
 
+    // Depois de criar um documento: recarrega a lista (a tela inicial
+    // de Documentos já mostra o novo) e abre o documento direto.
+    const abrirDocumentoPorId =
+      React.useCallback(
+        async (
+          documentoId: string
+        ): Promise<boolean> => {
+
+          const id =
+            documentoId.replace(/[{}]/g, '').toLowerCase();
+
+          try {
+            const lista =
+              await documentoService.getDocumentos();
+
+            setDocumentos(lista);
+
+            const documento =
+              lista.find(item => (item.id || '').replace(/[{}]/g, '').toLowerCase() === id);
+
+            if (!documento) {
+              return false;
+            }
+
+            await abrirDocumento(documento);
+            return true;
+
+          } catch (error) {
+            console.error('Não foi possível abrir o documento criado:', error);
+            return false;
+          }
+        },
+        [documentoService, abrirDocumento]
+      );
+
     // ==========================================================
     // FLUXO DE APROVAÇÃO — tela de detalhe do documento
     // (Elaboração → Revisão → Aprovação → Vigente)
@@ -2656,6 +2693,17 @@ const PortalTreinamentos:
 
     // Módulo Licitações: só aparece no menu para quem tem
     // permissão em pelo menos uma das abas.
+    const abasArquitetura =
+      React.useMemo(
+        () =>
+          obterMenuArquitetura(
+            autorizacao.contexto
+          ),
+        [
+          autorizacao.contexto
+        ]
+      );
+
     const abasLicitacoes =
       React.useMemo(
         () =>
@@ -2688,167 +2736,202 @@ const PortalTreinamentos:
     const menuIntranet:
       Array<{
         label:
-        string;
+          string;
 
         icon:
-        string;
+          IconeChave;
 
         pagina?:
-        Pagina;
+          Pagina;
 
         modulo:
-        'inicio' |
-        'treinamentos' |
-        'documentos' |
-        'processos' |
-        'licitacoes' |
-        'outro';
-      }> = [
+          'inicio' |
+          'treinamentos' |
+          'documentos' |
+          'processos' |
+          'licitacoes' |
+          'arquitetura' |
+          'outro';
+      
+        // Destaque "NOVO" ao lado do nome no menu lateral
+        novo?:
+        boolean;
+}> = [
 
-        {
-          label:
-            'Início',
+      {
+        label:
+          'Início',
 
-          icon:
-            '⌂',
+        icon:
+          'home' as IconeChave,
 
-          pagina:
-            'inicio',
+        pagina:
+          'inicio',
 
-          modulo:
-            'inicio'
-        },
+        modulo:
+          'inicio'
+      },
 
-        {
-          label:
-            'Treinamentos',
+      {
+        label:
+          'Treinamentos',
 
-          icon:
-            '▣',
+        icon:
+          'graduationCap' as IconeChave,
 
-          pagina:
-            'treinamentosVisaoGeral',
+        pagina:
+          'treinamentosVisaoGeral',
 
-          modulo:
-            'treinamentos'
-        },
+        modulo:
+          'treinamentos'
+      },
 
-        {
-          label:
-            'Documentos',
+      {
+        label:
+          'Documentos',
 
-          icon:
-            '▤',
+        icon:
+          'fileText' as IconeChave,
 
-          pagina:
-            'documentos',
+        pagina:
+          'documentos',
 
-          modulo:
-            'documentos'
-        },
+        modulo:
+          'documentos'
+      },
 
-        {
-          label:
-            'Processos',
+      {
+        label:
+          'Processos',
 
-          icon:
-            '⌘',
+        icon:
+          'workflow' as IconeChave,
 
-          // Módulo em teste: só navega com a feature flag ligada.
-          pagina:
-            FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
-              ? 'processos'
-              : undefined,
+        // Módulo em teste: só navega com a feature flag ligada.
+        pagina:
+          FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
+            ? 'processos'
+            : undefined,
 
-          modulo:
-            FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
-              ? 'processos'
-              : 'outro'
-        },
+        modulo:
+          FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
+            ? 'processos'
+            : 'outro'
+      },
 
-        // Licitações (PNCP) — visível só para perfis autorizados
-        ...(
-          abasLicitacoes.length > 0
-            ? [
-              {
-                label:
-                  'Licitações',
+      // Licitações (PNCP) — visível só para perfis autorizados
+      ...(
+        abasLicitacoes.length > 0
+          ? [
+            {
+              label:
+                'Licitações',
 
-                icon:
-                  '◈',
+              icon:
+                'gavel' as IconeChave,
 
-                pagina:
-                  abasLicitacoes[0].pagina,
+              pagina:
+                abasLicitacoes[0].pagina,
 
-                modulo:
-                  'licitacoes' as const
-              }
-            ]
-            : []
-        ),
+              modulo:
+                'licitacoes' as const,
 
-        {
-          label:
-            'Indicadores',
+              novo:
+                true
+            }
+          ]
+          : []
+      ),
 
-          icon:
-            '▥',
+      // Arquitetura de Soluções — visível só com o módulo liberado
+      ...(
+        abasArquitetura.length > 0
+          ? [
+            {
+              label:
+                'Arquitetura de Soluções',
 
-          pagina:
-            'indicadores',
+              icon:
+                'building' as IconeChave,
 
-          modulo:
-            'outro'
-        },
+              pagina:
+                abasArquitetura[0].pagina,
 
-        {
-          label:
-            'RH e Pessoas',
+              modulo:
+                'arquitetura' as const,
 
-          icon:
-            '♟',
+              novo:
+                true
+            }
+          ]
+          : []
+      ),
 
-          modulo:
-            'outro'
-        },
+      {
+        label:
+          'Indicadores',
 
-        {
-          label:
-            'Sistemas',
+        icon:
+          'barChart' as IconeChave,
 
-          icon:
-            '⌘',
+        pagina:
+          'indicadores',
 
-          modulo:
-            'outro'
-        },
+        modulo:
+          'outro',
 
-        {
-          label:
-            'Comunicados',
+        novo:
+          true
+      },
 
-          icon:
-            '◩',
+      {
+        label:
+          'RH e Pessoas',
 
-          modulo:
-            'outro'
-        },
+        icon:
+          'users' as IconeChave,
 
-        {
-          label:
-            'Sobre a DGT',
+        modulo:
+          'outro'
+      },
 
-          icon:
-            '?',
+      {
+        label:
+          'Sistemas',
 
-          pagina:
-            'suporte',
+        icon:
+          'grid' as IconeChave,
 
-          modulo:
-            'outro'
-        }
-      ];
-    // ==========================================================
+        modulo:
+          'outro'
+      },
+
+      {
+        label:
+          'Comunicados',
+
+        icon:
+          'megaphone' as IconeChave,
+
+        modulo:
+          'outro'
+      },
+
+      {
+        label:
+          'Sobre a DGT',
+
+        icon:
+          'info' as IconeChave,
+
+        pagina:
+          'suporte',
+
+        modulo:
+          'outro'
+      }
+    ];
+// ==========================================================
     // RENDER
     // ==========================================================
 
@@ -2894,50 +2977,74 @@ const PortalTreinamentos:
                   podeAcessarRota(item.pagina, autorizacao.contexto)
               )
               .map(
-                item => (
+              item => (
 
-                  <button
-                    key={
-                      item.label
-                    }
-                    type="button"
-                    className={
-                      itemMenuAtivo(item)
-                        ? styles.intranetMenuActive
-                        : styles.intranetMenuItem
-                    }
-                    title={
-                      itemMenuAtivo(item)
-                        ? 'Módulo atual'
-                        : 'Módulo da Intranet DGT'
-                    }
-                    onClick={() => {
+                <button
+                  key={
+                    item.label
+                  }
+                  type="button"
+                  className={
+                    itemMenuAtivo(item)
+                      ? styles.intranetMenuActive
+                      : styles.intranetMenuItem
+                  }
+                  title={
+                    itemMenuAtivo(item)
+                      ? 'Módulo atual'
+                      : 'Módulo da Intranet DGT'
+                  }
+                  onClick={() => {
 
-                      if (
+                    if (
+                      item.pagina
+                    ) {
+                      navegar(
                         item.pagina
-                      ) {
-                        navegar(
-                          item.pagina
-                        );
-                      }
-                    }}
+                      );
+                    }
+                  }}
+                >
+
+                  <span
+                    className={
+                      styles.intranetIcon
+                    }
+                    aria-hidden="true"
                   >
+                    {
+                      React.createElement(
+                        Icones[item.icon]
+                      )
+                    }
+                  </span>
 
-                    <span
-                      className={
-                        styles.intranetIcon
-                      }
-                    >
-                      {item.icon}
-                    </span>
+                  <span
+                    className={
+                      styles.intranetLabel
+                    }
+                  >
+                    {item.label}
+                  </span>
 
-                    <span>
-                      {item.label}
-                    </span>
+                  {
+                    item.novo &&
+                    (
+                      <span
+                        className={
+                          styles.intranetNovo
+                        }
+                        aria-label="Novo"
+                        title="Novo"
+                      >
+                        NOVO
+                      </span>
+                    )
+                  }
 
-                  </button>
-                )
-              )}
+                </button>
+              )
+            )}
 
           </nav>
 
@@ -3053,165 +3160,165 @@ const PortalTreinamentos:
                 ref={menuUsuarioRef}
                 style={{ position: 'relative' }}
               >
+              <div
+                className={
+                  styles.userBox
+                }
+                role="button"
+                tabIndex={0}
+                aria-haspopup="menu"
+                aria-expanded={menuUsuarioAberto}
+                title="Meu perfil e acessos"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setMenuUsuarioAberto(!menuUsuarioAberto)}
+                onKeyDown={evento => {
+                  if (evento.key === 'Enter' || evento.key === ' ') {
+                    evento.preventDefault();
+                    setMenuUsuarioAberto(!menuUsuarioAberto);
+                  }
+                }}
+              >
+
                 <div
                   className={
-                    styles.userBox
+                    styles.avatar
                   }
-                  role="button"
-                  tabIndex={0}
-                  aria-haspopup="menu"
-                  aria-expanded={menuUsuarioAberto}
-                  title="Meu perfil e acessos"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => setMenuUsuarioAberto(!menuUsuarioAberto)}
-                  onKeyDown={evento => {
-                    if (evento.key === 'Enter' || evento.key === ' ') {
-                      evento.preventDefault();
-                      setMenuUsuarioAberto(!menuUsuarioAberto);
-                    }
-                  }}
                 >
 
-                  <div
-                    className={
-                      styles.avatar
-                    }
-                  >
+                  {
+                    usuario.fotoUsuario &&
+                      !usuario.erroFotoUsuario
+                      ? (
 
+                        <img
+                          src={
+                            usuario.fotoUsuario
+                          }
+                          alt={
+                            userName
+                          }
+                          onError={
+                            usuario.registrarErroFoto
+                          }
+                        />
+
+                      ) : (
+
+                        <span>
+                          {
+                            usuario.primeiroNome
+                              .charAt(0)
+                              .toUpperCase()
+                          }
+                        </span>
+                      )
+                  }
+
+                </div>
+
+                <div
+                  className={
+                    styles.userText
+                  }
+                >
+
+                  <strong>
                     {
-                      usuario.fotoUsuario &&
-                        !usuario.erroFotoUsuario
-                        ? (
-
-                          <img
-                            src={
-                              usuario.fotoUsuario
-                            }
-                            alt={
-                              userName
-                            }
-                            onError={
-                              usuario.registrarErroFoto
-                            }
-                          />
-
-                        ) : (
-
-                          <span>
-                            {
-                              usuario.primeiroNome
-                                .charAt(0)
-                                .toUpperCase()
-                            }
-                          </span>
-                        )
+                      usuario.primeiroNome
                     }
+                  </strong>
 
-                  </div>
-
-                  <div
-                    className={
-                      styles.userText
+                  <span>
+                    {
+                      autorizacao.carregando
+                        ? 'Carregando perfil...'
+                        : perfilExibicao
                     }
-                  >
-
-                    <strong>
-                      {
-                        usuario.primeiroNome
-                      }
-                    </strong>
-
-                    <span>
-                      {
-                        autorizacao.carregando
-                          ? 'Carregando perfil...'
-                          : perfilExibicao
-                      }
-                    </span>
-
-                  </div>
-
-                  <span
-                    className={
-                      styles.chevron
-                    }
-                  >
-                    ⌄
                   </span>
 
                 </div>
 
-                {
-                  menuUsuarioAberto && (
-                    <div
-                      role="menu"
-                      style={{
-                        position: 'absolute',
-                        right: 0,
-                        top: 'calc(100% + 8px)',
-                        width: '290px',
-                        background: '#FFFFFF',
-                        color: '#202A44',
-                        border: '1px solid #E5E7EB',
-                        borderRadius: '12px',
-                        boxShadow: '0 16px 40px rgba(32,42,68,.22)',
-                        zIndex: 1000,
-                        overflow: 'hidden',
-                        textAlign: 'left'
-                      }}
-                    >
-                      <div style={{ padding: '14px 16px', borderBottom: '1px solid #E5E7EB', background: '#F7F9FB' }}>
-                        <strong style={{ display: 'block', fontSize: '14px' }}>{autorizacao.contexto?.nome || usuario.primeiroNome}</strong>
-                        <span style={{ display: 'block', fontSize: '12px', color: '#64748b', overflowWrap: 'anywhere' }}>{autorizacao.contexto?.email || ''}</span>
-                        <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0F6CBD', marginTop: '4px' }}>{perfilExibicao}</span>
-                        {
-                          (autorizacao.contexto?.vinculosArea || []).length > 0 && (
-                            <span style={{ display: 'block', fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
-                              {(autorizacao.contexto?.vinculosArea || []).map(item => `${item.areaNome}: ${item.perfil}`).join(' · ')}
-                            </span>
-                          )
-                        }
-                      </div>
+                <span
+                  className={
+                    styles.chevron
+                  }
+                >
+                  ⌄
+                </span>
+
+              </div>
+
+              {
+                menuUsuarioAberto && (
+                  <div
+                    role="menu"
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 'calc(100% + 8px)',
+                      width: '290px',
+                      background: '#FFFFFF',
+                      color: '#202A44',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '12px',
+                      boxShadow: '0 16px 40px rgba(32,42,68,.22)',
+                      zIndex: 1000,
+                      overflow: 'hidden',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <div style={{ padding: '14px 16px', borderBottom: '1px solid #E5E7EB', background: '#F7F9FB' }}>
+                      <strong style={{ display: 'block', fontSize: '14px' }}>{autorizacao.contexto?.nome || usuario.primeiroNome}</strong>
+                      <span style={{ display: 'block', fontSize: '12px', color: '#64748b', overflowWrap: 'anywhere' }}>{autorizacao.contexto?.email || ''}</span>
+                      <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0F6CBD', marginTop: '4px' }}>{perfilExibicao}</span>
                       {
-                        [
-                          { pagina: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', icone: '◉', visivel: true },
-                          { pagina: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', icone: '⚿', visivel: podeAdministrarAcessos(autorizacao.contexto) },
-                          { pagina: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', icone: '▦', visivel: autorizacao.contexto?.perfil === 'Administrador' }
-                        ]
-                          .filter(item => item.visivel)
-                          .map(item => (
-                            <button
-                              key={item.pagina}
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setMenuUsuarioAberto(false);
-                                navegar(item.pagina);
-                              }}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                width: '100%',
-                                padding: '11px 16px',
-                                border: 0,
-                                borderBottom: '1px solid #F1F5F9',
-                                background: '#FFFFFF',
-                                color: '#202A44',
-                                fontSize: '13.5px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                textAlign: 'left'
-                              }}
-                            >
-                              <span aria-hidden="true" style={{ width: '18px', textAlign: 'center' }}>{item.icone}</span>
-                              {item.rotulo}
-                            </button>
-                          ))
+                        (autorizacao.contexto?.vinculosArea || []).length > 0 && (
+                          <span style={{ display: 'block', fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+                            {(autorizacao.contexto?.vinculosArea || []).map(item => `${item.areaNome}: ${item.perfil}`).join(' · ')}
+                          </span>
+                        )
                       }
                     </div>
-                  )
-                }
+                    {
+                      [
+                        { pagina: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', icone: '◉', visivel: true },
+                        { pagina: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', icone: '⚿', visivel: podeAdministrarAcessos(autorizacao.contexto) },
+                        { pagina: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', icone: '▦', visivel: autorizacao.contexto?.perfil === 'Administrador' }
+                      ]
+                        .filter(item => item.visivel)
+                        .map(item => (
+                          <button
+                            key={item.pagina}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuUsuarioAberto(false);
+                              navegar(item.pagina);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              width: '100%',
+                              padding: '11px 16px',
+                              border: 0,
+                              borderBottom: '1px solid #F1F5F9',
+                              background: '#FFFFFF',
+                              color: '#202A44',
+                              fontSize: '13.5px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left'
+                            }}
+                          >
+                            <span aria-hidden="true" style={{ width: '18px', textAlign: 'center' }}>{item.icone}</span>
+                            {item.rotulo}
+                          </button>
+                        ))
+                    }
+                  </div>
+                )
+              }
               </div>
 
             </div>
@@ -3277,6 +3384,20 @@ const PortalTreinamentos:
                       icon: 'workflow'
                     }
                   ]}
+                  paginaAtual={paginaAtual}
+                  navegar={navegar}
+                />
+              )
+            }
+
+            {
+              paginaEhArquitetura(
+                paginaAtual
+              ) &&
+              (
+                <ModuloCabecalho
+                  config={CABECALHOS_MODULO.arquitetura}
+                  abas={abasArquitetura}
                   paginaAtual={paginaAtual}
                   navegar={navegar}
                 />
@@ -3375,6 +3496,8 @@ const PortalTreinamentos:
                 onRecarregarRevisoesDocumento={
                   recarregarRevisoesDoDocumentoSelecionado
                 }
+
+                abrirDocumentoPorId={abrirDocumentoPorId}
 
                 abrirDocumento={documento => {
 
@@ -4162,14 +4285,8 @@ const PortalTreinamentos:
                 }
 
                 criarDocumentoAdministrativo={
-                  async dados => {
-                    await gestaoDocumentos
-                      .criarDocumentoCompleto(
-                        dados
-                      );
-                  }
+                  gestaoDocumentos.criarDocumentoCompleto
                 }
-
                 criarRevisaoAdministrativa={
                   gestaoDocumentos.criarRevisaoComArquivo
                 }

@@ -21,9 +21,9 @@ export const VERSAO_PORTAL = "1.3.0";
 
 export const VERSAO_SOLUCAO = "1.3.0.0";
 
-export const DATA_BUILD = "2026-10-08T16:12:22.090Z";
+export const DATA_BUILD = "2026-10-08T18:32:34.809Z";
 
-export const COMMIT_BUILD = "6a443e9";
+export const COMMIT_BUILD = "0b816c5";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {
@@ -304,6 +304,38 @@ export const NOVIDADES: INovidadeVersao[] = [
 
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
 export const NOVIDADES_PENDENTES: INovidadeItem[] = [
+  {
+    "tipo": "Novo",
+    "texto": "integração dos Indicadores com o ClickUp, com sincronização de dados para acompanhamento das iniciativas e resultados no portal."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "plugin de sincronização com o ClickUp e documentação técnica da integração dos Indicadores."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "configuração avançada da Pergunta rápida nos módulos, com modal próprio para definir e editar as opções da atividade."
+  },
+  {
+    "tipo": "Melhoria",
+    "texto": "gestão de módulos e avaliações aprimorada, com ações reorganizadas e edição de conteúdos mais consistente."
+  },
+  {
+    "tipo": "Melhoria",
+    "texto": "controle de acesso aos Indicadores refinado, respeitando perfil do usuário, permissões por módulo e papéis por área."
+  },
+  {
+    "tipo": "Melhoria",
+    "texto": "tela Usuários e acessos atualizada para facilitar a administração das permissões dos módulos do portal."
+  },
+  {
+    "tipo": "Melhoria",
+    "texto": "navegação e permissões das rotas ajustadas para refletir corretamente os módulos disponíveis para cada usuário."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "script para adicionar o papel de Editor de Área no Dataverse, permitindo ampliar a configuração de permissões por área."
+  },
   {
     "tipo": "Correção",
     "texto": "Indicadores (dados sensíveis) liberados por padrão só para Gestores e Administradores; Colaboradores e Editores acessam apenas com o módulo marcado em Usuários e acessos."

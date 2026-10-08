@@ -240,6 +240,12 @@ import UsuariosAcessosPage from
 import MeuPerfilPage from
   '../pages/Conta/MeuPerfilPage';
 
+import ArquiteturaPage from
+  '../pages/Arquitetura/ArquiteturaPage';
+
+import RegistrosOportunidadePage from
+  '../pages/Arquitetura/RegistrosOportunidadePage';
+
 import LicitacoesTesteConexaoPage from
   '../pages/Licitacoes/LicitacoesTesteConexaoPage';
 
@@ -519,7 +525,13 @@ export interface IPortalRouterProps {
   (
     dados:
       INovoDocumentoCompleto
-  ) => Promise<void>;
+  ) => Promise<string | void>;
+
+  // Recarrega a lista de documentos e abre o documento pelo id.
+  abrirDocumentoPorId?:
+  (
+    documentoId: string
+  ) => Promise<boolean>;
   selecionarDocumentoAdministrativo:
   (
     documento:
@@ -741,35 +753,35 @@ export interface IPortalRouterProps {
 
   // Atribuição por área (regras dgt_treinamentoarea).
   atribuicaoAreaService?:
-  AtribuicaoAreaService;
+    AtribuicaoAreaService;
 
   // Remoção de treinamento (somente Administrador).
   analisarRemocaoTreinamento?:
-  (
-    treinamento:
-      ITreinamentoAdmin
-  ) => Promise<IImpactoRemocao>;
+    (
+      treinamento:
+        ITreinamentoAdmin
+    ) => Promise<IImpactoRemocao>;
 
   removerTreinamento?:
-  (
-    treinamento:
-      ITreinamentoAdmin,
-    aoProgredir:
-      (mensagem: string) => void
-  ) => Promise<void>;
+    (
+      treinamento:
+        ITreinamentoAdmin,
+      aoProgredir:
+        (mensagem: string) => void
+    ) => Promise<void>;
 
   // Modo de teste do treinamento (visão do colaborador, sem registros).
   treinamentoEmTesteId?:
-  string;
+    string;
 
   testarTreinamento?:
-  (
-    treinamento:
-      ITreinamentoAdmin
-  ) => void;
+    (
+      treinamento:
+        ITreinamentoAdmin
+    ) => void;
 
   sairModoTeste?:
-  () => void;
+    () => void;
 
   // Histórico do treinamento (dgt_auditorianegocio).
   carregarHistoricoTreinamento?:
@@ -1226,63 +1238,63 @@ const PortalRouter:
               )
             }
 
-            <InicioIntranetPage
-              primeiroNome={
-                props.primeiroNome
-              }
+          <InicioIntranetPage
+            primeiroNome={
+              props.primeiroNome
+            }
 
-              treinamentos={
-                props.treinamentos
-              }
+            treinamentos={
+              props.treinamentos
+            }
 
-              documentos={
-                props.documentos
-              }
+            documentos={
+              props.documentos
+            }
 
-              carregando={
-                props.carregandoDataverse
-              }
+            carregando={
+              props.carregandoDataverse
+            }
 
-              erro={
-                props.erroDataverse
-              }
+            erro={
+              props.erroDataverse
+            }
 
-              quantidadeTrilhas={
-                props.trilhas.length
-              }
+            quantidadeTrilhas={
+              props.trilhas.length
+            }
 
-              onAbrirTreinamento={
-                props.abrirTreinamento
-              }
+            onAbrirTreinamento={
+              props.abrirTreinamento
+            }
 
-              onVerTreinamentos={() =>
-                props.navegar(
-                  'treinamentos'
-                )
-              }
+            onVerTreinamentos={() =>
+              props.navegar(
+                'treinamentos'
+              )
+            }
 
-              onVerDocumentos={() =>
-                props.navegar(
-                  'documentos'
-                )
-              }
+            onVerDocumentos={() =>
+              props.navegar(
+                'documentos'
+              )
+            }
+          
+            onAbrirDocumento={
+              props.abrirDocumento
+            }
 
-              onAbrirDocumento={
-                props.abrirDocumento
-              }
+            eventosCalendario={
+              props.eventosCalendario
+            }
 
-              eventosCalendario={
-                props.eventosCalendario
-              }
+            carregandoCalendario={
+              props.carregandoCalendario
+            }
 
-              carregandoCalendario={
-                props.carregandoCalendario
-              }
-
-              erroCalendario={
-                props.erroCalendario
-              }
-            />
+            erroCalendario={
+              props.erroCalendario
+            }
+          />
           </>
         );
       // ========================================================
@@ -1667,16 +1679,29 @@ const PortalRouter:
               )
             }
 
-            onSalvar={async dados => {
-
-              await props
+            onSalvar={async dados =>
+              props
                 .criarDocumentoAdministrativo(
                   dados
-                );
+                )
+            }
 
-              props.navegar(
-                'documentos'
-              );
+            // Depois do documento, da revisão e do vínculo com o
+            // processo: abre o documento direto na aba Revisão, onde
+            // está a primeira etapa do fluxo (ex.: Elaboração). Se não
+            // der, volta para a lista (já atualizada).
+            onConcluido={async documentoId => {
+
+              const abriu =
+                documentoId && props.abrirDocumentoPorId
+                  ? await props.abrirDocumentoPorId(documentoId)
+                  : false;
+
+              if (!abriu) {
+                props.navegar(
+                  'documentos'
+                );
+              }
             }}
           />
         );
@@ -1703,7 +1728,7 @@ const PortalRouter:
             onAbrirDocumento={
               props.abrirDocumento
             }
-
+          
             onNovoDocumento={
               podeAcessarRota(
                 'novoDocumento',
@@ -2087,14 +2112,14 @@ const PortalRouter:
             // Remover: somente Administrador.
             onAnalisarRemocao={
               props.contextoAcesso?.perfil ===
-                'Administrador'
+              'Administrador'
                 ? props.analisarRemocaoTreinamento
                 : undefined
             }
 
             onRemoverTreinamento={
               props.contextoAcesso?.perfil ===
-                'Administrador'
+              'Administrador'
                 ? props.removerTreinamento
                 : undefined
             }
@@ -2612,14 +2637,14 @@ const PortalRouter:
             // Remover módulo: somente Administrador.
             onAnalisarRemocaoModulo={
               props.contextoAcesso?.perfil ===
-                'Administrador'
+              'Administrador'
                 ? props.analisarRemocaoModulo
                 : undefined
             }
 
             onRemoverModulo={
               props.contextoAcesso?.perfil ===
-                'Administrador'
+              'Administrador'
                 ? props.removerModulo
                 : undefined
             }
@@ -2858,45 +2883,45 @@ const PortalRouter:
               props
                 .limparResultadoPublicacao
             }
+          
+          vinculosTreinamentos={
+            props.treinamentosDocumentoAdministrativos
+          }
 
-            vinculosTreinamentos={
-              props.treinamentosDocumentoAdministrativos
-            }
+          treinamentosDisponiveis={
+            props.treinamentosAdministrativos
+          }
 
-            treinamentosDisponiveis={
-              props.treinamentosAdministrativos
-            }
+          carregandoTreinamentos={
+            props.carregandoTreinamentosDocumento
+          }
 
-            carregandoTreinamentos={
-              props.carregandoTreinamentosDocumento
-            }
+          processandoTreinamentos={
+            props.processandoTreinamentosDocumento
+          }
 
-            processandoTreinamentos={
-              props.processandoTreinamentosDocumento
-            }
+          erroTreinamentos={
+            props.erroTreinamentosDocumento
+          }
 
-            erroTreinamentos={
-              props.erroTreinamentosDocumento
-            }
+          onVincularTreinamento={
+            props.vincularTreinamentoDocumento
+          }
 
-            onVincularTreinamento={
-              props.vincularTreinamentoDocumento
-            }
+          onDesativarTreinamento={
+            props.desativarTreinamentoDocumento
+          }        
+          onEnviarRevisao={
+            props.enviarRevisaoParaRevisao
+          }
 
-            onDesativarTreinamento={
-              props.desativarTreinamentoDocumento
-            }
-            onEnviarRevisao={
-              props.enviarRevisaoParaRevisao
-            }
+          onEnviarAprovacao={
+            props.enviarRevisaoParaAprovacao
+          }
 
-            onEnviarAprovacao={
-              props.enviarRevisaoParaAprovacao
-            }
-
-            onDevolverElaboracao={
-              props.devolverRevisaoParaElaboracao
-            } />
+          onDevolverElaboracao={
+            props.devolverRevisaoParaElaboracao
+          }        />
         );
 
       // ========================================================
@@ -2956,7 +2981,7 @@ const PortalRouter:
                 'documentos'
               )
             }
-
+          
             eventosCalendario={
               props.eventosCalendario
             }
@@ -3055,6 +3080,28 @@ const PortalRouter:
       // ========================================================
       // CONTA DO USUÁRIO (menu do nome, no topo)
       // ========================================================
+
+      // ========================================================
+      // ARQUITETURA DE SOLUÇÕES
+      // ========================================================
+
+      case 'arquiteturaROs':
+
+        return (
+          <RegistrosOportunidadePage
+            dataverseService={props.dataverseService}
+            contexto={props.contextoAcesso}
+          />
+        );
+
+      case 'arquitetura':
+
+        return (
+          <ArquiteturaPage
+            dataverseService={props.dataverseService}
+            contexto={props.contextoAcesso}
+          />
+        );
 
       case 'meuPerfil':
 

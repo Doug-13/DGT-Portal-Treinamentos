@@ -99,7 +99,7 @@ export const obterModuloPagina =
       return 'licitacoes';
     }
 
-    if (pagina === 'arquitetura') {
+    if (pagina === 'arquitetura' || pagina === 'arquiteturaROs') {
       return 'arquitetura';
     }
 

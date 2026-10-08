@@ -41,7 +41,10 @@ export type IconeChave =
   | 'search'
   | 'activity'
   | 'gavel'
-  | 'building';
+  | 'building'
+  | 'grid'
+  | 'megaphone'
+  | 'info';
 
 export const Icones:
   Record<IconeChave, React.FC> = {
@@ -215,6 +218,34 @@ export const Icones:
       <path d="M14.5 3.5l6 6-5 5-6-6z" />
       <line x1="12.5" y1="11.5" x2="4.5" y2="19.5" />
       <line x1="14" y1="20.5" x2="21" y2="20.5" />
+    </svg>
+  ),
+
+  // Sistemas: grade de aplicativos
+  grid: () => (
+    <svg {...base}>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </svg>
+  ),
+
+  // Comunicados: megafone
+  megaphone: () => (
+    <svg {...base}>
+      <path d="M3 10v4a1 1 0 0 0 1 1h3l7 4V5L7 9H4a1 1 0 0 0-1 1z" />
+      <path d="M17.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M7 15l1.5 5h2.5L9.5 15" />
+    </svg>
+  ),
+
+  // Sobre a DGT: informação
+  info: () => (
+    <svg {...base}>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="11" x2="12" y2="16.5" />
+      <circle cx="12" cy="7.6" r=".6" fill="currentColor" />
     </svg>
   )
 };

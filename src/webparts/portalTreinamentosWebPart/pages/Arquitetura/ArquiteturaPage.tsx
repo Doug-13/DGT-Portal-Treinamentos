@@ -69,6 +69,66 @@ const FILTROS: Array<{ id: Filtro; rotulo: string; etapas: EtapaBom[] }> = [
   { id: 'enviados', rotulo: 'Enviados p/ aprovação', etapas: ['Enviado para aprovação'] }
 ];
 
+// ------------------------------------------------------------
+// Identidade visual dos cards de resumo (fundo escuro tingido,
+// ícone em bloco colorido, número grande e rótulo claro)
+// ------------------------------------------------------------
+
+const svgBase: React.SVGProps<SVGSVGElement> = {
+  width: 20,
+  height: 20,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round'
+};
+
+const ICONE_FILTRO: Record<Filtro, React.ReactNode> = {
+  todos: (
+    <svg {...svgBase}>
+      <line x1="9" y1="7" x2="19" y2="7" /><line x1="9" y1="12" x2="19" y2="12" /><line x1="9" y1="17" x2="19" y2="17" />
+      <circle cx="5" cy="7" r=".8" fill="currentColor" /><circle cx="5" cy="12" r=".8" fill="currentColor" /><circle cx="5" cy="17" r=".8" fill="currentColor" />
+    </svg>
+  ),
+  demandaGo: (
+    <svg {...svgBase}>
+      <line x1="12" y1="4" x2="12" y2="20" /><line x1="8" y1="20" x2="16" y2="20" /><line x1="5" y1="7" x2="19" y2="7" />
+      <path d="M5 7l-3 6a3 3 0 0 0 6 0z" /><path d="M19 7l-3 6a3 3 0 0 0 6 0z" />
+    </svg>
+  ),
+  bloqueados: (
+    <svg {...svgBase}>
+      <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  ),
+  kit: (
+    <svg {...svgBase}>
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M12 12l8-4.5" /><path d="M12 12v9" /><path d="M12 12L4 7.5" />
+    </svg>
+  ),
+  hhPronto: (
+    <svg {...svgBase}>
+      <circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15.5 14" />
+    </svg>
+  ),
+  enviados: (
+    <svg {...svgBase}>
+      <path d="M21 3L10 14" /><path d="M21 3l-7 18-4-7-7-4z" />
+    </svg>
+  )
+};
+
+const VISUAL_FILTRO: Record<Filtro, { fundo: string; icone: string }> = {
+  todos:      { fundo: '#1E2A52', icone: '#5B8DEF' },
+  demandaGo:  { fundo: '#3A2E1A', icone: '#F5A84A' },
+  bloqueados: { fundo: '#3D1F2B', icone: '#F2707A' },
+  kit:        { fundo: '#2E2152', icone: '#A57CF2' },
+  hhPronto:   { fundo: '#1E2A52', icone: '#5B8DEF' },
+  enviados:   { fundo: '#0F3A2C', icone: '#1FCB8A' }
+};
+
 const guid = (valor?: string): string =>
   (valor || '').replace(/[{}]/g, '').trim().toLowerCase();
 
@@ -76,44 +136,232 @@ const guid = (valor?: string): string =>
 // Indicador de progresso (1 a 5)
 // ------------------------------------------------------------
 
-const Progresso: React.FC<{ etapa: EtapaBom; aba: 'demanda' | 'gonogo'; onAba: (aba: 'demanda' | 'gonogo') => void }> = ({ etapa, aba, onAba }) => {
+// Cabeçalho do B.O.M. (painel claro): voltar, número, título,
+// situação e as 5 etapas com marcador, linha de ligação e resumo.
+// ------------------------------------------------------------
+
+// Paleta clara, alinhada ao restante do portal (azul DGT).
+const ESCURO = {
+  painel: '#FFFFFF',
+  borda: '#E2E8F0',
+  texto: '#0B2D4D',
+  texto2: '#64748B',
+  trilho: '#E2E8F0',
+  verde: '#13A06F',
+  azul: '#0B5CAB',
+  vermelho: '#D64545',
+  laranja: '#D98A1F'
+};
+
+const IconeCheck: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polyline points="5 12.5 10 17.5 19 7.5" />
+  </svg>
+);
+
+const IconeX: React.FC = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
+    <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
+  </svg>
+);
+
+const CabecalhoBom: React.FC<{
+  bom: IBomRegistro;
+  demanda: IDemandaBom;
+  etapa: EtapaBom;
+  ultima: IAnaliseGoNoGo | undefined;
+  aba: 'demanda' | 'gonogo';
+  onAba: (aba: 'demanda' | 'gonogo') => void;
+  onVoltar: () => void;
+}> = ({ bom, demanda, etapa, ultima, aba, onAba, onVoltar }) => {
+
   const atual = ETAPAS[etapa].passo;
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: '8px', marginBottom: '16px' }}>
-      {
-        PASSOS.map(item => {
-          const clicavel = item.passo <= 2 && (item.passo === 1 || atual >= 2);
-          const selecionado = (item.passo === 1 && aba === 'demanda') || (item.passo === 2 && aba === 'gonogo');
-          const concluido = atual > item.passo;
-          const emDefinicao = item.passo >= 3;
-          return (
-            <button
-              key={item.passo}
-              type="button"
-              disabled={!clicavel}
-              onClick={() => onAba(item.passo === 1 ? 'demanda' : 'gonogo')}
-              title={emDefinicao ? 'Etapa em definição — será construída numa próxima fase.' : undefined}
-              style={{
-                textAlign: 'left',
-                padding: '10px 12px',
-                borderRadius: '10px',
-                border: `1px solid ${selecionado ? COR.ciano : COR.borda}`,
-                borderTop: `4px solid ${concluido ? '#107C10' : selecionado ? COR.ciano : emDefinicao ? COR.borda : COR.azul}`,
-                background: selecionado ? '#E6F9FC' : '#FFFFFF',
-                cursor: clicavel ? 'pointer' : 'default',
-                opacity: emDefinicao ? 0.55 : 1,
-                fontFamily: FONTE,
-                color: COR.azul
-              }}
-            >
-              <span style={{ display: 'block', fontSize: '11px', color: COR.texto2 }}>
-                {concluido ? '✓ ' : ''}Etapa {item.passo}{emDefinicao ? ' · em definição' : ''}
-              </span>
-              <strong style={{ fontSize: '13px' }}>{item.nome}</strong>
-            </button>
-          );
-        })
+  const bloqueado = etapa === 'Bloqueado no Go/No-Go';
+
+  const titulo =
+    demanda.nome && demanda.nome !== 'Nova demanda (sem título)'
+      ? demanda.nome
+      : 'Nova demanda (sem título)';
+
+  const meta = [
+    ETAPAS[etapa].texto,
+    demanda.canal,
+    demanda.tipoEntrega ? demanda.tipoEntrega.split(' ')[0] : '',
+    bom.responsavelNome ? `Resp.: ${bom.responsavelNome}` : '',
+    demanda.prazoEntrega ? `Prazo ${formatarData(demanda.prazoEntrega)}` : ''
+  ].filter(Boolean).join(' · ');
+
+  const resumo = (passo: number): string => {
+    if (passo === 1) {
+      if (atual > 1) {
+        return [demanda.cliente, demanda.municipio].filter(Boolean).join(' · ') || 'Concluída';
       }
+      return 'Em preenchimento';
+    }
+    if (passo === 2) {
+      if (ultima) {
+        return `${DECISAO[ultima.decisao].texto} · ${formatarNumero(ultima.pontuacao)} pts`;
+      }
+      return atual >= 2 ? 'Análise pendente' : 'Aguardando a demanda';
+    }
+    return atual > passo ? 'Concluída' : 'Em definição';
+  };
+
+  return (
+    <div
+      style={{
+        background: ESCURO.painel,
+        border: `1px solid ${ESCURO.borda}`,
+        borderRadius: '14px',
+        padding: '14px 18px 16px',
+        marginBottom: '16px',
+        color: ESCURO.texto,
+        boxShadow: '0 2px 10px rgba(11,45,77,.06)'
+      }}
+    >
+      {/* Linha 1: voltar, número, título e situação */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={onVoltar}
+          style={{
+            padding: '7px 12px',
+            borderRadius: '8px',
+            border: '1px solid #CBD5E1',
+            background: '#FFFFFF',
+            color: ESCURO.azul,
+            fontFamily: FONTE,
+            fontSize: '12.5px',
+            fontWeight: 600,
+            cursor: 'pointer'
+          }}
+        >
+          ← Visão geral
+        </button>
+
+        <span
+          style={{
+            padding: '5px 10px',
+            borderRadius: '8px',
+            background: '#EEF4FA',
+            color: ESCURO.texto,
+            fontSize: '12.5px',
+            fontWeight: 700,
+            letterSpacing: '.02em'
+          }}
+          title={`${bom.revisao} · ${demanda.numero}`}
+        >
+          BOM {bom.numero.replace(/^BOM\s*/i, '')}
+        </span>
+
+        <strong style={{ fontSize: '15px', color: ESCURO.texto }}>{titulo}</strong>
+
+        <span style={{ fontSize: '12.5px', color: ESCURO.texto2 }}>{meta}</span>
+      </div>
+
+      {/* Linha 2: etapas */}
+      <div style={{ display: 'flex', alignItems: 'center', marginTop: '16px', overflowX: 'auto', gap: 0 }}>
+        {
+          PASSOS.map((item, indice) => {
+            const concluido = atual > item.passo;
+            const corrente = atual === item.passo || (item.passo === 5 && atual > 5);
+            const travado = bloqueado && item.passo === 2;
+            const clicavel = item.passo <= 2 && (item.passo === 1 || atual >= 2);
+            const selecionado = (item.passo === 1 && aba === 'demanda') || (item.passo === 2 && aba === 'gonogo');
+
+            const corMarcador =
+              travado ? ESCURO.vermelho
+                : concluido ? ESCURO.verde
+                  : corrente ? ESCURO.azul
+                    : '#EEF2F6';
+
+            const linhaConcluida = atual > item.passo;
+
+            return (
+              <React.Fragment key={item.passo}>
+                <button
+                  type="button"
+                  disabled={!clicavel}
+                  onClick={() => onAba(item.passo === 1 ? 'demanda' : 'gonogo')}
+                  title={item.passo >= 3 ? 'Etapa em definição — será construída numa próxima fase.' : undefined}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    flexShrink: 0,
+                    padding: '6px 8px',
+                    borderRadius: '10px',
+                    border: 0,
+                    background: selecionado ? '#EEF6FF' : 'transparent',
+                    cursor: clicavel ? 'pointer' : 'default',
+                    fontFamily: FONTE,
+                    textAlign: 'left'
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '30px',
+                      height: '30px',
+                      borderRadius: '50%',
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: corMarcador,
+                      color: concluido || corrente || travado ? '#FFFFFF' : ESCURO.texto2,
+                      fontSize: '13px',
+                      fontWeight: 800,
+                      boxShadow: corrente && !concluido ? '0 0 0 4px rgba(11,92,171,.15)' : 'none'
+                    }}
+                  >
+                    {travado ? <IconeX /> : concluido ? <IconeCheck /> : item.passo}
+                  </span>
+
+                  <span>
+                    <strong
+                      style={{
+                        display: 'block',
+                        fontSize: '13px',
+                        color: concluido || corrente || travado ? ESCURO.texto : ESCURO.texto2,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {item.nome}
+                    </strong>
+                    <span
+                      style={{
+                        display: 'block',
+                        marginTop: '2px',
+                        fontSize: '11.5px',
+                        color: travado ? ESCURO.vermelho : ESCURO.texto2,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {resumo(item.passo)}
+                    </span>
+                  </span>
+                </button>
+
+                {
+                  indice < PASSOS.length - 1 && (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        flex: 1,
+                        minWidth: '28px',
+                        height: '2px',
+                        margin: '0 6px',
+                        borderRadius: '2px',
+                        background: linhaConcluida ? ESCURO.verde : ESCURO.trilho
+                      }}
+                    />
+                  )
+                }
+              </React.Fragment>
+            );
+          })
+        }
+      </div>
     </div>
   );
 };
@@ -285,24 +533,18 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
 
     return (
       <section style={{ fontFamily: FONTE }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-          <div>
-            <span style={{ fontSize: '12px', color: COR.texto2 }}>BOM {bom.numero.replace(/^BOM\s*/i, '')} · {bom.revisao} · {demanda.numero}</span>
-            <h1 style={{ margin: '2px 0 4px', fontSize: '22px', color: COR.azul }}>{demanda.nome === 'Nova demanda (sem título)' ? 'Nova demanda (sem título)' : demanda.nome}</h1>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', fontSize: '12.5px', color: COR.texto2 }}>
-              <Selo texto={ETAPAS[etapa].texto} cor={ETAPAS[etapa].cor} fundo={ETAPAS[etapa].fundo} />
-              {ultima && <Selo texto={`${DECISAO[ultima.decisao].texto} · ${formatarNumero(ultima.pontuacao)}`} cor={DECISAO[ultima.decisao].cor} fundo={DECISAO[ultima.decisao].fundo} />}
-              <span>Responsável: <strong>{bom.responsavelNome}</strong></span>
-              {demanda.prazoEntrega && <span>Prazo: <strong>{formatarData(demanda.prazoEntrega)}</strong></span>}
-            </div>
-          </div>
-          <button type="button" style={botao('secundario')} onClick={() => { setBomId(''); window.scrollTo(0, 0); }}>← Visão geral</button>
-        </div>
+        <CabecalhoBom
+          bom={bom}
+          demanda={demanda}
+          etapa={etapa}
+          ultima={ultima}
+          aba={aba}
+          onAba={setAba}
+          onVoltar={() => { setBomId(''); window.scrollTo(0, 0); }}
+        />
 
         {mensagem && <div role="status" style={{ ...cartao, background: '#E7F6EC', borderColor: '#107C10', color: '#107C10', fontWeight: 700, padding: '10px 14px' }}>✓ {mensagem}</div>}
         {erro && <div role="alert" style={{ ...cartao, background: '#FDE7E9', borderColor: '#B42318', color: COR.azul, padding: '10px 14px', fontSize: '13px' }}>{erro}</div>}
-
-        <Progresso etapa={etapa} aba={aba} onAba={setAba} />
 
         {
           aba === 'demanda' && (
@@ -345,6 +587,8 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                     criterios={criterios}
                     analises={analises}
                     salvando={salvando}
+                    bomCriadoEm={bom.criadoEm}
+                    bomResponsavel={bom.responsavelNome}
                     onRegistrar={async (notas, justificativas, parecer) => {
                       if (!contexto || !contexto.usuarioId) {
                         setErro('Não foi possível identificar o seu usuário para registrar a análise.');
@@ -426,15 +670,72 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
       {mensagem && <div role="status" style={{ ...cartao, background: '#E7F6EC', borderColor: '#107C10', color: '#107C10', fontWeight: 700, padding: '10px 14px' }}>✓ {mensagem}</div>}
       {erro && <div role="alert" style={{ ...cartao, background: '#FDE7E9', borderColor: '#B42318', color: COR.azul, padding: '10px 14px', fontSize: '13px' }}>{erro}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+          gap: '12px',
+          marginBottom: '16px',
+          padding: '12px',
+          borderRadius: '16px',
+          background: '#141A33'
+        }}
+      >
         {
-          FILTROS.map(item => (
-            <button key={item.id} type="button" onClick={() => setFiltro(item.id)}
-              style={{ textAlign: 'left', padding: '12px 14px', borderRadius: '12px', cursor: 'pointer', fontFamily: FONTE, background: '#FFFFFF', border: `1px solid ${filtro === item.id ? COR.ciano : COR.borda}`, boxShadow: filtro === item.id ? `0 0 0 2px #E6F9FC` : 'none', color: COR.azul }}>
-              <strong style={{ display: 'block', fontSize: '24px' }}>{contar(item.id)}</strong>
-              <span style={{ fontSize: '12px', color: COR.texto2 }}>{item.rotulo}</span>
-            </button>
-          ))
+          FILTROS.map(item => {
+            const visual = VISUAL_FILTRO[item.id];
+            const ativo = filtro === item.id;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={ativo}
+                onClick={() => setFiltro(item.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '14px',
+                  minHeight: '92px',
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  fontFamily: FONTE,
+                  background: visual.fundo,
+                  border: ativo ? '1.5px solid rgba(255,255,255,.85)' : '1.5px solid transparent',
+                  boxShadow: ativo ? '0 6px 18px rgba(0,0,0,.28)' : 'none',
+                  transition: 'border-color .15s, box-shadow .15s'
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: '44px',
+                    height: '44px',
+                    flexShrink: 0,
+                    borderRadius: '10px',
+                    background: visual.icone,
+                    color: '#FFFFFF',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  {ICONE_FILTRO[item.id]}
+                </span>
+
+                <span style={{ minWidth: 0 }}>
+                  <strong style={{ display: 'block', fontSize: '26px', lineHeight: 1.1, color: '#FFFFFF' }}>
+                    {contar(item.id)}
+                  </strong>
+                  <span style={{ display: 'block', marginTop: '4px', fontSize: '12px', lineHeight: 1.35, color: '#D7DEEA' }}>
+                    {item.rotulo}
+                  </span>
+                </span>
+              </button>
+            );
+          })
         }
       </div>
 

@@ -34,7 +34,8 @@ export type Pagina =
   | 'meuPerfil'
   | 'usuariosAcessos'
   // Arquitetura de Soluções (B.O.M.)
-  | 'arquitetura';
+  | 'arquitetura'
+  | 'arquiteturaROs';
 
 export const ROTAS = {
   INICIO: 'inicio',
@@ -69,6 +70,7 @@ export const ROTAS = {
   MEU_PERFIL: 'meuPerfil',
   USUARIOS_ACESSOS: 'usuariosAcessos',
   ARQUITETURA: 'arquitetura',
+  ARQUITETURA_ROS: 'arquiteturaROs',
 } as const;
 
 

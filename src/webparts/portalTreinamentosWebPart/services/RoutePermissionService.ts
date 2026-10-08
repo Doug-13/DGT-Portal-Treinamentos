@@ -133,6 +133,10 @@ const regras:
     // Licitações (PNCP)
 
     { rota: 'licitacoes', perfis: LICITACOES },
+
+    // Arquitetura de Soluções: qualquer perfil com o MÓDULO liberado
+    { rota: 'arquitetura', perfis: LICITACOES },
+    { rota: 'arquiteturaROs', perfis: LICITACOES },
     { rota: 'licitacoesTeste', perfis: LICITACOES }
   ];
 

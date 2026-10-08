@@ -152,3 +152,32 @@ export const obterMenuLicitacoes = (
         contexto
       )
   );
+
+// ============================================================
+// MENU (ABAS) DO MÓDULO ARQUITETURA DE SOLUÇÕES
+// ============================================================
+
+const itensArquitetura:
+  IItemMenuTreinamento[] = [
+    {
+      pagina: 'arquitetura',
+      label: 'Visão geral dos B.O.M.',
+      icon: 'building'
+    },
+    {
+      pagina: 'arquiteturaROs',
+      label: 'Registros de Oportunidade',
+      icon: 'fileText'
+    }
+  ];
+
+export const obterMenuArquitetura = (
+  contexto?: IContextoAcesso
+): IItemMenuTreinamento[] =>
+  itensArquitetura.filter(
+    item =>
+      podeAcessarRota(
+        item.pagina,
+        contexto
+      )
+  );
