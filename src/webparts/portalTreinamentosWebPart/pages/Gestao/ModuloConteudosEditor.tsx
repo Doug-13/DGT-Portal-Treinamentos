@@ -8,6 +8,13 @@ import {
   TipoConteudoModulo
 } from '../../services/ModuloConteudoAdminService';
 
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import PerguntaRapidaConfigModal from
+  './PerguntaRapidaConfigModal';
+
 export interface IModuloConteudosEditorProps {
 
   // Modo em que o editor deve abrir: 'preview' (somente visualização,
@@ -68,6 +75,11 @@ export interface IModuloConteudosEditorProps {
       item:
         IModuloConteudoAdmin
     ) => Promise<void>;
+
+  // Opcional: habilita o botão "Configurar pergunta" (Exigir acerto,
+  // feedback) nos conteúdos do tipo Pergunta rápida.
+  dataverseService?:
+    DataverseService;
 }
 
 const tipos:
@@ -251,6 +263,17 @@ const ModuloConteudosEditor:
     ] =
       React.useState(
         false
+      );
+
+    // Pergunta rápida em configuração (Exigir acerto / feedback)
+    const [
+      perguntaConfig,
+      setPerguntaConfig
+    ] =
+      React.useState<
+        IModuloConteudoAdmin | undefined
+      >(
+        undefined
       );
 
     const [
@@ -1410,6 +1433,28 @@ const ModuloConteudosEditor:
                           ↓
                         </button>
 
+                        {
+                          item.tipo ===
+                            'Pergunta rápida' &&
+                          props.dataverseService &&
+                          (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPerguntaConfig(
+                                  item
+                                )
+                              }
+                              style={
+                                secondary
+                              }
+                              title="Pergunta, alternativas, Exigir acerto e feedback"
+                            >
+                              Configurar pergunta
+                            </button>
+                          )
+                        }
+
                         <button
                           type="button"
                           onClick={() =>
@@ -1467,6 +1512,29 @@ const ModuloConteudosEditor:
 
               </div>
             )
+        }
+
+        {
+          perguntaConfig &&
+          props.dataverseService &&
+          (
+            <PerguntaRapidaConfigModal
+              dataverse={
+                props.dataverseService
+              }
+              conteudoModuloId={
+                perguntaConfig.id
+              }
+              titulo={
+                perguntaConfig.titulo
+              }
+              onFechar={() =>
+                setPerguntaConfig(
+                  undefined
+                )
+              }
+            />
+          )
         }
 
         {

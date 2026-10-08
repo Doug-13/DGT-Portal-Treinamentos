@@ -212,6 +212,52 @@ const C = {
     '#FFF8E1'
 };
 
+// Título numerado de cada painel (1 Avaliação → 2 Questões → 3 Respostas)
+const TituloEtapa: React.FC<{ numero: number; titulo: string; ajuda?: string }> = ({ numero, titulo, ajuda }) => (
+  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+    <span
+      style={{
+        minWidth: '24px',
+        height: '24px',
+        borderRadius: '50%',
+        background: '#0B5CAB',
+        color: '#FFFFFF',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '12px',
+        fontWeight: 700,
+        marginTop: '1px'
+      }}
+    >
+      {numero}
+    </span>
+    <div>
+      <h3 style={{ margin: 0, color: '#0B2D4D', fontSize: '16px' }}>{titulo}</h3>
+      {ajuda && (
+        <small style={{ display: 'block', marginTop: '3px', color: '#64748B', fontSize: '12px' }}>{ajuda}</small>
+      )}
+    </div>
+  </div>
+);
+
+// Etiqueta pequena (situação, tipo, peso)
+const Selo: React.FC<{ texto: string; cor: string; fundo: string }> = ({ texto, cor, fundo }) => (
+  <span
+    style={{
+      padding: '2px 8px',
+      borderRadius: '999px',
+      background: fundo,
+      color: cor,
+      fontSize: '11px',
+      fontWeight: 700,
+      whiteSpace: 'nowrap'
+    }}
+  >
+    {texto}
+  </span>
+);
+
 const card:
   React.CSSProperties = {
 
@@ -832,11 +878,159 @@ const GestaoAvaliacoesPage:
         );
       };
 
+    // Abre as questões de uma avaliação (lista do meio).
+    const verQuestoes =
+      (
+        avaliacao:
+          IAvaliacaoAdmin
+      ): void => {
+
+        if (
+          props.avaliacaoSelecionada?.id ===
+          avaliacao.id
+        ) {
+          return;
+        }
+
+        props
+          .onSelecionarAvaliacao(
+            avaliacao
+          )
+          .catch(
+            (
+              error:
+                unknown
+            ) =>
+              console.error(
+                error
+              )
+          );
+      };
+
+    // Mostra as respostas de uma questão (painel da direita).
+    const verRespostas =
+      (
+        questao:
+          IQuestaoAdmin
+      ): void => {
+
+        if (
+          props.questaoSelecionada?.id ===
+          questao.id
+        ) {
+          return;
+        }
+
+        props
+          .onSelecionarQuestao(
+            questao
+          )
+          .catch(
+            (
+              error:
+                unknown
+            ) =>
+              console.error(
+                error
+              )
+          );
+      };
+
+    // Avaliação aberta e nenhuma questão selecionada: abre a primeira
+    // questão ativa (ou a primeira da lista).
+    React.useEffect(
+      () => {
+
+        if (
+          !props.avaliacaoSelecionada ||
+          props.questaoSelecionada ||
+          props.carregando ||
+          props.questoes.length === 0
+        ) {
+          return;
+        }
+
+        const primeira =
+          props.questoes.find(
+            item =>
+              item.ativa
+          ) ||
+          props.questoes[0];
+
+        props
+          .onSelecionarQuestao(
+            primeira
+          )
+          .catch(
+            (
+              error:
+                unknown
+            ) =>
+              console.error(
+                error
+              )
+          );
+      },
+      [
+        props.avaliacaoSelecionada,
+        props.questaoSelecionada,
+        props.questoes,
+        props.carregando
+      ]
+    );
+
+    // Sem avaliação selecionada: abre automaticamente a primeira
+    // avaliação ativa (ou a primeira da lista), para que as questões
+    // já apareçam ao entrar na etapa.
+    React.useEffect(
+      () => {
+
+        if (
+          props.avaliacaoSelecionada ||
+          props.carregando ||
+          props.avaliacoes.length === 0
+        ) {
+          return;
+        }
+
+        const inicial =
+          props.avaliacoes.find(
+            item =>
+              item.ativa
+          ) ||
+          props.avaliacoes[0];
+
+        props
+          .onSelecionarAvaliacao(
+            inicial
+          )
+          .catch(
+            (
+              error:
+                unknown
+            ) =>
+              console.error(
+                error
+              )
+          );
+      },
+      [
+        props.avaliacoes,
+        props.avaliacaoSelecionada,
+        props.carregando
+      ]
+    );
+
     const abrirEditarAvaliacao =
       (
         avaliacao:
           IAvaliacaoAdmin
       ): void => {
+
+        // Editar também mostra as questões desta avaliação.
+        verQuestoes(
+          avaliacao
+        );
 
         setEditandoAvaliacao(
           avaliacao
@@ -2119,8 +2313,14 @@ const GestaoAvaliacoesPage:
             )
         }
 
+        {/* ==================================================
+            AVALIAÇÕES  →  QUESTÕES  →  RESPOSTAS
+            Clique no card da avaliação para ver as questões;
+            clique no card da questão para ver as respostas.
+            ================================================== */}
         {
-          props.carregando
+          props.carregando &&
+          props.avaliacoes.length === 0
             ? (
               <div
                 style={
@@ -2133,664 +2333,281 @@ const GestaoAvaliacoesPage:
             : (
               <div
                 style={{
-                  display:
-                    'grid',
-
-                  gridTemplateColumns:
-                    'minmax(250px,.9fr) minmax(430px,1.5fr) minmax(310px,1fr)',
-
-                  gap:
-                    '16px',
-
-                  alignItems:
-                    'start'
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(250px,.85fr) minmax(400px,1.5fr) minmax(300px,1fr)',
+                  gap: '16px',
+                  alignItems: 'start'
                 }}
               >
 
-                {/* AVALIAÇÕES */}
-                <div
-                  style={
-                    card
-                  }
-                >
-                  <h3
-                    style={{
-                      marginTop:
-                        0,
+                {/* ---------------- 1. AVALIAÇÕES ---------------- */}
+                <div style={card}>
+                  <TituloEtapa numero={1} titulo="Avaliação" ajuda="Clique em uma avaliação para ver as questões." />
 
-                      color:
-                        C.azulEscuro
-                    }}
-                  >
-                    Avaliações
-                  </h3>
+                  {props.avaliacoes.length === 0 && (
+                    <p style={{ color: C.secundario, fontSize: '13px' }}>
+                      Nenhuma avaliação cadastrada. Use “+ Nova avaliação” ou “Importar prova por JSON”.
+                    </p>
+                  )}
 
-                  {
-                    props.avaliacoes.length ===
-                      0 &&
-                    (
-                      <p
+                  {props.avaliacoes.map(avaliacao => {
+                    const selecionada = props.avaliacaoSelecionada?.id === avaliacao.id;
+
+                    return (
+                      <div
+                        key={avaliacao.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={selecionada}
+                        onClick={() => verQuestoes(avaliacao)}
+                        onKeyDown={evento => {
+                          if (evento.key === 'Enter' || evento.key === ' ') {
+                            evento.preventDefault();
+                            verQuestoes(avaliacao);
+                          }
+                        }}
                         style={{
-                          color:
-                            C.secundario
+                          marginTop: '10px',
+                          padding: '12px',
+                          borderRadius: '10px',
+                          cursor: 'pointer',
+                          border: selecionada ? `2px solid ${C.azul}` : `1px solid ${C.borda}`,
+                          background: selecionada ? '#EEF6FF' : C.branco,
+                          opacity: avaliacao.ativa ? 1 : 0.75,
+                          boxShadow: selecionada ? '0 4px 14px rgba(11,92,171,.12)' : 'none'
                         }}
                       >
-                        Nenhuma avaliação cadastrada.
-                      </p>
-                    )
-                  }
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                          <strong style={{ color: C.azulEscuro, fontSize: '13px' }}>
+                            {avaliacao.nome}
+                          </strong>
+                          <Selo texto={avaliacao.ativa ? 'Ativa' : 'Inativa'} cor={avaliacao.ativa ? C.verde : C.secundario} fundo={avaliacao.ativa ? C.verdeClaro : '#EEF2F6'} />
+                        </div>
 
-                  {
-                    props.avaliacoes.map(
-                      avaliacao => (
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '6px', fontSize: '12px', color: C.secundario, flexWrap: 'wrap' }}>
+                          <span>Nota mínima {avaliacao.notaMinima}%</span>
+                          <span title="Quantidade de questões sorteadas em cada prova">{avaliacao.quantidadeQuestoes} por prova</span>
+                          {selecionada && <span>{props.questoes.length} no banco</span>}
+                        </div>
+
                         <div
-                          key={
-                            avaliacao.id
-                          }
-                          style={{
-                            padding:
-                              '11px 0',
-
-                            borderBottom:
-                              '1px solid #EDF0F4'
-                          }}
+                          style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap' }}
+                          onClick={evento => evento.stopPropagation()}
                         >
-                          <button
-                            type="button"
-                            style={{
-                              ...btn,
-
-                              width:
-                                '100%',
-
-                              textAlign:
-                                'left',
-
-                              background:
-                                props.avaliacaoSelecionada
-                                  ?.id ===
-                                avaliacao.id
-                                  ? '#EEF6FF'
-                                  : C.branco
-                            }}
-                            onClick={() => {
-
-                              props
-                                .onSelecionarAvaliacao(
-                                  avaliacao
-                                )
-                                .catch(
-                                  (
-                                    error:
-                                      unknown
-                                  ) =>
-                                    console.error(
-                                      error
-                                    )
-                                );
-
-                            }}
-                          >
-                            {
-                              avaliacao.nome
-                            }
+                          <button type="button" onClick={() => abrirEditarAvaliacao(avaliacao)} style={btn}>
+                            ⚙ Configurar
                           </button>
 
-                          <div
-                            style={{
-                              display:
-                                'flex',
-
-                              justifyContent:
-                                'space-between',
-
-                              marginTop:
-                                '7px',
-
-                              fontSize:
-                                '12px',
-
-                              color:
-                                C.secundario
+                          <button
+                            type="button"
+                            disabled={props.processando}
+                            onClick={() => {
+                              props
+                                .onDefinirAvaliacaoAtiva(avaliacao.id, !avaliacao.ativa)
+                                .catch((error: unknown) => console.error(error));
                             }}
+                            style={avaliacao.ativa ? btnDanger : btn}
                           >
-                            <span>
-                              Nota: {
-                                avaliacao.notaMinima
-                              }%
-                            </span>
-
-                            <span>
-                              {
-                                avaliacao.quantidadeQuestoes
-                              } questões
-                            </span>
-                          </div>
-
-                          <div
-                            style={{
-                              display:
-                                'flex',
-
-                              gap:
-                                '6px',
-
-                              marginTop:
-                                '9px',
-
-                              flexWrap:
-                                'wrap'
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() =>
-                                abrirEditarAvaliacao(
-                                  avaliacao
-                                )
-                              }
-                              style={
-                                btn
-                              }
-                            >
-                              Editar avaliação
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={
-                                props.processando
-                              }
-                              onClick={() => {
-
-                                props
-                                  .onDefinirAvaliacaoAtiva(
-                                    avaliacao.id,
-                                    !avaliacao.ativa
-                                  )
-                                  .catch(
-                                    (
-                                      error:
-                                        unknown
-                                    ) =>
-                                      console.error(
-                                        error
-                                      )
-                                  );
-
-                              }}
-                              style={
-                                avaliacao.ativa
-                                  ? btnDanger
-                                  : btn
-                              }
-                            >
-                              {
-                                avaliacao.ativa
-                                  ? 'Desativar'
-                                  : 'Ativar'
-                              }
-                            </button>
-                          </div>
+                            {avaliacao.ativa ? 'Desativar' : 'Ativar'}
+                          </button>
                         </div>
-                      )
-                    )
-                  }
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* QUESTÕES */}
-                <div
-                  style={
-                    card
-                  }
-                >
-                  <div
-                    style={{
-                      display:
-                        'flex',
-
-                      justifyContent:
-                        'space-between',
-
-                      alignItems:
-                        'center',
-
-                      gap:
-                        '10px'
-                    }}
-                  >
-                    <div>
-                      <h3
-                        style={{
-                          margin:
-                            '0 0 3px',
-
-                          color:
-                            C.azulEscuro
-                        }}
-                      >
-                        Questões
-                      </h3>
-
-                      <small
-                        style={{
-                          color:
-                            C.secundario
-                        }}
-                      >
-                        Questões importadas também podem ser alteradas.
-                      </small>
-                    </div>
+                {/* ---------------- 2. QUESTÕES ---------------- */}
+                <div style={card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                    <TituloEtapa
+                      numero={2}
+                      titulo="Questões"
+                      ajuda={
+                        props.avaliacaoSelecionada
+                          ? `${props.questoes.filter(q => q.ativa).length} ativa(s) de ${props.questoes.length} · clique em uma questão para ver as respostas.`
+                          : 'Selecione uma avaliação ao lado.'
+                      }
+                    />
 
                     <button
                       type="button"
-                      disabled={
-                        !props.avaliacaoSelecionada
-                      }
-                      onClick={
-                        abrirQuestao
-                      }
-                      style={{
-                        ...btnPrimary,
-
-                        opacity:
-                          props.avaliacaoSelecionada
-                            ? 1
-                            : .5
-                      }}
+                      disabled={!props.avaliacaoSelecionada}
+                      onClick={abrirQuestao}
+                      style={{ ...btnPrimary, whiteSpace: 'nowrap', opacity: props.avaliacaoSelecionada ? 1 : 0.5 }}
                     >
                       + Nova questão
                     </button>
                   </div>
 
-                  {
-                    props.avaliacaoSelecionada &&
-                    props.questoes.length ===
-                      0 &&
-                    (
-                      <p
-                        style={{
-                          color:
-                            C.secundario,
+                  {props.carregando && (
+                    <p style={{ color: C.secundario, fontSize: '12px', margin: '10px 0 0' }}>Atualizando...</p>
+                  )}
 
-                          marginTop:
-                            '18px'
+                  {props.avaliacaoSelecionada && props.questoes.length === 0 && !props.carregando && (
+                    <div style={{ marginTop: '16px', padding: '18px', border: `1px dashed ${C.borda}`, borderRadius: '10px', textAlign: 'center', color: C.secundario, fontSize: '13px' }}>
+                      Nenhuma questão nesta avaliação ainda.<br />
+                      Clique em <strong>+ Nova questão</strong> para começar.
+                    </div>
+                  )}
+
+                  {props.questoes.map(questao => {
+                    const selecionada = props.questaoSelecionada?.id === questao.id;
+
+                    return (
+                      <div
+                        key={questao.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={selecionada}
+                        onClick={() => verRespostas(questao)}
+                        onKeyDown={evento => {
+                          if (evento.key === 'Enter' || evento.key === ' ') {
+                            evento.preventDefault();
+                            verRespostas(questao);
+                          }
+                        }}
+                        style={{
+                          marginTop: '10px',
+                          padding: '12px 14px',
+                          borderRadius: '10px',
+                          cursor: 'pointer',
+                          border: selecionada ? `2px solid ${C.azul}` : `1px solid ${C.borda}`,
+                          background: selecionada ? '#EEF6FF' : questao.ativa ? C.branco : '#F8FAFC',
+                          opacity: questao.ativa ? 1 : 0.7,
+                          boxShadow: selecionada ? '0 4px 14px rgba(11,92,171,.12)' : 'none'
                         }}
                       >
-                        Nenhuma questão cadastrada.
-                      </p>
-                    )
-                  }
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                          <span
+                            style={{
+                              minWidth: '26px',
+                              height: '26px',
+                              borderRadius: '50%',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: selecionada ? C.azul : '#EEF4F8',
+                              color: selecionada ? C.branco : C.azulEscuro,
+                              fontSize: '12px',
+                              fontWeight: 700
+                            }}
+                          >
+                            {questao.ordem}
+                          </span>
 
-                  {
-                    props.questoes.map(
-                      questao => (
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: C.texto, fontSize: '13px', lineHeight: 1.45 }}>
+                              {questao.enunciado}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '6px', marginTop: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <Selo texto={questao.multiplasRespostas ? 'Múltipla escolha' : 'Escolha única'} cor={C.azulEscuro} fundo="#EEF4F8" />
+                              <Selo texto={`Peso ${questao.peso}`} cor={C.secundario} fundo="#F1F5F9" />
+                              {!questao.ativa && <Selo texto="Desativada" cor={C.vermelho} fundo={C.vermelhoClaro} />}
+                            </div>
+                          </div>
+                        </div>
+
                         <div
-                          key={
-                            questao.id
-                          }
-                          style={{
-                            marginTop:
-                              '12px',
-
-                            padding:
-                              '13px',
-
-                            border:
-                              props.questaoSelecionada
-                                ?.id ===
-                              questao.id
-                                ? `2px solid ${C.azul}`
-                                : `1px solid ${C.borda}`,
-
-                            borderRadius:
-                              '10px',
-
-                            background:
-                              questao.ativa
-                                ? C.branco
-                                : '#F8FAFC',
-
-                            opacity:
-                              questao.ativa
-                                ? 1
-                                : .7
-                          }}
+                          style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}
+                          onClick={evento => evento.stopPropagation()}
                         >
                           <button
                             type="button"
+                            disabled={props.processando}
                             onClick={() => {
-
-                              props
-                                .onSelecionarQuestao(
-                                  questao
-                                )
-                                .catch(
-                                  (
-                                    error:
-                                      unknown
-                                  ) =>
-                                    console.error(
-                                      error
-                                    )
-                                );
-
+                              abrirEditarQuestao(questao).catch((error: unknown) => console.error(error));
                             }}
-                            style={{
-                              width:
-                                '100%',
-
-                              border:
-                                0,
-
-                              background:
-                                'transparent',
-
-                              textAlign:
-                                'left',
-
-                              cursor:
-                                'pointer',
-
-                              color:
-                                C.texto
-                            }}
+                            style={btn}
                           >
-                            <strong>
-                              {
-                                questao.ordem
-                              }.
-                            </strong>{' '}
-                            {
-                              questao.enunciado
-                            }
+                            ✎ Editar
                           </button>
 
-                          <div
-                            style={{
-                              display:
-                                'flex',
-
-                              gap:
-                                '8px',
-
-                              marginTop:
-                                '9px',
-
-                              alignItems:
-                                'center',
-
-                              flexWrap:
-                                'wrap'
+                          <button
+                            type="button"
+                            disabled={props.processando}
+                            onClick={() => {
+                              props
+                                .onDefinirQuestaoAtiva(questao.id, !questao.ativa)
+                                .catch((error: unknown) => console.error(error));
                             }}
+                            style={questao.ativa ? btnDanger : btn}
+                            title={questao.ativa ? 'Tira a questão do sorteio das próximas provas (o histórico é mantido)' : 'Volta a questão para o sorteio'}
                           >
-                            <span
-                              style={{
-                                padding:
-                                  '3px 7px',
-
-                                borderRadius:
-                                  '999px',
-
-                                background:
-                                  '#EEF4F8',
-
-                                fontSize:
-                                  '11px',
-
-                                fontWeight:
-                                  700
-                              }}
-                            >
-                              {
-                                questao.multiplasRespostas
-                                  ? 'Múltipla escolha'
-                                  : 'Escolha única'
-                              }
-                            </span>
-
-                            <span
-                              style={{
-                                color:
-                                  C.secundario,
-
-                                fontSize:
-                                  '12px'
-                              }}
-                            >
-                              Peso {
-                                questao.peso
-                              }
-                            </span>
-                          </div>
-
-                          <div
-                            style={{
-                              display:
-                                'flex',
-
-                              gap:
-                                '6px',
-
-                              marginTop:
-                                '10px',
-
-                              flexWrap:
-                                'wrap'
-                            }}
-                          >
-                            <button
-                              type="button"
-                              disabled={
-                                props.processando
-                              }
-                              onClick={() => {
-
-                                abrirEditarQuestao(
-                                  questao
-                                )
-                                  .catch(
-                                    (
-                                      error:
-                                        unknown
-                                    ) =>
-                                      console.error(
-                                        error
-                                      )
-                                  );
-
-                              }}
-                              style={
-                                btn
-                              }
-                            >
-                              Editar questão e respostas
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={
-                                props.processando
-                              }
-                              onClick={() => {
-
-                                props
-                                  .onDefinirQuestaoAtiva(
-                                    questao.id,
-                                    !questao.ativa
-                                  )
-                                  .catch(
-                                    (
-                                      error:
-                                        unknown
-                                    ) =>
-                                      console.error(
-                                        error
-                                      )
-                                  );
-
-                              }}
-                              style={
-                                questao.ativa
-                                  ? btnDanger
-                                  : btn
-                              }
-                            >
-                              {
-                                questao.ativa
-                                  ? 'Desativar'
-                                  : 'Ativar'
-                              }
-                            </button>
-                          </div>
+                            {questao.ativa ? 'Desativar' : 'Ativar'}
+                          </button>
                         </div>
-                      )
-                    )
-                  }
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* RESPOSTAS */}
-                <div
-                  style={
-                    card
-                  }
-                >
-                  <h3
-                    style={{
-                      marginTop:
-                        0,
+                {/* ---------------- 3. RESPOSTAS ---------------- */}
+                <div style={{ ...card, position: 'sticky', top: '12px' }}>
+                  <TituloEtapa
+                    numero={3}
+                    titulo="Respostas"
+                    ajuda={
+                      props.questaoSelecionada
+                        ? `Questão ${props.questaoSelecionada.ordem}`
+                        : 'Selecione uma questão ao lado.'
+                    }
+                  />
 
-                      color:
-                        C.azulEscuro
-                    }}
-                  >
-                    Respostas
-                  </h3>
+                  {props.questaoSelecionada && (
+                    <div style={{ marginTop: '8px', padding: '10px 12px', background: '#F8FAFC', borderRadius: '8px', fontSize: '13px', color: C.texto, lineHeight: 1.45 }}>
+                      {props.questaoSelecionada.enunciado}
+                    </div>
+                  )}
 
-                  {
-                    !props.questaoSelecionada &&
-                    (
-                      <p
+                  {props.questaoSelecionada &&
+                    props.alternativas.filter(item => item.ativa).length === 0 &&
+                    !props.carregando && (
+                    <p style={{ color: C.secundario, fontSize: '13px' }}>
+                      Esta questão ainda não tem respostas cadastradas.
+                    </p>
+                  )}
+
+                  {props.alternativas
+                    .filter(item => item.ativa)
+                    .map(alternativa => (
+                      <div
+                        key={alternativa.id}
                         style={{
-                          color:
-                            C.secundario
+                          marginTop: '8px',
+                          padding: '10px 12px',
+                          border: `1px solid ${alternativa.correta ? '#A7D7C5' : C.borda}`,
+                          borderRadius: '9px',
+                          background: alternativa.correta ? C.verdeClaro : C.branco,
+                          fontSize: '13px'
                         }}
                       >
-                        Selecione uma questão.
-                      </p>
-                    )
-                  }
-
-                  {
-                    props.alternativas
-                      .filter(
-                        item =>
-                          item.ativa
-                      )
-                      .map(
-                        alternativa => (
-                          <div
-                            key={
-                              alternativa.id
-                            }
-                            style={{
-                              marginTop:
-                                '9px',
-
-                              padding:
-                                '11px',
-
-                              border:
-                                `1px solid ${
-                                  alternativa.correta
-                                    ? '#A7D7C5'
-                                    : C.borda
-                                }`,
-
-                              borderRadius:
-                                '9px',
-
-                              background:
-                                alternativa.correta
-                                  ? C.verdeClaro
-                                  : C.branco
-                            }}
-                          >
-                            <strong>
-                              {
-                                alternativa.ordem
-                              }.
-                            </strong>{' '}
-                            {
-                              alternativa.texto
-                            }
-
-                            <div
-                              style={{
-                                marginTop:
-                                  '5px',
-
-                                fontSize:
-                                  '12px',
-
-                                color:
-                                  alternativa.correta
-                                    ? C.verde
-                                    : C.secundario,
-
-                                fontWeight:
-                                  alternativa.correta
-                                    ? 700
-                                    : 400
-                              }}
-                            >
-                              {
-                                alternativa.correta
-                                  ? '✓ Correta'
-                                  : 'Incorreta'
-                              }
-                            </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <strong style={{ color: alternativa.correta ? C.verde : C.secundario }}>
+                            {alternativa.correta ? '✓' : `${alternativa.ordem}.`}
+                          </strong>
+                          <span style={{ color: C.texto }}>{alternativa.texto}</span>
+                        </div>
+                        {alternativa.correta && (
+                          <div style={{ marginTop: '4px', marginLeft: '18px', fontSize: '11px', fontWeight: 700, color: C.verde }}>
+                            Resposta correta
                           </div>
-                        )
-                      )
-                  }
+                        )}
+                      </div>
+                    ))}
 
-                  {
-                    props.questaoSelecionada &&
-                    (
-                      <button
-                        type="button"
-                        onClick={() => {
-
-                          abrirEditarQuestao(
-                            props.questaoSelecionada as
-                              IQuestaoAdmin
-                          )
-                            .catch(
-                              (
-                                error:
-                                  unknown
-                              ) =>
-                                console.error(
-                                  error
-                                )
-                            );
-
-                        }}
-                        style={{
-                          ...btn,
-
-                          width:
-                            '100%',
-
-                          marginTop:
-                            '12px'
-                        }}
-                      >
-                        Editar respostas
-                      </button>
-                    )
-                  }
+                  {props.questaoSelecionada && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        abrirEditarQuestao(props.questaoSelecionada as IQuestaoAdmin)
+                          .catch((error: unknown) => console.error(error));
+                      }}
+                      style={{ ...btnPrimary, width: '100%', marginTop: '12px' }}
+                    >
+                      ✎ Editar questão e respostas
+                    </button>
+                  )}
                 </div>
 
               </div>

@@ -21,9 +21,9 @@ export const VERSAO_PORTAL = "1.3.0";
 
 export const VERSAO_SOLUCAO = "1.3.0.0";
 
-export const DATA_BUILD = "2026-10-08T11:22:23.474Z";
+export const DATA_BUILD = "2026-10-08T16:12:22.090Z";
 
-export const COMMIT_BUILD = "5c56a5e";
+export const COMMIT_BUILD = "6a443e9";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {
@@ -304,6 +304,10 @@ export const NOVIDADES: INovidadeVersao[] = [
 
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
 export const NOVIDADES_PENDENTES: INovidadeItem[] = [
+  {
+    "tipo": "Correção",
+    "texto": "Indicadores (dados sensíveis) liberados por padrão só para Gestores e Administradores; Colaboradores e Editores acessam apenas com o módulo marcado em Usuários e acessos."
+  },
   {
     "tipo": "Novo",
     "texto": "módulo Arquitetura de Soluções, com a Visão geral dos B.O.M., Novo B.O.M., Dados da demanda e Matriz Go/No-Go (seleção de kit e cálculo de HH em definição)."

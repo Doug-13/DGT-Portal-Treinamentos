@@ -20,6 +20,11 @@ export interface IPerguntaRapidaEditorProps {
   onSalvo:
     () => void;
 
+  // "Exigir acerto" é uma regra do MÓDULO (Editar módulo > Exigir
+  // acerto nas perguntas rápidas). A nova pergunta herda esse valor.
+  exigirAcertoPadrao?:
+    boolean;
+
   onCancelar:
     () => void;
 }
@@ -97,6 +102,7 @@ const PerguntaRapidaEditor:
   > = ({
     dataverse,
     conteudoModuloId,
+    exigirAcertoPadrao,
     onSalvo,
     onCancelar
   }) => {
@@ -128,13 +134,10 @@ const PerguntaRapidaEditor:
     ] =
       React.useState('');
 
-    const [
-      exigirAcerto,
-      setExigirAcerto
-    ] =
-      React.useState(
-        true
-      );
+    // Definido pelo módulo; não é editado aqui.
+    const exigirAcerto =
+      exigirAcertoPadrao ??
+      true;
 
     const [
       mostrarFeedback,
@@ -645,32 +648,6 @@ const PerguntaRapidaEditor:
               '18px'
           }}
         >
-
-          <label
-            style={{
-              display:
-                'flex',
-
-              gap:
-                '8px'
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={
-                exigirAcerto
-              }
-              onChange={
-                event =>
-                  setExigirAcerto(
-                    event.target
-                      .checked
-                  )
-              }
-            />
-
-            Exigir acerto para continuar
-          </label>
 
           <label
             style={{

@@ -32,15 +32,16 @@ import { UsuarioService } from '../services/UsuarioService';
 import { TrilhaService } from '../services/TrilhaService';
 import PortalRouter from './PortalRouter';
 import { Pagina } from '../constants/routes';
-import { descreverPerfil, ehGestorEmAlgumaArea } from '../services/AutorizacaoService';
+import { descreverPerfil, podeAdministrarAcessos } from '../services/AutorizacaoService';
+import { calcularResumoConformidade } from '../services/ConformidadeService';
+import { montarEscopoPessoas, pessoaNoEscopo } from '../utils/regrasAcesso';
 import { podeAcessarRota } from '../services/RoutePermissionService';
 import {
   obterModuloPagina,
   paginaEhTreinamentos,
   paginaEhDocumentos,
   paginaEhProcessos,
-  paginaEhLicitacoes,
-  paginaEhArquitetura
+  paginaEhLicitacoes
 } from '../constants/moduleRoutes';
 import { FEATURE_FLAGS } from '../constants/featureFlags';
 import {
@@ -79,7 +80,7 @@ import { useGestaoDocumentos } from '../hooks/useGestaoDocumentos';
 import { useDocumentoTreinamentos } from '../hooks/useDocumentoTreinamentos';
 import { useGestaoAreas } from '../hooks/useGestaoAreas';
 import { useConformidade } from '../hooks/useConformidade';
-import { obterMenuTreinamento, obterMenuDocumentos, obterMenuLicitacoes, obterMenuArquitetura } from '../services/MenuPermissionService';
+import { obterMenuTreinamento, obterMenuDocumentos, obterMenuLicitacoes } from '../services/MenuPermissionService';
 import { IModuloImportJson, ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
 import { SharePointDocumentoService } from '../services/sharepoint/SharePointDocumentoService';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
@@ -636,12 +637,12 @@ const PortalTreinamentos:
         sharePointDocumentoService
       );
 
-    
+
     const documentoTreinamentos =
       useDocumentoTreinamentos(
         dataverseService
       );
-const gestaoAreas =
+    const gestaoAreas =
       useGestaoAreas(
         dataverseService
       );
@@ -660,6 +661,66 @@ const gestaoAreas =
     const conformidade =
       useConformidade(
         dataverseService
+      );
+
+    // ==========================================================
+    // RECORTE DE PESSOAS PELAS ÁREAS DO USUÁRIO
+    // ==========================================================
+    // Gestor e Editor de área veem e atribuem apenas para pessoas
+    // das suas áreas (Administrador e Gestor/Editor global: todos).
+    // Regra em utils/regrasAcesso.ts.
+    // ==========================================================
+
+    const escopoPessoas =
+      React.useMemo(
+        () =>
+          montarEscopoPessoas(
+            autorizacao.contexto?.escopoAreas,
+            gestaoAreas.usuariosAreas
+          ),
+        [
+          autorizacao.contexto,
+          gestaoAreas.usuariosAreas
+        ]
+      );
+
+    const conformidadeVisivel =
+      React.useMemo(
+        () => {
+
+          if (!escopoPessoas) {
+            return {
+              itens: conformidade.itens,
+              resumo: conformidade.resumo
+            };
+          }
+
+          const itens =
+            conformidade.itens.filter(
+              item =>
+                pessoaNoEscopo(
+                  escopoPessoas,
+                  {
+                    id: item.usuarioId,
+                    nome: item.usuario,
+                    email: item.usuario
+                  }
+                )
+            );
+
+          return {
+            itens,
+            resumo:
+              calcularResumoConformidade(
+                itens
+              )
+          };
+        },
+        [
+          escopoPessoas,
+          conformidade.itens,
+          conformidade.resumo
+        ]
       );
 
     const calendario =
@@ -1314,7 +1375,8 @@ const gestaoAreas =
                 trilhaService
                   .carregarTrilhasUsuario(
                     atribuicoes,
-                    catalogo
+                    catalogo,
+                    userEmail
                   ),
 
                 documentoService
@@ -1694,7 +1756,7 @@ const gestaoAreas =
 
           if (
             etapa ===
-              1
+            1
           ) {
 
             setPaginaAtual(
@@ -1711,7 +1773,7 @@ const gestaoAreas =
 
           if (
             etapa ===
-              2
+            2
           ) {
 
             void gestaoModulos
@@ -1834,7 +1896,7 @@ const gestaoAreas =
 
           if (
             gestaoAvaliacoes.avaliacoes.length ===
-              0
+            0
           ) {
             throw new Error(
               'Cadastre ou importe pelo menos uma avaliação antes de encerrar.'
@@ -2242,41 +2304,6 @@ const gestaoAreas =
         ]
       );
 
-    // Depois de criar um documento: recarrega a lista (a tela inicial
-    // de Documentos já mostra o novo) e abre o documento direto.
-    const abrirDocumentoPorId =
-      React.useCallback(
-        async (
-          documentoId: string
-        ): Promise<boolean> => {
-
-          const id =
-            documentoId.replace(/[{}]/g, '').toLowerCase();
-
-          try {
-            const lista =
-              await documentoService.getDocumentos();
-
-            setDocumentos(lista);
-
-            const documento =
-              lista.find(item => (item.id || '').replace(/[{}]/g, '').toLowerCase() === id);
-
-            if (!documento) {
-              return false;
-            }
-
-            await abrirDocumento(documento);
-            return true;
-
-          } catch (error) {
-            console.error('Não foi possível abrir o documento criado:', error);
-            return false;
-          }
-        },
-        [documentoService, abrirDocumento]
-      );
-
     // ==========================================================
     // FLUXO DE APROVAÇÃO — tela de detalhe do documento
     // (Elaboração → Revisão → Aprovação → Vigente)
@@ -2629,17 +2656,6 @@ const gestaoAreas =
 
     // Módulo Licitações: só aparece no menu para quem tem
     // permissão em pelo menos uma das abas.
-    const abasArquitetura =
-      React.useMemo(
-        () =>
-          obterMenuArquitetura(
-            autorizacao.contexto
-          ),
-        [
-          autorizacao.contexto
-        ]
-      );
-
     const abasLicitacoes =
       React.useMemo(
         () =>
@@ -2659,192 +2675,180 @@ const gestaoAreas =
         paginaAtual
       );
 
+    // Item do menu lateral em destaque. Os itens "avulsos" (módulo
+    // 'outro': Indicadores, RH, Sistemas, Comunicados, Sobre) só
+    // ficam ativos quando a própria página está aberta — antes,
+    // abrir Indicadores destacava todos eles de uma vez.
+    const itemMenuAtivo =
+      (item: { modulo: string; pagina?: Pagina }): boolean =>
+        item.modulo === 'outro'
+          ? !!item.pagina && item.pagina === paginaAtual
+          : moduloAtual === item.modulo;
+
     const menuIntranet:
       Array<{
         label:
-          string;
+        string;
 
         icon:
-          string;
+        string;
 
         pagina?:
-          Pagina;
+        Pagina;
 
         modulo:
-          'inicio' |
-          'treinamentos' |
-          'documentos' |
-          'processos' |
-          'licitacoes' |
-          'arquitetura' |
-          'outro';
+        'inicio' |
+        'treinamentos' |
+        'documentos' |
+        'processos' |
+        'licitacoes' |
+        'outro';
       }> = [
 
-      {
-        label:
-          'Início',
+        {
+          label:
+            'Início',
 
-        icon:
-          '⌂',
+          icon:
+            '⌂',
 
-        pagina:
-          'inicio',
+          pagina:
+            'inicio',
 
-        modulo:
-          'inicio'
-      },
+          modulo:
+            'inicio'
+        },
 
-      {
-        label:
-          'Treinamentos',
+        {
+          label:
+            'Treinamentos',
 
-        icon:
-          '▣',
+          icon:
+            '▣',
 
-        pagina:
-          'treinamentosVisaoGeral',
+          pagina:
+            'treinamentosVisaoGeral',
 
-        modulo:
-          'treinamentos'
-      },
+          modulo:
+            'treinamentos'
+        },
 
-      {
-        label:
-          'Documentos',
+        {
+          label:
+            'Documentos',
 
-        icon:
-          '▤',
+          icon:
+            '▤',
 
-        pagina:
-          'documentos',
+          pagina:
+            'documentos',
 
-        modulo:
-          'documentos'
-      },
+          modulo:
+            'documentos'
+        },
 
-      {
-        label:
-          'Processos',
+        {
+          label:
+            'Processos',
 
-        icon:
-          '⌘',
+          icon:
+            '⌘',
 
-        // Módulo em teste: só navega com a feature flag ligada.
-        pagina:
-          FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
-            ? 'processos'
-            : undefined,
+          // Módulo em teste: só navega com a feature flag ligada.
+          pagina:
+            FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
+              ? 'processos'
+              : undefined,
 
-        modulo:
-          FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
-            ? 'processos'
-            : 'outro'
-      },
+          modulo:
+            FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
+              ? 'processos'
+              : 'outro'
+        },
 
-      // Licitações (PNCP) — visível só para perfis autorizados
-      ...(
-        abasLicitacoes.length > 0
-          ? [
-            {
-              label:
-                'Licitações',
+        // Licitações (PNCP) — visível só para perfis autorizados
+        ...(
+          abasLicitacoes.length > 0
+            ? [
+              {
+                label:
+                  'Licitações',
 
-              icon:
-                '◈',
+                icon:
+                  '◈',
 
-              pagina:
-                abasLicitacoes[0].pagina,
+                pagina:
+                  abasLicitacoes[0].pagina,
 
-              modulo:
-                'licitacoes' as const
-            }
-          ]
-          : []
-      ),
+                modulo:
+                  'licitacoes' as const
+              }
+            ]
+            : []
+        ),
 
-      // Arquitetura de Soluções — visível só com o módulo liberado
-      ...(
-        abasArquitetura.length > 0
-          ? [
-            {
-              label:
-                'Arquitetura de Soluções',
+        {
+          label:
+            'Indicadores',
 
-              icon:
-                '⌂',
+          icon:
+            '▥',
 
-              pagina:
-                abasArquitetura[0].pagina,
+          pagina:
+            'indicadores',
 
-              modulo:
-                'arquitetura' as const
-            }
-          ]
-          : []
-      ),
+          modulo:
+            'outro'
+        },
 
-      {
-        label:
-          'Indicadores',
+        {
+          label:
+            'RH e Pessoas',
 
-        icon:
-          '▥',
+          icon:
+            '♟',
 
-        pagina:
-          'indicadores',
+          modulo:
+            'outro'
+        },
 
-        modulo:
-          'outro'
-      },
+        {
+          label:
+            'Sistemas',
 
-      {
-        label:
-          'RH e Pessoas',
+          icon:
+            '⌘',
 
-        icon:
-          '♟',
+          modulo:
+            'outro'
+        },
 
-        modulo:
-          'outro'
-      },
+        {
+          label:
+            'Comunicados',
 
-      {
-        label:
-          'Sistemas',
+          icon:
+            '◩',
 
-        icon:
-          '⌘',
+          modulo:
+            'outro'
+        },
 
-        modulo:
-          'outro'
-      },
+        {
+          label:
+            'Sobre a DGT',
 
-      {
-        label:
-          'Comunicados',
+          icon:
+            '?',
 
-        icon:
-          '◩',
+          pagina:
+            'suporte',
 
-        modulo:
-          'outro'
-      },
-
-      {
-        label:
-          'Sobre a DGT',
-
-        icon:
-          '?',
-
-        pagina:
-          'suporte',
-
-        modulo:
-          'outro'
-      }
-    ];
-// ==========================================================
+          modulo:
+            'outro'
+        }
+      ];
+    // ==========================================================
     // RENDER
     // ==========================================================
 
@@ -2890,52 +2894,50 @@ const gestaoAreas =
                   podeAcessarRota(item.pagina, autorizacao.contexto)
               )
               .map(
-              item => (
+                item => (
 
-                <button
-                  key={
-                    item.label
-                  }
-                  type="button"
-                  className={
-                    moduloAtual ===
-                      item.modulo
-                      ? styles.intranetMenuActive
-                      : styles.intranetMenuItem
-                  }
-                  title={
-                    moduloAtual ===
-                      item.modulo
-                      ? 'Módulo atual'
-                      : 'Módulo da Intranet DGT'
-                  }
-                  onClick={() => {
-
-                    if (
-                      item.pagina
-                    ) {
-                      navegar(
-                        item.pagina
-                      );
+                  <button
+                    key={
+                      item.label
                     }
-                  }}
-                >
-
-                  <span
+                    type="button"
                     className={
-                      styles.intranetIcon
+                      itemMenuAtivo(item)
+                        ? styles.intranetMenuActive
+                        : styles.intranetMenuItem
                     }
+                    title={
+                      itemMenuAtivo(item)
+                        ? 'Módulo atual'
+                        : 'Módulo da Intranet DGT'
+                    }
+                    onClick={() => {
+
+                      if (
+                        item.pagina
+                      ) {
+                        navegar(
+                          item.pagina
+                        );
+                      }
+                    }}
                   >
-                    {item.icon}
-                  </span>
 
-                  <span>
-                    {item.label}
-                  </span>
+                    <span
+                      className={
+                        styles.intranetIcon
+                      }
+                    >
+                      {item.icon}
+                    </span>
 
-                </button>
-              )
-            )}
+                    <span>
+                      {item.label}
+                    </span>
+
+                  </button>
+                )
+              )}
 
           </nav>
 
@@ -3051,165 +3053,165 @@ const gestaoAreas =
                 ref={menuUsuarioRef}
                 style={{ position: 'relative' }}
               >
-              <div
-                className={
-                  styles.userBox
-                }
-                role="button"
-                tabIndex={0}
-                aria-haspopup="menu"
-                aria-expanded={menuUsuarioAberto}
-                title="Meu perfil e acessos"
-                style={{ cursor: 'pointer' }}
-                onClick={() => setMenuUsuarioAberto(!menuUsuarioAberto)}
-                onKeyDown={evento => {
-                  if (evento.key === 'Enter' || evento.key === ' ') {
-                    evento.preventDefault();
-                    setMenuUsuarioAberto(!menuUsuarioAberto);
-                  }
-                }}
-              >
-
                 <div
                   className={
-                    styles.avatar
+                    styles.userBox
                   }
+                  role="button"
+                  tabIndex={0}
+                  aria-haspopup="menu"
+                  aria-expanded={menuUsuarioAberto}
+                  title="Meu perfil e acessos"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setMenuUsuarioAberto(!menuUsuarioAberto)}
+                  onKeyDown={evento => {
+                    if (evento.key === 'Enter' || evento.key === ' ') {
+                      evento.preventDefault();
+                      setMenuUsuarioAberto(!menuUsuarioAberto);
+                    }
+                  }}
                 >
 
-                  {
-                    usuario.fotoUsuario &&
-                      !usuario.erroFotoUsuario
-                      ? (
-
-                        <img
-                          src={
-                            usuario.fotoUsuario
-                          }
-                          alt={
-                            userName
-                          }
-                          onError={
-                            usuario.registrarErroFoto
-                          }
-                        />
-
-                      ) : (
-
-                        <span>
-                          {
-                            usuario.primeiroNome
-                              .charAt(0)
-                              .toUpperCase()
-                          }
-                        </span>
-                      )
-                  }
-
-                </div>
-
-                <div
-                  className={
-                    styles.userText
-                  }
-                >
-
-                  <strong>
-                    {
-                      usuario.primeiroNome
+                  <div
+                    className={
+                      styles.avatar
                     }
-                  </strong>
+                  >
 
-                  <span>
                     {
-                      autorizacao.carregando
-                        ? 'Carregando perfil...'
-                        : perfilExibicao
+                      usuario.fotoUsuario &&
+                        !usuario.erroFotoUsuario
+                        ? (
+
+                          <img
+                            src={
+                              usuario.fotoUsuario
+                            }
+                            alt={
+                              userName
+                            }
+                            onError={
+                              usuario.registrarErroFoto
+                            }
+                          />
+
+                        ) : (
+
+                          <span>
+                            {
+                              usuario.primeiroNome
+                                .charAt(0)
+                                .toUpperCase()
+                            }
+                          </span>
+                        )
                     }
+
+                  </div>
+
+                  <div
+                    className={
+                      styles.userText
+                    }
+                  >
+
+                    <strong>
+                      {
+                        usuario.primeiroNome
+                      }
+                    </strong>
+
+                    <span>
+                      {
+                        autorizacao.carregando
+                          ? 'Carregando perfil...'
+                          : perfilExibicao
+                      }
+                    </span>
+
+                  </div>
+
+                  <span
+                    className={
+                      styles.chevron
+                    }
+                  >
+                    ⌄
                   </span>
 
                 </div>
 
-                <span
-                  className={
-                    styles.chevron
-                  }
-                >
-                  ⌄
-                </span>
-
-              </div>
-
-              {
-                menuUsuarioAberto && (
-                  <div
-                    role="menu"
-                    style={{
-                      position: 'absolute',
-                      right: 0,
-                      top: 'calc(100% + 8px)',
-                      width: '290px',
-                      background: '#FFFFFF',
-                      color: '#202A44',
-                      border: '1px solid #E5E7EB',
-                      borderRadius: '12px',
-                      boxShadow: '0 16px 40px rgba(32,42,68,.22)',
-                      zIndex: 1000,
-                      overflow: 'hidden',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <div style={{ padding: '14px 16px', borderBottom: '1px solid #E5E7EB', background: '#F7F9FB' }}>
-                      <strong style={{ display: 'block', fontSize: '14px' }}>{autorizacao.contexto?.nome || usuario.primeiroNome}</strong>
-                      <span style={{ display: 'block', fontSize: '12px', color: '#64748b', overflowWrap: 'anywhere' }}>{autorizacao.contexto?.email || ''}</span>
-                      <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0F6CBD', marginTop: '4px' }}>{perfilExibicao}</span>
+                {
+                  menuUsuarioAberto && (
+                    <div
+                      role="menu"
+                      style={{
+                        position: 'absolute',
+                        right: 0,
+                        top: 'calc(100% + 8px)',
+                        width: '290px',
+                        background: '#FFFFFF',
+                        color: '#202A44',
+                        border: '1px solid #E5E7EB',
+                        borderRadius: '12px',
+                        boxShadow: '0 16px 40px rgba(32,42,68,.22)',
+                        zIndex: 1000,
+                        overflow: 'hidden',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <div style={{ padding: '14px 16px', borderBottom: '1px solid #E5E7EB', background: '#F7F9FB' }}>
+                        <strong style={{ display: 'block', fontSize: '14px' }}>{autorizacao.contexto?.nome || usuario.primeiroNome}</strong>
+                        <span style={{ display: 'block', fontSize: '12px', color: '#64748b', overflowWrap: 'anywhere' }}>{autorizacao.contexto?.email || ''}</span>
+                        <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0F6CBD', marginTop: '4px' }}>{perfilExibicao}</span>
+                        {
+                          (autorizacao.contexto?.vinculosArea || []).length > 0 && (
+                            <span style={{ display: 'block', fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+                              {(autorizacao.contexto?.vinculosArea || []).map(item => `${item.areaNome}: ${item.perfil}`).join(' · ')}
+                            </span>
+                          )
+                        }
+                      </div>
                       {
-                        (autorizacao.contexto?.vinculosArea || []).length > 0 && (
-                          <span style={{ display: 'block', fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
-                            {(autorizacao.contexto?.vinculosArea || []).map(item => `${item.areaNome}: ${item.perfil}`).join(' · ')}
-                          </span>
-                        )
+                        [
+                          { pagina: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', icone: '◉', visivel: true },
+                          { pagina: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', icone: '⚿', visivel: podeAdministrarAcessos(autorizacao.contexto) },
+                          { pagina: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', icone: '▦', visivel: autorizacao.contexto?.perfil === 'Administrador' }
+                        ]
+                          .filter(item => item.visivel)
+                          .map(item => (
+                            <button
+                              key={item.pagina}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setMenuUsuarioAberto(false);
+                                navegar(item.pagina);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                width: '100%',
+                                padding: '11px 16px',
+                                border: 0,
+                                borderBottom: '1px solid #F1F5F9',
+                                background: '#FFFFFF',
+                                color: '#202A44',
+                                fontSize: '13.5px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                textAlign: 'left'
+                              }}
+                            >
+                              <span aria-hidden="true" style={{ width: '18px', textAlign: 'center' }}>{item.icone}</span>
+                              {item.rotulo}
+                            </button>
+                          ))
                       }
                     </div>
-                    {
-                      [
-                        { pagina: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', icone: '◉', visivel: true },
-                        { pagina: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', icone: '⚿', visivel: ehGestorEmAlgumaArea(autorizacao.contexto) },
-                        { pagina: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', icone: '▦', visivel: autorizacao.contexto?.perfil === 'Administrador' }
-                      ]
-                        .filter(item => item.visivel)
-                        .map(item => (
-                          <button
-                            key={item.pagina}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setMenuUsuarioAberto(false);
-                              navegar(item.pagina);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              width: '100%',
-                              padding: '11px 16px',
-                              border: 0,
-                              borderBottom: '1px solid #F1F5F9',
-                              background: '#FFFFFF',
-                              color: '#202A44',
-                              fontSize: '13.5px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              textAlign: 'left'
-                            }}
-                          >
-                            <span aria-hidden="true" style={{ width: '18px', textAlign: 'center' }}>{item.icone}</span>
-                            {item.rotulo}
-                          </button>
-                        ))
-                    }
-                  </div>
-                )
-              }
+                  )
+                }
               </div>
 
             </div>
@@ -3275,20 +3277,6 @@ const gestaoAreas =
                       icon: 'workflow'
                     }
                   ]}
-                  paginaAtual={paginaAtual}
-                  navegar={navegar}
-                />
-              )
-            }
-
-            {
-              paginaEhArquitetura(
-                paginaAtual
-              ) &&
-              (
-                <ModuloCabecalho
-                  config={CABECALHOS_MODULO.arquitetura}
-                  abas={abasArquitetura}
                   paginaAtual={paginaAtual}
                   navegar={navegar}
                 />
@@ -3388,8 +3376,6 @@ const gestaoAreas =
                   recarregarRevisoesDoDocumentoSelecionado
                 }
 
-                abrirDocumentoPorId={abrirDocumentoPorId}
-
                 abrirDocumento={documento => {
 
                   abrirDocumento(
@@ -3414,7 +3400,13 @@ const gestaoAreas =
                 }
 
                 colaboradores={
-                  colaboradores
+                  colaboradores.filter(
+                    colaborador =>
+                      pessoaNoEscopo(
+                        escopoPessoas,
+                        colaborador
+                      )
+                  )
                 }
 
                 trilhas={
@@ -3974,7 +3966,13 @@ const gestaoAreas =
                 }
 
                 usuariosAtribuicao={
-                  gestaoAtribuicoes.usuarios
+                  gestaoAtribuicoes.usuarios.filter(
+                    usuario =>
+                      pessoaNoEscopo(
+                        escopoPessoas,
+                        usuario
+                      )
+                  )
                 }
 
                 trilhasAtribuicao={
@@ -4164,8 +4162,14 @@ const gestaoAreas =
                 }
 
                 criarDocumentoAdministrativo={
-                  gestaoDocumentos.criarDocumentoCompleto
+                  async dados => {
+                    await gestaoDocumentos
+                      .criarDocumentoCompleto(
+                        dados
+                      );
+                  }
                 }
+
                 criarRevisaoAdministrativa={
                   gestaoDocumentos.criarRevisaoComArquivo
                 }
@@ -4215,11 +4219,11 @@ const gestaoAreas =
                 }
 
                 itensConformidade={
-                  conformidade.itens
+                  conformidadeVisivel.itens
                 }
 
                 resumoConformidade={
-                  conformidade.resumo
+                  conformidadeVisivel.resumo
                 }
 
                 carregandoConformidade={

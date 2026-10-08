@@ -1,11 +1,17 @@
 import * as React from 'react';
+import * as ReactDOM from 'react-dom';
 
 // ============================================================
 // MENU DE AÇÕES (⋮)
 //
 // Botão de três pontos que abre uma lista de ações secundárias
 // (ex.: Desativar, Remover). Fecha ao clicar fora, ao pressionar
-// Esc ou ao escolher uma ação.
+// Esc, ao rolar a página ou ao escolher uma ação.
+//
+// A lista é desenhada no <body> (portal) com posição fixa calculada a
+// partir do botão. Assim ela não é cortada por tabelas/cartões com
+// overflow (o que acontecia quando havia poucas linhas na tabela) e
+// abre para cima quando não há espaço abaixo.
 // ============================================================
 
 export interface IItemMenuAcoes {
@@ -33,6 +39,32 @@ const MenuAcoes: React.FC<IMenuAcoesProps> = ({
 
   const [aberto, setAberto] = React.useState(false);
   const raiz = React.useRef<HTMLDivElement>(null);
+  const botao = React.useRef<HTMLButtonElement>(null);
+  const lista = React.useRef<HTMLDivElement>(null);
+
+  const [posicao, setPosicao] =
+    React.useState<{ top: number; right: number; paraCima: boolean }>({
+      top: 0,
+      right: 0,
+      paraCima: false
+    });
+
+  const calcularPosicao = React.useCallback((): void => {
+    if (!botao.current) {
+      return;
+    }
+
+    const r = botao.current.getBoundingClientRect();
+    const alturaEstimada = 8 + 40 * Math.max(1, itens.length);
+    const espacoAbaixo = window.innerHeight - r.bottom;
+    const paraCima = espacoAbaixo < alturaEstimada + 12 && r.top > espacoAbaixo;
+
+    setPosicao({
+      top: paraCima ? r.top - 6 : r.bottom + 6,
+      right: Math.max(8, window.innerWidth - r.right),
+      paraCima
+    });
+  }, [itens.length]);
 
   React.useEffect(
     () => {
@@ -41,9 +73,16 @@ const MenuAcoes: React.FC<IMenuAcoesProps> = ({
       }
 
       const aoClicarFora = (evento: MouseEvent): void => {
-        if (raiz.current && !raiz.current.contains(evento.target as Node)) {
+        const alvo = evento.target as Node;
+        const dentroBotao = !!raiz.current && raiz.current.contains(alvo);
+        const dentroLista = !!lista.current && lista.current.contains(alvo);
+        if (!dentroBotao && !dentroLista) {
           setAberto(false);
         }
+      };
+
+      const aoRolarOuRedimensionar = (): void => {
+        setAberto(false);
       };
 
       const aoTeclar = (evento: KeyboardEvent): void => {
@@ -54,10 +93,14 @@ const MenuAcoes: React.FC<IMenuAcoesProps> = ({
 
       document.addEventListener('mousedown', aoClicarFora);
       document.addEventListener('keydown', aoTeclar);
+      window.addEventListener('scroll', aoRolarOuRedimensionar, true);
+      window.addEventListener('resize', aoRolarOuRedimensionar);
 
       return () => {
         document.removeEventListener('mousedown', aoClicarFora);
         document.removeEventListener('keydown', aoTeclar);
+        window.removeEventListener('scroll', aoRolarOuRedimensionar, true);
+        window.removeEventListener('resize', aoRolarOuRedimensionar);
       };
     },
     [aberto]
@@ -78,13 +121,19 @@ const MenuAcoes: React.FC<IMenuAcoesProps> = ({
       }}
     >
       <button
+        ref={botao}
         type="button"
         aria-label={rotulo}
         title={rotulo}
         aria-haspopup="menu"
         aria-expanded={aberto}
         disabled={desabilitado}
-        onClick={() => setAberto(!aberto)}
+        onClick={() => {
+          if (!aberto) {
+            calcularPosicao();
+          }
+          setAberto(!aberto);
+        }}
         style={{
           width: '34px',
           height: '34px',
@@ -108,14 +157,16 @@ const MenuAcoes: React.FC<IMenuAcoesProps> = ({
         </svg>
       </button>
 
-      {aberto && (
+      {aberto && ReactDOM.createPortal(
         <div
+          ref={lista}
           role="menu"
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            right: 0,
-            zIndex: 60,
+            position: 'fixed',
+            top: posicao.top,
+            right: posicao.right,
+            transform: posicao.paraCima ? 'translateY(-100%)' : undefined,
+            zIndex: 100000,
             minWidth: '170px',
             padding: '6px',
             background: '#ffffff',
@@ -165,7 +216,8 @@ const MenuAcoes: React.FC<IMenuAcoesProps> = ({
               {item.rotulo}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -5,6 +5,14 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 `.\Gerar-Versao.ps1` elas passam para a nova versão e aparecem em "Novidades".
 
 ## [Não publicado]
+- Novo: integração dos Indicadores com o ClickUp, com sincronização de dados para acompanhamento das iniciativas e resultados no portal.
+- Novo: plugin de sincronização com o ClickUp e documentação técnica da integração dos Indicadores.
+- Novo: configuração avançada da Pergunta rápida nos módulos, com modal próprio para definir e editar as opções da atividade.
+- Melhoria: gestão de módulos e avaliações aprimorada, com ações reorganizadas e edição de conteúdos mais consistente.
+- Melhoria: controle de acesso aos Indicadores refinado, respeitando perfil do usuário, permissões por módulo e papéis por área.
+- Melhoria: tela Usuários e acessos atualizada para facilitar a administração das permissões dos módulos do portal.
+- Melhoria: navegação e permissões das rotas ajustadas para refletir corretamente os módulos disponíveis para cada usuário.
+- Novo: script para adicionar o papel de Editor de Área no Dataverse, permitindo ampliar a configuração de permissões por área.
 - Correção: Indicadores (dados sensíveis) liberados por padrão só para Gestores e Administradores; Colaboradores e Editores acessam apenas com o módulo marcado em Usuários e acessos.
 - Novo: módulo Arquitetura de Soluções, com a Visão geral dos B.O.M., Novo B.O.M., Dados da demanda e Matriz Go/No-Go (seleção de kit e cálculo de HH em definição).
 - Novo: colunas "Criado em" e "Vencimento" na lista de documentos e no detalhe; o documento deve ser revisado 1 ano após a criação ou a última publicação, com aviso nos últimos 30 dias e quando vencido.

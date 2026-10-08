@@ -60,6 +60,13 @@ const todosItens:
       label: 'Conformidade',
       icon: 'checkCircle'
     },
+    // Atribuir treinamento/trilha: Gestor e Editor (nas suas áreas)
+    // e Administrador. Antes só era acessível pela Gestão.
+    {
+      pagina: 'atribuirTreinamento',
+      label: 'Atribuir',
+      icon: 'filePlus'
+    },
     {
       pagina: 'catalogoTreinamentos',
       label: 'Catálogo',
@@ -139,30 +146,6 @@ export const obterMenuLicitacoes = (
   contexto?: IContextoAcesso
 ): IItemMenuTreinamento[] =>
   itensLicitacoes.filter(
-    item =>
-      podeAcessarRota(
-        item.pagina,
-        contexto
-      )
-  );
-
-// ============================================================
-// MENU (ABAS) DO MÓDULO ARQUITETURA DE SOLUÇÕES
-// ============================================================
-
-const itensArquitetura:
-  IItemMenuTreinamento[] = [
-    {
-      pagina: 'arquitetura',
-      label: 'Visão geral dos B.O.M.',
-      icon: 'building'
-    }
-  ];
-
-export const obterMenuArquitetura = (
-  contexto?: IContextoAcesso
-): IItemMenuTreinamento[] =>
-  itensArquitetura.filter(
     item =>
       podeAcessarRota(
         item.pagina,

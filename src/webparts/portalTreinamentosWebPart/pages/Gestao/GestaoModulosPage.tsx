@@ -18,6 +18,10 @@ import ModuloConteudosEditor from
   './ModuloConteudosEditor';
 
 import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import {
   IEditarModuloConteudo,
   IModuloConteudoAdmin,
   INovoModuloConteudo
@@ -40,6 +44,10 @@ import {
 } from '../../services/ImportacaoJsonEtapasService';
 
 export interface IGestaoModulosPageProps {
+
+  // Opcional: habilita "Configurar pergunta" nas perguntas rápidas.
+  dataverseService?:
+    DataverseService;
 
   treinamentos:
     ITreinamentoAdmin[];
@@ -482,6 +490,171 @@ const GestaoModulosPage:
         true
       );
 
+    // ==========================================================
+    // EXIGIR ACERTO NAS PERGUNTAS RÁPIDAS DO MÓDULO
+    // ==========================================================
+    // Grava em dgt_modulopergunta.dgt_exigiracerto de TODAS as
+    // perguntas rápidas ativas do módulo. Marcado: o colaborador só
+    // conclui o módulo depois de acertar as perguntas.
+    // ==========================================================
+
+    const [
+      perguntasModulo,
+      setPerguntasModulo
+    ] =
+      React.useState<
+        { id: string; exigirAcerto: boolean }[]
+      >([]);
+
+    const [
+      exigirAcertoModulo,
+      setExigirAcertoModulo
+    ] =
+      React.useState(
+        false
+      );
+
+    const [
+      exigirAcertoAlterado,
+      setExigirAcertoAlterado
+    ] =
+      React.useState(
+        false
+      );
+
+    const [
+      carregandoPerguntasModulo,
+      setCarregandoPerguntasModulo
+    ] =
+      React.useState(
+        false
+      );
+
+    const carregarPerguntasModulo =
+      async (
+        moduloId: string
+      ): Promise<void> => {
+
+        setPerguntasModulo([]);
+        setExigirAcertoModulo(false);
+        setExigirAcertoAlterado(false);
+
+        if (
+          !props.dataverseService ||
+          !moduloId
+        ) {
+          return;
+        }
+
+        setCarregandoPerguntasModulo(true);
+
+        try {
+
+          const id =
+            moduloId
+              .replace(/[{}]/g, '')
+              .toLowerCase();
+
+          const conteudos =
+            await props.dataverseService
+              .listarRegistros(
+                'dgt_moduloconteudo',
+                '$select=dgt_moduloconteudoid' +
+                `&$filter=_dgt_modulo_value eq ${id}`
+              );
+
+          const perguntas:
+            { id: string; exigirAcerto: boolean }[] = [];
+
+          for (const conteudo of conteudos) {
+
+            const registros =
+              await props.dataverseService
+                .getPerguntaRapidaModulo(
+                  String(
+                    conteudo.dgt_moduloconteudoid || ''
+                  )
+                );
+
+            registros.forEach(registro => {
+              perguntas.push({
+                id:
+                  String(
+                    registro.dgt_moduloperguntaid || ''
+                  ),
+                exigirAcerto:
+                  registro.dgt_exigiracerto === true
+              });
+            });
+          }
+
+          setPerguntasModulo(perguntas);
+
+          setExigirAcertoModulo(
+            perguntas.length > 0 &&
+            perguntas.every(
+              item =>
+                item.exigirAcerto
+            )
+          );
+
+        } catch (e) {
+
+          console.warn(
+            'Não foi possível ler as perguntas do módulo.',
+            e
+          );
+
+        } finally {
+
+          setCarregandoPerguntasModulo(false);
+        }
+      };
+
+    const salvarExigirAcertoModulo =
+      async (): Promise<void> => {
+
+        if (
+          !props.dataverseService ||
+          !exigirAcertoAlterado
+        ) {
+          return;
+        }
+
+        for (const pergunta of perguntasModulo) {
+
+          if (
+            pergunta.exigirAcerto ===
+            exigirAcertoModulo
+          ) {
+            continue;
+          }
+
+          await props.dataverseService
+            .atualizarRegistro(
+              'dgt_modulopergunta',
+              pergunta.id,
+              {
+                dgt_exigiracerto:
+                  exigirAcertoModulo
+              }
+            );
+        }
+
+        setPerguntasModulo(
+          lista =>
+            lista.map(
+              item => ({
+                ...item,
+                exigirAcerto:
+                  exigirAcertoModulo
+              })
+            )
+        );
+
+        setExigirAcertoAlterado(false);
+      };
+
     const [
       erroLocal,
       setErroLocal
@@ -714,6 +887,9 @@ const GestaoModulosPage:
         setDuracao('0');
         setObrigatorio(true);
         setAtivo(true);
+        setPerguntasModulo([]);
+        setExigirAcertoModulo(false);
+        setExigirAcertoAlterado(false);
         setErroLocal('');
         setRevisandoModulo(false);
 
@@ -767,6 +943,13 @@ const GestaoModulosPage:
 
       setAtivo(
         modulo.ativo
+      );
+
+      carregarPerguntasModulo(
+        modulo.id
+      ).catch(
+        (e: unknown) =>
+          console.error(e)
       );
 
       setErroLocal('');
@@ -1004,6 +1187,9 @@ const GestaoModulosPage:
               urlConteudo:
                 ''
             });
+
+            // Exigir acerto nas perguntas rápidas (se alterado)
+            await salvarExigirAcertoModulo();
 
           } else {
 
@@ -1293,6 +1479,10 @@ const GestaoModulosPage:
 
               conteudos={
                 props.conteudosModulo
+              }
+
+              dataverseService={
+                props.dataverseService
               }
 
               carregando={
@@ -2763,6 +2953,98 @@ const GestaoModulosPage:
 
                 Ativo
               </label>
+
+              {
+                editando &&
+                props.dataverseService &&
+                (
+                  <label
+                    style={{
+                      display:
+                        'flex',
+
+                      gap:
+                        '8px',
+
+                      marginTop:
+                        '10px',
+
+                      alignItems:
+                        'flex-start',
+
+                      opacity:
+                        perguntasModulo.length > 0
+                          ? 1
+                          : 0.6
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={
+                        carregandoPerguntasModulo ||
+                        perguntasModulo.length === 0
+                      }
+                      checked={
+                        exigirAcertoModulo
+                      }
+                      onChange={
+                        event => {
+                          setExigirAcertoModulo(
+                            event.target.checked
+                          );
+                          setExigirAcertoAlterado(
+                            true
+                          );
+                        }
+                      }
+                      style={{
+                        marginTop:
+                          '3px'
+                      }}
+                    />
+
+                    <span>
+                      Exigir acerto nas perguntas rápidas
+
+                      <span
+                        style={{
+                          display:
+                            'block',
+
+                          fontSize:
+                            '12px',
+
+                          color:
+                            '#64748B'
+                        }}
+                      >
+                        {
+                          carregandoPerguntasModulo
+                            ? 'Verificando as perguntas do módulo...'
+                            : perguntasModulo.length === 0
+                              ? 'Este módulo ainda não tem perguntas rápidas.'
+                              : (() => {
+                                  const exigem =
+                                    perguntasModulo.filter(
+                                      item =>
+                                        item.exigirAcerto
+                                    ).length;
+
+                                  const situacao =
+                                    exigem === perguntasModulo.length
+                                      ? 'todas exigem acerto'
+                                      : exigem === 0
+                                        ? 'nenhuma exige acerto'
+                                        : `${exigem} de ${perguntasModulo.length} exigem acerto`;
+
+                                  return `${perguntasModulo.length} pergunta(s) — hoje ${situacao}. Marcado: o colaborador só conclui o módulo depois de acertar todas.`;
+                                })()
+                        }
+                      </span>
+                    </span>
+                  </label>
+                )
+              }
 
               </>
               )}

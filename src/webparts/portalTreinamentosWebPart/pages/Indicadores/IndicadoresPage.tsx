@@ -304,7 +304,30 @@ const IndicadoresPage:
           </div>
         )}
 
-        {!carregando && abasVisiveis.length === 0 && (
+        {/* Erro de leitura para quem não administra (ex.: perfil sem
+            permissão de Leitura em dgt_dashboard no Dataverse). */}
+        {!carregando && erroDashboards && !podeGerenciar && (
+          <article
+            style={{
+              background: '#fff',
+              border: '1px solid #f5d48a',
+              borderRadius: '16px',
+              padding: '24px',
+              textAlign: 'center',
+              color: '#7a5600'
+            }}
+          >
+            <h3 style={{ margin: '0 0 6px', color: '#0b1f3a' }}>
+              Não foi possível carregar os indicadores
+            </h3>
+            <p style={{ margin: 0, fontSize: '13px' }}>
+              Seu perfil ainda não tem permissão para ler os dashboards.
+              Fale com um administrador do portal.
+            </p>
+          </article>
+        )}
+
+        {!carregando && !erroDashboards && abasVisiveis.length === 0 && (
           <article
             style={{
               background: '#fff',
