@@ -21,9 +21,9 @@ export const VERSAO_PORTAL = "1.3.0";
 
 export const VERSAO_SOLUCAO = "1.3.0.0";
 
-export const DATA_BUILD = "2026-10-07T19:52:49.895Z";
+export const DATA_BUILD = "2026-10-08T11:00:22.273Z";
 
-export const COMMIT_BUILD = "aeb0ddb";
+export const COMMIT_BUILD = "8eb6e21";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {
@@ -303,4 +303,17 @@ export const NOVIDADES: INovidadeVersao[] = [
 ];
 
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
-export const NOVIDADES_PENDENTES: INovidadeItem[] = [];
+export const NOVIDADES_PENDENTES: INovidadeItem[] = [
+  {
+    "tipo": "Novo",
+    "texto": "módulo Arquitetura de Soluções, com a Visão geral dos B.O.M., Novo B.O.M., Dados da demanda e Matriz Go/No-Go (seleção de kit e cálculo de HH em definição)."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "colunas \"Criado em\" e \"Vencimento\" na lista de documentos e no detalhe; o documento deve ser revisado 1 ano após a criação ou a última publicação, com aviso nos últimos 30 dias e quando vencido."
+  },
+  {
+    "tipo": "Correção",
+    "texto": "a publicação pelo fluxo do processo passa a definir o prazo da próxima revisão (periodicidade de 12 meses)."
+  }
+];

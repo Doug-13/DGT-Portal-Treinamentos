@@ -104,7 +104,7 @@ const regras:
     { rota: 'equipe', perfis: GESTAO_PESSOAS },
     { rota: 'atribuirTreinamento', perfis: GESTAO_PESSOAS },
     { rota: 'gestaoConformidade', perfis: GESTAO_PESSOAS },
-    { rota: 'indicadores', perfis: GESTAO_PESSOAS },
+    { rota: 'indicadores', perfis: TODOS },
 
     // Cadastro de documentos (Editor, Gestor e Administrador).
     // O Funcionário continua consultando documentos, mas não os cria.
