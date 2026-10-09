@@ -33,6 +33,11 @@ import {
   ResumoAcessoEfetivo
 } from './ResumoAcessoEfetivo';
 
+import {
+  CadastroUsuarioService,
+  IUsuarioAmbiente
+} from '../../services/CadastroUsuarioService';
+
 // ============================================================
 // USUÁRIOS E ACESSOS (menu do nome do usuário, no topo)
 //
@@ -425,6 +430,227 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
 };
 
 // ------------------------------------------------------------
+// Adicionar usuários do ambiente ao portal
+// ------------------------------------------------------------
+// Lista quem já foi liberado no ambiente Dataverse (Power Platform
+// admin center → Usuários) mas ainda não tem cadastro no portal, e
+// cadastra com um clique (nome, e-mail, UPN e Entra Object ID vêm
+// do próprio ambiente). Opcionalmente já vincula a uma área, o que
+// dispara as atribuições automáticas dos treinamentos da área.
+// ------------------------------------------------------------
+
+interface ISelecaoCadastro {
+  marcado: boolean;
+  perfil: PerfilAcesso;
+}
+
+const AdicionarUsuariosModal: React.FC<{
+  pendentes: IUsuarioAmbiente[];
+  areas: IAreaAdmin[];
+  cadastro: CadastroUsuarioService;
+  servico: UsuariosAcessosService;
+  contexto?: IContextoAcesso;
+  onConcluido: () => void;
+  onFechar: () => void;
+}> = ({ pendentes, areas, cadastro, servico, contexto, onConcluido, onFechar }) => {
+
+  const [selecao, setSelecao] = React.useState<Record<string, ISelecaoCadastro>>(() => {
+    const inicial: Record<string, ISelecaoCadastro> = {};
+    pendentes.forEach(p => { inicial[p.systemUserId] = { marcado: true, perfil: 'Funcionario' }; });
+    return inicial;
+  });
+  const [areaId, setAreaId] = React.useState<string>('');
+  const [papelArea, setPapelArea] = React.useState<PerfilArea>('Membro');
+  const [processando, setProcessando] = React.useState<boolean>(false);
+  const [progresso, setProgresso] = React.useState<string>('');
+  const [resultado, setResultado] = React.useState<{ ok: number; falhas: string[] } | undefined>(undefined);
+
+  const marcados = pendentes.filter(p => selecao[p.systemUserId] && selecao[p.systemUserId].marcado);
+
+  const alterar = (id: string, parcial: Partial<ISelecaoCadastro>): void =>
+    setSelecao(atual => ({ ...atual, [id]: { ...atual[id], ...parcial } }));
+
+  const cadastrar = async (): Promise<void> => {
+    setProcessando(true);
+    let ok = 0;
+    const falhas: string[] = [];
+
+    for (let i = 0; i < marcados.length; i++) {
+      const pessoa = marcados[i];
+      setProgresso(`Cadastrando ${i + 1} de ${marcados.length}: ${pessoa.nome}…`);
+      try {
+        const usuarioId = await cadastro.cadastrar(pessoa, selecao[pessoa.systemUserId].perfil);
+        if (areaId) {
+          await servico.salvarVinculo(contexto, {
+            usuarioId,
+            areaId,
+            perfil: papelArea,
+            ativo: true
+          });
+        }
+        ok++;
+      } catch (erro) {
+        falhas.push(`${pessoa.nome}: ${(erro as Error).message || String(erro)}`);
+      }
+    }
+
+    setProgresso('');
+    setProcessando(false);
+    setResultado({ ok, falhas });
+    if (ok > 0) {
+      onConcluido();
+    }
+  };
+
+  return ReactDOM.createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Adicionar usuários ao portal"
+      onClick={() => { if (!processando) { onFechar(); } }}
+      style={{ position: 'fixed', inset: 0, zIndex: 2147483000, background: 'rgba(32,42,68,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: "Barlow, Arial, 'Segoe UI', sans-serif" }}
+    >
+      <div
+        onClick={evento => evento.stopPropagation()}
+        style={{ width: 'min(860px, 100%)', maxHeight: '100%', overflowY: 'auto', background: '#FFFFFF', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,.3)', padding: '20px 22px', boxSizing: 'border-box' }}
+      >
+        <h2 style={{ margin: 0, fontSize: '18px', color: COR_AZUL }}>Adicionar usuários ao portal</h2>
+        <p style={{ margin: '4px 0 16px', fontSize: '13px', color: COR_TEXTO_2 }}>
+          Pessoas já liberadas no ambiente do Dataverse que ainda não têm cadastro no portal.
+          Nome, e-mail, UPN e Entra Object ID vêm do Microsoft 365.
+        </p>
+
+        {resultado
+          ? (
+            <div>
+              <div style={{ padding: '12px 14px', borderRadius: '8px', background: '#E7F5EE', color: '#0B6B3A', fontSize: '13px', fontWeight: 700 }}>
+                ✓ {resultado.ok} usuário(s) cadastrado(s){areaId ? ' e vinculado(s) à área' : ''}.
+              </div>
+              {resultado.falhas.length > 0 && (
+                <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '8px', background: '#FDE7E9', color: '#B42318', fontSize: '12.5px' }}>
+                  <strong>Não cadastrados ({resultado.falhas.length}):</strong>
+                  <ul style={{ margin: '6px 0 0', paddingLeft: '18px' }}>
+                    {resultado.falhas.map((f, i) => <li key={i}>{f}</li>)}
+                  </ul>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+                <button type="button" onClick={onFechar} style={botao(true)}>Concluir</button>
+              </div>
+            </div>
+          )
+          : (
+            <>
+              <div style={{ overflowX: 'auto', border: `1px solid ${COR_BORDA}`, borderRadius: '10px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '620px' }}>
+                  <thead>
+                    <tr>
+                      {['', 'Usuário', 'Situação', 'Perfil no portal'].map(coluna => (
+                        <th key={coluna} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '12px', color: COR_TEXTO_2, background: '#F8FAFC', borderBottom: `1px solid ${COR_BORDA}` }}>{coluna}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendentes.map(p => {
+                      const atual = selecao[p.systemUserId];
+                      return (
+                        <tr key={p.systemUserId}>
+                          <td style={{ padding: '8px 10px', borderBottom: `1px solid ${COR_BORDA}`, width: '32px' }}>
+                            <input
+                              type="checkbox"
+                              aria-label={`Selecionar ${p.nome}`}
+                              checked={atual.marcado}
+                              disabled={processando}
+                              onChange={() => alterar(p.systemUserId, { marcado: !atual.marcado })}
+                            />
+                          </td>
+                          <td style={{ padding: '8px 10px', borderBottom: `1px solid ${COR_BORDA}` }}>
+                            <strong style={{ display: 'block', fontSize: '13px', color: COR_AZUL }}>{p.nome}</strong>
+                            <span style={{ fontSize: '12px', color: COR_TEXTO_2 }}>{p.email}</span>
+                          </td>
+                          <td style={{ padding: '8px 10px', borderBottom: `1px solid ${COR_BORDA}` }}>
+                            {p.situacao === 'inativo'
+                              ? <Chip texto="Inativo no portal — será reativado" cor="#B45309" fundo="#FFF4E5" />
+                              : <Chip texto="Novo" cor="#0F6CBD" fundo="#E8F2FF" />}
+                          </td>
+                          <td style={{ padding: '8px 10px', borderBottom: `1px solid ${COR_BORDA}` }}>
+                            <select
+                              aria-label={`Perfil de ${p.nome}`}
+                              value={atual.perfil}
+                              disabled={processando || !atual.marcado}
+                              onChange={evento => alterar(p.systemUserId, { perfil: evento.target.value as PerfilAcesso })}
+                              style={campo}
+                            >
+                              {PERFIS_PORTAL.map(perfil => (
+                                <option key={perfil.valor} value={perfil.valor}>{perfil.rotulo}</option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginTop: '14px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: COR_AZUL }}>
+                  Vincular à área (opcional)
+                  <select
+                    value={areaId}
+                    disabled={processando}
+                    onChange={evento => setAreaId(evento.target.value)}
+                    style={{ ...campo, display: 'block', marginTop: '4px', minWidth: '240px' }}
+                  >
+                    <option value="">Não vincular agora</option>
+                    {areas.filter(a => a.ativa).map(area => (
+                      <option key={area.id} value={area.id}>{area.sigla ? `${area.sigla} · ` : ''}{area.nome}</option>
+                    ))}
+                  </select>
+                </label>
+                {areaId && (
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: COR_AZUL }}>
+                    Papel na área
+                    <select
+                      value={papelArea}
+                      disabled={processando}
+                      onChange={evento => setPapelArea(evento.target.value as PerfilArea)}
+                      style={{ ...campo, display: 'block', marginTop: '4px' }}
+                    >
+                      {(['Membro', 'Gestor', 'Administrador da área', 'Editor'] as PerfilArea[]).map(papel => (
+                        <option key={papel} value={papel}>{papel}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+              {areaId && (
+                <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: COR_TEXTO_2 }}>
+                  Ao vincular à área, os treinamentos e trilhas da área são atribuídos automaticamente.
+                </p>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', marginTop: '18px' }}>
+                {progresso && <span style={{ marginRight: 'auto', fontSize: '12px', color: COR_TEXTO_2 }}>{progresso}</span>}
+                <button type="button" onClick={onFechar} disabled={processando} style={botao(false, processando)}>Cancelar</button>
+                <button
+                  type="button"
+                  onClick={() => { cadastrar().catch(() => undefined); }}
+                  disabled={processando || marcados.length === 0}
+                  style={botao(true, processando || marcados.length === 0)}
+                >
+                  {processando ? 'Cadastrando…' : `Cadastrar ${marcados.length} usuário(s)`}
+                </button>
+              </div>
+            </>
+          )}
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+// ------------------------------------------------------------
 // Página
 // ------------------------------------------------------------
 
@@ -445,6 +671,15 @@ const UsuariosAcessosPage: React.FC<IUsuariosAcessosPageProps> = ({
   const [busca, setBusca] = React.useState<string>('');
   const [filtroArea, setFiltroArea] = React.useState<string>('');
   const [selecionadoId, setSelecionadoId] = React.useState<string>('');
+
+  // Usuários do ambiente ainda não cadastrados no portal
+  const cadastro = React.useMemo(
+    () => (dataverseService ? new CadastroUsuarioService(dataverseService) : undefined),
+    [dataverseService]
+  );
+  const [pendentes, setPendentes] = React.useState<IUsuarioAmbiente[]>([]);
+  const [erroPendentes, setErroPendentes] = React.useState<string>('');
+  const [adicionarAberto, setAdicionarAberto] = React.useState<boolean>(false);
 
   const carregar = React.useCallback(async (): Promise<void> => {
     if (!servico) {
@@ -468,6 +703,22 @@ const UsuariosAcessosPage: React.FC<IUsuariosAcessosPageProps> = ({
   }, [carregar]);
 
   const admin = !!servico && servico.ehAdministrador(contexto);
+
+  const carregarPendentes = React.useCallback(async (): Promise<void> => {
+    if (!cadastro || !admin) {
+      return;
+    }
+    try {
+      setErroPendentes('');
+      setPendentes(await cadastro.listarPendentes());
+    } catch (error) {
+      setErroPendentes((error as Error).message || String(error));
+    }
+  }, [cadastro, admin]);
+
+  React.useEffect(() => {
+    carregarPendentes().catch(() => undefined);
+  }, [carregarPendentes]);
 
   const filtrados = React.useMemo(() => {
     if (!dados) {
@@ -505,8 +756,37 @@ const UsuariosAcessosPage: React.FC<IUsuariosAcessosPageProps> = ({
               : 'Pessoas das áreas que você gerencia e o papel de cada uma.'}
           </p>
         </div>
-        <button type="button" onClick={onVoltar} style={botao(false)}>← Voltar</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {admin && cadastro && (
+            <button
+              type="button"
+              onClick={() => setAdicionarAberto(true)}
+              disabled={pendentes.length === 0}
+              title={pendentes.length === 0 ? 'Todos os usuários do ambiente já estão no portal.' : undefined}
+              style={botao(true, pendentes.length === 0)}
+            >
+              + Adicionar usuários{pendentes.length > 0 ? ` (${pendentes.length})` : ''}
+            </button>
+          )}
+          <button type="button" onClick={onVoltar} style={botao(false)}>← Voltar</button>
+        </div>
       </div>
+
+      {admin && pendentes.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '14px', padding: '10px 14px', borderRadius: '10px', background: '#FFF4E5', border: '1px solid #F5D48A', fontSize: '13px', color: COR_AZUL }}>
+          <span style={{ flex: 1, minWidth: '240px' }}>
+            <strong>{pendentes.length} usuário(s)</strong> liberado(s) no ambiente ainda não estão no portal
+            {': '}{pendentes.slice(0, 4).map(p => p.nome).join(', ')}{pendentes.length > 4 ? '…' : ''}.
+          </span>
+          <button type="button" onClick={() => setAdicionarAberto(true)} style={botao(true)}>Revisar e cadastrar</button>
+        </div>
+      )}
+
+      {admin && erroPendentes && (
+        <div style={{ marginBottom: '14px', padding: '10px 12px', borderRadius: '8px', background: '#F1F5F9', color: COR_TEXTO_2, fontSize: '12px' }}>
+          Não foi possível comparar com os usuários do ambiente: {erroPendentes}
+        </div>
+      )}
 
       {erro && <div role="alert" style={{ marginBottom: '14px', padding: '10px 12px', borderRadius: '8px', background: '#FDE7E9', color: '#B42318', fontSize: '13px' }}>{erro}</div>}
 
@@ -607,6 +887,23 @@ const UsuariosAcessosPage: React.FC<IUsuariosAcessosPageProps> = ({
             servico={servico}
             onAlterado={carregar}
             onFechar={() => setSelecionadoId('')}
+          />
+        )
+      }
+
+      {
+        adicionarAberto && cadastro && servico && dados && (
+          <AdicionarUsuariosModal
+            pendentes={pendentes}
+            areas={dados.areas}
+            cadastro={cadastro}
+            servico={servico}
+            contexto={contexto}
+            onConcluido={() => {
+              carregar().catch(() => undefined);
+              carregarPendentes().catch(() => undefined);
+            }}
+            onFechar={() => setAdicionarAberto(false)}
           />
         )
       }

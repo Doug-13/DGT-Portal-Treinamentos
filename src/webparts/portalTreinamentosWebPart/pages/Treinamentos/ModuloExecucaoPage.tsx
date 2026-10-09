@@ -42,6 +42,16 @@ export interface IModuloExecucaoPageProps {
 
   onConcluir:
     () => Promise<void>;
+
+  // Revisão de um módulo já concluído: o conteúdo e as
+  // verificações ficam disponíveis, mas nada é gravado (a
+  // conclusão, a nota e o certificado não mudam).
+  modoRevisao?:
+    boolean;
+
+  // Recomeça a revisão (limpa as respostas marcadas).
+  onRefazer?:
+    () => void;
 }
 
 interface ISelecaoPergunta {
@@ -1178,6 +1188,63 @@ const ModuloExecucaoPage:
           </div>
         </div>
 
+        {
+          props.modoRevisao &&
+          (
+            <div
+              role="note"
+              style={{
+                display:
+                  'flex',
+                gap:
+                  '12px',
+                alignItems:
+                  'center',
+                flexWrap:
+                  'wrap',
+                padding:
+                  '12px 16px',
+                marginBottom:
+                  '16px',
+                borderRadius:
+                  '10px',
+                border:
+                  '1px solid #9FD4B2',
+                background:
+                  '#E7F5EE',
+                color:
+                  '#0B2D4D',
+                fontSize:
+                  '13px',
+                lineHeight:
+                  1.5
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  fontSize:
+                    '18px'
+                }}
+              >
+                ↻
+              </span>
+              <span
+                style={{
+                  flex:
+                    1,
+                  minWidth:
+                    '240px'
+                }}
+              >
+                <strong>Modo revisão.</strong> Você já concluiu este módulo.
+                Releia o conteúdo e refaça as verificações quantas vezes quiser:
+                as respostas daqui <strong>não</strong> alteram sua conclusão, nota ou certificado.
+              </span>
+            </div>
+          )
+        }
+
         <article
           style={{
             border:
@@ -1390,6 +1457,79 @@ const ModuloExecucaoPage:
               'flex-end'
           }}
         >
+          {
+            props.modoRevisao
+              ? (
+                <div
+                  style={{
+                    display:
+                      'flex',
+                    gap:
+                      '10px',
+                    alignItems:
+                      'center',
+                    flexWrap:
+                      'wrap',
+                    justifyContent:
+                      'flex-end',
+                    width:
+                      '100%'
+                  }}
+                >
+                  <span
+                    style={{
+                      marginRight:
+                        'auto',
+                      fontSize:
+                        '13px',
+                      color:
+                        props.podeConcluir
+                          ? '#13795B'
+                          : '#64748B',
+                      fontWeight:
+                        props.podeConcluir
+                          ? 700
+                          : 400
+                    }}
+                  >
+                    {
+                      props.podeConcluir
+                        ? '✓ Você acertou todas as verificações obrigatórias.'
+                        : 'Revisão: as respostas não são gravadas.'
+                    }
+                  </span>
+
+                  {
+                    props.onRefazer &&
+                    (
+                      <button
+                        type="button"
+                        onClick={
+                          props.onRefazer
+                        }
+                        style={
+                          botao
+                        }
+                      >
+                        ↻ Refazer verificações
+                      </button>
+                    )
+                  }
+
+                  <button
+                    type="button"
+                    onClick={
+                      props.onVoltar
+                    }
+                    style={
+                      botaoPrimario
+                    }
+                  >
+                    ← Voltar ao treinamento
+                  </button>
+                </div>
+              )
+              : (
           <button
             type="button"
             disabled={
@@ -1439,6 +1579,8 @@ const ModuloExecucaoPage:
                   : 'Responda as perguntas obrigatórias'
             }
           </button>
+              )
+          }
         </footer>
 
         </article>

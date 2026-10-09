@@ -34,6 +34,15 @@ export interface IHistorico {
   validade: string;
 }
 
+// Situação do PDF do certificado (ver CertificadoService):
+//   disponivel  PDF localizado no SharePoint
+//   gerando     certificado ainda não emitido / PDF ainda não salvo
+//   semAcesso   o PDF existe, mas o usuário não tem acesso à biblioteca
+export type SituacaoArquivoCertificado =
+  | 'disponivel'
+  | 'gerando'
+  | 'semAcesso';
+
 export interface ICertificado {
   id: string;
   treinamento: string;
@@ -41,4 +50,19 @@ export interface ICertificado {
   conclusao: string;
   validade: string;
   cargaHoraria: string;
+
+  // Preenchidos a partir de dgt_certificado + biblioteca do SharePoint
+  numero?: string;
+  emissao?: string;
+  arquivoUrl?: string;
+  downloadUrl?: string;
+  previewUrl?: string;
+  situacaoArquivo?: SituacaoArquivoCertificado;
+
+  // Revisão do treinamento em que a pessoa foi treinada (só na
+  // tela; o PDF do certificado não muda) e a revisão vigente.
+  treinamentoId?: string;
+  dataConclusaoIso?: string;
+  revisao?: string;
+  revisaoAtual?: string;
 }

@@ -74,7 +74,9 @@ export interface IExecutarTreinamentoPageProps {
         IModuloTreinamento
     ) => void;
 
-  onConcluirModulo:
+  // OBSOLETO (compatibilidade): a lista de módulos não conclui
+  // mais o módulo — só o botão dentro do módulo.
+  onConcluirModulo?:
     (
       modulo:
         IModuloTreinamento
@@ -157,7 +159,6 @@ const ExecutarTreinamentoPage:
     onIniciarTreinamento,
     onIniciarModulo,
     onAbrirModulo,
-    onConcluirModulo,
     onIniciarAvaliacao
   }) => {
 
@@ -423,9 +424,6 @@ const ExecutarTreinamentoPage:
                           }
                           onAbrir={
                             onAbrirModulo
-                          }
-                          onConcluir={
-                            onConcluirModulo
                           }
                         />
                       )

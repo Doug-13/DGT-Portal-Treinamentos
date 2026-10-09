@@ -847,6 +847,16 @@ export interface IPortalRouterProps {
   podeConcluirModuloExecucao:
   boolean;
 
+  // Revisão de módulo já concluído (nada é gravado)
+  moduloEmRevisao?:
+  boolean;
+
+  versaoModuloExecucao?:
+  number;
+
+  refazerModuloRevisao?:
+  () => void;
+
   responderPerguntaModulo:
   (
     pergunta:
@@ -1567,8 +1577,20 @@ const PortalRouter:
 
         return (
           <ModuloExecucaoPage
+            key={
+              `${props.moduloSelecionadoExecucao.id}-${props.versaoModuloExecucao || 0}`
+            }
+
             modulo={
               props.moduloSelecionadoExecucao
+            }
+
+            modoRevisao={
+              !!props.moduloEmRevisao
+            }
+
+            onRefazer={
+              props.refazerModuloRevisao
             }
 
             conteudos={
@@ -2098,6 +2120,14 @@ const PortalRouter:
 
             onCarregarHistorico={
               props.carregarHistoricoTreinamento
+            }
+
+            dataverseService={
+              props.dataverseService
+            }
+
+            usuarioNome={
+              props.contextoAcesso?.nome
             }
 
             onTestarTreinamento={

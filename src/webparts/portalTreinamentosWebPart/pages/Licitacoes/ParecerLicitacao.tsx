@@ -383,7 +383,7 @@ export const ParecerPainel: React.FC<{
           : (
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" style={botaoParticipar} onClick={() => onRegistrar('Participar')}>
-                ✓ Avaliar Partipação
+                ✓ Participar
               </button>
               <button type="button" style={botaoNaoParticipar} onClick={() => onRegistrar('NaoParticipar')}>
                 ✕ Não participar
@@ -610,7 +610,7 @@ export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
             onClick={() => setDecisao('Participar')}
             disabled={salvando}
           >
-            ✓ Avaliar Partipação
+            ✓ Participar
             <span style={{ display: 'block', fontSize: 11, fontWeight: 400, color: COR.textoSecundario, marginTop: 2 }}>
               A DGT vai disputar este edital
             </span>

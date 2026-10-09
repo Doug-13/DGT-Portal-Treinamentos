@@ -29,6 +29,30 @@ const booleano = (r: Registro, chave: string, padrao = false): boolean => {
 const guid = (valor: unknown): string =>
   String(valor || '').replace(/[{}]/g, '').trim().toLowerCase();
 
+// Traduz o erro técnico em uma orientação clara para a tela.
+// O motivo real antes ficava escondido atrás de "Não foi possível
+// abrir a avaliação. Verifique a configuração...".
+export const traduzirErroAvaliacao = (erro: unknown): string => {
+
+  const mensagem = erro instanceof Error
+    ? erro.message
+    : String(erro || '');
+
+  if (/\b403\b|prv(Read|Create|Write)|privilege|permiss/i.test(mensagem)) {
+    const tabela = /prv(?:Read|Create|Write|Append|AppendTo)(dgt_[a-z_]+)/i.exec(mensagem);
+    return (
+      'Seu usuário não tem permissão para ler a avaliação no Dataverse' +
+      (tabela ? ` (tabela ${tabela[1]})` : '') +
+      '. Peça ao administrador para incluir Leitura em dgt_avaliacao, dgt_questao, ' +
+      'dgt_alternativa e dgt_tentativa na função de segurança dos colaboradores.'
+    );
+  }
+
+  return mensagem.length > 400
+    ? `${mensagem.substring(0, 400)}…`
+    : mensagem || 'Não foi possível carregar a avaliação.';
+};
+
 const embaralhar = <T,>(itens: T[]): T[] => {
   const resultado = itens.slice();
 
@@ -61,6 +85,9 @@ export interface IUseAvaliacaoResult {
   ) => Promise<IResultadoAvaliacao | undefined>;
   limparEnvio: () => void;
   resetar: () => void;
+  // Motivo da última falha de carregar() (lido logo após o await,
+  // quando o estado "erro" ainda não foi atualizado na tela).
+  ultimoErro: () => string;
 }
 
 const estadoInicialTentativas: IEstadoTentativasAvaliacao = {
@@ -84,6 +111,12 @@ export const useAvaliacao = (
   const [resultado, setResultado] =
     React.useState<IResultadoAvaliacao | undefined>();
   const [processando, setProcessando] = React.useState(false);
+  const ultimoErroRef = React.useRef<string>('');
+
+  const ultimoErro = React.useCallback(
+    (): string => ultimoErroRef.current,
+    []
+  );
 
   const resetar = React.useCallback((): void => {
     setAvaliacao(undefined);
@@ -101,6 +134,7 @@ export const useAvaliacao = (
   ): Promise<boolean> => {
     setCarregando(true);
     setErro('');
+    ultimoErroRef.current = '';
     setEnvioPreparado(undefined);
     setResultado(undefined);
 
@@ -108,7 +142,11 @@ export const useAvaliacao = (
       const avaliacoes = await service.getAvaliacoesTreinamento(treinamentoId);
 
       if (avaliacoes.length === 0) {
-        throw new Error('Nenhuma avaliação ativa foi localizada para este treinamento.');
+        throw new Error(
+          'Nenhuma avaliação ativa está vinculada a este treinamento. ' +
+          'Em Gestão > treinamento > Avaliação, confira se existe uma avaliação "Ativa" ' +
+          'cadastrada para ESTE código de treinamento.'
+        );
       }
 
       // Pode haver mais de uma avaliação ativa para o mesmo
@@ -216,7 +254,10 @@ export const useAvaliacao = (
       }
 
       if (questoes.length === 0) {
-        throw new Error('Esta avaliação não possui questões ativas cadastradas.');
+        throw new Error(
+          'A avaliação ativa deste treinamento não tem questões ativas. ' +
+          'Confira em Gestão > treinamento > Avaliação.'
+        );
       }
 
       const tentativasPermitidas = numero(
@@ -281,11 +322,10 @@ export const useAvaliacao = (
     } catch (e) {
       setAvaliacao(undefined);
       setInicio(undefined);
-      setErro(
-        e instanceof Error
-          ? e.message
-          : 'Não foi possível carregar a avaliação.'
-      );
+      console.error('[Avaliação] Falha ao carregar:', e);
+      const motivo = traduzirErroAvaliacao(e);
+      ultimoErroRef.current = motivo;
+      setErro(motivo);
       return false;
     } finally {
       setCarregando(false);
@@ -371,7 +411,8 @@ export const useAvaliacao = (
     carregar,
     enviar,
     limparEnvio,
-    resetar
+    resetar,
+    ultimoErro
   };
 };
 

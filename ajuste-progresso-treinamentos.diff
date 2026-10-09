@@ -1,0 +1,478 @@
+diff --git a/src/webparts/portalTreinamentosWebPart/components/PortalTreinamentos.tsx b/src/webparts/portalTreinamentosWebPart/components/PortalTreinamentos.tsx
+index f82e26d..25fa867 100644
+--- a/src/webparts/portalTreinamentosWebPart/components/PortalTreinamentos.tsx
++++ b/src/webparts/portalTreinamentosWebPart/components/PortalTreinamentos.tsx
+@@ -60,6 +60,7 @@ import { IPublicarRevisao, IResultadoPublicacaoRevisao } from '../services/Revis
+ import { IColaborador } from '../models/Usuario';
+ import { ITrilha } from '../models/Trilha';
+ import { useModulos } from '../hooks/useModulos';
++import { ProgressoTreinamentoService } from '../services/ProgressoTreinamentoService';
+ import { useModuloExecucao, IPerguntaRapidaExecucao } from '../hooks/useModuloExecucao';
+ import { IModuloTreinamento, StatusUsuarioModulo } from '../models/Modulo';
+ import { useUsuario } from '../hooks/useUsuario';
+@@ -1113,14 +1114,14 @@ const gestaoAreas =
+ 
+                     status,
+ 
++                    // Valor provisório: o percentual real (pelos
++                    // módulos concluídos) é aplicado logo abaixo,
++                    // em "PROGRESSO REAL". Antes era fixo em 50%.
+                     progresso:
+                       status ===
+                         'Concluído'
+                         ? 100
+-                        : status ===
+-                          'Em andamento'
+-                          ? 50
+-                          : 0,
++                        : 0,
+ 
+                     cargaHoraria:
+                       item?.cargaHoraria ||
+@@ -1389,6 +1390,74 @@ const gestaoAreas =
+             // ATUALIZAR ESTADO
+             // ==================================================
+ 
++            // ==================================================
++            // PROGRESSO REAL (módulos concluídos)
++            // ==================================================
++            // Se a consulta falhar, os cartões ficam com 0% (ou
++            // 100% se concluído) — nunca com um valor inventado.
++
++            try {
++
++              const progressoPorAtribuicao =
++                await new ProgressoTreinamentoService(
++                  dataverseService
++                ).calcular(
++                  treinamentosUsuario
++                    .filter(
++                      t =>
++                        t.status !==
++                        'Concluído'
++                    )
++                    .map(
++                      t => ({
++                        usuarioTreinamentoId:
++                          t.usuarioTreinamentoId ||
++                          '',
++                        treinamentoId:
++                          t.id
++                      })
++                    )
++                );
++
++              treinamentosUsuario.forEach(
++                t => {
++
++                  const chave =
++                    (
++                      t.usuarioTreinamentoId ||
++                      ''
++                    )
++                      .replace(
++                        /[{}]/g,
++                        ''
++                      )
++                      .toLowerCase();
++
++                  const real =
++                    progressoPorAtribuicao[
++                      chave
++                    ];
++
++                  if (
++                    t.status !==
++                      'Concluído' &&
++                    real !==
++                      undefined
++                  ) {
++                    t.progresso =
++                      real;
++                  }
++                }
++              );
++
++            } catch (erroProgresso) {
++
++              console.warn(
++                '[Treinamentos] Não foi possível calcular o progresso pelos módulos:',
++                erroProgresso
++              );
++            }
++
+             setMeusTreinamentos(
+               treinamentosUsuario
+             );
+@@ -2118,6 +2187,82 @@ const gestaoAreas =
+         ]
+       );
+ 
++    // ==========================================================
++    // PROGRESSO AO VIVO
++    // ==========================================================
++    // Ao iniciar/concluir módulos, o percentual do treinamento
++    // aberto é atualizado também na tela inicial e em "Meus
++    // treinamentos", sem precisar recarregar o portal.
++    // ==========================================================
++
++    const usuarioTreinamentoAbertoId =
++      treinamentoSelecionado
++        ?.usuarioTreinamentoId ||
++      '';
++
++    const progressoModulosAberto =
++      modulos.progresso;
++
++    const modulosCarregados =
++      !modulos.carregando &&
++      modulos.modulos.length >
++        0;
++
++    React.useEffect(
++      () => {
++
++        if (
++          !usuarioTreinamentoAbertoId ||
++          !modulosCarregados
++        ) {
++          return;
++        }
++
++        setMeusTreinamentos(
++          lista => {
++
++            let mudou =
++              false;
++
++            const nova =
++              lista.map(
++                t => {
++
++                  if (
++                    t.usuarioTreinamentoId !==
++                      usuarioTreinamentoAbertoId ||
++                    t.status ===
++                      'Concluído' ||
++                    t.progresso ===
++                      progressoModulosAberto
++                  ) {
++                    return t;
++                  }
++
++                  mudou =
++                    true;
++
++                  return {
++                    ...t,
++                    progresso:
++                      progressoModulosAberto
++                  };
++                }
++              );
++
++            return mudou
++              ? nova
++              : lista;
++          }
++        );
++      },
++      [
++        usuarioTreinamentoAbertoId,
++        progressoModulosAberto,
++        modulosCarregados
++      ]
++    );
++
+     // ==========================================================
+     // ABRIR TREINAMENTO
+     // ==========================================================
+diff --git a/src/webparts/portalTreinamentosWebPart/hooks/useAvaliacao.ts b/src/webparts/portalTreinamentosWebPart/hooks/useAvaliacao.ts
+index 192a91c..0981243 100644
+--- a/src/webparts/portalTreinamentosWebPart/hooks/useAvaliacao.ts
++++ b/src/webparts/portalTreinamentosWebPart/hooks/useAvaliacao.ts
+@@ -111,10 +111,33 @@ export const useAvaliacao = (
+         throw new Error('Nenhuma avaliação ativa foi localizada para este treinamento.');
+       }
+ 
+-      const registro = avaliacoes[0];
++      // Pode haver mais de uma avaliação ativa para o mesmo
++      // treinamento (ex.: uma criada vazia e outra importada por
++      // JSON). Antes era usada a primeira que o Dataverse devolvia
++      // — às vezes a vazia, e a prova não abria. Agora é usada a
++      // mais recente QUE TEM QUESTÕES.
++      const bancos = await Promise.all(
++        avaliacoes.map(async item => ({
++          registro: item,
++          questoes: await service.getQuestoesAvaliacao(guid(item.dgt_avaliacaoid))
++        }))
++      );
++
++      const escolhida =
++        bancos.find(item => item.questoes.length > 0) ||
++        bancos[0];
++
++      if (avaliacoes.length > 1) {
++        console.warn(
++          `[Avaliação] ${avaliacoes.length} avaliações ativas para o mesmo treinamento. ` +
++          `Usando "${texto(escolhida.registro, 'dgt_name')}". Desative as demais na gestão de avaliações.`
++        );
++      }
++
++      const registro = escolhida.registro;
+       const avaliacaoId = guid(registro.dgt_avaliacaoid);
+ 
+-      const questoesRegistros = await service.getQuestoesAvaliacao(avaliacaoId);
++      const questoesRegistros = escolhida.questoes;
+ 
+       const questoesComAlternativas = await Promise.all(
+         questoesRegistros.map(async (questaoRegistro): Promise<IQuestaoAvaliacao> => {
+diff --git a/src/webparts/portalTreinamentosWebPart/hooks/useModulos.ts b/src/webparts/portalTreinamentosWebPart/hooks/useModulos.ts
+index 1a9e60b..d0b9c6a 100644
+--- a/src/webparts/portalTreinamentosWebPart/hooks/useModulos.ts
++++ b/src/webparts/portalTreinamentosWebPart/hooks/useModulos.ts
+@@ -10,6 +10,23 @@ import {
+   StatusUsuarioModulo
+ } from '../models/Modulo';
+ 
++import {
++  calcularProgressoModulos
++} from '../utils/progressoTreinamento';
++
++// ============================================================
++// MÓDULOS DO TREINAMENTO (tela do treinamento)
++//
++// Correção (concluir módulo):
++//   A tela do módulo guardava o objeto do módulo de ANTES de ele
++//   ser iniciado (ainda sem o id do registro dgt_usuariomodulo).
++//   Ao clicar em "Concluir módulo" aparecia "Registro de progresso
++//   do módulo não encontrado." e nada era gravado — por isso o
++//   progresso ficava em 0% e a avaliação não era liberada.
++//   Agora iniciar/concluir sempre localizam o registro atual pelo
++//   id do módulo (lista recarregada → Dataverse → cria se faltar).
++// ============================================================
++
+ type Registro =
+   IDataverseRecord;
+ 
+@@ -233,6 +250,14 @@ export const useModulos =
+     ] =
+       React.useState('');
+ 
++    // Sempre a lista mais recente (os callbacks podem receber um
++    // objeto de módulo antigo, guardado por outra tela).
++    const modulosRef =
++      React.useRef<IModuloTreinamento[]>([]);
++
++    modulosRef.current =
++      modulos;
++
+     const idsAtuais =
+       React.useRef<{
+         treinamentoId:
+@@ -498,6 +523,46 @@ export const useModulos =
+         ]
+       );
+ 
++    // Id do registro dgt_usuariomodulo do módulo: lista atual →
++    // objeto recebido → Dataverse (localiza ou cria).
++    const resolverUsuarioModuloId =
++      React.useCallback(
++        async (
++          modulo:
++            IModuloTreinamento,
++          usuarioTreinamentoId:
++            string
++        ): Promise<string> => {
++
++          const atual =
++            modulosRef.current.find(
++              item =>
++                item.id ===
++                modulo.id
++            );
++
++          const conhecido =
++            (atual && atual.usuarioModuloId) ||
++            modulo.usuarioModuloId;
++
++          if (
++            conhecido
++          ) {
++            return conhecido;
++          }
++
++          return service
++            .garantirUsuarioModulo(
++              usuarioTreinamentoId,
++              modulo.id,
++              modulo.titulo
++            );
++        },
++        [
++          service
++        ]
++      );
++
+     const iniciar =
+       React.useCallback(
+         async (
+@@ -528,21 +593,11 @@ export const useModulos =
+ 
+           try {
+ 
+-            let usuarioModuloId =
+-              modulo.usuarioModuloId;
+-
+-            if (
+-              !usuarioModuloId
+-            ) {
+-
+-              usuarioModuloId =
+-                await service
+-                  .garantirUsuarioModulo(
+-                    usuarioTreinamentoId,
+-                    modulo.id,
+-                    modulo.titulo
+-                  );
+-            }
++            const usuarioModuloId =
++              await resolverUsuarioModuloId(
++                modulo,
++                usuarioTreinamentoId
++              );
+ 
+             await service
+               .iniciarUsuarioModulo(
+@@ -568,7 +623,8 @@ export const useModulos =
+         },
+         [
+           service,
+-          recarregar
++          recarregar,
++          resolverUsuarioModuloId
+         ]
+       );
+ 
+@@ -579,12 +635,16 @@ export const useModulos =
+             IModuloTreinamento
+         ): Promise<void> => {
+ 
++          const usuarioTreinamentoId =
++            idsAtuais.current
++              .usuarioTreinamentoId;
++
+           if (
+-            !modulo.usuarioModuloId
++            !usuarioTreinamentoId
+           ) {
+ 
+             setErro(
+-              'Registro de progresso do módulo não encontrado.'
++              'A atribuição do treinamento não foi identificada.'
+             );
+ 
+             return;
+@@ -598,9 +658,23 @@ export const useModulos =
+ 
+           try {
+ 
++            const usuarioModuloId =
++              await resolverUsuarioModuloId(
++                modulo,
++                usuarioTreinamentoId
++              );
++
++            if (
++              !usuarioModuloId
++            ) {
++              throw new Error(
++                'Registro de progresso do módulo não encontrado.'
++              );
++            }
++
+             await service
+               .concluirUsuarioModulo(
+-                modulo.usuarioModuloId
++                usuarioModuloId
+               );
+ 
+             await recarregar();
+@@ -622,41 +696,28 @@ export const useModulos =
+         },
+         [
+           service,
+-          recarregar
++          recarregar,
++          resolverUsuarioModuloId
+         ]
+       );
+ 
+-    const obrigatorios =
+-      modulos.filter(
+-        modulo =>
+-          modulo.obrigatorio
+-      );
+-
+-    const concluidos =
+-      obrigatorios.filter(
+-        modulo =>
+-          modulo.statusModulo ===
+-          StatusUsuarioModulo
+-            .Concluido
+-      ).length;
+-
+-    const progresso =
+-      obrigatorios.length >
+-        0
+-        ? Math.round(
+-          (
+-            concluidos /
+-            obrigatorios.length
+-          ) *
+-          100
++    // Mesma regra dos cartões da tela inicial.
++    const {
++      progresso,
++      avaliacaoLiberada
++    } =
++      calcularProgressoModulos(
++        modulos.map(
++          modulo => ({
++            obrigatorio:
++              modulo.obrigatorio,
++            concluido:
++              modulo.statusModulo ===
++              StatusUsuarioModulo
++                .Concluido
++          })
+         )
+-        : 0;
+-
+-    const avaliacaoLiberada =
+-      obrigatorios.length ===
+-        0 ||
+-      concluidos ===
+-        obrigatorios.length;
++      );
+ 
+     return {
+       modulos,
+diff --git a/src/webparts/portalTreinamentosWebPart/services/DataverseService.ts b/src/webparts/portalTreinamentosWebPart/services/DataverseService.ts
+index 65d8449..c0d725e 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/DataverseService.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/DataverseService.ts
+@@ -1315,9 +1315,12 @@ export class DataverseService {
+         'dgt_mostrarresultado',
+         'dgt_mostrarrespostascorretas',
+         'dgt_ativa',
++        'createdon',
+         '_dgt_treinamento_value'
+       ].join(',') +
+-      `&$filter=_dgt_treinamento_value eq ${idLimpo} and dgt_ativa eq true`
++      `&$filter=_dgt_treinamento_value eq ${idLimpo} and dgt_ativa eq true` +
++      // Mais recente primeiro: ordem estável quando há mais de uma.
++      '&$orderby=createdon desc'
+     );
+   }
+ 

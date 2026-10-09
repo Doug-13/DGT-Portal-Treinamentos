@@ -91,11 +91,26 @@ const registrarNoConsole = (): void => {
   );
 };
 
+// Itens exibidos por versão antes do "Ver mais".
+const ITENS_POR_VERSAO = 5;
+
 const Versao: React.FC<{
   item: INovidadeVersao;
   atual: boolean;
   emPreparacao?: boolean;
-}> = ({ item, atual, emPreparacao = false }) => (
+}> = ({ item, atual, emPreparacao = false }) => {
+
+  const [expandida, setExpandida] = React.useState(false);
+
+  const ocultos =
+    Math.max(0, item.itens.length - ITENS_POR_VERSAO);
+
+  const visiveis =
+    expandida || ocultos === 0
+      ? item.itens
+      : item.itens.slice(0, ITENS_POR_VERSAO);
+
+  return (
   <li
     style={{
       padding: '14px 0',
@@ -151,7 +166,7 @@ const Versao: React.FC<{
     </div>
 
     <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-      {item.itens.map((novidade, indice) => (
+      {visiveis.map((novidade, indice) => (
         <li
           key={`${item.versao}-${indice}`}
           style={{
@@ -184,8 +199,31 @@ const Versao: React.FC<{
         </li>
       ))}
     </ul>
+
+    {ocultos > 0 && (
+      <button
+        type="button"
+        aria-expanded={expandida}
+        onClick={() => setExpandida(!expandida)}
+        style={{
+          marginTop: '8px',
+          padding: '4px 0',
+          border: 0,
+          background: 'transparent',
+          color: '#0B5CAB',
+          fontSize: '12.5px',
+          fontWeight: 700,
+          cursor: 'pointer'
+        }}
+      >
+        {expandida
+          ? '▴ Ver menos'
+          : `▾ Ver mais ${ocultos} ${ocultos === 1 ? 'item' : 'itens'}`}
+      </button>
+    )}
   </li>
-);
+  );
+};
 
 const VersaoPortal: React.FC = () => {
 

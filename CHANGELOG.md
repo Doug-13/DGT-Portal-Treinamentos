@@ -6,6 +6,21 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: revisão de treinamento (Rev.01, Rev.02…) com motivo, alterações e opção de retreinar quem já concluiu, sem apagar conclusões anteriores.
+- Novo: histórico de revisões do treinamento na Gestão e revisão atual ao lado do código.
+- Novo: "Adicionar usuários" em Usuários e acessos, que cadastra no portal com um clique as pessoas já liberadas no ambiente, com opção de vincular à área.
+- Novo: parecer "Participar / Não participar" com justificativa e histórico nas licitações, no cartão da busca e na pré-visualização do edital.
+- Novo: filtro por parecer na lista de licitações (sem parecer, participar, não participar).
+- Novo: módulos concluídos podem ser revisados e as verificações refeitas a qualquer momento, sem alterar a conclusão, a nota ou o certificado.
+- Melhoria: certificados em cards com prévia do PDF, selo de validade, filtros, busca e visualização dentro do portal.
+- Melhoria: a tela Certificados mostra o número, a revisão do treinamento em que o colaborador foi treinado e abre/baixa o PDF gerado pelo fluxo.
+- Melhoria: o código do treinamento aparece nos cards de Meus treinamentos.
+- Melhoria: a tela Novidades mostra 5 itens por versão, com "Ver mais".
+- Correção: "Concluir módulo" grava a conclusão e o progresso do treinamento é calculado pelos módulos concluídos (antes ficava fixo em 50% na tela inicial).
+- Correção: o módulo só pode ser concluído dentro dele, depois de responder corretamente as perguntas obrigatórias.
+- Correção: a avaliação é liberada ao concluir os módulos obrigatórios, abre a avaliação ativa que tem questões e mostra o motivo real quando não pode ser aberta.
+- Correção: atribuir um treinamento que o usuário já possui (por outra trilha ou individualmente) não cria mais duplicidade.
+
 ## [1.4.0] - 2026-10-08
 
 - Novo: tela Registros de Oportunidade no módulo Arquitetura de Soluções, centralizando as oportunidades vinculadas aos B.O.M.

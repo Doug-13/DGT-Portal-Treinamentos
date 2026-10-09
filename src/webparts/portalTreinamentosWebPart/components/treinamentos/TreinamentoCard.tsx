@@ -332,6 +332,25 @@ const TreinamentoCard:
           </span>
         </div>
 
+        {/* CÓDIGO: distingue treinamentos com o mesmo nome */}
+
+        {
+          treinamento.codigo && (
+            <span
+              style={{
+                display: 'block',
+                fontSize: 10,
+                fontWeight: 600,
+                color: '#64748B',
+                marginTop: 4,
+                letterSpacing: 0.2
+              }}
+            >
+              {treinamento.codigo}
+            </span>
+          )
+        }
+
         {/* TÍTULO */}
 
         <h3

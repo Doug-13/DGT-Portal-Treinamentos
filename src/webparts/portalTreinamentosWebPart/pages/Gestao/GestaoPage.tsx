@@ -23,6 +23,18 @@ import {
   IImpactoRemocao
 } from '../../services/TreinamentoRemocaoService';
 
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import {
+  IRevisaoTreinamento,
+  TreinamentoRevisaoService
+} from '../../services/TreinamentoRevisaoService';
+
+import RevisaoTreinamentoModal from
+  './RevisaoTreinamentoModal';
+
 // Descrição resumida com "Ver mais" / "Ver menos".
 const LIMITE_DESCRICAO = 160;
 
@@ -248,6 +260,15 @@ export interface IGestaoPageProps {
       treinamentoId:
         string
     ) => Promise<IEventoTreinamento[]>;
+
+  // Quando informado, habilita "Revisar treinamento" no menu ⋮
+  // e mostra a revisão atual (Rev.XX) ao lado do código.
+  dataverseService?:
+    DataverseService;
+
+  // Nome de quem registra a revisão (auditoria).
+  usuarioNome?:
+    string;
 }
 
 // ============================================================
@@ -508,6 +529,136 @@ const GestaoPage:
       setPesquisa
     ] =
       React.useState('');
+
+    // ---------------- Revisões ----------------
+
+    const revisaoService =
+      React.useMemo(
+        () =>
+          props.dataverseService
+            ? new TreinamentoRevisaoService(
+              props.dataverseService
+            )
+            : undefined,
+        [
+          props.dataverseService
+        ]
+      );
+
+    const [
+      revisarDe,
+      setRevisarDe
+    ] =
+      React.useState<
+        ITreinamentoAdmin | undefined
+      >(
+        undefined
+      );
+
+    // { treinamentoId → revisão atual } (vazio se a tabela ainda
+    // não existir: a tela continua funcionando normalmente).
+    const [
+      revisaoAtual,
+      setRevisaoAtual
+    ] =
+      React.useState<
+        Record<string, string>
+      >({});
+
+    React.useEffect(
+      () => {
+
+        if (
+          !revisaoService
+        ) {
+          return undefined;
+        }
+
+        let ativo =
+          true;
+
+        revisaoService
+          .listarPorTreinamento()
+          .then(
+            mapa => {
+
+              if (
+                !ativo
+              ) {
+                return;
+              }
+
+              const atual:
+                Record<string, string> = {};
+
+              Object.keys(
+                mapa
+              ).forEach(
+                id => {
+                  atual[id] =
+                    mapa[id][0].rotulo;
+                }
+              );
+
+              setRevisaoAtual(
+                atual
+              );
+            }
+          )
+          .catch(
+            () => undefined
+          );
+
+        return () => {
+          ativo =
+            false;
+        };
+      },
+      [
+        revisaoService
+      ]
+    );
+
+    const chaveTreinamento =
+      (
+        id: string
+      ): string =>
+        String(
+          id ||
+          ''
+        )
+          .replace(
+            /[{}]/g,
+            ''
+          )
+          .toLowerCase();
+
+    const fecharRevisao =
+      React.useCallback(
+        (): void =>
+          setRevisarDe(
+            undefined
+          ),
+        []
+      );
+
+    const aoPublicarRevisao =
+      React.useCallback(
+        (
+          revisao:
+            IRevisaoTreinamento
+        ): void => {
+
+          setRevisaoAtual(
+            atual => ({
+              ...atual,
+              [revisao.treinamentoId]:
+                revisao.rotulo
+            })
+          );
+        },
+        []
+      );
 
     // ---------------- Remoção ----------------
 
@@ -991,6 +1142,42 @@ const GestaoPage:
                                 '-'
                               }
                             </strong>
+
+                            {
+                              revisaoService &&
+                              (
+                                <span
+                                  title="Revisão atual do treinamento"
+                                  style={{
+                                    display:
+                                      'inline-block',
+                                    marginLeft:
+                                      '6px',
+                                    padding:
+                                      '1px 7px',
+                                    borderRadius:
+                                      '999px',
+                                    background:
+                                      '#EDF0F5',
+                                    color:
+                                      '#202A44',
+                                    fontSize:
+                                      '10.5px',
+                                    fontWeight:
+                                      700
+                                  }}
+                                >
+                                  {
+                                    revisaoAtual[
+                                      chaveTreinamento(
+                                        treinamento.id
+                                      )
+                                    ] ||
+                                    'Rev.00'
+                                  }
+                                </span>
+                              )
+                            }
                           </td>
 
                           <td style={tdStyle}>
@@ -1172,6 +1359,25 @@ const GestaoPage:
                                 }
                                 itens={[
                                   ...(
+                                    revisaoService
+                                      ? [
+                                        {
+                                          rotulo:
+                                            'Revisar treinamento',
+
+                                          titulo:
+                                            'Registrar uma nova revisão, com ou sem retreinamento de quem já concluiu',
+
+                                          onClick: () =>
+                                            setRevisarDe(
+                                              treinamento
+                                            )
+                                        }
+                                      ]
+                                      : []
+                                  ),
+
+                                  ...(
                                     props.onCarregarHistorico
                                       ? [
                                         {
@@ -1270,6 +1476,66 @@ const GestaoPage:
             }
           />
         )}
+
+        {
+          revisaoService &&
+          (
+            <RevisaoTreinamentoModal
+              treinamento={
+                revisarDe
+                  ? {
+                    id:
+                      revisarDe.id,
+                    codigo:
+                      revisarDe.codigo ||
+                      '',
+                    nome:
+                      revisarDe.nome
+                  }
+                  : undefined
+              }
+              service={
+                revisaoService
+              }
+              responsavel={
+                props.usuarioNome ||
+                ''
+              }
+              onEditar={
+                revisarDe
+                  ? () => {
+                    const alvo =
+                      revisarDe;
+
+                    setRevisarDe(
+                      undefined
+                    );
+
+                    props
+                      .onEditarTreinamento(
+                        alvo
+                      )
+                      .catch(
+                        (
+                          error:
+                            unknown
+                        ) =>
+                          console.error(
+                            error
+                          )
+                      );
+                  }
+                  : undefined
+              }
+              onFechar={
+                fecharRevisao
+              }
+              onPublicada={
+                aoPublicarRevisao
+              }
+            />
+          )
+        }
 
         <HistoricoTreinamentoModal
           aberto={

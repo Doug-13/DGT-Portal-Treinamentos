@@ -61,6 +61,8 @@ import { IColaborador } from '../models/Usuario';
 import { ITrilha } from '../models/Trilha';
 import { useModulos } from '../hooks/useModulos';
 import { ProgressoTreinamentoService } from '../services/ProgressoTreinamentoService';
+import { CertificadoService } from '../services/CertificadoService';
+import { TreinamentoRevisaoService, revisaoNaData } from '../services/TreinamentoRevisaoService';
 import { useModuloExecucao, IPerguntaRapidaExecucao } from '../hooks/useModuloExecucao';
 import { IModuloTreinamento, StatusUsuarioModulo } from '../models/Modulo';
 import { useUsuario } from '../hooks/useUsuario';
@@ -341,6 +343,26 @@ const PortalTreinamentos:
         IModuloTreinamento | undefined
       >(
         undefined
+      );
+
+    // Módulo já concluído aberto para revisão: o colaborador
+    // relê o conteúdo e refaz as verificações sem gravar nada.
+    const [
+      moduloEmRevisao,
+      setModuloEmRevisao
+    ] =
+      React.useState(
+        false
+      );
+
+    // Muda a cada abertura/"Refazer" para reiniciar a tela do
+    // módulo (respostas marcadas voltam ao zero).
+    const [
+      versaoModuloExecucao,
+      setVersaoModuloExecucao
+    ] =
+      React.useState(
+        0
       );
 
     const [
@@ -963,9 +985,19 @@ const gestaoAreas =
                 .trim()
                 .toLowerCase();
 
+            // Atribuições desativadas (dgt_ativo = Não) ficam fora
+            // da tela: é assim que se corrige uma duplicidade sem
+            // apagar o histórico.
             const atribuicoes =
               dadosAtribuicoes.filter(
                 r => {
+
+                  if (
+                    r.dgt_ativo ===
+                    false
+                  ) {
+                    return false;
+                  }
 
                   const emailRegistro =
                     obterTexto(
@@ -1323,6 +1355,20 @@ const gestaoAreas =
                         t.usuarioTreinamentoId ||
                         `cert-${indice}`,
 
+                      treinamentoId:
+                        t.id,
+
+                      dataConclusaoIso:
+                        a
+                          ? obterTexto(
+                            a,
+                            [
+                              'dgt_dataconclusao'
+                            ],
+                            ''
+                          )
+                          : '',
+
                       treinamento:
                         t.nome,
 
@@ -1465,6 +1511,133 @@ const gestaoAreas =
             setHistorico(
               historicoUsuario
             );
+
+            // ==================================================
+            // PDF DOS CERTIFICADOS (dgt_certificado + SharePoint)
+            // ==================================================
+            // Se falhar, a tela mostra os certificados sem o PDF
+            // (com o aviso de "em geração").
+
+            try {
+
+              const arquivos =
+                await new CertificadoService(
+                  dataverseService,
+                  spHttpClient,
+                  siteUrl
+                ).carregarPorAtribuicao(
+                  certificadosUsuario.map(
+                    c =>
+                      c.id
+                  )
+                );
+
+              certificadosUsuario.forEach(
+                c => {
+
+                  const arquivo =
+                    arquivos[
+                      c.id
+                        .replace(
+                          /[{}]/g,
+                          ''
+                        )
+                        .toLowerCase()
+                    ];
+
+                  c.situacaoArquivo =
+                    arquivo
+                      ? arquivo.situacao
+                      : 'gerando';
+
+                  if (
+                    arquivo
+                  ) {
+                    c.numero =
+                      arquivo.numero;
+                    c.emissao =
+                      arquivo.emissao
+                        ? formatarData(
+                          arquivo.emissao
+                        )
+                        : '';
+                    c.arquivoUrl =
+                      arquivo.arquivoUrl;
+                    c.downloadUrl =
+                      arquivo.downloadUrl;
+                    c.previewUrl =
+                      arquivo.previewUrl;
+                  }
+                }
+              );
+
+            } catch (erroCertificados) {
+
+              console.warn(
+                '[Certificados] Não foi possível localizar os PDFs:',
+                erroCertificados
+              );
+            }
+
+            // ==================================================
+            // REVISÃO DO TREINAMENTO NO CERTIFICADO (só na tela)
+            // ==================================================
+            // Revisão vigente na data de conclusão (Rev.00 se o
+            // treinamento nunca foi revisado). Se a tabela de
+            // revisões ainda não existir, o campo fica oculto.
+
+            try {
+
+              const revisoes =
+                await new TreinamentoRevisaoService(
+                  dataverseService
+                ).listarPorTreinamento(
+                  certificadosUsuario
+                    .map(
+                      c =>
+                        c.treinamentoId ||
+                        ''
+                    )
+                );
+
+              certificadosUsuario.forEach(
+                c => {
+
+                  const lista =
+                    revisoes[
+                      (
+                        c.treinamentoId ||
+                        ''
+                      )
+                        .replace(
+                          /[{}]/g,
+                          ''
+                        )
+                        .toLowerCase()
+                    ] ||
+                    [];
+
+                  c.revisao =
+                    revisaoNaData(
+                      lista,
+                      c.dataConclusaoIso ||
+                      ''
+                    );
+
+                  c.revisaoAtual =
+                    lista.length > 0
+                      ? lista[0].rotulo
+                      : 'Rev.00';
+                }
+              );
+
+            } catch (erroRevisoes) {
+
+              console.warn(
+                '[Certificados] Revisões do treinamento indisponíveis:',
+                erroRevisoes
+              );
+            }
 
             setCertificados(
               certificadosUsuario
@@ -2626,6 +2799,10 @@ const gestaoAreas =
             ''
           );
 
+          const revisao =
+            modulo.statusModulo ===
+            StatusUsuarioModulo.Concluido;
+
           if (
             modulo.statusModulo ===
             StatusUsuarioModulo.NaoIniciado
@@ -2641,11 +2818,25 @@ const gestaoAreas =
             modulo
           );
 
+          setModuloEmRevisao(
+            revisao
+          );
+
+          setVersaoModuloExecucao(
+            v =>
+              v + 1
+          );
+
+          // Em revisão o id da atribuição NÃO é passado: as
+          // respostas ficam só na tela (nada é gravado), como no
+          // modo de teste dos administradores.
           await moduloExecucao
             .carregar(
               modulo.id,
-              treinamentoSelecionado
-                .usuarioTreinamentoId
+              revisao
+                ? ''
+                : treinamentoSelecionado
+                  .usuarioTreinamentoId
             );
 
           navegar(
@@ -2674,6 +2865,38 @@ const gestaoAreas =
             return;
           }
 
+          // Revisão de módulo já concluído: nada a gravar.
+          if (
+            moduloEmRevisao
+          ) {
+
+            setModuloSelecionadoExecucao(
+              undefined
+            );
+
+            setModuloEmRevisao(
+              false
+            );
+
+            moduloExecucao
+              .limpar();
+
+            navegar(
+              'executarTreinamento'
+            );
+
+            return;
+          }
+
+          // Proteção: só conclui quando o próprio módulo libera
+          // (perguntas obrigatórias respondidas etc.).
+          if (
+            !moduloExecucao
+              .podeConcluir
+          ) {
+            return;
+          }
+
           await modulos
             .concluir(
               moduloSelecionadoExecucao
@@ -2693,8 +2916,45 @@ const gestaoAreas =
         [
           moduloExecucao,
           moduloSelecionadoExecucao,
+          moduloEmRevisao,
           modulos,
           navegar
+        ]
+      );
+
+    // ==========================================================
+    // REFAZER (revisão de módulo concluído)
+    // ==========================================================
+
+    const refazerModuloRevisao =
+      React.useCallback(
+        async (): Promise<void> => {
+
+          if (
+            !moduloSelecionadoExecucao
+          ) {
+            return;
+          }
+
+          setVersaoModuloExecucao(
+            v =>
+              v + 1
+          );
+
+          await moduloExecucao
+            .carregar(
+              moduloSelecionadoExecucao.id,
+              ''
+            );
+
+          window.scrollTo(
+            0,
+            0
+          );
+        },
+        [
+          moduloExecucao,
+          moduloSelecionadoExecucao
         ]
       );
     // ==========================================================
@@ -2751,7 +3011,10 @@ const gestaoAreas =
             return;
           }
 
+          // Mostra o motivo real (permissão, avaliação inexistente,
+          // sem questões, limite de tentativas...).
           setErroExecucaoTreinamento(
+            avaliacao.ultimoErro() ||
             'Não foi possível abrir a avaliação. Verifique a configuração da avaliação no Dataverse.'
           );
         },
@@ -3750,6 +4013,28 @@ const gestaoAreas =
                 podeConcluirModuloExecucao={
                   moduloExecucao.podeConcluir
                 }
+
+                moduloEmRevisao={
+                  moduloEmRevisao
+                }
+
+                versaoModuloExecucao={
+                  versaoModuloExecucao
+                }
+
+                refazerModuloRevisao={() => {
+
+                  refazerModuloRevisao()
+                    .catch(
+                      (
+                        error:
+                          unknown
+                      ) =>
+                        console.error(
+                          error
+                        )
+                    );
+                }}
 
                 navegar={
                   navegar

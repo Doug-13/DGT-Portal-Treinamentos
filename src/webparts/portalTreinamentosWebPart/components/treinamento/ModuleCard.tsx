@@ -21,7 +21,11 @@ export interface IModuleCardProps {
         IModuloTreinamento
     ) => void;
 
-  onConcluir:
+  // OBSOLETO: mantido só por compatibilidade. A conclusão do
+  // módulo agora acontece SOMENTE dentro do módulo (botão no
+  // final do conteúdo, liberado após responder as perguntas
+  // obrigatórias). O card da lista não conclui mais o módulo.
+  onConcluir?:
     (
       modulo:
         IModuloTreinamento
@@ -147,7 +151,6 @@ const ModuleCard:
     treinamentoEmAndamento,
     processando = false,
     onIniciar,
-    onConcluir,
     onAbrir,
     className
   }) => {
@@ -535,9 +538,9 @@ const ModuleCard:
             >
               {
                 concluido
-                  ? '✓ Este módulo já foi concluído.'
+                  ? '✓ Concluído. Revise o conteúdo e refaça as verificações quando quiser.'
                   : emAndamento
-                    ? 'Continue o módulo de onde parou.'
+                    ? 'Continue o módulo de onde parou. A conclusão é feita no final do módulo.'
                     : treinamentoEmAndamento
                       ? 'Pronto para iniciar.'
                       : 'Inicie o treinamento para liberar este módulo.'
@@ -666,49 +669,13 @@ const ModuleCard:
                           '9px 15px',
 
                         border:
-                          '1px solid #0B5CAB',
-
-                        borderRadius:
-                          '8px',
-
-                        background:
-                          '#FFFFFF',
-
-                        color:
-                          '#0B5CAB',
-
-                        cursor:
-                          'pointer',
-
-                        fontWeight:
-                          700
-                      }}
-                    >
-                      Continuar módulo
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={
-                        processando
-                      }
-                      onClick={() =>
-                        onConcluir(
-                          modulo
-                        )
-                      }
-                      style={{
-                        padding:
-                          '9px 15px',
-
-                        border:
                           0,
 
                         borderRadius:
                           '8px',
 
                         background:
-                          '#13795B',
+                          '#0B5CAB',
 
                         color:
                           '#FFFFFF',
@@ -720,12 +687,9 @@ const ModuleCard:
                           700
                       }}
                     >
-                      {
-                        processando
-                          ? 'Processando...'
-                          : 'Concluir módulo ✓'
-                      }
+                      Continuar módulo →
                     </button>
+
                   </>
                 )
               }
@@ -733,29 +697,72 @@ const ModuleCard:
               {
                 concluido &&
                 (
-                  <span
-                    style={{
-                      padding:
-                        '9px 13px',
+                  <>
+                    <span
+                      style={{
+                        padding:
+                          '9px 13px',
 
-                      borderRadius:
-                        '8px',
+                        borderRadius:
+                          '8px',
 
-                      background:
-                        '#E7F5EE',
+                        background:
+                          '#E7F5EE',
 
-                      color:
-                        '#13795B',
+                        color:
+                          '#13795B',
 
-                      fontWeight:
-                        700,
+                        fontWeight:
+                          700,
 
-                      fontSize:
-                        '13px'
-                    }}
-                  >
-                    ✓ Módulo concluído
-                  </span>
+                        fontSize:
+                          '13px'
+                      }}
+                    >
+                      ✓ Módulo concluído
+                    </span>
+
+                    {/* Revisão: reabre o conteúdo sem gravar nada */}
+                    <button
+                      type="button"
+                      disabled={
+                        processando
+                      }
+                      onClick={() =>
+                        onAbrir(
+                          modulo
+                        )
+                      }
+                      title="Releia o conteúdo e refaça as verificações. Sua conclusão não muda."
+                      style={{
+                        padding:
+                          '9px 15px',
+
+                        border:
+                          '1px solid #13795B',
+
+                        borderRadius:
+                          '8px',
+
+                        background:
+                          '#FFFFFF',
+
+                        color:
+                          '#13795B',
+
+                        cursor:
+                          'pointer',
+
+                        fontWeight:
+                          700,
+
+                        fontSize:
+                          '13px'
+                      }}
+                    >
+                      ↻ Revisar módulo
+                    </button>
+                  </>
                 )
               }
 
