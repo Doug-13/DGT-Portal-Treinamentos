@@ -6,6 +6,10 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.3] - 2026-10-09
+
+- Melhoria: ajustes e correções internas.
+
 ## [1.4.2] - 2026-10-09
 
 - Melhoria: ajustes e correções internas.
