@@ -111,10 +111,33 @@ export const useAvaliacao = (
         throw new Error('Nenhuma avaliação ativa foi localizada para este treinamento.');
       }
 
-      const registro = avaliacoes[0];
+      // Pode haver mais de uma avaliação ativa para o mesmo
+      // treinamento (ex.: uma criada vazia e outra importada por
+      // JSON). Antes era usada a primeira que o Dataverse devolvia
+      // — às vezes a vazia, e a prova não abria. Agora é usada a
+      // mais recente QUE TEM QUESTÕES.
+      const bancos = await Promise.all(
+        avaliacoes.map(async item => ({
+          registro: item,
+          questoes: await service.getQuestoesAvaliacao(guid(item.dgt_avaliacaoid))
+        }))
+      );
+
+      const escolhida =
+        bancos.find(item => item.questoes.length > 0) ||
+        bancos[0];
+
+      if (avaliacoes.length > 1) {
+        console.warn(
+          `[Avaliação] ${avaliacoes.length} avaliações ativas para o mesmo treinamento. ` +
+          `Usando "${texto(escolhida.registro, 'dgt_name')}". Desative as demais na gestão de avaliações.`
+        );
+      }
+
+      const registro = escolhida.registro;
       const avaliacaoId = guid(registro.dgt_avaliacaoid);
 
-      const questoesRegistros = await service.getQuestoesAvaliacao(avaliacaoId);
+      const questoesRegistros = escolhida.questoes;
 
       const questoesComAlternativas = await Promise.all(
         questoesRegistros.map(async (questaoRegistro): Promise<IQuestaoAvaliacao> => {

@@ -60,6 +60,7 @@ import { IPublicarRevisao, IResultadoPublicacaoRevisao } from '../services/Revis
 import { IColaborador } from '../models/Usuario';
 import { ITrilha } from '../models/Trilha';
 import { useModulos } from '../hooks/useModulos';
+import { ProgressoTreinamentoService } from '../services/ProgressoTreinamentoService';
 import { useModuloExecucao, IPerguntaRapidaExecucao } from '../hooks/useModuloExecucao';
 import { IModuloTreinamento, StatusUsuarioModulo } from '../models/Modulo';
 import { useUsuario } from '../hooks/useUsuario';
@@ -1113,14 +1114,14 @@ const gestaoAreas =
 
                     status,
 
+                    // Valor provisório: o percentual real (pelos
+                    // módulos concluídos) é aplicado logo abaixo,
+                    // em "PROGRESSO REAL". Antes era fixo em 50%.
                     progresso:
                       status ===
                         'Concluído'
                         ? 100
-                        : status ===
-                          'Em andamento'
-                          ? 50
-                          : 0,
+                        : 0,
 
                     cargaHoraria:
                       item?.cargaHoraria ||
@@ -1388,6 +1389,74 @@ const gestaoAreas =
             // ==================================================
             // ATUALIZAR ESTADO
             // ==================================================
+
+            // ==================================================
+            // PROGRESSO REAL (módulos concluídos)
+            // ==================================================
+            // Se a consulta falhar, os cartões ficam com 0% (ou
+            // 100% se concluído) — nunca com um valor inventado.
+
+            try {
+
+              const progressoPorAtribuicao =
+                await new ProgressoTreinamentoService(
+                  dataverseService
+                ).calcular(
+                  treinamentosUsuario
+                    .filter(
+                      t =>
+                        t.status !==
+                        'Concluído'
+                    )
+                    .map(
+                      t => ({
+                        usuarioTreinamentoId:
+                          t.usuarioTreinamentoId ||
+                          '',
+                        treinamentoId:
+                          t.id
+                      })
+                    )
+                );
+
+              treinamentosUsuario.forEach(
+                t => {
+
+                  const chave =
+                    (
+                      t.usuarioTreinamentoId ||
+                      ''
+                    )
+                      .replace(
+                        /[{}]/g,
+                        ''
+                      )
+                      .toLowerCase();
+
+                  const real =
+                    progressoPorAtribuicao[
+                      chave
+                    ];
+
+                  if (
+                    t.status !==
+                      'Concluído' &&
+                    real !==
+                      undefined
+                  ) {
+                    t.progresso =
+                      real;
+                  }
+                }
+              );
+
+            } catch (erroProgresso) {
+
+              console.warn(
+                '[Treinamentos] Não foi possível calcular o progresso pelos módulos:',
+                erroProgresso
+              );
+            }
 
             setMeusTreinamentos(
               treinamentosUsuario
@@ -2117,6 +2186,82 @@ const gestaoAreas =
           navegar
         ]
       );
+
+    // ==========================================================
+    // PROGRESSO AO VIVO
+    // ==========================================================
+    // Ao iniciar/concluir módulos, o percentual do treinamento
+    // aberto é atualizado também na tela inicial e em "Meus
+    // treinamentos", sem precisar recarregar o portal.
+    // ==========================================================
+
+    const usuarioTreinamentoAbertoId =
+      treinamentoSelecionado
+        ?.usuarioTreinamentoId ||
+      '';
+
+    const progressoModulosAberto =
+      modulos.progresso;
+
+    const modulosCarregados =
+      !modulos.carregando &&
+      modulos.modulos.length >
+        0;
+
+    React.useEffect(
+      () => {
+
+        if (
+          !usuarioTreinamentoAbertoId ||
+          !modulosCarregados
+        ) {
+          return;
+        }
+
+        setMeusTreinamentos(
+          lista => {
+
+            let mudou =
+              false;
+
+            const nova =
+              lista.map(
+                t => {
+
+                  if (
+                    t.usuarioTreinamentoId !==
+                      usuarioTreinamentoAbertoId ||
+                    t.status ===
+                      'Concluído' ||
+                    t.progresso ===
+                      progressoModulosAberto
+                  ) {
+                    return t;
+                  }
+
+                  mudou =
+                    true;
+
+                  return {
+                    ...t,
+                    progresso:
+                      progressoModulosAberto
+                  };
+                }
+              );
+
+            return mudou
+              ? nova
+              : lista;
+          }
+        );
+      },
+      [
+        usuarioTreinamentoAbertoId,
+        progressoModulosAberto,
+        modulosCarregados
+      ]
+    );
 
     // ==========================================================
     // ABRIR TREINAMENTO

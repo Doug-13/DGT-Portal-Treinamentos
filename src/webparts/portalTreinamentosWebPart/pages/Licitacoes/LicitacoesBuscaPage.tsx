@@ -3,8 +3,11 @@ import * as React from 'react';
 import logoDgt from '../../assets/logo-dgt.png';
 
 import {
+  DecisaoParecer,
+  FiltroParecer,
   IFiltrosLicitacao,
   ILicitacaoResultado,
+  ISituacaoParecer,
   MODALIDADES_PNCP,
   ModoBuscaAssunto,
   PRESETS_MODALIDADES,
@@ -14,6 +17,24 @@ import {
 import {
   useBuscaLicitacoes
 } from '../../hooks/useBuscaLicitacoes';
+
+import {
+  SituacaoPareceres,
+  useParecerLicitacoes
+} from '../../hooks/useParecerLicitacoes';
+
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import {
+  IContextoAcesso
+} from '../../services/AutorizacaoService';
+
+import {
+  ParecerCartao,
+  RegistrarParecerDialog
+} from './ParecerLicitacao';
 
 import {
   converterValor,
@@ -60,11 +81,31 @@ import {
 //   mostrar_resumo_filtros     → cartão de progresso / resumo
 //   mostrar_resultados_terminal→ lista de oportunidades
 //   gerar_pdf                  → "Imprimir / salvar PDF"
+//
+// Parecer da DGT: em cada cartão e no painel do edital é possível
+// registrar "Participar" ou "Não participar" com justificativa.
+// O parecer fica no Dataverse (dgt_licitacaoparecer) e reaparece
+// automaticamente em qualquer nova busca que traga o mesmo edital.
 // ============================================================
 
 export interface ILicitacoesBuscaPageProps {
   onIrParaTeste: () => void;
+  // Opcionais: sem eles a busca funciona, só sem pareceres.
+  dataverseService?: DataverseService;
+  contexto?: IContextoAcesso;
 }
+
+interface IDialogoParecer {
+  item: ILicitacaoResultado;
+  decisao?: DecisaoParecer;
+}
+
+const FILTROS_PARECER: Array<{ id: FiltroParecer; rotulo: string }> = [
+  { id: 'todos', rotulo: 'Todos' },
+  { id: 'semParecer', rotulo: 'Sem parecer' },
+  { id: 'Participar', rotulo: '✓ Participar' },
+  { id: 'NaoParticipar', rotulo: '✕ Não participar' }
+];
 
 interface IFormulario {
   assunto: string;
@@ -174,7 +215,10 @@ const Dado: React.FC<{ titulo: string; valor: string }> = ({ titulo, valor }) =>
 const CartaoLicitacao: React.FC<{
   item: ILicitacaoResultado;
   onPrevisualizar: (item: ILicitacaoResultado) => void;
-}> = ({ item, onPrevisualizar }) => (
+  parecer?: ISituacaoParecer;
+  situacaoPareceres: SituacaoPareceres;
+  onRegistrarParecer: (item: ILicitacaoResultado, decisao?: DecisaoParecer) => void;
+}> = ({ item, onPrevisualizar, parecer, situacaoPareceres, onRegistrarParecer }) => (
   <div
     style={{
       ...cartao,
@@ -223,6 +267,12 @@ const CartaoLicitacao: React.FC<{
       <Dado titulo="Encerramento das propostas" valor={formatarDataPncp(item.encerramento)} />
     </div>
 
+    <ParecerCartao
+      parecer={parecer}
+      situacao={situacaoPareceres}
+      onRegistrar={decisao => onRegistrarParecer(item, decisao)}
+    />
+
     <div
       style={{
         display: 'flex',
@@ -270,10 +320,46 @@ const CartaoLicitacao: React.FC<{
 // ------------------------------------------------------------
 
 const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
-  onIrParaTeste
+  onIrParaTeste,
+  dataverseService,
+  contexto
 }) => {
 
   const busca = useBuscaLicitacoes();
+
+  const pareceres = useParecerLicitacoes(
+    dataverseService,
+    contexto ? contexto.nome : undefined
+  );
+
+  const [filtroParecer, setFiltroParecer] = React.useState<FiltroParecer>('todos');
+  const [dialogo, setDialogo] = React.useState<IDialogoParecer | undefined>(undefined);
+  const [avisoParecer, setAvisoParecer] = React.useState<string>('');
+
+  const abrirDialogoParecer = React.useCallback(
+    (item: ILicitacaoResultado, decisao?: DecisaoParecer): void => {
+      setDialogo({ item, decisao });
+    },
+    []
+  );
+
+  const fecharDialogoParecer = React.useCallback(
+    (): void => setDialogo(undefined),
+    []
+  );
+
+  const salvarParecer = async (
+    decisao: DecisaoParecer,
+    justificativa: string
+  ): Promise<void> => {
+    if (!dialogo) {
+      return;
+    }
+    await pareceres.registrar(dialogo.item, decisao, justificativa);
+    setDialogo(undefined);
+    setAvisoParecer(`Parecer registrado: ${dialogo.item.orgao}.`);
+    window.setTimeout(() => setAvisoParecer(''), 5000);
+  };
 
   const [form, setForm] = React.useState<IFormulario>(FORMULARIO_INICIAL);
   const [erroForm, setErroForm] = React.useState<string>('');
@@ -387,17 +473,43 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     setAvisoPopup(!abriu);
   };
 
+  const obterParecer = pareceres.obter;
+
+  const decisaoDe = React.useCallback(
+    (item: ILicitacaoResultado): FiltroParecer => {
+      const situacao = obterParecer(item);
+      return situacao ? situacao.atual.decisao : 'semParecer';
+    },
+    [obterParecer]
+  );
+
+  const contagemParecer = React.useMemo(() => {
+    const contagem: { [filtro: string]: number } = {
+      todos: busca.resultados.length,
+      semParecer: 0,
+      Participar: 0,
+      NaoParticipar: 0
+    };
+    busca.resultados.forEach(item => {
+      contagem[decisaoDe(item)]++;
+    });
+    return contagem;
+  }, [busca.resultados, decisaoDe]);
+
   const resultadosVisiveis = React.useMemo(() => {
     const termo = filtroLista.trim().toLowerCase();
-    if (!termo) {
-      return busca.resultados;
-    }
-    return busca.resultados.filter(item =>
-      (item.objeto + ' ' + item.orgao + ' ' + item.local)
+    return busca.resultados.filter(item => {
+      if (filtroParecer !== 'todos' && decisaoDe(item) !== filtroParecer) {
+        return false;
+      }
+      if (!termo) {
+        return true;
+      }
+      return (item.objeto + ' ' + item.orgao + ' ' + item.local)
         .toLowerCase()
-        .indexOf(termo) >= 0
-    );
-  }, [busca.resultados, filtroLista]);
+        .indexOf(termo) >= 0;
+    });
+  }, [busca.resultados, filtroLista, filtroParecer, decisaoDe]);
 
   const presetAtivo = PRESETS_MODALIDADES.find(preset =>
     mesmoConjunto(preset.codigos, form.modalidades)
@@ -435,8 +547,28 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
           <div>
             <h2 style={tituloSecao}>Buscar licitações no PNCP</h2>
             <p style={textoApoio}>
-              Consulta pública ao Portal Nacional de Contratações Públicas. Nada é gravado no portal.
+              Consulta pública ao Portal Nacional de Contratações Públicas. A busca não é gravada;
+              só os pareceres (Participar / Não participar) ficam registrados, com histórico.
             </p>
+            {pareceres.situacao === 'tabelaInexistente' && (
+              <p style={{ ...dica, color: COR.indigo }}>
+                ! Pareceres desativados: crie a tabela dgt_licitacaoparecer no Dataverse
+                (scripts/dataverse/criar-tabela-pareceres-licitacao.ps1).
+              </p>
+            )}
+            {pareceres.situacao === 'erro' && (
+              <p style={{ ...dica, color: COR.indigo }}>
+                ! Não foi possível carregar os pareceres. {pareceres.erro}
+                {' '}
+                <button
+                  type="button"
+                  style={{ ...botaoSecundario, padding: '2px 8px', fontSize: 11 }}
+                  onClick={pareceres.recarregar}
+                >
+                  Tentar novamente
+                </button>
+              </p>
+            )}
           </div>
 
           <button
@@ -890,13 +1022,51 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
             />
           </div>
 
+          {pareceres.situacao === 'ok' && (
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '0 0 12px' }}
+              role="group"
+              aria-label="Filtrar por parecer"
+            >
+              <span style={{ fontSize: 12, color: COR.textoSecundario, marginRight: 4 }}>Parecer:</span>
+              {FILTROS_PARECER.map(filtro => {
+                const ativo = filtroParecer === filtro.id;
+                return (
+                  <button
+                    key={filtro.id}
+                    type="button"
+                    style={chip(ativo)}
+                    aria-pressed={ativo}
+                    onClick={() => setFiltroParecer(filtro.id)}
+                  >
+                    {filtro.rotulo} ({contagemParecer[filtro.id] || 0})
+                  </button>
+                );
+              })}
+              {avisoParecer && (
+                <span role="status" style={{ fontSize: 11, color: COR.textoSecundario, marginLeft: 8 }}>
+                  {avisoParecer}
+                </span>
+              )}
+            </div>
+          )}
+
           {resultadosVisiveis.map(item => (
             <CartaoLicitacao
               key={item.chave}
               item={item}
               onPrevisualizar={setPrevia}
+              parecer={pareceres.obter(item)}
+              situacaoPareceres={pareceres.situacao}
+              onRegistrarParecer={abrirDialogoParecer}
             />
           ))}
+
+          {resultadosVisiveis.length === 0 && (
+            <div style={{ ...cartao, background: COR.neutro }}>
+              <p style={textoApoio}>Nenhuma oportunidade com este filtro.</p>
+            </div>
+          )}
         </>
       )}
 
@@ -913,6 +1083,20 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       <EditalPreviaModal
         item={previa}
         onFechar={fecharPrevia}
+        parecer={previa ? pareceres.obter(previa) : undefined}
+        situacaoPareceres={pareceres.situacao}
+        onRegistrarParecer={previa
+          ? (decisao?: DecisaoParecer) => abrirDialogoParecer(previa, decisao)
+          : undefined}
+        dialogoParecerAberto={!!dialogo}
+      />
+
+      <RegistrarParecerDialog
+        item={dialogo ? dialogo.item : undefined}
+        decisaoInicial={dialogo ? dialogo.decisao : undefined}
+        parecerAtual={dialogo ? pareceres.obter(dialogo.item) : undefined}
+        onCancelar={fecharDialogoParecer}
+        onSalvar={salvarParecer}
       />
 
     </section>

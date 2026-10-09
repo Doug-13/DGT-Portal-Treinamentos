@@ -10,6 +10,23 @@ import {
   StatusUsuarioModulo
 } from '../models/Modulo';
 
+import {
+  calcularProgressoModulos
+} from '../utils/progressoTreinamento';
+
+// ============================================================
+// MÓDULOS DO TREINAMENTO (tela do treinamento)
+//
+// Correção (concluir módulo):
+//   A tela do módulo guardava o objeto do módulo de ANTES de ele
+//   ser iniciado (ainda sem o id do registro dgt_usuariomodulo).
+//   Ao clicar em "Concluir módulo" aparecia "Registro de progresso
+//   do módulo não encontrado." e nada era gravado — por isso o
+//   progresso ficava em 0% e a avaliação não era liberada.
+//   Agora iniciar/concluir sempre localizam o registro atual pelo
+//   id do módulo (lista recarregada → Dataverse → cria se faltar).
+// ============================================================
+
 type Registro =
   IDataverseRecord;
 
@@ -232,6 +249,14 @@ export const useModulos =
       setProcessandoModuloId
     ] =
       React.useState('');
+
+    // Sempre a lista mais recente (os callbacks podem receber um
+    // objeto de módulo antigo, guardado por outra tela).
+    const modulosRef =
+      React.useRef<IModuloTreinamento[]>([]);
+
+    modulosRef.current =
+      modulos;
 
     const idsAtuais =
       React.useRef<{
@@ -498,6 +523,46 @@ export const useModulos =
         ]
       );
 
+    // Id do registro dgt_usuariomodulo do módulo: lista atual →
+    // objeto recebido → Dataverse (localiza ou cria).
+    const resolverUsuarioModuloId =
+      React.useCallback(
+        async (
+          modulo:
+            IModuloTreinamento,
+          usuarioTreinamentoId:
+            string
+        ): Promise<string> => {
+
+          const atual =
+            modulosRef.current.find(
+              item =>
+                item.id ===
+                modulo.id
+            );
+
+          const conhecido =
+            (atual && atual.usuarioModuloId) ||
+            modulo.usuarioModuloId;
+
+          if (
+            conhecido
+          ) {
+            return conhecido;
+          }
+
+          return service
+            .garantirUsuarioModulo(
+              usuarioTreinamentoId,
+              modulo.id,
+              modulo.titulo
+            );
+        },
+        [
+          service
+        ]
+      );
+
     const iniciar =
       React.useCallback(
         async (
@@ -528,21 +593,11 @@ export const useModulos =
 
           try {
 
-            let usuarioModuloId =
-              modulo.usuarioModuloId;
-
-            if (
-              !usuarioModuloId
-            ) {
-
-              usuarioModuloId =
-                await service
-                  .garantirUsuarioModulo(
-                    usuarioTreinamentoId,
-                    modulo.id,
-                    modulo.titulo
-                  );
-            }
+            const usuarioModuloId =
+              await resolverUsuarioModuloId(
+                modulo,
+                usuarioTreinamentoId
+              );
 
             await service
               .iniciarUsuarioModulo(
@@ -568,7 +623,8 @@ export const useModulos =
         },
         [
           service,
-          recarregar
+          recarregar,
+          resolverUsuarioModuloId
         ]
       );
 
@@ -579,12 +635,16 @@ export const useModulos =
             IModuloTreinamento
         ): Promise<void> => {
 
+          const usuarioTreinamentoId =
+            idsAtuais.current
+              .usuarioTreinamentoId;
+
           if (
-            !modulo.usuarioModuloId
+            !usuarioTreinamentoId
           ) {
 
             setErro(
-              'Registro de progresso do módulo não encontrado.'
+              'A atribuição do treinamento não foi identificada.'
             );
 
             return;
@@ -598,9 +658,23 @@ export const useModulos =
 
           try {
 
+            const usuarioModuloId =
+              await resolverUsuarioModuloId(
+                modulo,
+                usuarioTreinamentoId
+              );
+
+            if (
+              !usuarioModuloId
+            ) {
+              throw new Error(
+                'Registro de progresso do módulo não encontrado.'
+              );
+            }
+
             await service
               .concluirUsuarioModulo(
-                modulo.usuarioModuloId
+                usuarioModuloId
               );
 
             await recarregar();
@@ -622,41 +696,28 @@ export const useModulos =
         },
         [
           service,
-          recarregar
+          recarregar,
+          resolverUsuarioModuloId
         ]
       );
 
-    const obrigatorios =
-      modulos.filter(
-        modulo =>
-          modulo.obrigatorio
-      );
-
-    const concluidos =
-      obrigatorios.filter(
-        modulo =>
-          modulo.statusModulo ===
-          StatusUsuarioModulo
-            .Concluido
-      ).length;
-
-    const progresso =
-      obrigatorios.length >
-        0
-        ? Math.round(
-          (
-            concluidos /
-            obrigatorios.length
-          ) *
-          100
+    // Mesma regra dos cartões da tela inicial.
+    const {
+      progresso,
+      avaliacaoLiberada
+    } =
+      calcularProgressoModulos(
+        modulos.map(
+          modulo => ({
+            obrigatorio:
+              modulo.obrigatorio,
+            concluido:
+              modulo.statusModulo ===
+              StatusUsuarioModulo
+                .Concluido
+          })
         )
-        : 0;
-
-    const avaliacaoLiberada =
-      obrigatorios.length ===
-        0 ||
-      concluidos ===
-        obrigatorios.length;
+      );
 
     return {
       modulos,

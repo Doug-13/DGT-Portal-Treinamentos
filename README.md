@@ -545,43 +545,87 @@ Consulte o [CHANGELOG.md](CHANGELOG.md). No portal, clique no selo de versão no
 # o Gerar-Versao.ps1.
 # ============================================================
 
+# ============================================================
+# Gera uma NOVA versão do Portal DGT e o pacote SharePoint
+#
+# Incremento automático: 1.4.0 → 1.4.1 → 1.4.2
+# Atualiza as novidades a partir do CHANGELOG.md.
+# ============================================================
+
 $ErrorActionPreference = 'Stop'
 
-cd C:\DGT\DGT-Portal-Treinamentos\portal-treinamentos
+$Projeto = 'C:\DGT\DGT-Portal-Treinamentos\portal-treinamentos'
+$Downloads = Join-Path $env:USERPROFILE 'Downloads'
 
-# 1. Limpar pastas geradas (evita arquivos antigos no pacote e nos testes)
-Remove-Item -Recurse -Force lib, lib-commonjs, temp, dist, release -ErrorAction SilentlyContinue
+Set-Location -LiteralPath $Projeto
 
-# 2. Atualizar versao.ts com o CHANGELOG.md
-#    (mantém a versão; leva os itens de "Não publicado" para a tela de Novidades)
-node scripts/versao.js none
-
-if ($LASTEXITCODE -ne 0) {
-    throw "Erro ao atualizar as novidades (scripts/versao.js). Processo interrompido."
+# 1. Verificar o script de geração
+if (-not (Test-Path -LiteralPath '.\Gerar-Versao.ps1')) {
+    throw 'Gerar-Versao.ps1 não encontrado na raiz do projeto.'
 }
 
-# 3. Compilar a versão de produção
-npx heft build --production
-
-if ($LASTEXITCODE -ne 0) {
-    throw "Erro na compilação. Processo interrompido."
+# 2. Garantir a pasta de destino
+if (-not (Test-Path -LiteralPath $Downloads)) {
+    New-Item -ItemType Directory -Path $Downloads | Out-Null
 }
 
-# 4. Gerar o pacote SharePoint
-npx heft package-solution --production
+# 3. Limpar pastas geradas anteriormente
+$PastasGeradas = @(
+    'lib',
+    'lib-commonjs',
+    'temp',
+    'dist',
+    'release'
+)
 
-if ($LASTEXITCODE -ne 0) {
-    throw "Erro ao gerar o pacote."
+foreach ($Pasta in $PastasGeradas) {
+    if (Test-Path -LiteralPath $Pasta) {
+        Remove-Item -LiteralPath $Pasta -Recurse -Force
+    }
 }
 
-# 5. Copiar o pacote para Downloads
-$Origem = ".\sharepoint\solution\DGT-Portal-Treinamentos.sppkg"
+# 4. Remover o pacote anterior
+$Origem = Join-Path $Projeto 'sharepoint\solution\DGT-Portal-Treinamentos.sppkg'
 
-$Destino = "$env:USERPROFILE\Downloads\DGT-Portal-Treinamentos.sppkg"
+if (Test-Path -LiteralPath $Origem) {
+    Remove-Item -LiteralPath $Origem -Force
+}
 
-Copy-Item $Origem $Destino -Force
+# 5. Incrementar a versão, atualizar novidades, compilar e empacotar
+# O script também copia o pacote com a versão no nome para Downloads.
+& '.\Gerar-Versao.ps1' `
+    -Tipo patch `
+    -Projeto $Projeto `
+    -Destino $Downloads
 
-Write-Host "Pacote gerado: $Destino" -ForegroundColor Green
+if (-not $?) {
+    throw 'Falha ao gerar a nova versão.'
+}
+
+# 6. Conferir o pacote gerado
+$Versao = (
+    Get-Content -LiteralPath '.\package.json' -Raw |
+    ConvertFrom-Json
+).version
+
+$PacoteVersionado = Join-Path $Downloads "DGT-Portal-Treinamentos_v$Versao.sppkg"
+
+if (
+    -not (Test-Path -LiteralPath $Origem) -or
+    -not (Test-Path -LiteralPath $PacoteVersionado)
+) {
+    throw 'O pacote esperado não foi encontrado após a geração.'
+}
+
+# 7. Manter também a cópia com o nome fixo usado anteriormente
+$Destino = Join-Path $Downloads 'DGT-Portal-Treinamentos.sppkg'
+
+Copy-Item -LiteralPath $Origem -Destination $Destino -Force -ErrorAction Stop
+
+Write-Host ''
+Write-Host "Versão gerada: $Versao" -ForegroundColor Green
+Write-Host "Pacote com versão: $PacoteVersionado" -ForegroundColor Green
+Write-Host "Pacote com nome fixo: $Destino" -ForegroundColor Green
 
 ---
 

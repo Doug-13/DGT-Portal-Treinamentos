@@ -1315,9 +1315,12 @@ export class DataverseService {
         'dgt_mostrarresultado',
         'dgt_mostrarrespostascorretas',
         'dgt_ativa',
+        'createdon',
         '_dgt_treinamento_value'
       ].join(',') +
-      `&$filter=_dgt_treinamento_value eq ${idLimpo} and dgt_ativa eq true`
+      `&$filter=_dgt_treinamento_value eq ${idLimpo} and dgt_ativa eq true` +
+      // Mais recente primeiro: ordem estável quando há mais de uma.
+      '&$orderby=createdon desc'
     );
   }
 

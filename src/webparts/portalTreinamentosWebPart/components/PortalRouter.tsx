@@ -3074,6 +3074,8 @@ const PortalRouter:
                 'licitacoesTeste'
               )
             }
+            dataverseService={props.dataverseService}
+            contexto={props.contextoAcesso}
           />
         );
 

@@ -243,3 +243,53 @@ export interface IResumoBusca {
   cancelada: boolean;
   duracaoSegundos: number;
 }
+
+// ------------------------------------------------------------
+// Parecer da DGT sobre o edital (Participar / Não participar)
+//
+// Cada decisão é um registro NOVO na tabela dgt_licitacaoparecer.
+// Nada é sobrescrito nem apagado: o parecer vigente é o mais
+// recente e os anteriores formam o histórico do edital.
+//
+// LGPD: a chave do edital é montada SEM o CNPJ do órgão (ver
+// gerarChaveEdital em LicitacaoParecerService) e o link do PNCP
+// (que contém o CNPJ) NÃO é gravado.
+// ------------------------------------------------------------
+
+export type DecisaoParecer =
+  | 'Participar'
+  | 'NaoParticipar';
+
+export const ROTULO_DECISAO: { [decisao: string]: string } = {
+  Participar: 'Participar',
+  NaoParticipar: 'Não participar'
+};
+
+export interface IParecerLicitacao {
+  id: string;
+  chaveEdital: string;
+  decisao: DecisaoParecer;
+  justificativa: string;
+  orgao: string;
+  local: string;
+  modalidade: string;
+  numero: string;
+  objeto: string;
+  valorEstimado?: number;
+  encerramento?: string;
+  score?: number;
+  responsavel: string;
+  registradoEm: string;
+}
+
+// Parecer vigente + histórico (mais recente primeiro).
+export interface ISituacaoParecer {
+  atual: IParecerLicitacao;
+  historico: IParecerLicitacao[];
+}
+
+export type FiltroParecer =
+  | 'todos'
+  | 'semParecer'
+  | 'Participar'
+  | 'NaoParticipar';

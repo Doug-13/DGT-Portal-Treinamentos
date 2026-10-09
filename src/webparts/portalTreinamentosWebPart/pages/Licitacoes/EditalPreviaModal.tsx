@@ -4,12 +4,26 @@ import * as ReactDOM from 'react-dom';
 import logoDgt from '../../assets/logo-dgt.png';
 
 import {
+  DecisaoParecer,
   ICargaEdital,
   IDadosEdital,
   IDocumentoEdital,
   IItemEdital,
-  ILicitacaoResultado
+  ILicitacaoResultado,
+  ISituacaoParecer,
+  ROTULO_DECISAO
 } from '../../models/Licitacao';
+
+import {
+  SituacaoPareceres
+} from '../../hooks/useParecerLicitacoes';
+
+import {
+  COR_DECISAO,
+  ICONE_DECISAO,
+  ParecerPainel,
+  formatarDataHora
+} from './ParecerLicitacao';
 
 import {
   IArquivoEdital,
@@ -52,6 +66,11 @@ import {
 //   Documentos  edital, termo de referência, anexos, avisos
 //   Edital      o PDF aberto dentro do portal
 //
+// Parecer da DGT (Participar / Não participar + justificativa):
+// indicador no cabeçalho e seção com histórico no topo do Resumo.
+// A janela de registro é da página de busca (a mesma usada pelos
+// cartões); este painel só pede para abri-la.
+//
 // Os dados básicos já vêm da busca (abre instantâneo). Itens,
 // documentos e o detalhe atualizado são carregados do PNCP em
 // paralelo; se uma parte falhar, as outras continuam.
@@ -64,6 +83,13 @@ import {
 export interface IEditalPreviaModalProps {
   item?: ILicitacaoResultado;
   onFechar: () => void;
+
+  // Parecer da DGT (opcionais: sem eles o painel funciona como antes)
+  parecer?: ISituacaoParecer;
+  situacaoPareceres?: SituacaoPareceres;
+  onRegistrarParecer?: (decisao?: DecisaoParecer) => void;
+  // Enquanto a janela de parecer está aberta, o Esc é dela.
+  dialogoParecerAberto?: boolean;
 }
 
 type Aba = 'resumo' | 'itens' | 'documentos' | 'edital';
@@ -366,8 +392,15 @@ const CARGA_INICIAL_DOCS: ICargaEdital<IDocumentoEdital[]> = { situacao: 'carreg
 
 const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
   item,
-  onFechar
+  onFechar,
+  parecer,
+  situacaoPareceres,
+  onRegistrarParecer,
+  dialogoParecerAberto
 }) => {
+
+  const dialogoParecerRef = React.useRef<boolean>(!!dialogoParecerAberto);
+  dialogoParecerRef.current = !!dialogoParecerAberto;
 
   const [aba, setAba] = React.useState<Aba>('resumo');
   const [dados, setDados] = React.useState<IDadosEdital | undefined>(item ? item.dados : undefined);
@@ -498,7 +531,7 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
     }
 
     const aoTeclar = (evento: KeyboardEvent): void => {
-      if (evento.key === 'Escape') {
+      if (evento.key === 'Escape' && !dialogoParecerRef.current) {
         onFechar();
       }
     };
@@ -586,6 +619,14 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
   // ==========================================================
   const renderResumo = (): React.ReactNode => (
     <>
+      {onRegistrarParecer && (
+        <ParecerPainel
+          parecer={parecer}
+          situacao={situacaoPareceres || 'semConexao'}
+          onRegistrar={onRegistrarParecer}
+        />
+      )}
+
       <div style={secao}>
         <h3 style={tituloSecao}>Objeto</h3>
         <p style={paragrafo}>{item.objeto}</p>
@@ -1065,6 +1106,18 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
               detalhe={`${item.motivos.length} critério(s) atendido(s)`}
               destaque={item.score >= 50 ? COR.ciano : COR.indigo}
             />
+            {onRegistrarParecer && (
+              <Indicador
+                titulo="Parecer da DGT"
+                valor={parecer
+                  ? `${ICONE_DECISAO[parecer.atual.decisao]} ${ROTULO_DECISAO[parecer.atual.decisao]}`
+                  : 'Sem parecer'}
+                detalhe={parecer
+                  ? `${parecer.atual.responsavel} · ${formatarDataHora(parecer.atual.registradoEm)}`
+                  : 'Registre na aba Resumo'}
+                destaque={parecer ? COR_DECISAO[parecer.atual.decisao] : COR.indigo}
+              />
+            )}
           </div>
 
           {/* Abas + ações */}
