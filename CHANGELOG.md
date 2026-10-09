@@ -6,6 +6,8 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.1] - 2026-10-09
+
 - Novo: revisão de treinamento (Rev.01, Rev.02…) com motivo, alterações e opção de retreinar quem já concluiu, sem apagar conclusões anteriores.
 - Novo: histórico de revisões do treinamento na Gestão e revisão atual ao lado do código.
 - Novo: "Adicionar usuários" em Usuários e acessos, que cadastra no portal com um clique as pessoas já liberadas no ambiente, com opção de vincular à área.

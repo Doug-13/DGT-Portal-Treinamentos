@@ -17,15 +17,77 @@ export interface INovidadeVersao {
   itens: INovidadeItem[];
 }
 
-export const VERSAO_PORTAL = "1.4.0";
+export const VERSAO_PORTAL = "1.4.1";
 
-export const VERSAO_SOLUCAO = "1.4.0.0";
+export const VERSAO_SOLUCAO = "1.4.1.0";
 
-export const DATA_BUILD = "2026-10-09T16:18:16.377Z";
+export const DATA_BUILD = "2026-10-09T16:48:13.419Z";
 
-export const COMMIT_BUILD = "8c51be1";
+export const COMMIT_BUILD = "a05343f";
 
 export const NOVIDADES: INovidadeVersao[] = [
+  {
+    "versao": "1.4.1",
+    "data": "2026-10-09",
+    "itens": [
+      {
+        "tipo": "Novo",
+        "texto": "revisão de treinamento (Rev.01, Rev.02…) com motivo, alterações e opção de retreinar quem já concluiu, sem apagar conclusões anteriores."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "histórico de revisões do treinamento na Gestão e revisão atual ao lado do código."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "\"Adicionar usuários\" em Usuários e acessos, que cadastra no portal com um clique as pessoas já liberadas no ambiente, com opção de vincular à área."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "parecer \"Participar / Não participar\" com justificativa e histórico nas licitações, no cartão da busca e na pré-visualização do edital."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "filtro por parecer na lista de licitações (sem parecer, participar, não participar)."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "módulos concluídos podem ser revisados e as verificações refeitas a qualquer momento, sem alterar a conclusão, a nota ou o certificado."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "certificados em cards com prévia do PDF, selo de validade, filtros, busca e visualização dentro do portal."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "a tela Certificados mostra o número, a revisão do treinamento em que o colaborador foi treinado e abre/baixa o PDF gerado pelo fluxo."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "o código do treinamento aparece nos cards de Meus treinamentos."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "a tela Novidades mostra 5 itens por versão, com \"Ver mais\"."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "\"Concluir módulo\" grava a conclusão e o progresso do treinamento é calculado pelos módulos concluídos (antes ficava fixo em 50% na tela inicial)."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "o módulo só pode ser concluído dentro dele, depois de responder corretamente as perguntas obrigatórias."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "a avaliação é liberada ao concluir os módulos obrigatórios, abre a avaliação ativa que tem questões e mostra o motivo real quando não pode ser aberta."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "atribuir um treinamento que o usuário já possui (por outra trilha ou individualmente) não cria mais duplicidade."
+      }
+    ]
+  },
   {
     "versao": "1.4.0",
     "data": "2026-10-08",
