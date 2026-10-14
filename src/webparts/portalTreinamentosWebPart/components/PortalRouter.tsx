@@ -238,7 +238,8 @@ import LicitacoesBuscaPage from
   '../pages/Licitacoes/LicitacoesBuscaPage';
 
 import {
-  areaNoEscopo
+  areaNoEscopo,
+  noEscopoDeConteudo
 } from '../utils/regrasAcesso';
 
 import UsuariosAcessosPage from
@@ -2338,8 +2339,15 @@ const PortalRouter:
             // (ou entre dois treinamentos): nenhum dado anterior fica.
             key={props.fluxoCriacaoTreinamentoId || 'novo-treinamento'}
 
+            // Editor por área só cria treinamentos nas áreas dele.
             areas={
-              props.areasAdministrativas
+              props.areasAdministrativas.filter(
+                area =>
+                  noEscopoDeConteudo(
+                    props.contextoAcesso?.areasConteudo,
+                    area.id
+                  )
+              )
             }
 
             treinamentoExistente={

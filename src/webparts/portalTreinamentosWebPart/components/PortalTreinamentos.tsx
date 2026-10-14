@@ -35,7 +35,7 @@ import PortalRouter from './PortalRouter';
 import { Pagina } from '../constants/routes';
 import { descreverPerfil, podeAdministrarAcessos } from '../services/AutorizacaoService';
 import { calcularResumoConformidade } from '../services/ConformidadeService';
-import { montarEscopoPessoas, pessoaNoEscopo } from '../utils/regrasAcesso';
+import { montarEscopoPessoas, noEscopoDeConteudo, pessoaNoEscopo } from '../utils/regrasAcesso';
 import { podeAcessarRota } from '../services/RoutePermissionService';
 import {
   obterModuloPagina,
@@ -1718,6 +1718,25 @@ const gestaoAreas =
             : undefined,
         [
           dataverseService
+        ]
+      );
+
+    // Editor por área só vê (e mantém) os treinamentos das áreas em
+    // que é Editor. Admin/Editor global: todos. (Memorizado: evita
+    // recarregar as telas que dependem da lista a cada render.)
+    const treinamentosNoEscopo =
+      React.useMemo(
+        () =>
+          gestaoTreinamentos.treinamentos.filter(
+            treinamento =>
+              noEscopoDeConteudo(
+                autorizacao.contexto?.areasConteudo,
+                treinamento.areaId
+              )
+          ),
+        [
+          gestaoTreinamentos.treinamentos,
+          autorizacao.contexto
         ]
       );
 
@@ -3523,8 +3542,14 @@ const gestaoAreas =
         icon:
           'users' as IconeChave,
 
+        pagina:
+          'rhPessoas',
+
         modulo:
-          'outro'
+          'outro',
+
+        novo:
+          true
       },
 
       {
@@ -4489,7 +4514,7 @@ const gestaoAreas =
                 }
 
                 treinamentosAdministrativos={
-                  gestaoTreinamentos.treinamentos
+                  treinamentosNoEscopo
                 }
 
                 carregandoGestaoTreinamentos={

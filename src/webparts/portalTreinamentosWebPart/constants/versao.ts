@@ -17,13 +17,13 @@ export interface INovidadeVersao {
   itens: INovidadeItem[];
 }
 
-export const VERSAO_PORTAL = "1.4.4";
+export const VERSAO_PORTAL = "1.4.5";
 
-export const VERSAO_SOLUCAO = "1.4.4.0";
+export const VERSAO_SOLUCAO = "1.4.5.0";
 
-export const DATA_BUILD = "2026-10-14T14:23:18.183Z";
+export const DATA_BUILD = "2026-10-14T16:34:00.032Z";
 
-export const COMMIT_BUILD = "2ae78f7";
+export const COMMIT_BUILD = "b4dd8df";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {
@@ -475,8 +475,36 @@ export const NOVIDADES: INovidadeVersao[] = [
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
 export const NOVIDADES_PENDENTES: INovidadeItem[] = [
   {
+    "tipo": "Correção",
+    "texto": "na Visão geral de Treinamentos, os cartões Concluídos, Em andamento, Pendentes e Vencido passam a filtrar \"Meus treinamentos\" (mostrando todos os do cartão; clicar de novo limpa); Trilhas abre a aba Trilhas. \"Pendentes\" agora indica \"a fazer\" (disponíveis e reprovados)."
+  },
+  {
     "tipo": "Novo",
-    "texto": "na Gestão de treinamentos, os treinamentos sob controle documental trocam o botão \"Editar\" pelos botões da etapa atual do fluxo (ex.: \"Enviar para Avaliação\"); ao clicar, abre uma janela com as informações do treinamento, a etapa, os campos e a confirmação da ação. Sem revisão em andamento aparece \"Nova revisão\"; para quem não é responsável, \"Ver etapa\"."
+    "texto": "módulo \"RH e Pessoas\" no menu, com os certificados e validades de todos os colaboradores, certificados externos e foto do Microsoft 365. Liberado pelo módulo \"RH e Pessoas\" em Usuários e acessos (padrão: Administrador). Requer scripts/dataverse/criar-tabela-certificados-externos.ps1."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "Editor por área: quem é Editor em áreas específicas só vê, cria e mantém os treinamentos dessas áreas."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "copiar o fluxo de um processo para outro, a partir da lista de processos."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "arquivo da revisão nas etapas do fluxo (Opcional/Obrigatório) e opção \"Remover o arquivo\" no evento de revisão."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "revisões antigas dos treinamentos podem ser consultadas em \"Revisões do treinamento\", no mesmo padrão dos documentos: selo Vigente/Obsoleta, faixa \"Revisão obsoleta — não utilizar\" com a revisão que a substituiu e marca d'água no conteúdo."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "o conteúdo do treinamento (dados, módulos e avaliação com questões) é registrado em cada revisão na publicação e antes de abrir uma nova revisão. Requer scripts/dataverse/criar-coluna-conteudo-revisao.ps1."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "na Gestão de treinamentos, os treinamentos sob controle documental trocam o botão \"Editar\" pelos botões da etapa atual do fluxo (ex.: \"Enviar para Avaliação\"); ao clicar, abre uma janela com revisão, etapa, responsável, prazo, os campos da etapa e a confirmação da ação. Sem revisão em andamento aparece \"Nova revisão\"; para quem não é responsável, \"Ver etapa\"."
   },
   {
     "tipo": "Melhoria",

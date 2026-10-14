@@ -702,7 +702,7 @@ const PainelColaborador: React.FC<{
 
           <h3 style={{ margin: '4px 0 10px', fontSize: '14px', color: COR.azul, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: COR.azulBotao, display: 'inline-block' }} />
-            Treinamentos da plataforma ({plataforma.length})
+            Treinamentos internos ({plataforma.length})
           </h3>
           {plataforma.length > 0
             ? grade(plataforma, false)

@@ -6,7 +6,17 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
-- Novo: na Gestão de treinamentos, os treinamentos sob controle documental trocam o botão "Editar" pelos botões da etapa atual do fluxo (ex.: "Enviar para Avaliação"); ao clicar, abre uma janela com as informações do treinamento, a etapa, os campos e a confirmação da ação. Sem revisão em andamento aparece "Nova revisão"; para quem não é responsável, "Ver etapa".
+- Correção: na Visão geral de Treinamentos, os cartões Concluídos, Em andamento, Pendentes e Vencido passam a filtrar "Meus treinamentos" (mostrando todos os do cartão; clicar de novo limpa); Trilhas abre a aba Trilhas. "Pendentes" agora indica "a fazer" (disponíveis e reprovados).
+
+- Novo: módulo "RH e Pessoas" no menu, com os certificados e validades de todos os colaboradores, certificados externos e foto do Microsoft 365. Liberado pelo módulo "RH e Pessoas" em Usuários e acessos (padrão: Administrador). Requer scripts/dataverse/criar-tabela-certificados-externos.ps1.
+- Novo: Editor por área: quem é Editor em áreas específicas só vê, cria e mantém os treinamentos dessas áreas.
+- Novo: copiar o fluxo de um processo para outro, a partir da lista de processos.
+- Novo: arquivo da revisão nas etapas do fluxo (Opcional/Obrigatório) e opção "Remover o arquivo" no evento de revisão.
+
+- Novo: revisões antigas dos treinamentos podem ser consultadas em "Revisões do treinamento", no mesmo padrão dos documentos: selo Vigente/Obsoleta, faixa "Revisão obsoleta — não utilizar" com a revisão que a substituiu e marca d'água no conteúdo.
+- Novo: o conteúdo do treinamento (dados, módulos e avaliação com questões) é registrado em cada revisão na publicação e antes de abrir uma nova revisão. Requer scripts/dataverse/criar-coluna-conteudo-revisao.ps1.
+
+- Novo: na Gestão de treinamentos, os treinamentos sob controle documental trocam o botão "Editar" pelos botões da etapa atual do fluxo (ex.: "Enviar para Avaliação"); ao clicar, abre uma janela com revisão, etapa, responsável, prazo, os campos da etapa e a confirmação da ação. Sem revisão em andamento aparece "Nova revisão"; para quem não é responsável, "Ver etapa".
 - Melhoria: o assistente de edição do treinamento volta ao formato anterior, sem o fluxo de revisão.
 
 - Novo: a etapa do fluxo do treinamento mostra o resumo do que está sendo elaborado (dados do cadastro, módulos e avaliação), com avisos do que falta e atalhos para editar e testar.

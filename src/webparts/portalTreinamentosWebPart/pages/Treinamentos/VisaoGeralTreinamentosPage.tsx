@@ -118,12 +118,73 @@ const clamp =
       )
     );
 
+// Filtro aplicado pelos cartões de indicadores.
+type FiltroIndicador =
+  | 'concluidos'
+  | 'andamento'
+  | 'pendentes'
+  | 'vencidos';
+
+const ROTULO_FILTRO: Record<FiltroIndicador, string> = {
+  concluidos: 'Concluídos',
+  andamento: 'Em andamento',
+  pendentes: 'Pendentes',
+  vencidos: 'Vencidos'
+};
+
 const VisaoGeralTreinamentosPage:
   React.FC<
     IVisaoGeralTreinamentosPageProps
   > = (
     props
   ) => {
+
+    // Cartão clicado: filtra "Meus treinamentos" nesta tela.
+    // Clicar de novo no mesmo cartão (ou em "Limpar") remove o filtro.
+    const [
+      filtro,
+      setFiltro
+    ] =
+      React.useState<
+        FiltroIndicador | undefined
+      >(
+        undefined
+      );
+
+    const secaoTreinamentosRef =
+      React.useRef<HTMLElement>(
+        null
+      );
+
+    const alternarFiltro =
+      (
+        novo:
+          FiltroIndicador
+      ): void => {
+
+        setFiltro(
+          atual =>
+            atual === novo
+              ? undefined
+              : novo
+        );
+
+        // Leva o usuário até a lista filtrada.
+        window.setTimeout(
+          () => {
+            if (
+              secaoTreinamentosRef.current
+            ) {
+              secaoTreinamentosRef.current
+                .scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start'
+                });
+            }
+          },
+          50
+        );
+      };
 
     const concluidos =
       props.treinamentos
@@ -164,12 +225,22 @@ const VisaoGeralTreinamentosPage:
         0
       ];
 
+    const listaDoFiltro: Record<FiltroIndicador, ITreinamento[]> = {
+      concluidos: concluidos,
+      andamento: emAndamento,
+      pendentes: pendentes,
+      vencidos: vencidos
+    };
+
+    // Sem filtro: os 4 primeiros. Com filtro: todos os do cartão.
     const meusTreinamentos =
-      props.treinamentos
-        .slice(
-          0,
-          4
-        );
+      filtro
+        ? listaDoFiltro[filtro]
+        : props.treinamentos
+          .slice(
+            0,
+            4
+          );
 
     const trilhas =
       (
@@ -216,7 +287,13 @@ const VisaoGeralTreinamentosPage:
           '#15803D',
 
         detalhe:
-          ''
+          '',
+
+        onClick:
+          () => alternarFiltro('concluidos'),
+
+        ativo:
+          filtro === 'concluidos'
       },
       {
         titulo:
@@ -235,7 +312,13 @@ const VisaoGeralTreinamentosPage:
           '#C2760C',
 
         detalhe:
-          ''
+          '',
+
+        onClick:
+          () => alternarFiltro('andamento'),
+
+        ativo:
+          filtro === 'andamento'
       },
       {
         titulo:
@@ -253,8 +336,15 @@ const VisaoGeralTreinamentosPage:
         corIcone:
           '#C0392B',
 
+        // Disponíveis para fazer + reprovados (refazer).
         detalhe:
-          'prazo próximo'
+          'a fazer',
+
+        onClick:
+          () => alternarFiltro('pendentes'),
+
+        ativo:
+          filtro === 'pendentes'
       },
       {
         titulo:
@@ -273,7 +363,13 @@ const VisaoGeralTreinamentosPage:
           '#1D4ED8',
 
         detalhe:
-          'requer atenção'
+          'requer atenção',
+
+        onClick:
+          () => alternarFiltro('vencidos'),
+
+        ativo:
+          filtro === 'vencidos'
       },
       {
         titulo:
@@ -292,7 +388,11 @@ const VisaoGeralTreinamentosPage:
           '#6D5BD0',
 
         detalhe:
-          'inscritas'
+          'inscritas',
+
+        // Trilhas não filtram a lista: abrem a aba Trilhas.
+        onClick:
+          props.onVerTrilhas
       }
     ];
 
@@ -635,14 +735,26 @@ const VisaoGeralTreinamentosPage:
               }
             </article>
 
-            {/* MEUS TREINAMENTOS */}
+            {/* MEUS TREINAMENTOS (filtrável pelos cartões) */}
 
             <article
+              ref={
+                secaoTreinamentosRef
+              }
               style={{
                 ...CARD,
 
                 padding:
-                  '15px'
+                  '15px',
+
+                // Destaque quando filtrado por um cartão.
+                borderColor:
+                  filtro
+                    ? '#05C3DD'
+                    : '#E3EAF1',
+
+                scrollMarginTop:
+                  '12px'
               }}
             >
               <div
@@ -657,9 +769,107 @@ const VisaoGeralTreinamentosPage:
                     'center'
                 }}
               >
-                <strong>
-                  🎓 Meus treinamentos
-                </strong>
+                <div
+                  style={{
+                    display:
+                      'flex',
+
+                    alignItems:
+                      'center',
+
+                    gap:
+                      '8px',
+
+                    flexWrap:
+                      'wrap'
+                  }}
+                >
+                  <strong>
+                    🎓 Meus treinamentos
+                  </strong>
+
+                  {
+                    filtro &&
+                    (
+                      <span
+                        style={{
+                          display:
+                            'inline-flex',
+
+                          alignItems:
+                            'center',
+
+                          gap:
+                            '6px',
+
+                          background:
+                            '#E6F9FC',
+
+                          color:
+                            '#202A44',
+
+                          borderRadius:
+                            '999px',
+
+                          padding:
+                            '3px 6px 3px 10px',
+
+                          fontSize:
+                            '12px',
+
+                          fontWeight:
+                            700
+                        }}
+                      >
+                        {ROTULO_FILTRO[filtro]} ({meusTreinamentos.length})
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFiltro(
+                              undefined
+                            )
+                          }
+                          title="Limpar filtro"
+                          aria-label="Limpar filtro"
+                          style={{
+                            border:
+                              0,
+
+                            background:
+                              '#FFFFFF',
+
+                            color:
+                              '#202A44',
+
+                            borderRadius:
+                              '50%',
+
+                            width:
+                              '18px',
+
+                            height:
+                              '18px',
+
+                            lineHeight:
+                              '18px',
+
+                            padding:
+                              0,
+
+                            cursor:
+                              'pointer',
+
+                            fontWeight:
+                              800
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    )
+                  }
+                </div>
 
                 <button
                   type="button"
@@ -685,7 +895,11 @@ const VisaoGeralTreinamentosPage:
                       }}
                     >
                       <EmptyState
-                        titulo="Nenhum treinamento atribuído"
+                        titulo={
+                          filtro
+                            ? `Nenhum treinamento em "${ROTULO_FILTRO[filtro]}"`
+                            : 'Nenhum treinamento atribuído'
+                        }
                       />
                     </div>
                   )
