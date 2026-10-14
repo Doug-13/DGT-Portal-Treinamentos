@@ -1316,6 +1316,8 @@ const DocumentoDetalhePage:
                 dataverseService={dataverseService}
                 onAbrirProcesso={onAbrirProcesso}
                 onRevisaoAlterada={async () => { if (onRecarregarRevisoes) { await onRecarregarRevisoes(); } setVersaoFluxo(atual => atual + 1); }}
+                onAnexarArquivo={fluxoDisponivel ? fluxo.anexarArquivo : undefined}
+                erroAnexo={fluxo.erro}
               />
             )
             : aba === 'historico'
@@ -1953,6 +1955,8 @@ const DocumentoDetalhePage:
                                           onAbrirProcesso={onAbrirProcesso}
                                           onVerFluxoCompleto={() => setAba('fluxo')}
                                           onRevisaoAlterada={async () => { if (onRecarregarRevisoes) { await onRecarregarRevisoes(); } setVersaoFluxo(atual => atual + 1); }}
+                                          onAnexarArquivo={fluxoDisponivel ? fluxo.anexarArquivo : undefined}
+                                          erroAnexo={fluxo.erro}
                                         />
                                       )
                                       : (

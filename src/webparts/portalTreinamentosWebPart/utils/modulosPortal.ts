@@ -28,7 +28,8 @@ export type ChaveModuloPortal =
   | 'processos'
   | 'licitacoes'
   | 'arquitetura'
-  | 'indicadores';
+  | 'indicadores'
+  | 'rh';
 
 export interface IModuloPortal {
   chave: ChaveModuloPortal;
@@ -45,7 +46,8 @@ export const MODULOS_PORTAL: IModuloPortal[] = [
   { chave: 'processos', nome: 'Processos', descricao: 'Mapeamento de processos e fluxos de revisão.', padrao: true },
   { chave: 'licitacoes', nome: 'Licitações', descricao: 'Busca de oportunidades no PNCP. Liberar só para quem trabalha com licitações.', padrao: false },
   { chave: 'arquitetura', nome: 'Arquitetura de Soluções', descricao: 'Demandas, Matriz Go/No-Go e B.O.M. Liberar para a equipe de Arquitetura.', padrao: false },
-  { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI). Dados sensíveis: Colaborador e Editor só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] }
+  { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI). Dados sensíveis: Colaborador e Editor só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] },
+  { chave: 'rh', nome: 'RH e Pessoas', descricao: 'Certificados e validades de todos os colaboradores. Liberar só para o RH.', padrao: false, padraoPerfis: ['Administrador'] }
 ];
 
 // Módulo a que uma página pertence (undefined = página geral, sempre
@@ -56,6 +58,10 @@ export const moduloDaPagina = (
 
   if (pagina === 'indicadores') {
     return 'indicadores';
+  }
+
+  if (pagina === 'rhPessoas') {
+    return 'rh';
   }
 
   const modulo =

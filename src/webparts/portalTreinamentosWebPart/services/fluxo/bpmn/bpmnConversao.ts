@@ -55,7 +55,7 @@ export interface IBpmnSnapshot {
 // Configuração de negócio de uma etapa (o que não está no desenho).
 export type IConfigElemento = Pick<
   IFluxoElemento,
-  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar'
+  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo'
 >;
 
 // Configuração de negócio de uma ligação.
@@ -236,7 +236,9 @@ export const configDoElemento = (
   acaoSistema: elemento.acaoSistema,
   statusDocumento: elemento.statusDocumento,
   tipoRevisao: elemento.tipoRevisao,
-  retreinamentoAoPublicar: elemento.retreinamentoAoPublicar
+  retreinamentoAoPublicar: elemento.retreinamentoAoPublicar,
+  removerArquivo: elemento.removerArquivo,
+  anexoArquivo: elemento.anexoArquivo
 });
 
 export const configDaTransicao = (
@@ -573,6 +575,8 @@ export const montarDefinicao = (
           // (FluxoEngine.retreinamentoDecididoNoFluxo).
           retreinamentoAoPublicar: undefined,
           tipoRevisao: tipo === 'eventoRevisao' ? (config.tipoRevisao || 'revisao') : undefined,
+          removerArquivo: tipo === 'eventoRevisao' && config.removerArquivo ? true : undefined,
+          anexoArquivo: humana && config.anexoArquivo && config.anexoArquivo !== 'nao' ? config.anexoArquivo : undefined,
           posicao: mover({ x: forma.x, y: forma.y, largura: forma.largura, altura: forma.altura }),
           rotuloPosicao: forma.rotulo ? mover(forma.rotulo) : undefined
         };

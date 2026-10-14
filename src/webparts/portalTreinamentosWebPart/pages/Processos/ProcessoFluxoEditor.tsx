@@ -1,5 +1,10 @@
 import * as React from 'react';
 
+import CopiarFluxoModal, {
+  ICopiaEscolhida,
+  IFonteCopiaFluxo
+} from './CopiarFluxoModal';
+
 import {
   IFluxoDefinicao,
   IFluxoMetadado,
@@ -97,6 +102,9 @@ export interface IProcessoFluxoEditorProps {
   usuarios: Array<{ id: string; nome: string; email: string }>;
 
   gravandoMetadados?: boolean;
+
+  // Fluxos de outros processos que podem ser copiados para este.
+  fontesCopia?: IFonteCopiaFluxo[];
 }
 
 const COR_AZUL = '#202A44';
@@ -247,7 +255,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   catalogo,
   areas,
   usuarios,
-  gravandoMetadados
+  gravandoMetadados,
+  fontesCopia
 }) => {
 
   const editorRef =
@@ -283,6 +292,43 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
 
   const [processando, setProcessando] =
     React.useState<boolean>(false);
+
+  // Janela de opções da cópia (versão, responsáveis, metadados).
+  const [copiarAberto, setCopiarAberto] =
+    React.useState<boolean>(false);
+
+  // Origem escolhida na lista "Começar a partir de" / "Criar nova
+  // versão a partir de": '' = padrão; 'copia:<processoId>' = fluxo
+  // de outro processo.
+  const [origemNovaVersao, setOrigemNovaVersao] =
+    React.useState<string>('');
+
+  const PREFIXO_COPIA = 'copia:';
+
+  // Processos (diferentes deste) que já têm fluxo para copiar.
+  const processosComFluxo =
+    (fontesCopia || [])
+      .filter(item => item.processo.id !== processo.id && item.versoes.length > 0)
+      .sort((a, b) => `${a.processo.codigo} ${a.processo.nome}`.localeCompare(`${b.processo.codigo} ${b.processo.nome}`, 'pt-BR'));
+
+  const opcoesCopia = (
+    processosComFluxo.length > 0 && (
+      <optgroup label="Copiar o fluxo de outro processo">
+        {
+          processosComFluxo.map(
+            item => (
+              <option key={item.processo.id} value={`${PREFIXO_COPIA}${item.processo.id}`}>
+                {item.processo.codigo ? `${item.processo.codigo} — ` : ''}{item.processo.nome}
+              </option>
+            )
+          )
+        }
+      </optgroup>
+    )
+  );
+
+  const processoCopiaEscolhido = (valor: string): string | undefined =>
+    valor.indexOf(PREFIXO_COPIA) === 0 ? valor.slice(PREFIXO_COPIA.length) : undefined;
 
   // Versão padrão: o rascunho (se houver), senão a publicada.
   const versaoPadrao =
@@ -392,6 +438,41 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       setProcessando(false);
     }
   };
+
+  // Copia o fluxo escolhido como rascunho deste processo e traz os
+  // metadados que faltam (sem duplicar os que já existem).
+  const confirmarCopia = (
+    escolha: ICopiaEscolhida
+  ): void => {
+    executar(
+      () => catalogo.criarCopia(processo, escolha.origem, escolha.opcaoResponsaveis),
+      escolha.opcaoResponsaveis === 'manter'
+        ? 'Fluxo copiado como rascunho. Revise responsáveis e metadados e publique.'
+        : 'Fluxo copiado como rascunho. Defina os responsáveis das etapas, revise os metadados e publique.',
+      resultado => {
+        setCopiarAberto(false);
+        setOrigemNovaVersao('');
+        setVersaoSelecionada(resultado.definicao ? resultado.definicao.versao : undefined);
+        if (escolha.metadados.length > 0) {
+          onAlterarMetadados(metadadosProcesso.concat(escolha.metadados));
+        }
+      }
+    ).catch((error: unknown) => console.error(error));
+  };
+
+  const modalCopia = (
+    <CopiarFluxoModal
+      aberto={copiarAberto}
+      processoDestino={processo}
+      metadadosDestino={metadadosProcesso}
+      fontes={fontesCopia || []}
+      jaTemFluxo={versoes.length > 0}
+      processando={processando}
+      processoInicialId={processoCopiaEscolhido(versoes.length === 0 ? modeloId : origemNovaVersao)}
+      onConfirmar={confirmarCopia}
+      onCancelar={() => setCopiarAberto(false)}
+    />
+  );
 
   // Monta a definição a partir do desenho + configurações atuais.
   const montar = async (): Promise<IFluxoDefinicao | undefined> => {
@@ -556,20 +637,34 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                       onChange={evento => setModeloId(evento.target.value)}
                       style={estiloEntrada}
                     >
-                      {
-                        FLUXO_MODELOS.map(
-                          modelo => <option key={modelo.id} value={modelo.id}>{modelo.nome}</option>
-                        )
-                      }
+                      <optgroup label="Modelos">
+                        {
+                          FLUXO_MODELOS.map(
+                            modelo => <option key={modelo.id} value={modelo.id}>{modelo.nome}</option>
+                          )
+                        }
+                      </optgroup>
+                      {opcoesCopia}
                     </select>
                     <div style={{ fontSize: '12.5px', marginTop: '4px' }}>
-                      {FLUXO_MODELOS.find(modelo => modelo.id === modeloId)?.descricao}
+                      {
+                        processoCopiaEscolhido(modeloId)
+                          ? 'Copia o desenho e a configuração do fluxo desse processo. No próximo passo você escolhe a versão, o que fazer com os responsáveis e os metadados.'
+                          : FLUXO_MODELOS.find(modelo => modelo.id === modeloId)?.descricao
+                      }
                     </div>
                   </div>
                   <button
                     type="button"
                     disabled={processando || !modeloId}
                     onClick={() => {
+
+                      // Fluxo de outro processo: abre as opções da cópia.
+                      if (processoCopiaEscolhido(modeloId)) {
+                        setCopiarAberto(true);
+                        return;
+                      }
+
                       executar(
                         () => catalogo.criarAPartirDoModelo(processo, modeloId),
                         'Rascunho da versão 1 criado. Desenhe e configure o fluxo, depois publique.',
@@ -601,6 +696,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                   >
                     Criar fluxo (teste)
                   </button>
+
                 </div>
               )
               : (
@@ -618,6 +714,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
             )
           }
         </div>
+        {modalCopia}
       </section>
     );
   }
@@ -1370,11 +1467,34 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
             </button>
 
             {
+              !temRascunho && processosComFluxo.length > 0 && (
+                <select
+                  aria-label="Criar a nova versão a partir de"
+                  title="Criar a nova versão a partir de"
+                  value={origemNovaVersao}
+                  disabled={processando}
+                  onChange={evento => setOrigemNovaVersao(evento.target.value)}
+                  style={{ ...estiloEntrada, width: 'auto', maxWidth: '320px' }}
+                >
+                  <option value="">A partir da versão publicada deste processo</option>
+                  {opcoesCopia}
+                </select>
+              )
+            }
+
+            {
               !temRascunho && (
                 <button
                   type="button"
                   disabled={processando}
                   onClick={() => {
+
+                    // Fluxo de outro processo: abre as opções da cópia.
+                    if (processoCopiaEscolhido(origemNovaVersao)) {
+                      setCopiarAberto(true);
+                      return;
+                    }
+
                     executar(
                       () => catalogo.criarNovaVersao(processo.id),
                       'Nova versão criada como rascunho, a partir da versão publicada.',
@@ -1387,9 +1507,13 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                 </button>
               )
             }
+
+
           </div>
         )
       }
+
+      {modalCopia}
     </div>
   );
 };

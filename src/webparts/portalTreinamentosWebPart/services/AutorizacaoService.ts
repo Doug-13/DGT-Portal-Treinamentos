@@ -67,6 +67,10 @@ export interface IContextoAcesso {
   // conformidade). undefined = todas.
   escopoAreas?: string[];
 
+  // Áreas cujos treinamentos o usuário pode ver e manter na Gestão
+  // (Editor por área). undefined = todas.
+  areasConteudo?: string[];
+
   // Módulos liberados (undefined = todos os que o perfil permite).
   modulosPermitidos?: ChaveModuloPortal[];
 }
@@ -460,6 +464,9 @@ export class AutorizacaoService {
 
       escopoAreas:
         regras.escopoAreas,
+
+      areasConteudo:
+        regras.areasConteudo,
 
       vinculosArea,
       modulosPermitidos

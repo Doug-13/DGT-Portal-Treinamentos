@@ -444,6 +444,15 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 areas={areasAtivas}
                 usuarios={usuarios}
                 gravandoMetadados={dados.gravandoMetadados}
+                fontesCopia={
+                  dados.processos.map(
+                    item => ({
+                      processo: item,
+                      versoes: dados.fluxosPorProcesso[item.id] || [],
+                      metadados: dados.metadadosPorProcesso[item.id] || []
+                    })
+                  )
+                }
               />
             )
             : aba === 'metadados'

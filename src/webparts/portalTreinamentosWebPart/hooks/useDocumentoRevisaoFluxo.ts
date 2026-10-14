@@ -24,6 +24,14 @@ import {
   IDocumentoRevisao
 } from '../models/Documento';
 
+import {
+  TreinamentoDocumentoControleService
+} from '../services/TreinamentoDocumentoControleService';
+
+import {
+  controleDocumentalHabilitado
+} from '../constants/controleDocumental';
+
 export interface IUseDocumentoRevisaoFluxo {
   processando: boolean;
   erro: string;
@@ -354,7 +362,33 @@ export const useDocumentoRevisaoFluxo = (
               usuario
             );
 
-          setAviso(retorno.aviso);
+          // Documento de controle de TREINAMENTO: ativa o treinamento
+          // na primeira publicação e registra a revisão no histórico.
+          let avisoTreinamento = '';
+
+          if (dataverse && controleDocumentalHabilitado()) {
+            try {
+              avisoTreinamento =
+                await new TreinamentoDocumentoControleService(dataverse)
+                  .aoPublicarRevisao(
+                    documento.id,
+                    revisao.id,
+                    resultado,
+                    usuario.nome
+                  );
+            } catch (e) {
+              console.error(e);
+              avisoTreinamento =
+                'A revisão foi publicada, mas o treinamento vinculado não foi atualizado: ' +
+                mensagemErro(e, 'erro desconhecido');
+            }
+          }
+
+          setAviso(
+            [retorno.aviso, avisoTreinamento]
+              .filter(item => !!item)
+              .join(' ')
+          );
 
           await onRecarregarRevisoes();
         } catch (e) {
@@ -368,6 +402,7 @@ export const useDocumentoRevisaoFluxo = (
       },
       [
         service,
+        dataverse,
         documento,
         revisoes,
         usuario,

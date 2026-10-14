@@ -7,6 +7,7 @@ import {
 
 import {
   AcaoSistemaFluxo,
+  AnexoArquivoEtapa,
   IFluxoAcao,
   IFluxoCampo,
   IFluxoMetadado,
@@ -507,6 +508,27 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           </div>
         </fieldset>
 
+        <fieldset style={estiloGrupo}>
+          <legend style={estiloLegenda}>Arquivo da revisão</legend>
+          <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '13.5px', cursor: editavel ? 'pointer' : 'default' }}>
+            <input
+              type="checkbox"
+              checked={!!config.removerArquivo}
+              disabled={!editavel}
+              onChange={evento => alterar({ removerArquivo: evento.target.checked || undefined })}
+              style={{ marginTop: '3px' }}
+            />
+            <span>
+              Remover o arquivo ao passar por este evento
+              <span style={{ display: 'block', fontSize: '12px', lineHeight: '17px', marginTop: '2px' }}>
+                A nova revisão começa <strong>sem arquivo</strong> e o responsável anexa o novo numa etapa
+                seguinte (ex.: Elaboração com "Arquivo da revisão" = Obrigatório). O arquivo anterior
+                <strong> não é apagado</strong>: continua no SharePoint e no histórico.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
         <div style={{ fontSize: '12px', lineHeight: '17px' }}>
           Regra geral: revisão em trabalho sempre tem letra (o documento nasce Rev.00A) e revisão
           aprovada/publicada nunca tem letra. O evento não tem responsável e tem
@@ -687,6 +709,25 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         </select>
         <div style={{ fontSize: '12px', marginTop: '4px' }}>
           É o status que aparece na lista de documentos e nos indicadores enquanto a revisão está nesta etapa.
+        </div>
+
+        <div style={{ marginTop: '12px' }}>
+          <label htmlFor="prop-anexo-arquivo" style={estiloRotuloPainel}>Arquivo da revisão nesta etapa</label>
+          <select
+            id="prop-anexo-arquivo"
+            value={config.anexoArquivo || 'nao'}
+            disabled={!editavel}
+            onChange={evento => alterar({ anexoArquivo: evento.target.value === 'nao' ? undefined : evento.target.value as AnexoArquivoEtapa })}
+            style={estiloEntradaPainel}
+          >
+            <option value="nao">Não pede o arquivo</option>
+            <option value="opcional">Permite anexar ou substituir (opcional)</option>
+            <option value="obrigatorio">Exige o arquivo para concluir a etapa</option>
+          </select>
+          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+            Mostra ao responsável o campo para anexar o arquivo da revisão. Com “Exige”, as ações da etapa
+            só são liberadas com o arquivo anexado (ações que dispensam campos, como “Reprovar”, continuam liberadas).
+          </div>
         </div>
 
         {

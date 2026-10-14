@@ -68,6 +68,12 @@ export interface IRegrasAcesso {
   // undefined = todas as áreas
   escopoAreas?: string[];
 
+  // Áreas cujo CONTEÚDO (treinamentos) a pessoa pode criar e manter.
+  // undefined = todas (Administrador, ou Editor global sem papel de
+  // Editor em áreas específicas). Editor na área RH → só RH; para ir
+  // além, inclua a pessoa como Editor em outra área.
+  areasConteudo?: string[];
+
   // Pessoas
   podeVerEquipe: boolean;
   podeAtribuirTreinamentos: boolean;
@@ -95,6 +101,20 @@ export const ehPapelGestor = (papel: string): boolean =>
 
 export const ehPapelEditor = (papel: string): boolean =>
   papel === 'Editor';
+
+// O conteúdo (ex.: treinamento) da área informada está no escopo de
+// edição da pessoa? Sem lista = todas as áreas. Conteúdo SEM área só
+// é visto por quem tem escopo total.
+export const noEscopoDeConteudo = (
+  areasConteudo: string[] | undefined,
+  areaId: string | undefined
+): boolean => {
+  if (!areasConteudo) {
+    return true;
+  }
+  const alvo = guid(areaId || '');
+  return !!alvo && areasConteudo.some(id => guid(id) === alvo);
+};
 
 export const calcularRegrasAcesso = (
   perfil: PerfilGlobal | string,
@@ -144,6 +164,11 @@ export const calcularRegrasAcesso = (
     });
   }
 
+  const areasConteudo: string[] | undefined =
+    admin || (perfil === 'Editor' && areasEditor.length === 0)
+      ? undefined
+      : areasEditor.filter((id, i, lista) => lista.map(guid).indexOf(guid(id)) === i);
+
   const modulo = (chave: ChaveModuloPortal): boolean =>
     moduloLiberado(perfil, modulos, chave);
 
@@ -159,6 +184,7 @@ export const calcularRegrasAcesso = (
     areasGestor,
     areasEditor,
     escopoAreas,
+    areasConteudo,
 
     podeVerEquipe: pessoas,
     podeAtribuirTreinamentos: pessoas,

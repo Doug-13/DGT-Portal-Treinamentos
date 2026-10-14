@@ -48,6 +48,14 @@ import {
 } from '../services/RevisaoDocumentoAdminService';
 
 import {
+  TreinamentoDocumentoControleService
+} from '../services/TreinamentoDocumentoControleService';
+
+import {
+  controleDocumentalHabilitado
+} from '../constants/controleDocumental';
+
+import {
   obterPersistenciaFluxo
 } from '../services/fluxo/persistenciaFluxo';
 
@@ -487,7 +495,8 @@ export const useFluxoRevisaoTeste = (
         novaInstancia.revisao =
           revisaoInteira(novaInstancia.revisao || revisaoEmAndamento.revisao);
 
-        await new RevisaoDocumentoAdminService(dataverseService)
+        const resultadoPublicacao =
+          await new RevisaoDocumentoAdminService(dataverseService)
           .publicar({
             documentoRevisaoId: revisaoEmAndamento.id,
             requerRetreinamento: comRetreinamento,
@@ -500,6 +509,23 @@ export const useFluxoRevisaoTeste = (
                 ? ((valores.prazoRetreinamento || '').trim() || dataIso(30))
                 : undefined
           });
+
+        // Documento de controle de TREINAMENTO: ativa o treinamento na
+        // primeira publicação e registra a revisão no histórico dele.
+        // Nunca interrompe a publicação (já concluída acima).
+        if (documento && controleDocumentalHabilitado()) {
+          try {
+            await new TreinamentoDocumentoControleService(dataverseService)
+              .aoPublicarRevisao(
+                documento.id,
+                revisaoEmAndamento.id,
+                resultadoPublicacao,
+                contexto ? contexto.nome : ''
+              );
+          } catch (error) {
+            console.error('Revisão publicada, mas o treinamento vinculado não foi atualizado:', error);
+          }
+        }
 
         // Nova revisão vigente → o prazo da próxima revisão periódica
         // recomeça (vigência + 12 meses). Sem a coluna, apenas não grava.

@@ -89,6 +89,8 @@ import { obterMenuTreinamento, obterMenuDocumentos, obterMenuLicitacoes, obterMe
 import { IModuloImportJson, ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
 import { SharePointDocumentoService } from '../services/sharepoint/SharePointDocumentoService';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
+import { TreinamentoDocumentoControleService } from '../services/TreinamentoDocumentoControleService';
+import { CONTROLE_DOCUMENTAL, controleDocumentalHabilitado } from '../constants/controleDocumental';
 
 type DataverseRecord =
   IDataverseRecord;
@@ -1703,6 +1705,29 @@ const gestaoAreas =
     // SALVAR NOVO TREINAMENTO
     // ==========================================================
 
+    // Controle documental: cada treinamento é controlado por um
+    // documento (mesmo código, tipo TRN) que segue o fluxo do processo
+    // de treinamentos. Ver constants/controleDocumental.ts.
+    const controleDocumentalService =
+      React.useMemo(
+        () =>
+          controleDocumentalHabilitado()
+            ? new TreinamentoDocumentoControleService(
+              dataverseService
+            )
+            : undefined,
+        [
+          dataverseService
+        ]
+      );
+
+    // abrirDocumentoPorId é declarado mais abaixo; o ref permite
+    // usá-lo no encerramento do assistente de criação.
+    const abrirDocumentoPorIdRef =
+      React.useRef<
+        ((documentoId: string) => Promise<boolean>) | undefined
+      >(undefined);
+
     const salvarNovoTreinamento =
       React.useCallback(
         async (
@@ -1712,12 +1737,19 @@ const gestaoAreas =
 
           // ======================================================
           // 1. CRIAR TREINAMENTO
+          //    Com controle documental, o treinamento nasce INATIVO:
+          //    só fica ativo quando o fluxo publicar a revisão.
           // ======================================================
 
           const treinamentoCriado =
             await gestaoTreinamentos
               .criar(
-                dados
+                controleDocumentalService
+                  ? {
+                    ...dados,
+                    ativo: false
+                  }
+                  : dados
               );
 
           if (
@@ -1728,6 +1760,55 @@ const gestaoAreas =
             throw new Error(
               'O treinamento foi criado, mas não foi possível identificar o registro criado.'
             );
+          }
+
+          // ======================================================
+          // 1.1 DOCUMENTO DE CONTROLE (Rev.00A em Elaboração,
+          //     vinculado ao processo de treinamentos)
+          // ======================================================
+
+          if (
+            controleDocumentalService
+          ) {
+            try {
+              const controle =
+                await controleDocumentalService
+                  .garantirDocumentoControle(
+                    treinamentoCriado.id,
+                    {
+                      id:
+                        autorizacao.contexto?.usuarioId ||
+                        '',
+                      nome:
+                        autorizacao.contexto?.nome ||
+                        userName
+                    }
+                  );
+
+              if (
+                controle.avisos.length > 0
+              ) {
+                window.alert(
+                  controle.avisos.join('\n\n')
+                );
+              }
+            } catch (erroControle) {
+              console.error(
+                erroControle
+              );
+
+              // O treinamento já existe: o documento pode ser criado
+              // depois pela Gestão (menu ⋮ → "Colocar sob controle
+              // documental"). O assistente continua normalmente.
+              window.alert(
+                'O treinamento foi criado, mas o documento de controle não pôde ser criado: ' +
+                (
+                  erroControle instanceof Error
+                    ? erroControle.message
+                    : 'erro desconhecido'
+                )
+              );
+            }
           }
 
           // ======================================================
@@ -1762,8 +1843,11 @@ const gestaoAreas =
 
         },
         [
+          autorizacao.contexto,
+          controleDocumentalService,
           gestaoModulos,
-          gestaoTreinamentos
+          gestaoTreinamentos,
+          userName
         ]
       );
     // ==========================================================
@@ -2097,9 +2181,35 @@ const gestaoAreas =
             IEditarTreinamento
         ): Promise<void> => {
 
+          let dadosGravar =
+            dados;
+
+          // Controle documental: sem revisão publicada o treinamento
+          // não pode ser ativado pela edição (só pela publicação).
+          if (
+            controleDocumentalService &&
+            dados.ativo
+          ) {
+            const controle =
+              await controleDocumentalService
+                .obterPorTreinamento(
+                  dados.id
+                );
+
+            if (
+              controle &&
+              !controle.vigente
+            ) {
+              dadosGravar = {
+                ...dados,
+                ativo: false
+              };
+            }
+          }
+
           await gestaoTreinamentos
             .editar(
-              dados
+              dadosGravar
             );
 
           await gestaoModulos
@@ -2117,6 +2227,7 @@ const gestaoAreas =
           );
         },
         [
+          controleDocumentalService,
           gestaoModulos,
           gestaoTreinamentos
         ]
@@ -2147,9 +2258,52 @@ const gestaoAreas =
             );
           }
 
+          const treinamentoId =
+            fluxoCriacaoTreinamentoId;
+
           setFluxoCriacaoTreinamentoId(
             ''
           );
+
+          // Controle documental: o treinamento segue para o fluxo do
+          // processo (ex.: Elaboração → Revisão técnica → …). Abre o
+          // documento de controle para o autor enviar à próxima etapa.
+          if (
+            controleDocumentalService &&
+            abrirDocumentoPorIdRef.current
+          ) {
+            try {
+              const controle =
+                await controleDocumentalService
+                  .obterPorTreinamento(
+                    treinamentoId
+                  );
+
+              if (
+                controle &&
+                !controle.vigente
+              ) {
+                const abriu =
+                  await abrirDocumentoPorIdRef.current(
+                    controle.documentoId
+                  );
+
+                if (abriu) {
+                  window.alert(
+                    `Treinamento salvo. O documento ${controle.codigo} (${controle.revisaoEmAndamento ? controle.revisaoEmAndamento.revisao : CONTROLE_DOCUMENTAL.REVISAO_INICIAL}) ` +
+                    'foi aberto: conclua a etapa atual do fluxo para enviá-lo à revisão. ' +
+                    'O treinamento fica inativo até a publicação.'
+                  );
+
+                  return;
+                }
+              }
+            } catch (erroControle) {
+              console.error(
+                erroControle
+              );
+            }
+          }
 
           setPaginaAtual(
             'gestao'
@@ -2161,6 +2315,7 @@ const gestaoAreas =
           );
         },
         [
+          controleDocumentalService,
           fluxoCriacaoTreinamentoId,
           gestaoAvaliacoes.avaliacoes
         ]
@@ -2658,6 +2813,9 @@ const gestaoAreas =
         },
         [documentoService, abrirDocumento]
       );
+
+    abrirDocumentoPorIdRef.current =
+      abrirDocumentoPorId;
 
     // ==========================================================
     // FLUXO DE APROVAÇÃO — tela de detalhe do documento

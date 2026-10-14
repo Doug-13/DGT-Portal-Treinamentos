@@ -1,6 +1,11 @@
 import * as React from 'react';
 
 import {
+  CONTROLE_DOCUMENTAL,
+  controleDocumentalHabilitado
+} from '../../constants/controleDocumental';
+
+import {
   converterUrlImagemSharePoint
 } from '../../utils/imagemSharePoint';
 
@@ -363,6 +368,11 @@ const NovoTreinamentoPage:
       React.useState(
         true
       );
+
+    // Treinamento NOVO com controle documental: nasce inativo.
+    const novoSobControle =
+      controleDocumentalHabilitado() &&
+      !treinamentoExistente;
 
     const [
       salvando,
@@ -1587,8 +1597,15 @@ const NovoTreinamentoPage:
 
             <input
               type="checkbox"
+              // Controle documental: o treinamento novo nasce inativo e
+              // é ativado pela publicação da revisão no fluxo.
               checked={
-                ativo
+                novoSobControle
+                  ? false
+                  : ativo
+              }
+              disabled={
+                novoSobControle
               }
               onChange={
                 event =>
@@ -1624,7 +1641,13 @@ const NovoTreinamentoPage:
                     cores.textoSecundario
                 }}
               >
-                O treinamento poderá ser utilizado em trilhas e atribuições.
+                {
+                  novoSobControle
+                    ? `Controle documental: será criado um documento com o mesmo código do treinamento (${CONTROLE_DOCUMENTAL.REVISAO_INICIAL}) no fluxo do processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO}. O treinamento é ativado automaticamente quando a revisão for publicada.`
+                    : controleDocumentalHabilitado()
+                      ? 'O treinamento poderá ser utilizado em trilhas e atribuições. Sem revisão publicada no documento de controle, ele permanece inativo.'
+                      : 'O treinamento poderá ser utilizado em trilhas e atribuições.'
+                }
               </small>
 
             </span>

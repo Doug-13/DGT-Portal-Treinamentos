@@ -110,7 +110,15 @@ export const ResumoAcessoEfetivo: React.FC<IResumoAcessoEfetivoProps> = ({
           <Linha ok={true} titulo="Fazer os próprios treinamentos e consultar documentos" detalhe={membroEm.length > 0 ? `Membro em: ${membroEm.join(', ')}` : undefined} />
           <Linha ok={regras.podeVerEquipe} titulo="Acompanhar equipe e atribuir treinamentos" detalhe={regras.podeVerEquipe ? `Em: ${nomesEscopo}` : undefined} />
           <Linha ok={regras.podeAprovarDocumentos} titulo="Aprovar documentos" detalhe={regras.podeAprovarDocumentos ? (admin || perfil === 'Gestor' ? 'Todas as áreas' : `Áreas em que é Gestor: ${gestorEm.join(', ')}`) : undefined} />
-          <Linha ok={modulosConteudo.length > 0} titulo="Criar e manter conteúdo" detalhe={modulosConteudo.length > 0 ? `Módulos: ${modulosConteudo.join(', ')}` : (regras.editor ? 'Nenhum módulo de conteúdo liberado' : undefined)} />
+          <Linha
+            ok={modulosConteudo.length > 0}
+            titulo="Criar e manter conteúdo"
+            detalhe={
+              modulosConteudo.length > 0
+                ? `Módulos: ${modulosConteudo.join(', ')} · Áreas: ${regras.areasConteudo === undefined ? 'todas' : (editorEm.join(', ') || '—')}`
+                : (regras.editor ? 'Nenhum módulo de conteúdo liberado' : undefined)
+            }
+          />
           <Linha ok={regras.podeGerenciarUsuarios} titulo="Cadastrar usuários e alterar acessos" />
           <Linha ok={admin} titulo="Administrar o portal (perfis, módulos, áreas, permissões)" />
         </ul>

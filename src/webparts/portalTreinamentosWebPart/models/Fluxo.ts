@@ -100,7 +100,20 @@ export type AcaoSistemaFluxo =
   // tarefa de sistema).
   | 'novaRevisao'
   | 'novaSubRevisao'
-  | 'proximaRevisao';
+  | 'proximaRevisao'
+  // Evento de revisão com "Remover o arquivo" marcado: a revisão
+  // segue sem arquivo (o arquivo anterior continua no SharePoint e
+  // no histórico) e o novo é anexado numa etapa seguinte.
+  | 'removerArquivoRevisao';
+
+// Arquivo da revisão numa etapa com responsável:
+//   'nao'         a etapa não mostra o anexo (padrão)
+//   'opcional'    o responsável pode anexar / substituir o arquivo
+//   'obrigatorio' só conclui a etapa com o arquivo anexado
+export type AnexoArquivoEtapa =
+  | 'nao'
+  | 'opcional'
+  | 'obrigatorio';
 
 export interface IFluxoAcao {
   chave: string;
@@ -251,6 +264,15 @@ export interface IFluxoElemento {
 
   // eventoRevisao: como o número da revisão muda ao passar aqui.
   tipoRevisao?: TipoEventoRevisao;
+
+  // eventoRevisao: true = ao passar aqui, a revisão fica SEM
+  // arquivo (o anterior não é apagado do SharePoint: só deixa de
+  // ser o arquivo desta revisão). Opcional; padrão = mantém.
+  removerArquivo?: boolean;
+
+  // tarefaHumana: o responsável anexa o arquivo da revisão nesta
+  // etapa (ex.: Elaboração). Padrão = 'nao'.
+  anexoArquivo?: AnexoArquivoEtapa;
 
   // tarefaHumana com status 'Vigente': retreinamento na publicação.
   //   'nao' (padrão) · 'sim' · 'etapa:<id>' = sim, se o fluxo passou

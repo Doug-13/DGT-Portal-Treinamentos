@@ -106,6 +106,10 @@ const regras:
     // acessos). O que cada perfil vê lá dentro é tratado na página.
     { rota: 'indicadores', perfis: TODOS },
 
+    // RH e Pessoas: a entrada é controlada pelo MÓDULO "RH e Pessoas"
+    // (Usuários e acessos). Padrão: só Administrador.
+    { rota: 'rhPessoas', perfis: TODOS },
+
     // Cadastro de documentos: quem mantém conteúdo (Editor e
     // Administrador). O Gestor aprova, não cria.
     { rota: 'novoDocumento', perfis: CONTEUDO },

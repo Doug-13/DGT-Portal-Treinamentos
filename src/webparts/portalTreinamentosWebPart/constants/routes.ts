@@ -35,7 +35,9 @@ export type Pagina =
   | 'usuariosAcessos'
   // Arquitetura de Soluções (B.O.M.)
   | 'arquitetura'
-  | 'arquiteturaROs';
+  | 'arquiteturaROs'
+  // RH e Pessoas (por enquanto: certificados dos colaboradores)
+  | 'rhPessoas';
 
 export const ROTAS = {
   INICIO: 'inicio',
@@ -71,6 +73,7 @@ export const ROTAS = {
   USUARIOS_ACESSOS: 'usuariosAcessos',
   ARQUITETURA: 'arquitetura',
   ARQUITETURA_ROS: 'arquiteturaROs',
+  RH_PESSOAS: 'rhPessoas',
 } as const;
 
 

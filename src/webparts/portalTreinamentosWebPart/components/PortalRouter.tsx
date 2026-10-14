@@ -2130,6 +2130,16 @@ const PortalRouter:
               props.contextoAcesso?.nome
             }
 
+            // Controle documental: autor das revisões criadas pela
+            // Gestão e abertura do documento de controle do treinamento.
+            usuarioId={
+              props.contextoAcesso?.usuarioId
+            }
+
+            onAbrirDocumento={
+              props.abrirDocumentoPorId
+            }
+
             onTestarTreinamento={
               podeAcessarRota(
                 'testeTreinamento',

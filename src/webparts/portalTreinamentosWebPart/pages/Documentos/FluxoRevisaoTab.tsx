@@ -45,6 +45,10 @@ import ConfirmarAcaoModal from
 import TabelaCampoFluxo from
   '../../components/fluxo/TabelaCampoFluxo';
 
+import {
+  obterRevisaoEmAndamento
+} from '../../services/DocumentoRevisaoFluxoService';
+
 // ============================================================
 // ABA "FLUXO (TESTE)" DO DETALHE DO DOCUMENTO
 //
@@ -74,6 +78,14 @@ export interface IFluxoRevisaoTabProps {
 
   // Abre a aba com o fluxo completo (desenho e histórico).
   onVerFluxoCompleto?: () => void;
+
+  // Anexa/substitui o arquivo da revisão em andamento, nas etapas
+  // com "Arquivo da revisão" = Opcional/Obrigatório. Sem ele, a
+  // etapa mostra o arquivo atual, mas não permite anexar.
+  onAnexarArquivo?: (revisao: IDocumentoRevisao, arquivo: File) => Promise<boolean>;
+
+  // Mensagem de erro do último anexo (vinda do hook da página).
+  erroAnexo?: string;
 }
 
 const COR_AZUL = '#202A44';
@@ -175,8 +187,23 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   onAbrirProcesso,
   onRevisaoAlterada,
   compacto = false,
-  onVerFluxoCompleto
+  onVerFluxoCompleto,
+  onAnexarArquivo,
+  erroAnexo
 }) => {
+
+  // Arquivo escolhido na etapa (antes de enviar).
+  const [arquivoEtapa, setArquivoEtapa] =
+    React.useState<File | undefined>(undefined);
+
+  const [enviandoArquivo, setEnviandoArquivo] =
+    React.useState<boolean>(false);
+
+  const [falhaArquivo, setFalhaArquivo] =
+    React.useState<string>('');
+
+  const campoArquivoRef =
+    React.useRef<HTMLInputElement>(null);
 
   const fluxo =
     useFluxoRevisaoTeste(
@@ -506,6 +533,57 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
   const tarefa =
     tarefaPendente(instancia);
+
+  // ---------------- Arquivo da revisão na etapa ----------------
+
+  const revisaoArquivo =
+    obterRevisaoEmAndamento(revisoes);
+
+  const modoAnexo =
+    !concluido && elementoAtual && elementoAtual.anexoArquivo
+      ? elementoAtual.anexoArquivo
+      : 'nao';
+
+  // "Exige o arquivo": as ações (exceto as que dispensam campos,
+  // como Reprovar) só liberam com o arquivo anexado. No teste
+  // (navegador) não há arquivo real, então não bloqueia.
+  const faltaArquivo =
+    modoAnexo === 'obrigatorio' &&
+    !fluxo.local &&
+    !(revisaoArquivo && revisaoArquivo.arquivoUrl);
+
+  const enviarArquivoEtapa = (): void => {
+    if (!arquivoEtapa || !revisaoArquivo || !onAnexarArquivo) {
+      return;
+    }
+    setEnviandoArquivo(true);
+    setFalhaArquivo('');
+    onAnexarArquivo(revisaoArquivo, arquivoEtapa)
+      .then(ok => {
+        if (ok) {
+          setArquivoEtapa(undefined);
+          if (campoArquivoRef.current) {
+            campoArquivoRef.current.value = '';
+          }
+        } else {
+          setFalhaArquivo(erroAnexo || 'Não foi possível anexar o arquivo.');
+        }
+      })
+      .catch(erro => setFalhaArquivo(erro instanceof Error ? erro.message : String(erro)))
+      .then(() => setEnviandoArquivo(false))
+      .catch(() => undefined);
+  };
+
+  const nomeArquivoAtual = (url?: string): string => {
+    if (!url) {
+      return '';
+    }
+    try {
+      return decodeURIComponent(url.split('/').pop() || url);
+    } catch {
+      return url;
+    }
+  };
 
   const definirValor = (
     chave: string,
@@ -1146,6 +1224,94 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                   }
 
                   {
+                    modoAnexo !== 'nao' && (
+                      <div
+                        style={{
+                          border: `1px solid ${faltaArquivo ? COR_INDIGO : COR_BORDA}`,
+                          borderRadius: '8px',
+                          padding: '12px 14px',
+                          background: '#F8FAFC'
+                        }}
+                      >
+                        <div style={estiloRotuloCampo}>
+                          Arquivo da revisão{modoAnexo === 'obrigatorio' ? ' *' : ''}
+                        </div>
+
+                        <div style={{ fontSize: '13.5px', marginBottom: '8px' }}>
+                          {
+                            revisaoArquivo && revisaoArquivo.arquivoUrl
+                              ? (
+                                <>
+                                  📎{' '}
+                                  <a href={revisaoArquivo.arquivoUrl} target="_blank" rel="noopener noreferrer">
+                                    {nomeArquivoAtual(revisaoArquivo.arquivoUrl)}
+                                  </a>
+                                </>
+                              )
+                              : (
+                                <span style={{ color: faltaArquivo ? COR_INDIGO : '#64748B', fontWeight: faltaArquivo ? 700 : 400 }}>
+                                  {modoAnexo === 'obrigatorio'
+                                    ? 'Nenhum arquivo anexado. Anexe o arquivo para concluir esta etapa.'
+                                    : 'Nenhum arquivo anexado.'}
+                                </span>
+                              )
+                          }
+                        </div>
+
+                        {
+                          fluxo.local
+                            ? (
+                              <div style={{ fontSize: '12px', color: '#64748B' }}>
+                                No modo de teste o arquivo não é enviado; na revisão real o responsável anexa aqui.
+                              </div>
+                            )
+                            : podeAgir && onAnexarArquivo && revisaoArquivo
+                              ? (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <input
+                                    ref={campoArquivoRef}
+                                    type="file"
+                                    aria-label="Escolher o arquivo da revisão"
+                                    disabled={enviandoArquivo || fluxo.processando}
+                                    onChange={evento => {
+                                      setFalhaArquivo('');
+                                      setArquivoEtapa(evento.target.files && evento.target.files[0] ? evento.target.files[0] : undefined);
+                                    }}
+                                    style={{ fontSize: '13px', maxWidth: '100%' }}
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={!arquivoEtapa || enviandoArquivo || fluxo.processando}
+                                    onClick={enviarArquivoEtapa}
+                                    style={estiloBotao(true, !arquivoEtapa || enviandoArquivo || fluxo.processando)}
+                                  >
+                                    {enviandoArquivo
+                                      ? 'Enviando…'
+                                      : revisaoArquivo.arquivoUrl ? 'Substituir arquivo' : 'Anexar arquivo'}
+                                  </button>
+                                </div>
+                              )
+                              : (
+                                <div style={{ fontSize: '12px', color: '#64748B' }}>
+                                  {podeAgir
+                                    ? 'Não é possível anexar por aqui nesta tela. Use "Editar revisão".'
+                                    : 'Somente o responsável pela etapa anexa o arquivo.'}
+                                </div>
+                              )
+                        }
+
+                        {
+                          falhaArquivo && (
+                            <div role="alert" style={{ marginTop: '8px', fontSize: '12.5px', color: COR_INDIGO, fontWeight: 700 }}>
+                              ! {falhaArquivo}
+                            </div>
+                          )
+                        }
+                      </div>
+                    )
+                  }
+
+                  {
                     (podeAgir || fluxo.local) &&
                     elementoAtual.campos.map(
                       campo => renderizarCampo(campo)
@@ -1181,14 +1347,20 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                       (podeAgir || fluxo.local) &&
                       elementoAtual.acoes.map(
                         acao => {
+                          // "Exige o arquivo": bloqueia as ações que não
+                          // dispensam os campos (ex.: libera "Reprovar").
+                          const bloqueadaPorArquivo =
+                            faltaArquivo && !acao.dispensaCampos;
+
                           const desabilitado =
-                            !podeAgir || fluxo.processando;
+                            !podeAgir || fluxo.processando || enviandoArquivo || bloqueadaPorArquivo;
 
                           return (
                             <button
                               key={acao.chave}
                               type="button"
                               disabled={desabilitado}
+                              title={bloqueadaPorArquivo ? 'Anexe o arquivo da revisão para continuar.' : undefined}
                               onClick={() => executar(acao)}
                               style={estiloBotao(acao.principal, desabilitado)}
                             >

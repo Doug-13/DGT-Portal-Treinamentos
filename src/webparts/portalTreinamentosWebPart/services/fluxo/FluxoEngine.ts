@@ -634,7 +634,9 @@ const DESCRICAO_ACAO_SISTEMA: Record<AcaoSistemaFluxo, string> = {
   novaSubRevisao:
     'Nova sub-revisão',
   proximaRevisao:
-    'Nova revisão'
+    'Nova revisão',
+  removerArquivoRevisao:
+    'Arquivo da revisão removido (o novo será anexado na próxima etapa)'
 };
 
 // Avança automaticamente por gateways e tarefas de sistema até
@@ -885,6 +887,28 @@ const avancar = (
         executadoPorNome: 'Sistema',
         sistema: true
       });
+
+      // Opcional: a nova revisão começa sem arquivo.
+      if (destino.removerArquivo) {
+
+        acoesSistema.push(
+          'removerArquivoRevisao'
+        );
+
+        instancia.historico.unshift({
+          revisao: instancia.revisao,
+          id: gerarId('hist'),
+          data: agora,
+          elementoId: destino.id,
+          elementoNome: destino.nome,
+          acaoChave: 'removerArquivoRevisao',
+          acaoRotulo: DESCRICAO_ACAO_SISTEMA.removerArquivoRevisao,
+          resultado: 'concluido',
+          executadoPorId: 'sistema',
+          executadoPorNome: 'Sistema',
+          sistema: true
+        });
+      }
     }
 
     // Gateways mantêm o resultado da última ação humana.

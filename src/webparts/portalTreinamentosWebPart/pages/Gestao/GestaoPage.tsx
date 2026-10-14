@@ -32,6 +32,16 @@ import {
   TreinamentoRevisaoService
 } from '../../services/TreinamentoRevisaoService';
 
+import {
+  IControleTreinamento,
+  TreinamentoDocumentoControleService
+} from '../../services/TreinamentoDocumentoControleService';
+
+import {
+  CONTROLE_DOCUMENTAL,
+  controleDocumentalHabilitado
+} from '../../constants/controleDocumental';
+
 import RevisaoTreinamentoModal from
   './RevisaoTreinamentoModal';
 
@@ -269,6 +279,19 @@ export interface IGestaoPageProps {
   // Nome de quem registra a revisão (auditoria).
   usuarioNome?:
     string;
+
+  // Id (dgt_usuario) de quem está usando a tela: autor da revisão
+  // do documento de controle criado pela Gestão.
+  usuarioId?:
+    string;
+
+  // Controle documental: abre o documento de controle do treinamento
+  // (revisões, etapas do fluxo, responsáveis e prazos).
+  onAbrirDocumento?:
+    (
+      documentoId:
+        string
+    ) => Promise<boolean>;
 }
 
 // ============================================================
@@ -659,6 +682,307 @@ const GestaoPage:
         },
         []
       );
+
+    // ---------------- Controle documental ----------------
+    //
+    // Cada treinamento é controlado por um documento (mesmo código,
+    // tipo TRN) que segue o fluxo do processo de treinamentos.
+
+    const controleService =
+      React.useMemo(
+        () =>
+          props.dataverseService &&
+          controleDocumentalHabilitado()
+            ? new TreinamentoDocumentoControleService(
+              props.dataverseService
+            )
+            : undefined,
+        [
+          props.dataverseService
+        ]
+      );
+
+    // { treinamentoId → documento de controle }
+    const [
+      controles,
+      setControles
+    ] =
+      React.useState<
+        Record<string, IControleTreinamento>
+      >({});
+
+    const [
+      controleCarregado,
+      setControleCarregado
+    ] =
+      React.useState(
+        false
+      );
+
+    const [
+      processandoControleId,
+      setProcessandoControleId
+    ] =
+      React.useState('');
+
+    // Treinamento vigente sem revisão aberta: a edição exige uma
+    // nova revisão no documento de controle.
+    const [
+      bloqueioEdicao,
+      setBloqueioEdicao
+    ] =
+      React.useState<
+        ITreinamentoAdmin | undefined
+      >(
+        undefined
+      );
+
+    const chaveControle =
+      props.treinamentos
+        .map(
+          item =>
+            `${item.id}:${item.codigo}:${item.ativo ? 1 : 0}`
+        )
+        .join('|');
+
+    const carregarControles =
+      React.useCallback(
+        async (): Promise<void> => {
+
+          if (
+            !controleService
+          ) {
+            return;
+          }
+
+          try {
+            setControles(
+              await controleService
+                .mapear(
+                  props.treinamentos
+                )
+            );
+          } catch (error) {
+            console.error(
+              'Não foi possível ler os documentos de controle dos treinamentos:',
+              error
+            );
+          } finally {
+            setControleCarregado(
+              true
+            );
+          }
+        },
+        [
+          controleService,
+          chaveControle
+        ]
+      );
+
+    React.useEffect(
+      () => {
+        carregarControles()
+          .catch(
+            (error: unknown) =>
+              console.error(error)
+          );
+      },
+      [
+        carregarControles
+      ]
+    );
+
+    const controleDe =
+      (
+        treinamento:
+          ITreinamentoAdmin
+      ): IControleTreinamento | undefined =>
+        controles[
+          String(
+            treinamento.id ||
+            ''
+          )
+            .replace(
+              /[{}]/g,
+              ''
+            )
+            .toLowerCase()
+        ];
+
+    const abrirDocumentoControle =
+      React.useCallback(
+        async (
+          controle:
+            IControleTreinamento
+        ): Promise<void> => {
+
+          if (
+            !props.onAbrirDocumento
+          ) {
+            window.alert(
+              `Abra o documento ${controle.codigo} pela tela Documentos.`
+            );
+            return;
+          }
+
+          const abriu =
+            await props.onAbrirDocumento(
+              controle.documentoId
+            );
+
+          if (!abriu) {
+            window.alert(
+              `Não foi possível abrir o documento ${controle.codigo}. Verifique o acesso em Documentos.`
+            );
+          }
+        },
+        [
+          props.onAbrirDocumento
+        ]
+      );
+
+    // Treinamento sem documento de controle (criado antes desta
+    // funcionalidade ou cuja criação falhou):
+    //   ativo   → documento nasce VIGENTE na revisão atual;
+    //   inativo → documento nasce em Elaboração (Rev.00A) e segue o fluxo.
+    const colocarSobControle =
+      React.useCallback(
+        async (
+          treinamento:
+            ITreinamentoAdmin
+        ): Promise<void> => {
+
+          if (
+            !controleService
+          ) {
+            return;
+          }
+
+          const revisao =
+            revisaoAtual[
+              chaveTreinamento(
+                treinamento.id
+              )
+            ] ||
+            'Rev.00';
+
+          const confirmado =
+            window.confirm(
+              treinamento.ativo
+                ? `Colocar ${treinamento.codigo} sob controle documental?\n\n` +
+                  `Será criado o documento ${treinamento.codigo} (tipo ${CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO}), já VIGENTE na ${revisao}, ` +
+                  `vinculado ao processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO}. ` +
+                  'As próximas revisões seguirão o fluxo do processo. Nenhuma conclusão é alterada.'
+                : `Colocar ${treinamento.codigo} sob controle documental?\n\n` +
+                  `Será criado o documento ${treinamento.codigo} em ${CONTROLE_DOCUMENTAL.REVISAO_INICIAL} (Elaboração), ` +
+                  `que seguirá o fluxo do processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO}. ` +
+                  'O treinamento continua inativo até a publicação.'
+            );
+
+          if (!confirmado) {
+            return;
+          }
+
+          setProcessandoControleId(
+            treinamento.id
+          );
+
+          try {
+            const resultado =
+              await controleService
+                .garantirDocumentoControle(
+                  treinamento.id,
+                  {
+                    id:
+                      props.usuarioId ||
+                      '',
+                    nome:
+                      props.usuarioNome ||
+                      ''
+                  },
+                  treinamento.ativo
+                    ? {
+                      jaVigenteNaRevisao:
+                        revisao
+                    }
+                    : {}
+                );
+
+            await carregarControles();
+
+            window.alert(
+              [
+                resultado.criado
+                  ? `Documento ${resultado.codigo} criado.`
+                  : `O documento ${resultado.codigo} já existia; os vínculos foram conferidos.`,
+                resultado.processoNome
+                  ? `Processo: ${resultado.processoNome}.`
+                  : '',
+                ...resultado.avisos
+              ]
+                .filter(item => !!item)
+                .join('\n\n')
+            );
+          } catch (error) {
+            window.alert(
+              error instanceof Error
+                ? error.message
+                : 'Não foi possível criar o documento de controle.'
+            );
+          } finally {
+            setProcessandoControleId(
+              ''
+            );
+          }
+        },
+        [
+          controleService,
+          carregarControles,
+          revisaoAtual,
+          props.usuarioId,
+          props.usuarioNome
+        ]
+      );
+
+    const editarTreinamento =
+      (
+        treinamento:
+          ITreinamentoAdmin
+      ): void => {
+
+        const controle =
+          controleDe(
+            treinamento
+          );
+
+        // Vigente e sem revisão aberta: alterar o conteúdo sem revisão
+        // quebraria a rastreabilidade (quem foi treinado em quê).
+        if (
+          controle &&
+          controle.vigente &&
+          !controle.revisaoEmAndamento
+        ) {
+          setBloqueioEdicao(
+            treinamento
+          );
+          return;
+        }
+
+        void props
+          .onEditarTreinamento(
+            treinamento
+          )
+          .catch(
+            (
+              error:
+                unknown
+            ) =>
+              console.error(
+                'Erro ao abrir edição do treinamento:',
+                error
+              )
+          );
+      };
 
     // ---------------- Remoção ----------------
 
@@ -1127,7 +1451,14 @@ const GestaoPage:
 
                       const processando =
                         props.processandoId ===
-                        treinamento.id;
+                          treinamento.id ||
+                        processandoControleId ===
+                          treinamento.id;
+
+                      const controle =
+                        controleDe(
+                          treinamento
+                        );
 
                       return (
                         <tr
@@ -1144,7 +1475,7 @@ const GestaoPage:
                             </strong>
 
                             {
-                              revisaoService &&
+                              (revisaoService || controleDe(treinamento)) &&
                               (
                                 <span
                                   title="Revisão atual do treinamento"
@@ -1168,12 +1499,26 @@ const GestaoPage:
                                   }}
                                 >
                                   {
-                                    revisaoAtual[
-                                      chaveTreinamento(
-                                        treinamento.id
-                                      )
-                                    ] ||
-                                    'Rev.00'
+                                    (() => {
+                                      const controle =
+                                        controleDe(
+                                          treinamento
+                                        );
+
+                                      if (controle) {
+                                        return controle.revisaoVigente ||
+                                          (controle.revisaoEmAndamento
+                                            ? controle.revisaoEmAndamento.revisao
+                                            : CONTROLE_DOCUMENTAL.REVISAO_INICIAL);
+                                      }
+
+                                      return revisaoAtual[
+                                        chaveTreinamento(
+                                          treinamento.id
+                                        )
+                                      ] ||
+                                        'Rev.00';
+                                    })()
                                   }
                                 </span>
                               )
@@ -1282,6 +1627,59 @@ const GestaoPage:
                                   : 'Inativo'
                               }
                             </span>
+
+                            {
+                              (() => {
+                                const controle =
+                                  controleDe(
+                                    treinamento
+                                  );
+
+                                if (
+                                  controleService &&
+                                  controleCarregado &&
+                                  !controle
+                                ) {
+                                  return (
+                                    <div
+                                      title="Este treinamento ainda não tem documento de controle (menu ⋮ → Colocar sob controle documental)"
+                                      style={{
+                                        marginTop: '5px',
+                                        fontSize: '11px',
+                                        color: CORES_STATUS.neutro.texto
+                                      }}
+                                    >
+                                      Sem controle documental
+                                    </div>
+                                  );
+                                }
+
+                                if (
+                                  !controle ||
+                                  !controle.revisaoEmAndamento
+                                ) {
+                                  return null;
+                                }
+
+                                return (
+                                  <div
+                                    title={`Documento ${controle.codigo}: ${controle.revisaoEmAndamento.revisao} no fluxo do processo`}
+                                    style={{
+                                      display: 'inline-block',
+                                      marginTop: '5px',
+                                      padding: '3px 8px',
+                                      borderRadius: '20px',
+                                      background: CORES_STATUS.alerta.bg,
+                                      color: CORES_STATUS.alerta.texto,
+                                      fontSize: '11px',
+                                      fontWeight: 700
+                                    }}
+                                  >
+                                    {controle.revisaoEmAndamento.revisao} em {controle.revisaoEmAndamento.status || 'Elaboração'}
+                                  </div>
+                                );
+                              })()
+                            }
                           </td>
 
                           <td style={tdStyle}>
@@ -1305,23 +1703,11 @@ const GestaoPage:
                                 disabled={
                                   processando
                                 }
-                                onClick={() => {
-
-                                  void props
-                                    .onEditarTreinamento(
-                                      treinamento
-                                    )
-                                    .catch(
-                                      (
-                                        error:
-                                          unknown
-                                      ) =>
-                                        console.error(
-                                          'Erro ao abrir edição do treinamento:',
-                                          error
-                                        )
-                                    );
-                                }}
+                                onClick={() =>
+                                  editarTreinamento(
+                                    treinamento
+                                  )
+                                }
                                 style={{
                                   ...botaoEditar,
                                   opacity: processando ? .6 : 1
@@ -1359,7 +1745,55 @@ const GestaoPage:
                                 }
                                 itens={[
                                   ...(
-                                    revisaoService
+                                    controleService &&
+                                    controle
+                                      ? [
+                                        {
+                                          rotulo:
+                                            controle.revisaoEmAndamento
+                                              ? `Abrir revisão ${controle.revisaoEmAndamento.revisao}`
+                                              : 'Revisar treinamento',
+
+                                          titulo:
+                                            controle.revisaoEmAndamento
+                                              ? `Abrir o documento ${controle.codigo} na etapa atual do fluxo`
+                                              : `Abrir o documento ${controle.codigo} para criar uma nova revisão, que seguirá o fluxo do processo`,
+
+                                          onClick: () => {
+                                            void abrirDocumentoControle(
+                                              controle
+                                            );
+                                          }
+                                        }
+                                      ]
+                                      : []
+                                  ),
+
+                                  ...(
+                                    controleService &&
+                                    controleCarregado &&
+                                    !controle
+                                      ? [
+                                        {
+                                          rotulo:
+                                            'Colocar sob controle documental',
+
+                                          titulo:
+                                            `Criar o documento de controle e vincular ao processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO}`,
+
+                                          onClick: () => {
+                                            void colocarSobControle(
+                                              treinamento
+                                            );
+                                          }
+                                        }
+                                      ]
+                                      : []
+                                  ),
+
+                                  ...(
+                                    revisaoService &&
+                                    !controleService
                                       ? [
                                         {
                                           rotulo:
@@ -1401,6 +1835,20 @@ const GestaoPage:
 
                                     sucesso:
                                       !treinamento.ativo,
+
+                                    // Controle documental: ativa somente
+                                    // depois da publicação pelo fluxo.
+                                    desabilitado:
+                                      !treinamento.ativo &&
+                                      !!controle &&
+                                      !controle.vigente,
+
+                                    titulo:
+                                      !treinamento.ativo &&
+                                      !!controle &&
+                                      !controle.vigente
+                                        ? `O treinamento é ativado automaticamente quando o documento ${controle.codigo} for publicado pelo fluxo`
+                                        : undefined,
 
                                     onClick: () => {
                                       props
@@ -1535,6 +1983,122 @@ const GestaoPage:
               }
             />
           )
+        }
+
+        {
+          bloqueioEdicao &&
+          (() => {
+            const controle =
+              controleDe(
+                bloqueioEdicao
+              );
+
+            return (
+              <div
+                role="dialog"
+                aria-modal="true"
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  zIndex: 1000,
+                  background: 'rgba(32, 42, 68, .45)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px'
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: '520px',
+                    background: '#FFFFFF',
+                    borderRadius: '12px',
+                    padding: '22px',
+                    boxShadow: '0 20px 50px rgba(0,0,0,.2)'
+                  }}
+                >
+                  <h2
+                    style={{
+                      margin: '0 0 10px',
+                      color: DGT.azul,
+                      fontSize: '18px'
+                    }}
+                  >
+                    Alteração exige nova revisão
+                  </h2>
+
+                  <p
+                    style={{
+                      margin: '0 0 8px',
+                      color: '#344054',
+                      lineHeight: 1.5
+                    }}
+                  >
+                    <strong>{bloqueioEdicao.codigo}</strong> está vigente
+                    {controle && controle.revisaoVigente ? ` na ${controle.revisaoVigente}` : ''}.
+                    Para alterar dados, módulos ou avaliação, abra uma nova revisão
+                    no documento de controle. A revisão seguirá o fluxo do processo
+                    (responsáveis, prazos e decisão de retreinamento) e as conclusões
+                    anteriores ficam preservadas no histórico.
+                  </p>
+
+                  <p
+                    style={{
+                      margin: '0 0 18px',
+                      color: CORES_STATUS.neutro.texto,
+                      fontSize: '13px'
+                    }}
+                  >
+                    Depois de criar a revisão, volte aqui e use &quot;Editar&quot;.
+                  </p>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      gap: '8px',
+                      flexWrap: 'wrap'
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBloqueioEdicao(
+                          undefined
+                        )
+                      }
+                      style={botaoEditar}
+                    >
+                      Cancelar
+                    </button>
+
+                    {controle && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBloqueioEdicao(
+                            undefined
+                          );
+
+                          void abrirDocumentoControle(
+                            controle
+                          );
+                        }}
+                        style={{
+                          ...botaoEditar,
+                          background: DGT.azul,
+                          color: '#FFFFFF'
+                        }}
+                      >
+                        Abrir documento {controle.codigo}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()
         }
 
         <HistoricoTreinamentoModal

@@ -535,6 +535,64 @@ export class DocumentoRevisaoFluxoService {
   }
 
   // ==========================================================
+  // ANEXAR / SUBSTITUIR O ARQUIVO PELA ETAPA DO FLUXO
+  // ==========================================================
+  // Usado nas etapas do fluxo configurável com "Arquivo da revisão"
+  // = Opcional/Obrigatório (ex.: Elaboração). Quem decide se a etapa
+  // permite anexar é o fluxo; aqui só a revisão vigente (publicada)
+  // é protegida. O arquivo anterior não é apagado do SharePoint.
+
+  public async anexarArquivo(
+    documento: IDocumento,
+    revisao: IDocumentoRevisao,
+    arquivo: File,
+    usuario: IUsuarioFluxo
+  ): Promise<IResultadoFluxo> {
+
+    if (revisao.ativa) {
+      throw new Error(
+        'A revisão vigente não pode ter o arquivo trocado. Crie uma nova revisão.'
+      );
+    }
+
+    const upload =
+      await this.upload(
+        documento,
+        revisao.revisao,
+        arquivo,
+        true
+      );
+
+    await this.dataverse
+      .atualizarDocumentoRevisao(
+        revisao.id,
+        {
+          dgt_arquivourl: upload.arquivoUrl,
+          dgt_biblioteca: upload.biblioteca
+        }
+      );
+
+    const aviso =
+      await this.historico.registrarSemInterromper({
+        documentoId: documento.id,
+        tipo: 'ARQUIVO_SUBSTITUIDO',
+        titulo: revisao.arquivoUrl
+          ? 'Arquivo da revisão substituído'
+          : 'Arquivo da revisão anexado',
+        descricao: `Arquivo: ${arquivo.name} (anexado na etapa do fluxo)`,
+        revisao,
+        arquivoUrl: upload.arquivoUrl,
+        dadosAnteriores: {
+          arquivoUrl: revisao.arquivoUrl || ''
+        },
+        usuarioId: usuario.id,
+        usuarioNome: usuario.nome
+      });
+
+    return { aviso };
+  }
+
+  // ==========================================================
   // ENVIAR PARA APROVAÇÃO DO GESTOR
   // ==========================================================
 
