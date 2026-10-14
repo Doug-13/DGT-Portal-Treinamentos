@@ -67,6 +67,14 @@ export interface IUseDocumentoRevisaoFluxo {
     motivo: string
   ) => Promise<boolean>;
 
+  // Anexa/substitui o arquivo da revisão em andamento, na etapa do
+  // fluxo com "Arquivo da revisão" = Opcional/Obrigatório.
+  // O arquivo anterior não é apagado do SharePoint.
+  anexarArquivo: (
+    revisao: IDocumentoRevisao,
+    arquivo: File
+  ) => Promise<boolean>;
+
   registrarPublicacao: (
     revisao: IDocumentoRevisao,
     resultado: IResultadoPublicacaoRevisao
@@ -295,6 +303,28 @@ export const useDocumentoRevisaoFluxo = (
       ]
     );
 
+  const anexarArquivo =
+    React.useCallback(
+      (
+        revisao: IDocumentoRevisao,
+        arquivo: File
+      ): Promise<boolean> =>
+        executar(
+          (fluxo, doc) =>
+            fluxo.anexarArquivo(
+              doc,
+              revisao,
+              arquivo,
+              usuario
+            ),
+          'Erro ao anexar o arquivo da revisão.'
+        ),
+      [
+        executar,
+        usuario
+      ]
+    );
+
   const enviarParaAprovacao =
     React.useCallback(
       (
@@ -430,6 +460,7 @@ export const useDocumentoRevisaoFluxo = (
     editarRevisao,
     enviarParaAprovacao,
     reprovar,
+    anexarArquivo,
     registrarPublicacao,
     recarregarHistorico,
     limparMensagens

@@ -21,9 +21,9 @@ export const VERSAO_PORTAL = "1.4.4";
 
 export const VERSAO_SOLUCAO = "1.4.4.0";
 
-export const DATA_BUILD = "2026-10-14T11:20:57.510Z";
+export const DATA_BUILD = "2026-10-14T11:38:44.654Z";
 
-export const COMMIT_BUILD = "b72560c";
+export const COMMIT_BUILD = "25b84de";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {

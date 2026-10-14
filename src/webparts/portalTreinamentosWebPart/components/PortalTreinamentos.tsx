@@ -3999,6 +3999,15 @@ const gestaoAreas =
                   paginaAtual
                 }
 
+                // RH e Pessoas: leitura da biblioteca Certificados.
+                spHttpClient={
+                  spHttpClient
+                }
+
+                siteUrl={
+                  siteUrl
+                }
+
                 primeiroNome={
                   usuario.primeiroNome
                 }

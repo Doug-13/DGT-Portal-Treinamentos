@@ -227,6 +227,13 @@ import {
 import IndicadoresPage from
   '../pages/Indicadores/IndicadoresPage';
 
+import RhPessoasPage from
+  '../pages/RH/RhPessoasPage';
+
+import {
+  SPHttpClient
+} from '@microsoft/sp-http';
+
 import LicitacoesBuscaPage from
   '../pages/Licitacoes/LicitacoesBuscaPage';
 
@@ -924,6 +931,13 @@ export interface IPortalRouterProps {
   // Também usado pelo teste de conexão do painel de diagnóstico.
   dataverseService?:
   DataverseService;
+
+  // RH e Pessoas: leitura da biblioteca Certificados (PDFs).
+  spHttpClient?:
+  SPHttpClient;
+
+  siteUrl?:
+  string;
 
   // Diagnóstico de acesso: e-mail do usuário logado e recarga das
   // permissões depois de o administrador corrigir o problema.
@@ -3064,6 +3078,25 @@ const PortalRouter:
           />
 
         );
+      case 'rhPessoas':
+
+        return (
+          <RhPessoasPage
+            dataverseService={
+              props.dataverseService
+            }
+            spHttpClient={
+              props.spHttpClient
+            }
+            siteUrl={
+              props.siteUrl
+            }
+            usuarioNome={
+              props.contextoAcesso?.nome
+            }
+          />
+        );
+
       case 'indicadores':
 
         return (

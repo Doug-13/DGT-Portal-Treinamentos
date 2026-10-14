@@ -48,6 +48,10 @@ import {
 } from '../services/RevisaoDocumentoAdminService';
 
 import {
+  DocumentoHistoricoService
+} from '../services/DocumentoHistoricoService';
+
+import {
   TreinamentoDocumentoControleService
 } from '../services/TreinamentoDocumentoControleService';
 
@@ -476,6 +480,39 @@ export const useFluxoRevisaoTeste = (
               dgt_name: `${documento ? documento.codigo : 'Documento'} - ${novaInstancia.revisao}`.substring(0, 100)
             }
           );
+        }
+
+        // 2) Evento de revisão com "Remover o arquivo": a revisão segue
+        //    SEM arquivo e o novo é anexado numa etapa seguinte. O
+        //    arquivo anterior NÃO é apagado do SharePoint (continua no
+        //    histórico como "dados anteriores").
+        if (
+          acoes.indexOf('removerArquivoRevisao') >= 0 &&
+          revisaoEmAndamento.arquivoUrl
+        ) {
+          await dataverseService.atualizarRegistro(
+            'dgt_documentorevisao',
+            revisaoEmAndamento.id,
+            {
+              dgt_arquivourl: ''
+            }
+          );
+
+          if (documento) {
+            await new DocumentoHistoricoService(dataverseService)
+              .registrarSemInterromper({
+                documentoId: documento.id,
+                tipo: 'ARQUIVO_SUBSTITUIDO',
+                titulo: 'Arquivo da revisão removido pelo fluxo',
+                descricao: 'O novo arquivo será anexado numa etapa seguinte. O arquivo anterior continua no SharePoint.',
+                revisao: revisaoEmAndamento,
+                dadosAnteriores: {
+                  arquivoUrl: revisaoEmAndamento.arquivoUrl
+                },
+                usuarioId: contexto ? contexto.usuarioId : undefined,
+                usuarioNome: contexto ? contexto.nome : 'Sistema'
+              });
+          }
         }
 
         const publicar =
