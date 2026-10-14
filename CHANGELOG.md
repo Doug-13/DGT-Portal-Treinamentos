@@ -6,6 +6,21 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: na Gestão de treinamentos, os treinamentos sob controle documental trocam o botão "Editar" pelos botões da etapa atual do fluxo (ex.: "Enviar para Avaliação"); ao clicar, abre uma janela com as informações do treinamento, a etapa, os campos e a confirmação da ação. Sem revisão em andamento aparece "Nova revisão"; para quem não é responsável, "Ver etapa".
+- Melhoria: o assistente de edição do treinamento volta ao formato anterior, sem o fluxo de revisão.
+
+- Novo: a etapa do fluxo do treinamento mostra o resumo do que está sendo elaborado (dados do cadastro, módulos e avaliação), com avisos do que falta e atalhos para editar e testar.
+
+- Correção: "Ver etapa do fluxo" e "Revisões do treinamento" não mostravam os botões da etapa atual; agora mostram a etapa com as ações, e o desenho do fluxo abre sob demanda.
+
+- Novo: o Administrador do portal pode executar qualquer etapa do fluxo de revisão, mesmo sem ser o responsável; a tela avisa e o histórico registra a ação como "Nome (Administrador)".
+
+- Novo: na lista da Gestão de treinamentos, os treinamentos com etapa aguardando o usuário ficam destacados e no topo, com filtro "Aguardando você"; a coluna Status mostra revisão, etapa, responsável e prazo vencido.
+- Novo: "Ver etapa do fluxo" no menu ⋮ mostra onde o treinamento está no fluxo (etapa, responsável, prazo, desenho do fluxo) e permite ao responsável concluir a etapa.
+- Novo: "Análise do treinamento" dentro da Gestão, com etapa atual, conclusão da etapa, anexo de arquivo, nova revisão, edição e teste do conteúdo e lista de revisões.
+- Melhoria: os documentos de controle dos treinamentos (tipo TRN) não aparecem mais no módulo Documentos; a gestão deles fica toda na Gestão de treinamentos.
+- Melhoria: ao concluir o assistente de criação, o treinamento abre na análise, na etapa atual do fluxo.
+
 ## [1.4.4] - 2026-10-09
 
 - Melhoria: ajustes e correções internas.

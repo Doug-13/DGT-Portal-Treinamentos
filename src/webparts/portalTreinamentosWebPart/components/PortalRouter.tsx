@@ -879,6 +879,21 @@ export interface IPortalRouterProps {
   // DOCUMENTOS
   // ============================================================
 
+  // Documentos de controle dos treinamentos (tipo TRN): ficam fora
+  // do módulo Documentos e são geridos na Gestão de treinamentos.
+  documentosControle?:
+    IDocumento[];
+
+  recarregarDocumentos?:
+    () => Promise<void>;
+
+  // Treinamento cuja análise abre ao entrar na Gestão.
+  analiseTreinamentoId?:
+    string;
+
+  limparAnaliseTreinamento?:
+    () => void;
+
   documentos:
   IDocumento[];
 
@@ -1236,6 +1251,7 @@ const PortalRouter:
         />
       );
     }
+    const renderizarPagina = (): React.ReactElement | null => {
     switch (
     props.pagina
     ) {
@@ -2152,6 +2168,40 @@ const PortalRouter:
 
             onAbrirDocumento={
               props.abrirDocumentoPorId
+            }
+
+            // Fluxo de revisão dos treinamentos dentro da Gestão.
+            documentosControle={
+              props.documentosControle
+            }
+
+            onRecarregarDocumentos={
+              props.recarregarDocumentos
+            }
+
+            contexto={
+              props.contextoAcesso
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
+            sharePointDocumentoService={
+              props.sharePointDocumentoService
+            }
+
+            onAbrirProcesso={processoId => {
+              solicitarAberturaProcesso(processoId);
+              props.navegar('processos');
+            }}
+
+            analiseInicialTreinamentoId={
+              props.analiseTreinamentoId
+            }
+
+            onAnaliseInicialAberta={
+              props.limparAnaliseTreinamento
             }
 
             onTestarTreinamento={
@@ -3211,6 +3261,13 @@ const PortalRouter:
         );
     }
 
+    return null;
+    };
+
+    const conteudo =
+      renderizarPagina();
+
+    return conteudo;
   };
 
 export default PortalRouter;

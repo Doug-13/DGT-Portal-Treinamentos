@@ -37,7 +37,14 @@ export const CONTROLE_DOCUMENTAL = {
   // Revisão em que o documento de controle nasce.
   REVISAO_INICIAL: 'Rev.00A',
 
+  // Ordem do vínculo treinamento × documento (dgt_ordem aceita de
+  // 1 a 10000). Usa o máximo para ficar depois dos documentos de
+  // conteúdo (POP, IT…) nas listas administrativas.
+  ORDEM_VINCULO: 10000,
+
   // Texto gravado no vínculo treinamento × documento (auditoria).
+  // Também identifica o vínculo de controle, que não aparece na lista
+  // de documentos do treinamento para o colaborador.
   OBSERVACAO_VINCULO:
     'Documento de controle do treinamento (gerado automaticamente pelo portal).'
 };

@@ -40,6 +40,10 @@ import {
   CONTROLE_DOCUMENTAL
 } from '../constants/controleDocumental';
 
+import {
+  TreinamentoConteudoRevisaoService
+} from './TreinamentoConteudoRevisaoService';
+
 // ============================================================
 // TREINAMENTO TRATADO COMO DOCUMENTO
 //
@@ -306,6 +310,25 @@ export class TreinamentoDocumentoControleService {
         usuario,
         opcoes
       );
+
+      // Treinamento já em uso: registra o conteúdo atual na revisão
+      // vigente (para consulta depois que ela ficar obsoleta).
+      if (opcoes.jaVigenteNaRevisao) {
+        const criadas =
+          (await this.revisoesPorDocumento([documentoId]))[documentoId] || [];
+
+        const vigente = obterRevisaoVigente(criadas);
+
+        if (vigente) {
+          const aviso =
+            await new TreinamentoConteudoRevisaoService(this.dataverse)
+              .registrar(vigente.id, guid(treinamentoId), revisaoInteira(vigente.revisao));
+
+          if (aviso) {
+            avisos.push(aviso);
+          }
+        }
+      }
     }
 
     // 3) Vínculo treinamento × documento (usado no retreinamento)
@@ -400,6 +423,15 @@ export class TreinamentoDocumentoControleService {
     const treinamentoId = guid(treinamento.dgt_treinamentoid);
     const partes: string[] = [];
 
+    // Garante o vínculo treinamento × documento (corrige documentos
+    // criados quando o vínculo falhou). Necessário para os
+    // retreinamentos das próximas revisões.
+    try {
+      await this.garantirVinculoTreinamento(documentoId, treinamentoId);
+    } catch (erro) {
+      partes.push(`Atenção: não foi possível vincular o documento ao treinamento (${mensagem(erro)}).`);
+    }
+
     // Revisão publicada
     const lida =
       await this.dataverse.obterRegistro(
@@ -415,6 +447,16 @@ export class TreinamentoDocumentoControleService {
     if (treinamento.dgt_ativo !== true) {
       await this.dataverse.atualizarRegistro('dgt_treinamento', treinamentoId, { dgt_ativo: true });
       partes.push(`Treinamento ${codigo} ativado (${rotulo || 'revisão publicada'}).`);
+    }
+
+    // 1.1) Registra o conteúdo do treinamento nesta revisão (para
+    //      consultar depois que ela ficar obsoleta).
+    const avisoConteudo =
+      await new TreinamentoConteudoRevisaoService(this.dataverse)
+        .registrar(documentoRevisaoId, treinamentoId, rotulo);
+
+    if (avisoConteudo) {
+      partes.push(avisoConteudo);
     }
 
     // 2) Espelha a revisão em dgt_treinamentorevisao (Rev.01 em diante)
@@ -716,7 +758,7 @@ export class TreinamentoDocumentoControleService {
       {
         dgt_name: 'Documento de controle',
         dgt_obrigatorio: true,
-        dgt_ordem: 0,
+        dgt_ordem: CONTROLE_DOCUMENTAL.ORDEM_VINCULO,
         dgt_observacao: CONTROLE_DOCUMENTAL.OBSERVACAO_VINCULO,
         dgt_ativo: true
       }

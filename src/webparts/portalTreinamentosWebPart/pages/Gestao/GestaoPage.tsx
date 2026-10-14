@@ -42,6 +42,37 @@ import {
   controleDocumentalHabilitado
 } from '../../constants/controleDocumental';
 
+import {
+  IDocumento
+} from '../../models/Documento';
+
+import {
+  IContextoAcesso
+} from '../../services/AutorizacaoService';
+
+import {
+  IUsuarioAreaAdmin
+} from '../../services/AreaAdminService';
+
+import {
+  SharePointDocumentoService
+} from '../../services/sharepoint/SharePointDocumentoService';
+
+import {
+  IEtapaFluxoTreinamento,
+  useEtapasFluxoTreinamentos
+} from '../../hooks/useEtapasFluxoTreinamentos';
+
+import EtapaFluxoTreinamentoModal from
+  './EtapaFluxoTreinamentoModal';
+
+import {
+  ehAdministrador
+} from '../../services/DocumentoVisibilidade';
+
+import AnaliseTreinamentoPanel from
+  './AnaliseTreinamentoPanel';
+
 import RevisaoTreinamentoModal from
   './RevisaoTreinamentoModal';
 
@@ -292,6 +323,42 @@ export interface IGestaoPageProps {
       documentoId:
         string
     ) => Promise<boolean>;
+
+  // ---- Fluxo de revisão dos treinamentos DENTRO da Gestão ----
+
+  // Documentos de controle (tipo TRN). Ficam fora do módulo
+  // Documentos: a gestão deles é feita aqui.
+  documentosControle?:
+    IDocumento[];
+
+  // Recarrega a lista de documentos (ex.: documento recém-criado).
+  onRecarregarDocumentos?:
+    () => Promise<void>;
+
+  // Para calcular as pendências (responsáveis por área/perfil).
+  contexto?:
+    IContextoAcesso;
+
+  usuariosAreas?:
+    IUsuarioAreaAdmin[];
+
+  // Anexar arquivo na etapa do fluxo.
+  sharePointDocumentoService?:
+    SharePointDocumentoService;
+
+  onAbrirProcesso?:
+    (
+      processoId:
+        string
+    ) => void;
+
+  // Abre a análise deste treinamento ao entrar na tela (ex.: logo
+  // depois de concluir o assistente de criação).
+  analiseInicialTreinamentoId?:
+    string;
+
+  onAnaliseInicialAberta?:
+    () => void;
 }
 
 // ============================================================
@@ -809,6 +876,14 @@ const GestaoPage:
             .toLowerCase()
         ];
 
+    // ---------------- Análise do treinamento (fluxo na Gestão) ----
+
+    const [
+      analisandoId,
+      setAnalisandoId
+    ] =
+      React.useState('');
+
     const abrirDocumentoControle =
       React.useCallback(
         async (
@@ -816,28 +891,327 @@ const GestaoPage:
             IControleTreinamento
         ): Promise<void> => {
 
+          setAnalisandoId(
+            controle.treinamentoId
+          );
+
+          window.scrollTo(
+            0,
+            0
+          );
+        },
+        []
+      );
+
+    // Documento recém-criado ainda fora da lista: recarrega uma vez
+    // (usado pela análise e por "Ver etapa do fluxo").
+    const recarregouDocumentoRef =
+      React.useRef('');
+
+    // Abertura automática (ex.: fim do assistente de criação).
+    React.useEffect(
+      () => {
+        if (
+          props.analiseInicialTreinamentoId
+        ) {
+          setAnalisandoId(
+            props.analiseInicialTreinamentoId
+              .replace(
+                /[{}]/g,
+                ''
+              )
+              .toLowerCase()
+          );
+
           if (
-            !props.onAbrirDocumento
+            props.onAnaliseInicialAberta
           ) {
-            window.alert(
-              `Abra o documento ${controle.codigo} pela tela Documentos.`
-            );
-            return;
+            props.onAnaliseInicialAberta();
           }
+        }
+      },
+      [
+        props.analiseInicialTreinamentoId
+      ]
+    );
 
-          const abriu =
-            await props.onAbrirDocumento(
-              controle.documentoId
-            );
+    // Documentos de controle dos treinamentos listados (memorizado:
+    // o hook de pendências recarrega sempre que a lista muda).
+    const documentosDosTreinamentos =
+      React.useMemo(
+        (): IDocumento[] => {
 
-          if (!abriu) {
-            window.alert(
-              `Não foi possível abrir o documento ${controle.codigo}. Verifique o acesso em Documentos.`
+          const ids: Record<string, boolean> = {};
+
+          Object.keys(controles).forEach(
+            chave => {
+              ids[
+                controles[chave]
+                  .documentoId
+              ] = true;
+            }
+          );
+
+          return (
+            props.documentosControle ||
+            []
+          ).filter(
+            documento =>
+              ids[
+                String(
+                  documento.id ||
+                  ''
+                )
+                  .replace(
+                    /[{}]/g,
+                    ''
+                  )
+                  .toLowerCase()
+              ]
+          );
+        },
+        [
+          controles,
+          props.documentosControle
+        ]
+      );
+
+    // Lista estável (evita recarregar as etapas a cada render).
+    const usuariosAreas =
+      React.useMemo(
+        () =>
+          props.usuariosAreas ||
+          [],
+        [
+          props.usuariosAreas
+        ]
+      );
+
+    const areaPorDocumento =
+      React.useMemo(
+        () => {
+          const mapa: Record<string, string> = {};
+          documentosDosTreinamentos.forEach(
+            documento => {
+              mapa[
+                String(
+                  documento.id ||
+                  ''
+                )
+                  .replace(
+                    /[{}]/g,
+                    ''
+                  )
+                  .toLowerCase()
+              ] =
+                documento.areaId ||
+                '';
+            }
+          );
+          return mapa;
+        },
+        [
+          documentosDosTreinamentos
+        ]
+      );
+
+    // Onde está cada treinamento em revisão: etapa, responsável,
+    // prazo e se está aguardando o usuário logado.
+    const etapasFluxo =
+      useEtapasFluxoTreinamentos(
+        controleService
+          ? props.dataverseService
+          : undefined,
+        controles,
+        props.contexto,
+        usuariosAreas,
+        areaPorDocumento
+      );
+
+    const etapaDe =
+      (
+        treinamento:
+          ITreinamentoAdmin
+      ): IEtapaFluxoTreinamento | undefined =>
+        etapasFluxo.etapas[
+          String(
+            treinamento.id ||
+            ''
+          )
+            .replace(
+              /[{}]/g,
+              ''
+            )
+            .toLowerCase()
+        ];
+
+    // "Ver etapa do fluxo" (menu ⋮)
+    const [
+      verEtapaDe,
+      setVerEtapaDe
+    ] =
+      React.useState<
+        ITreinamentoAdmin | undefined
+      >(
+        undefined
+      );
+
+    // "Ver etapa do fluxo" de um documento recém-criado (ainda fora
+    // da lista): recarrega os documentos uma vez.
+    React.useEffect(
+      () => {
+        if (!verEtapaDe || !props.onRecarregarDocumentos) {
+          return;
+        }
+
+        const controleModal =
+          controleDe(
+            verEtapaDe
+          );
+
+        if (
+          !controleModal ||
+          recarregouDocumentoRef.current ===
+            controleModal.documentoId ||
+          (props.documentosControle || []).some(
+            documento =>
+              String(documento.id || '').replace(/[{}]/g, '').toLowerCase() ===
+              controleModal.documentoId
+          )
+        ) {
+          return;
+        }
+
+        recarregouDocumentoRef.current =
+          controleModal.documentoId;
+
+        props.onRecarregarDocumentos()
+          .catch(
+            (error: unknown) =>
+              console.error(error)
+          );
+      },
+      [
+        verEtapaDe
+      ]
+    );
+
+    // Ação do fluxo escolhida na lista (botão na coluna Ações).
+    const [
+      acaoEscolhida,
+      setAcaoEscolhida
+    ] =
+      React.useState<
+        { chave: string; rotulo: string } | undefined
+      >(
+        undefined
+      );
+
+    const souAdministrador =
+      ehAdministrador(
+        props.contexto
+      );
+
+    // Filtro "Aguardando você"
+    const [
+      somenteAguardando,
+      setSomenteAguardando
+    ] =
+      React.useState(
+        false
+      );
+
+    const totalAguardando =
+      Object.keys(
+        etapasFluxo.etapas
+      ).filter(
+        chave =>
+          etapasFluxo.etapas[chave]
+            .aguardandoVoce
+      ).length;
+
+    const treinamentoAnalisado =
+      analisandoId
+        ? props.treinamentos.find(
+          item =>
+            String(
+              item.id ||
+              ''
+            )
+              .replace(
+                /[{}]/g,
+                ''
+              )
+              .toLowerCase() ===
+            analisandoId
+        )
+        : undefined;
+
+    const controleAnalisado =
+      treinamentoAnalisado
+        ? controles[
+          analisandoId
+        ]
+        : undefined;
+
+    const documentoAnalisado =
+      controleAnalisado
+        ? (
+          props.documentosControle ||
+          []
+        ).find(
+          documento =>
+            String(
+              documento.id ||
+              ''
+            )
+              .replace(
+                /[{}]/g,
+                ''
+              )
+              .toLowerCase() ===
+            controleAnalisado.documentoId
+        )
+        : undefined;
+
+    React.useEffect(
+      () => {
+        if (
+          controleAnalisado &&
+          !documentoAnalisado &&
+          props.onRecarregarDocumentos &&
+          recarregouDocumentoRef.current !==
+            controleAnalisado.documentoId
+        ) {
+          recarregouDocumentoRef.current =
+            controleAnalisado.documentoId;
+
+          props.onRecarregarDocumentos()
+            .catch(
+              (error: unknown) =>
+                console.error(error)
             );
+        }
+      },
+      [
+        controleAnalisado,
+        documentoAnalisado
+      ]
+    );
+
+    const aoAlterarFluxo =
+      React.useCallback(
+        async (): Promise<void> => {
+          await carregarControles();
+          await etapasFluxo.recarregar();
+          if (props.onRecarregarDocumentos) {
+            await props.onRecarregarDocumentos();
           }
         },
         [
-          props.onAbrirDocumento
+          carregarControles,
+          etapasFluxo.recarregar,
+          props.onRecarregarDocumentos
         ]
       );
 
@@ -1107,13 +1481,67 @@ const GestaoPage:
               .trim()
               .toLowerCase();
 
+          const chaveId =
+            (
+              item:
+                ITreinamentoAdmin
+            ): string =>
+              String(
+                item.id ||
+                ''
+              )
+                .replace(
+                  /[{}]/g,
+                  ''
+                )
+                .toLowerCase();
+
+          const aguardando =
+            (
+              item:
+                ITreinamentoAdmin
+            ): boolean => {
+              const etapa =
+                etapasFluxo.etapas[
+                  chaveId(
+                    item
+                  )
+                ];
+              return !!etapa &&
+                etapa.aguardandoVoce;
+            };
+
+          // Os que aguardam uma ação do usuário vêm primeiro.
+          const base =
+            props
+              .treinamentos
+              .filter(
+                item =>
+                  !somenteAguardando ||
+                  aguardando(
+                    item
+                  )
+              )
+              .slice()
+              .sort(
+                (a, b) =>
+                  Number(
+                    aguardando(
+                      b
+                    )
+                  ) -
+                  Number(
+                    aguardando(
+                      a
+                    )
+                  )
+              );
+
           if (!termo) {
-            return props
-              .treinamentos;
+            return base;
           }
 
-          return props
-            .treinamentos
+          return base
             .filter(
               item =>
                 item.nome
@@ -1138,9 +1566,110 @@ const GestaoPage:
         },
         [
           pesquisa,
-          props.treinamentos
+          props.treinamentos,
+          etapasFluxo.etapas,
+          somenteAguardando
         ]
       );
+
+    if (
+      analisandoId
+    ) {
+      return (
+        <section>
+
+          <PageHeader
+            titulo="Gestão de treinamentos"
+            subtitulo="Análise do treinamento: fluxo de revisão, etapas, responsáveis e prazos."
+          />
+
+          {
+            !treinamentoAnalisado ||
+            !controleAnalisado
+              ? (
+                <div
+                  style={{
+                    background: '#FFFFFF',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: '12px',
+                    padding: '18px 20px'
+                  }}
+                >
+                  {
+                    controleCarregado
+                      ? 'Este treinamento não tem documento de controle. Use o menu ⋮ → "Colocar sob controle documental".'
+                      : 'Carregando...'
+                  }
+
+                  <div style={{ marginTop: '12px' }}>
+                    <button
+                      type="button"
+                      style={botaoEditar}
+                      onClick={() =>
+                        setAnalisandoId(
+                          ''
+                        )
+                      }
+                    >
+                      Voltar à Gestão
+                    </button>
+                  </div>
+                </div>
+              )
+              : !documentoAnalisado
+                ? (
+                  <div
+                    style={{
+                      background: '#FFFFFF',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: '12px',
+                      padding: '18px 20px'
+                    }}
+                  >
+                    Carregando o documento {controleAnalisado.codigo}...
+                  </div>
+                )
+                : (
+                  <AnaliseTreinamentoPanel
+                    treinamento={
+                      treinamentoAnalisado
+                    }
+                    documento={
+                      documentoAnalisado
+                    }
+                    contexto={
+                      props.contexto
+                    }
+                    dataverseService={
+                      props.dataverseService
+                    }
+                    sharePointDocumentoService={
+                      props.sharePointDocumentoService
+                    }
+                    onVoltar={() => {
+                      setAnalisandoId(
+                        ''
+                      );
+                      void aoAlterarFluxo();
+                    }}
+                    onAlterado={
+                      aoAlterarFluxo
+                    }
+                    onEditarConteudo={
+                      props.onEditarTreinamento
+                    }
+                    onTestarTreinamento={
+                      props.onTestarTreinamento
+                    }
+                    onAbrirProcesso={
+                      props.onAbrirProcesso
+                    }
+                  />
+                )
+          }
+        </section>
+      );
+    }
 
     return (
       <section>
@@ -1255,6 +1784,7 @@ const GestaoPage:
 
         </div>
 
+
         <div
           style={{
             background:
@@ -1337,6 +1867,46 @@ const GestaoPage:
 
             </div>
 
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'center',
+                flexWrap: 'wrap'
+              }}
+            >
+            {
+              controleService &&
+              totalAguardando > 0 &&
+              (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSomenteAguardando(
+                      !somenteAguardando
+                    )
+                  }
+                  title="Treinamentos com uma etapa do fluxo aguardando você"
+                  style={{
+                    border: `1px solid ${DGT.ciano}`,
+                    background: somenteAguardando
+                      ? DGT.ciano
+                      : '#E6F9FC',
+                    color: DGT.azul,
+                    borderRadius: '999px',
+                    padding: '7px 12px',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {somenteAguardando ? '✓ ' : ''}Aguardando você ({totalAguardando})
+                </button>
+              )
+            }
+
             <input
               type="search"
               value={
@@ -1356,6 +1926,7 @@ const GestaoPage:
                   '320px'
               }}
             />
+            </div>
 
           </div>
 
@@ -1460,10 +2031,28 @@ const GestaoPage:
                           treinamento
                         );
 
+                      const etapa =
+                        etapaDe(
+                          treinamento
+                        );
+
+                      // Destaque: etapa do fluxo aguardando o usuário.
+                      const aguardandoVoce =
+                        !!etapa &&
+                        etapa.aguardandoVoce;
+
                       return (
                         <tr
                           key={
                             treinamento.id
+                          }
+                          style={
+                            aguardandoVoce
+                              ? {
+                                background: '#E6F9FC',
+                                boxShadow: `inset 4px 0 0 ${DGT.ciano}`
+                              }
+                              : undefined
                           }
                         >
                           <td style={tdStyle}>
@@ -1661,21 +2250,82 @@ const GestaoPage:
                                   return null;
                                 }
 
+                                const prazoVencido =
+                                  !!etapa &&
+                                  !!etapa.prazo &&
+                                  new Date(
+                                    etapa.prazo.length === 10
+                                      ? `${etapa.prazo}T23:59:59`
+                                      : etapa.prazo
+                                  ).getTime() < Date.now();
+
                                 return (
                                   <div
-                                    title={`Documento ${controle.codigo}: ${controle.revisaoEmAndamento.revisao} no fluxo do processo`}
                                     style={{
-                                      display: 'inline-block',
                                       marginTop: '5px',
-                                      padding: '3px 8px',
-                                      borderRadius: '20px',
-                                      background: CORES_STATUS.alerta.bg,
-                                      color: CORES_STATUS.alerta.texto,
                                       fontSize: '11px',
-                                      fontWeight: 700
+                                      lineHeight: 1.45,
+                                      color: CORES_STATUS.neutro.texto
                                     }}
                                   >
-                                    {controle.revisaoEmAndamento.revisao} em {controle.revisaoEmAndamento.status || 'Elaboração'}
+                                    {
+                                      aguardandoVoce &&
+                                      (
+                                        <div
+                                          style={{
+                                            display: 'inline-block',
+                                            marginBottom: '3px',
+                                            padding: '2px 8px',
+                                            borderRadius: '20px',
+                                            background: DGT.azul,
+                                            color: '#FFFFFF',
+                                            fontWeight: 700
+                                          }}
+                                        >
+                                          Aguardando você
+                                        </div>
+                                      )
+                                    }
+
+                                    <div>
+                                      {controle.revisaoEmAndamento.revisao}
+                                      {' · '}
+                                      {etapa ? etapa.etapa : controle.revisaoEmAndamento.status || 'Elaboração'}
+                                    </div>
+
+                                    {
+                                      etapa &&
+                                      etapa.responsaveis.length > 0 &&
+                                      (
+                                        <div
+                                          title={etapa.responsaveis.join(' · ')}
+                                          style={{
+                                            maxWidth: '220px',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                          }}
+                                        >
+                                          Resp.: {etapa.responsaveis.join(' · ')}
+                                        </div>
+                                      )
+                                    }
+
+                                    {
+                                      prazoVencido &&
+                                      etapa &&
+                                      etapa.prazo &&
+                                      (
+                                        <div
+                                          style={{
+                                            color: CORES_STATUS.erro.texto,
+                                            fontWeight: 700
+                                          }}
+                                        >
+                                          Prazo vencido
+                                        </div>
+                                      )
+                                    }
                                   </div>
                                 );
                               })()
@@ -1698,23 +2348,145 @@ const GestaoPage:
                                   'center'
                               }}
                             >
-                              <button
-                                type="button"
-                                disabled={
-                                  processando
-                                }
-                                onClick={() =>
-                                  editarTreinamento(
-                                    treinamento
+                              {
+                                // Treinamento sob controle documental: no
+                                // lugar de "Editar", os botões da etapa
+                                // atual do fluxo (ex.: "Enviar para
+                                // Avaliação"). A edição do conteúdo fica
+                                // no menu ⋮, com revisão em andamento.
+                                controleService &&
+                                controle
+                                  ? (() => {
+
+                                    if (
+                                      !controle.revisaoEmAndamento
+                                    ) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          disabled={processando}
+                                          title="Abrir uma nova revisão do treinamento (segue o fluxo do processo)"
+                                          onClick={() =>
+                                            setAnalisandoId(
+                                              String(treinamento.id || '').replace(/[{}]/g, '').toLowerCase()
+                                            )
+                                          }
+                                          style={{
+                                            ...botaoEditar,
+                                            whiteSpace: 'nowrap',
+                                            opacity: processando ? .6 : 1
+                                          }}
+                                        >
+                                          Nova revisão
+                                        </button>
+                                      );
+                                    }
+
+                                    const podeAgirNaEtapa =
+                                      !!etapa &&
+                                      etapa.acoes.length > 0 &&
+                                      (
+                                        etapa.aguardandoVoce ||
+                                        souAdministrador
+                                      );
+
+                                    if (
+                                      !podeAgirNaEtapa ||
+                                      !etapa
+                                    ) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          disabled={processando}
+                                          title={
+                                            etapa && etapa.responsaveis.length > 0
+                                              ? `Aguardando: ${etapa.responsaveis.join(' · ')}`
+                                              : 'Ver a etapa atual do fluxo'
+                                          }
+                                          onClick={() => {
+                                            setAcaoEscolhida(
+                                              undefined
+                                            );
+                                            setVerEtapaDe(
+                                              treinamento
+                                            );
+                                          }}
+                                          style={{
+                                            ...botaoEditar,
+                                            whiteSpace: 'nowrap',
+                                            opacity: processando ? .6 : 1
+                                          }}
+                                        >
+                                          Ver etapa
+                                        </button>
+                                      );
+                                    }
+
+                                    return (
+                                      <div
+                                        style={{
+                                          display: 'flex',
+                                          gap: '6px',
+                                          flexWrap: 'wrap'
+                                        }}
+                                      >
+                                        {
+                                          etapa.acoes.map(
+                                            acao => (
+                                              <button
+                                                key={acao.chave}
+                                                type="button"
+                                                disabled={processando}
+                                                title={`${etapa.etapa}: ${acao.rotulo}`}
+                                                onClick={() => {
+                                                  setAcaoEscolhida({
+                                                    chave: acao.chave,
+                                                    rotulo: acao.rotulo
+                                                  });
+                                                  setVerEtapaDe(
+                                                    treinamento
+                                                  );
+                                                }}
+                                                style={{
+                                                  ...botaoEditar,
+                                                  whiteSpace: 'nowrap',
+                                                  background: acao.principal
+                                                    ? DGT.azul
+                                                    : '#FFFFFF',
+                                                  color: acao.principal
+                                                    ? '#FFFFFF'
+                                                    : DGT.azul,
+                                                  opacity: processando ? .6 : 1
+                                                }}
+                                              >
+                                                {acao.rotulo}
+                                              </button>
+                                            )
+                                          )
+                                        }
+                                      </div>
+                                    );
+                                  })()
+                                  : (
+                                    <button
+                                      type="button"
+                                      disabled={
+                                        processando
+                                      }
+                                      onClick={() =>
+                                        editarTreinamento(
+                                          treinamento
+                                        )
+                                      }
+                                      style={{
+                                        ...botaoEditar,
+                                        opacity: processando ? .6 : 1
+                                      }}
+                                    >
+                                      Editar
+                                    </button>
                                   )
-                                }
-                                style={{
-                                  ...botaoEditar,
-                                  opacity: processando ? .6 : 1
-                                }}
-                              >
-                                Editar
-                              </button>
+                              }
 
                               {props.onTestarTreinamento && (
                                 <button
@@ -1750,14 +2522,57 @@ const GestaoPage:
                                       ? [
                                         {
                                           rotulo:
-                                            controle.revisaoEmAndamento
-                                              ? `Abrir revisão ${controle.revisaoEmAndamento.revisao}`
-                                              : 'Revisar treinamento',
+                                            'Ver etapa do fluxo',
 
                                           titulo:
                                             controle.revisaoEmAndamento
-                                              ? `Abrir o documento ${controle.codigo} na etapa atual do fluxo`
-                                              : `Abrir o documento ${controle.codigo} para criar uma nova revisão, que seguirá o fluxo do processo`,
+                                              ? 'Onde o treinamento está no fluxo: etapa, responsável e prazo'
+                                              : 'Nenhuma revisão em andamento',
+
+                                          desabilitado:
+                                            !controle.revisaoEmAndamento,
+
+                                          onClick: () => {
+                                            setAcaoEscolhida(
+                                              undefined
+                                            );
+                                            setVerEtapaDe(
+                                              treinamento
+                                            );
+                                          }
+                                        },
+                                        {
+                                          rotulo:
+                                            'Editar treinamento',
+
+                                          titulo:
+                                            controle.revisaoEmAndamento
+                                              ? `Alterar dados, módulos e avaliação na ${controle.revisaoEmAndamento.revisao}`
+                                              : 'Abra uma nova revisão para alterar o treinamento',
+
+                                          onClick: () =>
+                                            editarTreinamento(
+                                              treinamento
+                                            )
+                                        }
+                                      ]
+                                      : []
+                                  ),
+
+                                  ...(
+                                    controleService &&
+                                    controle
+                                      ? [
+                                        {
+                                          rotulo:
+                                            controle.revisaoEmAndamento
+                                              ? 'Revisões do treinamento'
+                                              : 'Revisões / nova revisão',
+
+                                          titulo:
+                                            controle.revisaoEmAndamento
+                                              ? 'Ver a etapa atual do fluxo, responsáveis, prazo e histórico'
+                                              : 'Ver revisões e abrir uma nova revisão, que seguirá o fluxo do processo',
 
                                           onClick: () => {
                                             void abrirDocumentoControle(
@@ -2050,7 +2865,7 @@ const GestaoPage:
                       fontSize: '13px'
                     }}
                   >
-                    Depois de criar a revisão, volte aqui e use &quot;Editar&quot;.
+                    Na análise do treinamento, use &quot;Nova revisão&quot; e depois &quot;Editar conteúdo&quot;.
                   </p>
 
                   <div
@@ -2091,12 +2906,92 @@ const GestaoPage:
                           color: '#FFFFFF'
                         }}
                       >
-                        Abrir documento {controle.codigo}
+                        Abrir análise do treinamento
                       </button>
                     )}
                   </div>
                 </div>
               </div>
+            );
+          })()
+        }
+
+        {
+          verEtapaDe &&
+          controleDe(
+            verEtapaDe
+          ) &&
+          (() => {
+            const controleModal =
+              controleDe(
+                verEtapaDe
+              ) as IControleTreinamento;
+
+            return (
+              <EtapaFluxoTreinamentoModal
+                treinamento={
+                  verEtapaDe
+                }
+                controle={
+                  controleModal
+                }
+                etapa={
+                  etapaDe(
+                    verEtapaDe
+                  )
+                }
+                documento={
+                  (
+                    props.documentosControle ||
+                    []
+                  ).find(
+                    documento =>
+                      String(
+                        documento.id ||
+                        ''
+                      )
+                        .replace(
+                          /[{}]/g,
+                          ''
+                        )
+                        .toLowerCase() ===
+                      controleModal.documentoId
+                  )
+                }
+                contexto={
+                  props.contexto
+                }
+                dataverseService={
+                  props.dataverseService
+                }
+                sharePointDocumentoService={
+                  props.sharePointDocumentoService
+                }
+                acaoChave={
+                  acaoEscolhida
+                    ? acaoEscolhida.chave
+                    : undefined
+                }
+                acaoRotulo={
+                  acaoEscolhida
+                    ? acaoEscolhida.rotulo
+                    : undefined
+                }
+                onFechar={() => {
+                  setVerEtapaDe(
+                    undefined
+                  );
+                  setAcaoEscolhida(
+                    undefined
+                  );
+                }}
+                onAlterado={
+                  aoAlterarFluxo
+                }
+                onAbrirProcesso={
+                  props.onAbrirProcesso
+                }
+              />
             );
           })()
         }

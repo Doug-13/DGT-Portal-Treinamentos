@@ -1721,12 +1721,84 @@ const gestaoAreas =
         ]
       );
 
-    // abrirDocumentoPorId é declarado mais abaixo; o ref permite
-    // usá-lo no encerramento do assistente de criação.
-    const abrirDocumentoPorIdRef =
-      React.useRef<
-        ((documentoId: string) => Promise<boolean>) | undefined
-      >(undefined);
+    // Documentos de controle dos treinamentos (tipo TRN): ficam FORA
+    // do módulo Documentos — a gestão deles é feita na Gestão de
+    // treinamentos (fluxo de revisão, pendências e análise).
+    const ehDocumentoControle =
+      (
+        documento:
+          IDocumento
+      ): boolean =>
+        controleDocumentalHabilitado() &&
+        (documento.tipo || '').trim().toUpperCase() ===
+          CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO;
+
+    const documentosVisiveis =
+      React.useMemo(
+        () =>
+          documentos.filter(
+            documento =>
+              !ehDocumentoControle(
+                documento
+              )
+          ),
+        [
+          documentos
+        ]
+      );
+
+    const documentosControle =
+      React.useMemo(
+        () =>
+          documentos.filter(
+            ehDocumentoControle
+          ),
+        [
+          documentos
+        ]
+      );
+
+    const documentosAdministrativosVisiveis =
+      React.useMemo(
+        () =>
+          gestaoDocumentos.documentos.filter(
+            documento =>
+              !(
+                controleDocumentalHabilitado() &&
+                (documento.tipo || '').trim().toUpperCase() ===
+                  CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO
+              )
+          ),
+        [
+          gestaoDocumentos.documentos
+        ]
+      );
+
+    const recarregarDocumentos =
+      React.useCallback(
+        async (): Promise<void> => {
+          try {
+            setDocumentos(
+              await documentoService.getDocumentos()
+            );
+          } catch (error) {
+            console.error(
+              'Não foi possível recarregar os documentos:',
+              error
+            );
+          }
+        },
+        [
+          documentoService
+        ]
+      );
+
+    // Análise do treinamento a abrir ao entrar na Gestão.
+    const [
+      analiseTreinamentoId,
+      setAnaliseTreinamentoId
+    ] =
+      React.useState('');
 
     const salvarNovoTreinamento =
       React.useCallback(
@@ -2265,12 +2337,11 @@ const gestaoAreas =
             ''
           );
 
-          // Controle documental: o treinamento segue para o fluxo do
-          // processo (ex.: Elaboração → Revisão técnica → …). Abre o
-          // documento de controle para o autor enviar à próxima etapa.
+          // Controle documental: o treinamento segue o fluxo do processo
+          // de treinamentos DENTRO da Gestão de treinamentos. Abre a
+          // análise do treinamento para o autor concluir a 1ª etapa.
           if (
-            controleDocumentalService &&
-            abrirDocumentoPorIdRef.current
+            controleDocumentalService
           ) {
             try {
               const controle =
@@ -2283,20 +2354,17 @@ const gestaoAreas =
                 controle &&
                 !controle.vigente
               ) {
-                const abriu =
-                  await abrirDocumentoPorIdRef.current(
-                    controle.documentoId
-                  );
+                await recarregarDocumentos();
 
-                if (abriu) {
-                  window.alert(
-                    `Treinamento salvo. O documento ${controle.codigo} (${controle.revisaoEmAndamento ? controle.revisaoEmAndamento.revisao : CONTROLE_DOCUMENTAL.REVISAO_INICIAL}) ` +
-                    'foi aberto: conclua a etapa atual do fluxo para enviá-lo à revisão. ' +
-                    'O treinamento fica inativo até a publicação.'
-                  );
+                setAnaliseTreinamentoId(
+                  treinamentoId
+                );
 
-                  return;
-                }
+                window.alert(
+                  `Treinamento salvo em ${controle.revisaoEmAndamento ? controle.revisaoEmAndamento.revisao : CONTROLE_DOCUMENTAL.REVISAO_INICIAL}. ` +
+                  'Conclua a etapa atual do fluxo para enviá-lo à revisão. ' +
+                  'O treinamento fica inativo até a publicação.'
+                );
               }
             } catch (erroControle) {
               console.error(
@@ -2317,7 +2385,8 @@ const gestaoAreas =
         [
           controleDocumentalService,
           fluxoCriacaoTreinamentoId,
-          gestaoAvaliacoes.avaliacoes
+          gestaoAvaliacoes.avaliacoes,
+          recarregarDocumentos
         ]
       );
 
@@ -2813,9 +2882,6 @@ const gestaoAreas =
         },
         [documentoService, abrirDocumento]
       );
-
-    abrirDocumentoPorIdRef.current =
-      abrirDocumentoPorId;
 
     // ==========================================================
     // FLUXO DE APROVAÇÃO — tela de detalhe do documento
@@ -4021,7 +4087,25 @@ const gestaoAreas =
                 }
 
                 documentos={
-                  documentos
+                  documentosVisiveis
+                }
+
+                documentosControle={
+                  documentosControle
+                }
+
+                recarregarDocumentos={
+                  recarregarDocumentos
+                }
+
+                analiseTreinamentoId={
+                  analiseTreinamentoId
+                }
+
+                limparAnaliseTreinamento={() =>
+                  setAnaliseTreinamentoId(
+                    ''
+                  )
                 }
 
                 documentoSelecionado={
@@ -4800,7 +4884,7 @@ const gestaoAreas =
                 }
 
                 documentosAdministrativos={
-                  gestaoDocumentos.documentos
+                  documentosAdministrativosVisiveis
                 }
 
                 documentoAdministrativoSelecionado={

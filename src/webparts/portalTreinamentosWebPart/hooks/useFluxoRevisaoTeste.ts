@@ -48,6 +48,10 @@ import {
 } from '../services/RevisaoDocumentoAdminService';
 
 import {
+  ehAdministrador
+} from '../services/DocumentoVisibilidade';
+
+import {
   DocumentoHistoricoService
 } from '../services/DocumentoHistoricoService';
 
@@ -133,6 +137,11 @@ export type SituacaoFluxoRevisao =
 export interface IUseFluxoRevisaoTeste {
   // true = modo de teste (navegador + simulação).
   local: boolean;
+
+  // true = o usuário é Administrador do portal e NÃO é responsável
+  // pela etapa atual: pode executá-la mesmo assim (registrado no
+  // histórico como "Nome (Administrador)").
+  atuandoComoAdministrador: boolean;
 
   situacao: SituacaoFluxoRevisao;
   processando: boolean;
@@ -366,6 +375,37 @@ export const useFluxoRevisaoTeste = (
       [revisaoEmAndamento, documento, autorId]
     );
 
+  // Administrador agindo numa etapa da qual NÃO é responsável.
+  const atuandoComoAdministrador =
+    React.useMemo(
+      (): boolean => {
+
+        if (local || !definicao || !instancia || !ehAdministrador(contexto)) {
+          return false;
+        }
+
+        const pendente =
+          instancia.tarefas.find(item => item.status === 'pendente');
+
+        const elemento =
+          pendente
+            ? definicao.elementos.find(item => item.id === pendente.elementoId)
+            : undefined;
+
+        if (!elemento) {
+          return false;
+        }
+
+        const reais =
+          papeisDoUsuario(definicao, contexto, dadosResponsaveis, vinculosUsuarios);
+
+        return !elemento.responsaveis.some(
+          responsavel => reais.indexOf(responsavel.papelTeste) >= 0
+        );
+      },
+      [local, definicao, instancia, contexto, dadosResponsaveis, vinculosUsuarios]
+    );
+
   const atores: IAtorSimulado[] =
     React.useMemo(
       () => {
@@ -382,6 +422,35 @@ export const useFluxoRevisaoTeste = (
             definicao
               ? papeisDoUsuario(definicao, contexto, dadosResponsaveis, vinculosUsuarios)
               : [];
+
+          // Administrador do portal: pode executar QUALQUER etapa do
+          // fluxo. Quando age numa etapa da qual não é responsável, o
+          // nome vai ao histórico como "Nome (Administrador)".
+          if (
+            ehAdministrador(contexto) &&
+            definicao
+          ) {
+            const todos =
+              papeisDaDefinicao(definicao)
+                .map(papel => papel.papelTeste);
+
+            return [
+              {
+                chave: 'eu',
+                rotulo: nomeReal,
+                descricao: '',
+                ator: {
+                  id: contexto?.usuarioId || '',
+                  nome: atuandoComoAdministrador
+                    ? `${nomeReal} (Administrador)`
+                    : nomeReal,
+                  papeisTeste: papeis.concat(
+                    todos.filter(papel => papeis.indexOf(papel) < 0)
+                  )
+                }
+              }
+            ];
+          }
 
           return [
             {
@@ -434,7 +503,7 @@ export const useFluxoRevisaoTeste = (
           )
         ];
       },
-      [contexto, definicao, dadosResponsaveis, vinculosUsuarios, local]
+      [contexto, definicao, dadosResponsaveis, vinculosUsuarios, local, atuandoComoAdministrador]
     );
 
   const atorSelecionado =
@@ -962,6 +1031,7 @@ export const useFluxoRevisaoTeste = (
     instancia,
     atores,
     atorSelecionado,
+    atuandoComoAdministrador,
     responsaveisEtapaAtual,
     selecionarAtor: (chave: string) => {
       setAtorChave(chave);

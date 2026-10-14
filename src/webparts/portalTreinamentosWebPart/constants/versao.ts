@@ -21,9 +21,9 @@ export const VERSAO_PORTAL = "1.4.4";
 
 export const VERSAO_SOLUCAO = "1.4.4.0";
 
-export const DATA_BUILD = "2026-10-14T11:38:44.654Z";
+export const DATA_BUILD = "2026-10-14T14:23:18.183Z";
 
-export const COMMIT_BUILD = "25b84de";
+export const COMMIT_BUILD = "2ae78f7";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {
@@ -473,4 +473,45 @@ export const NOVIDADES: INovidadeVersao[] = [
 ];
 
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
-export const NOVIDADES_PENDENTES: INovidadeItem[] = [];
+export const NOVIDADES_PENDENTES: INovidadeItem[] = [
+  {
+    "tipo": "Novo",
+    "texto": "na Gestão de treinamentos, os treinamentos sob controle documental trocam o botão \"Editar\" pelos botões da etapa atual do fluxo (ex.: \"Enviar para Avaliação\"); ao clicar, abre uma janela com as informações do treinamento, a etapa, os campos e a confirmação da ação. Sem revisão em andamento aparece \"Nova revisão\"; para quem não é responsável, \"Ver etapa\"."
+  },
+  {
+    "tipo": "Melhoria",
+    "texto": "o assistente de edição do treinamento volta ao formato anterior, sem o fluxo de revisão."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "a etapa do fluxo do treinamento mostra o resumo do que está sendo elaborado (dados do cadastro, módulos e avaliação), com avisos do que falta e atalhos para editar e testar."
+  },
+  {
+    "tipo": "Correção",
+    "texto": "\"Ver etapa do fluxo\" e \"Revisões do treinamento\" não mostravam os botões da etapa atual; agora mostram a etapa com as ações, e o desenho do fluxo abre sob demanda."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "o Administrador do portal pode executar qualquer etapa do fluxo de revisão, mesmo sem ser o responsável; a tela avisa e o histórico registra a ação como \"Nome (Administrador)\"."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "na lista da Gestão de treinamentos, os treinamentos com etapa aguardando o usuário ficam destacados e no topo, com filtro \"Aguardando você\"; a coluna Status mostra revisão, etapa, responsável e prazo vencido."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "\"Ver etapa do fluxo\" no menu ⋮ mostra onde o treinamento está no fluxo (etapa, responsável, prazo, desenho do fluxo) e permite ao responsável concluir a etapa."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "\"Análise do treinamento\" dentro da Gestão, com etapa atual, conclusão da etapa, anexo de arquivo, nova revisão, edição e teste do conteúdo e lista de revisões."
+  },
+  {
+    "tipo": "Melhoria",
+    "texto": "os documentos de controle dos treinamentos (tipo TRN) não aparecem mais no módulo Documentos; a gestão deles fica toda na Gestão de treinamentos."
+  },
+  {
+    "tipo": "Melhoria",
+    "texto": "ao concluir o assistente de criação, o treinamento abre na análise, na etapa atual do fluxo."
+  }
+];

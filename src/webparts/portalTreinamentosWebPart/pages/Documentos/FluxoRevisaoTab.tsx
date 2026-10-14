@@ -79,6 +79,14 @@ export interface IFluxoRevisaoTabProps {
   // Abre a aba com o fluxo completo (desenho e histórico).
   onVerFluxoCompleto?: () => void;
 
+  // Com "compacto": sem moldura nem barra escura, para ficar dentro
+  // de outro card (ex.: o card do treinamento no assistente).
+  embutido?: boolean;
+
+  // Mostra só esta ação da etapa (chave). Usado quando a ação foi
+  // escolhida fora daqui (ex.: botão na lista de treinamentos).
+  somenteAcao?: string;
+
   // Anexa/substitui o arquivo da revisão em andamento, nas etapas
   // com "Arquivo da revisão" = Opcional/Obrigatório. Sem ele, a
   // etapa mostra o arquivo atual, mas não permite anexar.
@@ -188,6 +196,8 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   onRevisaoAlterada,
   compacto = false,
   onVerFluxoCompleto,
+  embutido = false,
+  somenteAcao,
   onAnexarArquivo,
   erroAnexo
 }) => {
@@ -1103,8 +1113,14 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
           teste (simulação), em que as ações são feitas aqui.
         */}
         {(compacto || fluxo.local) && (
-        <section style={estiloCartao}>
-          <div style={{ ...estiloBarraSecao, display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <section style={embutido ? { background: 'transparent' } : estiloCartao}>
+          <div
+            style={
+              embutido
+                ? { display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', color: COR_AZUL, fontWeight: 700, fontSize: '13px', letterSpacing: '.04em', textTransform: 'uppercase', paddingBottom: '8px', borderBottom: `2px solid ${COR_BORDA}` }
+                : { ...estiloBarraSecao, display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }
+            }
+          >
             <span>
               {concluido ? (fluxo.local ? 'Resultado (simulado)' : 'Revisão concluída') : `Etapa atual — ${elementoAtual?.nome || '-'}`}
               {compacto && ` · Fluxo ${definicao.nome} v${instancia.fluxoVersao}`}
@@ -1119,9 +1135,9 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                     minHeight: '30px',
                     padding: '0 12px',
                     borderRadius: '6px',
-                    border: '1px solid rgba(255,255,255,.6)',
+                    border: embutido ? `1px solid ${COR_AZUL}` : '1px solid rgba(255,255,255,.6)',
                     background: 'transparent',
-                    color: '#FFFFFF',
+                    color: embutido ? COR_AZUL : '#FFFFFF',
                     fontWeight: 700,
                     fontSize: '12px',
                     letterSpacing: 0,
@@ -1138,7 +1154,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
           {
             concluido
               ? (
-                <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ padding: embutido ? '14px 0 0' : '18px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ fontSize: '17px', fontWeight: 700 }}>
                     Fluxo concluído em {formatarDataHora(instancia.concluidoEm)}
                   </div>
@@ -1162,7 +1178,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                 </div>
               )
               : elementoAtual && (
-                <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ padding: embutido ? '14px 0 0' : '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
                     <div>
@@ -1189,6 +1205,27 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                     elementoAtual.instrucoes && (
                       <div style={{ background: '#EDF0F5', borderRadius: '6px', padding: '10px 12px', fontSize: '13.5px' }}>
                         <strong>Instruções:</strong> {elementoAtual.instrucoes}
+                      </div>
+                    )
+                  }
+
+                  {
+                    podeAgir &&
+                    fluxo.atuandoComoAdministrador && (
+                      <div
+                        style={{
+                          border: '1px solid #B45309',
+                          background: '#FFF4E5',
+                          color: '#7C2D12',
+                          borderRadius: '6px',
+                          padding: '10px 12px',
+                          fontSize: '13.5px'
+                        }}
+                      >
+                        <strong>Ação como Administrador.</strong>{' '}
+                        Você não é o responsável por “{elementoAtual.nome}”
+                        {fluxo.responsaveisEtapaAtual.length > 0 ? ` (responsável: ${fluxo.responsaveisEtapaAtual.join(' · ')})` : ''},
+                        mas pode executá-la. A ação fica registrada no histórico com seu nome e a indicação “(Administrador)”.
                       </div>
                     )
                   }
@@ -1345,7 +1382,9 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     {
                       (podeAgir || fluxo.local) &&
-                      elementoAtual.acoes.map(
+                      elementoAtual.acoes
+                        .filter(acao => !somenteAcao || acao.chave === somenteAcao || !elementoAtual.acoes.some(item => item.chave === somenteAcao))
+                        .map(
                         acao => {
                           // "Exige o arquivo": bloqueia as ações que não
                           // dispensam os campos (ex.: libera "Reprovar").
