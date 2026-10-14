@@ -21,9 +21,9 @@ export const VERSAO_PORTAL = "1.4.5";
 
 export const VERSAO_SOLUCAO = "1.4.5.0";
 
-export const DATA_BUILD = "2026-10-14T16:34:11.460Z";
+export const DATA_BUILD = "2026-10-14T20:24:35.337Z";
 
-export const COMMIT_BUILD = "229842b";
+export const COMMIT_BUILD = "75db3f1";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {
@@ -474,6 +474,14 @@ export const NOVIDADES: INovidadeVersao[] = [
 
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
 export const NOVIDADES_PENDENTES: INovidadeItem[] = [
+  {
+    "tipo": "Novo",
+    "texto": "Arquitetura de Soluções — etapa 3 \"Seleção de kit\" (montador de B.O.M.). Informando pontos (Torre, Box, Mini, porta eletroduto/dutotec, catraca), câmeras/leitoras, pontos iguais e soluções (Safe City ou Digifort, Smart Detect, Face Detect, Safe Way por faixa, IPX, W-Access), o portal monta a lista com código CIGAM e quantidade, com validações (limites de câmeras, Box sem OCR, orçamento PoE com margem de 25%, servidores do Digifort, itens sem código). Modelo de câmera, switch e controlador entram com o padrão e são editáveis; a troca de switch recalcula as fontes. Lista consolidada ou por ponto e download em CSV. Requer scripts/dataverse/criar-coluna-selecao-kit.ps1."
+  },
+  {
+    "tipo": "Novo",
+    "texto": "etapa 4 \"Cálculo de HH\" sinalizada como aguardando as planilhas de HH, com o resumo do kit."
+  },
   {
     "tipo": "Correção",
     "texto": "na Visão geral de Treinamentos, os cartões Concluídos, Em andamento, Pendentes e Vencido passam a filtrar \"Meus treinamentos\" (mostrando todos os do cartão; clicar de novo limpa); Trilhas abre a aba Trilhas. \"Pendentes\" agora indica \"a fazer\" (disponíveis e reprovados)."

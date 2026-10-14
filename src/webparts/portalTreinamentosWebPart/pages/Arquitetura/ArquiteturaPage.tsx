@@ -30,6 +30,13 @@ import DadosDemandaEtapa, {
 
 import MatrizGoNoGoEtapa from './MatrizGoNoGoEtapa';
 
+import SelecaoKitEtapa from './SelecaoKitEtapa';
+
+import {
+  ISelecaoKit,
+  montarBom
+} from '../../services/bom/montadorBom';
+
 import {
   COR,
   DECISAO,
@@ -47,10 +54,11 @@ import {
 // ============================================================
 // ARQUITETURA DE SOLUÇÕES — "Da demanda ao B.O.M. pronto"
 //
-// Fase 1 (esta): Visão geral dos B.O.M., Novo B.O.M., etapa 1
-// (Dados da demanda) e etapa 2 (Matriz Go/No-Go).
-// Etapas 3 a 5 (Seleção de kit, Cálculo de HH e B.O.M. pronto)
-// aparecem no indicador de progresso como "em definição".
+// Fase 1: Visão geral dos B.O.M., Novo B.O.M., etapa 1 (Dados da
+// demanda) e etapa 2 (Matriz Go/No-Go).
+// Fase 2: etapa 3 (Seleção de kit — montador de B.O.M.).
+// Etapa 4 (Cálculo de HH): aguardando as planilhas de HH.
+// Etapa 5 (B.O.M. pronto): em definição.
 // ============================================================
 
 export interface IArquiteturaPageProps {
@@ -165,13 +173,27 @@ const IconeX: React.FC = () => (
   </svg>
 );
 
+type AbaBom = 'demanda' | 'gonogo' | 'kit' | 'hh';
+
+const ABA_DO_PASSO: Record<number, AbaBom> = { 1: 'demanda', 2: 'gonogo', 3: 'kit', 4: 'hh' };
+
+// Etapa em que o B.O.M. está → aba que abre.
+const abaDaEtapa = (etapa: EtapaBom): AbaBom =>
+  etapa === 'Dados da demanda'
+    ? 'demanda'
+    : etapa === 'Go/No-Go pendente' || etapa === 'Bloqueado no Go/No-Go'
+      ? 'gonogo'
+      : etapa === 'Seleção de kit'
+        ? 'kit'
+        : 'hh';
+
 const CabecalhoBom: React.FC<{
   bom: IBomRegistro;
   demanda: IDemandaBom;
   etapa: EtapaBom;
   ultima: IAnaliseGoNoGo | undefined;
-  aba: 'demanda' | 'gonogo';
-  onAba: (aba: 'demanda' | 'gonogo') => void;
+  aba: AbaBom;
+  onAba: (aba: AbaBom) => void;
   onVoltar: () => void;
 }> = ({ bom, demanda, etapa, ultima, aba, onAba, onVoltar }) => {
 
@@ -203,6 +225,12 @@ const CabecalhoBom: React.FC<{
         return `${DECISAO[ultima.decisao].texto} · ${formatarNumero(ultima.pontuacao)} pts`;
       }
       return atual >= 2 ? 'Análise pendente' : 'Aguardando a demanda';
+    }
+    if (passo === 3) {
+      return atual > 3 ? 'Concluída' : atual === 3 ? 'Em montagem' : 'Aguardando o Go/No-Go';
+    }
+    if (passo === 4) {
+      return atual >= 4 ? 'Aguardando planilhas de HH' : 'Aguardando o kit';
     }
     return atual > passo ? 'Concluída' : 'Em definição';
   };
@@ -266,8 +294,12 @@ const CabecalhoBom: React.FC<{
             const concluido = atual > item.passo;
             const corrente = atual === item.passo || (item.passo === 5 && atual > 5);
             const travado = bloqueado && item.passo === 2;
-            const clicavel = item.passo <= 2 && (item.passo === 1 || atual >= 2);
-            const selecionado = (item.passo === 1 && aba === 'demanda') || (item.passo === 2 && aba === 'gonogo');
+            const clicavel =
+              item.passo === 1 ||
+              (item.passo === 2 && atual >= 2) ||
+              (item.passo === 3 && atual >= 3 && !bloqueado) ||
+              (item.passo === 4 && atual >= 4);
+            const selecionado = ABA_DO_PASSO[item.passo] === aba;
 
             const corMarcador =
               travado ? ESCURO.vermelho
@@ -282,8 +314,8 @@ const CabecalhoBom: React.FC<{
                 <button
                   type="button"
                   disabled={!clicavel}
-                  onClick={() => onAba(item.passo === 1 ? 'demanda' : 'gonogo')}
-                  title={item.passo >= 3 ? 'Etapa em definição — será construída numa próxima fase.' : undefined}
+                  onClick={() => onAba(ABA_DO_PASSO[item.passo])}
+                  title={item.passo === 5 ? 'Etapa em definição — será construída numa próxima fase.' : item.passo === 4 ? 'Aguardando as planilhas de HH.' : undefined}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -442,7 +474,12 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
   const [novoAberto, setNovoAberto] = React.useState<boolean>(false);
 
   const [bomId, setBomId] = React.useState<string>('');
-  const [aba, setAba] = React.useState<'demanda' | 'gonogo'>('demanda');
+  const [aba, setAba] = React.useState<AbaBom>('demanda');
+
+  // Etapa 3 — seleção de kit do B.O.M. aberto.
+  const [selecaoKit, setSelecaoKit] = React.useState<ISelecaoKit | undefined>(undefined);
+  const [kitSemColuna, setKitSemColuna] = React.useState(false);
+  const [kitCarregado, setKitCarregado] = React.useState('');
   const [analises, setAnalises] = React.useState<IAnaliseGoNoGo[]>([]);
 
   const avisar = (texto: string): void => {
@@ -500,10 +537,24 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
       ? etapaCalculada(visao.demandas.find(d => d.id === item.demandaId), visao.ultimaAnalise[item.demandaId], item.etapa)
       : item.etapa;
 
+  // Carrega a seleção de kit ao abrir a etapa 3 ou 4.
+  React.useEffect(() => {
+    if (!servico || !bomId || (aba !== 'kit' && aba !== 'hh') || kitCarregado === bomId) {
+      return;
+    }
+    servico.lerSelecaoKit(bomId)
+      .then(lida => {
+        setKitSemColuna(lida === 'semColuna');
+        setSelecaoKit(lida && lida !== 'semColuna' ? lida : undefined);
+        setKitCarregado(bomId);
+      })
+      .catch(error => setErro((error as Error).message));
+  }, [servico, bomId, aba, kitCarregado]);
+
   const abrirBom = (item: IBomRegistro): void => {
     setBomId(item.id);
     const etapa = etapaDe(item);
-    setAba(etapa === 'Dados da demanda' ? 'demanda' : 'gonogo');
+    setAba(abaDaEtapa(etapa));
     window.scrollTo(0, 0);
   };
 
@@ -611,14 +662,73 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                   {
                     ultima && ultima.liberaKit && (
                       <div style={{ ...cartao, background: '#E8F2FF', borderColor: '#0F6CBD', fontSize: '13px', color: COR.azul }}>
-                        <strong>Seleção de kit liberada.</strong> A etapa 3 (Seleção de kit) está em definição e será construída na próxima fase,
-                        junto com o Cálculo de HH. Este B.O.M. fica na etapa <strong>Seleção de kit</strong> até lá.
+                        <strong>Seleção de kit liberada.</strong> Monte os pontos e as soluções do projeto na etapa 3.
+                        <div style={{ marginTop: '8px' }}>
+                          <button type="button" style={botao('principal')} onClick={() => { setAba('kit'); window.scrollTo(0, 0); }}>Ir para a Seleção de kit →</button>
+                        </div>
                       </div>
                     )
                   }
                 </>
               )
           )
+        }
+
+        {
+          aba === 'kit' && (
+            kitCarregado !== bom.id
+              ? <div style={{ ...cartao, color: COR.texto2 }}>Carregando a seleção de kit...</div>
+              : (
+                <SelecaoKitEtapa
+                  selecaoInicial={selecaoKit}
+                  semColuna={kitSemColuna}
+                  canal={demanda.canal}
+                  salvando={salvando}
+                  somenteLeitura={etapa === 'Enviado para aprovação'}
+                  onSalvar={async (selecao, concluir) => {
+                    await executar(async () => {
+                      await servico.salvarSelecaoKit(bom.id, selecao, contexto && contexto.nome ? contexto.nome : '');
+                      setSelecaoKit(selecao);
+                      if (concluir && ETAPAS[etapa].passo <= 3) {
+                        await servico.atualizarEtapa(bom.id, 'Cálculo de HH');
+                      }
+                    }, concluir ? 'Seleção de kit concluída.' : 'Seleção de kit salva.');
+                    if (concluir) {
+                      setAba('hh');
+                      window.scrollTo(0, 0);
+                    }
+                  }}
+                />
+              )
+          )
+        }
+
+        {
+          aba === 'hh' && (() => {
+            const resumoKit = selecaoKit ? montarBom(selecaoKit) : undefined;
+            return (
+              <div style={cartao}>
+                <h3 style={{ margin: '0 0 6px', color: COR.azul }}>⏳ Cálculo de HH — aguardando as planilhas de HH</h3>
+                <p style={{ fontSize: '13px', color: COR.texto2, margin: '0 0 10px' }}>
+                  A Seleção de kit está definida. O cálculo de HH (homem-hora) será construído quando as planilhas de HH
+                  de implantação estiverem disponíveis — hoje há apenas a planilha de <strong>suporte</strong>.
+                </p>
+                {resumoKit && (
+                  <div style={{ fontSize: '13px', color: COR.azul, background: COR.fundo, borderRadius: '8px', padding: '10px 12px', marginBottom: '10px' }}>
+                    Kit deste B.O.M.: <strong>{resumoKit.totais.pontos}</strong> ponto(s) ·{' '}
+                    <strong>{resumoKit.totais.camerasVideo}</strong> câmera(s) de vídeo ·{' '}
+                    <strong>{resumoKit.totais.camerasOcr}</strong> OCR/LPR ·{' '}
+                    <strong>{resumoKit.totais.leitoras}</strong> leitora(s) ·{' '}
+                    <strong>{resumoKit.itens.length}</strong> itens na lista
+                    {resumoKit.itens.some(i => i.pendente) ? ' · há itens sem código CIGAM' : ''}
+                  </div>
+                )}
+                <button type="button" style={botao('secundario')} onClick={() => { setAba('kit'); window.scrollTo(0, 0); }}>
+                  ← Ver / ajustar a Seleção de kit
+                </button>
+              </div>
+            );
+          })()
         }
       </section>
     );
@@ -799,7 +909,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
 
       <p style={{ fontSize: '12px', color: COR.texto2 }}>
         Etapas: 1 · Dados da demanda · 2 · Matriz Go/No-Go · 3 · Seleção de kit · 4 · Cálculo de HH · 5 · B.O.M. pronto
-        (as etapas 3 a 5 estão em definição).
+        (a etapa 4 aguarda as planilhas de HH; a 5 está em definição).
       </p>
 
       {

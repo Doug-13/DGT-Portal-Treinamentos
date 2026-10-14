@@ -5,8 +5,9 @@
 // script scripts/dataverse/criar-tabelas-bom.ps1. Os dois DEVEM
 // continuar iguais.
 //
-// Fase 1: Dados da demanda e Matriz Go/No-Go. Seleção de kit e
-// Cálculo de HH entram numa fase seguinte.
+// Fase 1: Dados da demanda e Matriz Go/No-Go.
+// Fase 2: Seleção de kit (montador de B.O.M.).
+// Cálculo de HH: aguardando as planilhas de HH.
 // ============================================================
 
 export const TABELAS_BOM = {
@@ -62,7 +63,10 @@ export const BOM = {
   responsavel: 'dgt_bom_responsavel',
   etapa: 'dgt_bom_etapa',
   dataEnvio: 'dgt_bom_dataenvio',
-  ativo: 'dgt_bom_ativo'
+  ativo: 'dgt_bom_ativo',
+  // Etapa 3 — Seleção de kit (JSON: pontos + softwares).
+  // Coluna criada por scripts/dataverse/criar-coluna-selecao-kit.ps1.
+  selecaoKit: 'dgt_bom_selecaokit'
 };
 
 export const CRITERIO = {

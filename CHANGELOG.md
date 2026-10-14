@@ -6,6 +6,9 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: Arquitetura de Soluções — etapa 3 "Seleção de kit" (montador de B.O.M.). Informando pontos (Torre, Box, Mini, porta eletroduto/dutotec, catraca), câmeras/leitoras, pontos iguais e soluções (Safe City ou Digifort, Smart Detect, Face Detect, Safe Way por faixa, IPX, W-Access), o portal monta a lista com código CIGAM e quantidade, com validações (limites de câmeras, Box sem OCR, orçamento PoE com margem de 25%, servidores do Digifort, itens sem código). Modelo de câmera, switch e controlador entram com o padrão e são editáveis; a troca de switch recalcula as fontes. Lista consolidada ou por ponto e download em CSV. Requer scripts/dataverse/criar-coluna-selecao-kit.ps1.
+- Novo: etapa 4 "Cálculo de HH" sinalizada como aguardando as planilhas de HH, com o resumo do kit.
+
 - Correção: na Visão geral de Treinamentos, os cartões Concluídos, Em andamento, Pendentes e Vencido passam a filtrar "Meus treinamentos" (mostrando todos os do cartão; clicar de novo limpa); Trilhas abre a aba Trilhas. "Pendentes" agora indica "a fazer" (disponíveis e reprovados).
 
 - Novo: módulo "RH e Pessoas" no menu, com os certificados e validades de todos os colaboradores, certificados externos e foto do Microsoft 365. Liberado pelo módulo "RH e Pessoas" em Usuários e acessos (padrão: Administrador). Requer scripts/dataverse/criar-tabela-certificados-externos.ps1.
