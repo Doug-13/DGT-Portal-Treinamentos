@@ -227,11 +227,19 @@ import {
 import IndicadoresPage from
   '../pages/Indicadores/IndicadoresPage';
 
+import RhPessoasPage from
+  '../pages/RH/RhPessoasPage';
+
+import {
+  SPHttpClient
+} from '@microsoft/sp-http';
+
 import LicitacoesBuscaPage from
   '../pages/Licitacoes/LicitacoesBuscaPage';
 
 import {
-  areaNoEscopo
+  areaNoEscopo,
+  noEscopoDeConteudo
 } from '../utils/regrasAcesso';
 
 import UsuariosAcessosPage from
@@ -875,6 +883,21 @@ export interface IPortalRouterProps {
   // DOCUMENTOS
   // ============================================================
 
+  // Documentos de controle dos treinamentos (tipo TRN): ficam fora
+  // do módulo Documentos e são geridos na Gestão de treinamentos.
+  documentosControle?:
+    IDocumento[];
+
+  recarregarDocumentos?:
+    () => Promise<void>;
+
+  // Treinamento cuja análise abre ao entrar na Gestão.
+  analiseTreinamentoId?:
+    string;
+
+  limparAnaliseTreinamento?:
+    () => void;
+
   documentos:
   IDocumento[];
 
@@ -927,6 +950,13 @@ export interface IPortalRouterProps {
   // Também usado pelo teste de conexão do painel de diagnóstico.
   dataverseService?:
   DataverseService;
+
+  // RH e Pessoas: leitura da biblioteca Certificados (PDFs).
+  spHttpClient?:
+  SPHttpClient;
+
+  siteUrl?:
+  string;
 
   // Diagnóstico de acesso: e-mail do usuário logado e recarga das
   // permissões depois de o administrador corrigir o problema.
@@ -1225,6 +1255,7 @@ const PortalRouter:
         />
       );
     }
+    const renderizarPagina = (): React.ReactElement | null => {
     switch (
     props.pagina
     ) {
@@ -2133,6 +2164,50 @@ const PortalRouter:
               props.contextoAcesso?.nome
             }
 
+            // Controle documental: autor das revisões criadas pela
+            // Gestão e abertura do documento de controle do treinamento.
+            usuarioId={
+              props.contextoAcesso?.usuarioId
+            }
+
+            onAbrirDocumento={
+              props.abrirDocumentoPorId
+            }
+
+            // Fluxo de revisão dos treinamentos dentro da Gestão.
+            documentosControle={
+              props.documentosControle
+            }
+
+            onRecarregarDocumentos={
+              props.recarregarDocumentos
+            }
+
+            contexto={
+              props.contextoAcesso
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
+            sharePointDocumentoService={
+              props.sharePointDocumentoService
+            }
+
+            onAbrirProcesso={processoId => {
+              solicitarAberturaProcesso(processoId);
+              props.navegar('processos');
+            }}
+
+            analiseInicialTreinamentoId={
+              props.analiseTreinamentoId
+            }
+
+            onAnaliseInicialAberta={
+              props.limparAnaliseTreinamento
+            }
+
             onTestarTreinamento={
               podeAcessarRota(
                 'testeTreinamento',
@@ -2267,8 +2342,15 @@ const PortalRouter:
             // (ou entre dois treinamentos): nenhum dado anterior fica.
             key={props.fluxoCriacaoTreinamentoId || 'novo-treinamento'}
 
+            // Editor por área só cria treinamentos nas áreas dele.
             areas={
-              props.areasAdministrativas
+              props.areasAdministrativas.filter(
+                area =>
+                  noEscopoDeConteudo(
+                    props.contextoAcesso?.areasConteudo,
+                    area.id
+                  )
+              )
             }
 
             treinamentoExistente={
@@ -3057,6 +3139,25 @@ const PortalRouter:
           />
 
         );
+      case 'rhPessoas':
+
+        return (
+          <RhPessoasPage
+            dataverseService={
+              props.dataverseService
+            }
+            spHttpClient={
+              props.spHttpClient
+            }
+            siteUrl={
+              props.siteUrl
+            }
+            usuarioNome={
+              props.contextoAcesso?.nome
+            }
+          />
+        );
+
       case 'indicadores':
 
         return (
@@ -3184,6 +3285,13 @@ const PortalRouter:
         );
     }
 
+    return null;
+    };
+
+    const conteudo =
+      renderizarPagina();
+
+    return conteudo;
   };
 
 export default PortalRouter;

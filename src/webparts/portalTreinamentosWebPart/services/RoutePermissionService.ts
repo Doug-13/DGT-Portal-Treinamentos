@@ -75,11 +75,14 @@ const LICITACOES: PerfilAcesso[] = [
   'Administrador'
 ];
 
-// Planejamento orçamentário: Gestor (global ou de alguma área) e
-// Administrador. Cada gestor vê só a própria planilha; o
-// Administrador vê todas (regra aplicada na página e nas Security
-// Roles das tabelas dgt_orcamentoplanilha / dgt_orcamentolinha).
+// Planejamento orçamentário: quem decide é o MÓDULO "orcamento"
+// (Usuários e acessos > Módulos liberados). Padrão para o perfil
+// Gestor; Administrador sempre; demais só com o módulo liberado.
+// A proteção dos dados está nas Security Roles e nas equipes por
+// área (scripts/dataverse/sincronizar-equipes-orcamento.ps1).
 const ORCAMENTO: PerfilAcesso[] = [
+  'Funcionario',
+  'Editor',
   'Gestor',
   'Administrador'
 ];
@@ -114,6 +117,10 @@ const regras:
     // Indicadores: a entrada é controlada pelo MÓDULO (Usuários e
     // acessos). O que cada perfil vê lá dentro é tratado na página.
     { rota: 'indicadores', perfis: TODOS },
+
+    // RH e Pessoas: a entrada é controlada pelo MÓDULO "RH e Pessoas"
+    // (Usuários e acessos). Padrão: só Administrador.
+    { rota: 'rhPessoas', perfis: TODOS },
 
     // Cadastro de documentos: quem mantém conteúdo (Editor e
     // Administrador). O Gestor aprova, não cria.

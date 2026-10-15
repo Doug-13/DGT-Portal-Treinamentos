@@ -35,7 +35,7 @@ import PortalRouter from './PortalRouter';
 import { Pagina } from '../constants/routes';
 import { descreverPerfil, podeAdministrarAcessos } from '../services/AutorizacaoService';
 import { calcularResumoConformidade } from '../services/ConformidadeService';
-import { montarEscopoPessoas, pessoaNoEscopo } from '../utils/regrasAcesso';
+import { montarEscopoPessoas, noEscopoDeConteudo, pessoaNoEscopo } from '../utils/regrasAcesso';
 import { podeAcessarRota } from '../services/RoutePermissionService';
 import {
   obterModuloPagina,
@@ -89,6 +89,8 @@ import { obterMenuTreinamento, obterMenuDocumentos, obterMenuLicitacoes, obterMe
 import { IModuloImportJson, ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
 import { SharePointDocumentoService } from '../services/sharepoint/SharePointDocumentoService';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
+import { TreinamentoDocumentoControleService } from '../services/TreinamentoDocumentoControleService';
+import { CONTROLE_DOCUMENTAL, controleDocumentalHabilitado } from '../constants/controleDocumental';
 
 type DataverseRecord =
   IDataverseRecord;
@@ -1703,6 +1705,120 @@ const gestaoAreas =
     // SALVAR NOVO TREINAMENTO
     // ==========================================================
 
+    // Controle documental: cada treinamento é controlado por um
+    // documento (mesmo código, tipo TRN) que segue o fluxo do processo
+    // de treinamentos. Ver constants/controleDocumental.ts.
+    const controleDocumentalService =
+      React.useMemo(
+        () =>
+          controleDocumentalHabilitado()
+            ? new TreinamentoDocumentoControleService(
+              dataverseService
+            )
+            : undefined,
+        [
+          dataverseService
+        ]
+      );
+
+    // Editor por área só vê (e mantém) os treinamentos das áreas em
+    // que é Editor. Admin/Editor global: todos. (Memorizado: evita
+    // recarregar as telas que dependem da lista a cada render.)
+    const treinamentosNoEscopo =
+      React.useMemo(
+        () =>
+          gestaoTreinamentos.treinamentos.filter(
+            treinamento =>
+              noEscopoDeConteudo(
+                autorizacao.contexto?.areasConteudo,
+                treinamento.areaId
+              )
+          ),
+        [
+          gestaoTreinamentos.treinamentos,
+          autorizacao.contexto
+        ]
+      );
+
+    // Documentos de controle dos treinamentos (tipo TRN): ficam FORA
+    // do módulo Documentos — a gestão deles é feita na Gestão de
+    // treinamentos (fluxo de revisão, pendências e análise).
+    const ehDocumentoControle =
+      (
+        documento:
+          IDocumento
+      ): boolean =>
+        controleDocumentalHabilitado() &&
+        (documento.tipo || '').trim().toUpperCase() ===
+          CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO;
+
+    const documentosVisiveis =
+      React.useMemo(
+        () =>
+          documentos.filter(
+            documento =>
+              !ehDocumentoControle(
+                documento
+              )
+          ),
+        [
+          documentos
+        ]
+      );
+
+    const documentosControle =
+      React.useMemo(
+        () =>
+          documentos.filter(
+            ehDocumentoControle
+          ),
+        [
+          documentos
+        ]
+      );
+
+    const documentosAdministrativosVisiveis =
+      React.useMemo(
+        () =>
+          gestaoDocumentos.documentos.filter(
+            documento =>
+              !(
+                controleDocumentalHabilitado() &&
+                (documento.tipo || '').trim().toUpperCase() ===
+                  CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO
+              )
+          ),
+        [
+          gestaoDocumentos.documentos
+        ]
+      );
+
+    const recarregarDocumentos =
+      React.useCallback(
+        async (): Promise<void> => {
+          try {
+            setDocumentos(
+              await documentoService.getDocumentos()
+            );
+          } catch (error) {
+            console.error(
+              'Não foi possível recarregar os documentos:',
+              error
+            );
+          }
+        },
+        [
+          documentoService
+        ]
+      );
+
+    // Análise do treinamento a abrir ao entrar na Gestão.
+    const [
+      analiseTreinamentoId,
+      setAnaliseTreinamentoId
+    ] =
+      React.useState('');
+
     const salvarNovoTreinamento =
       React.useCallback(
         async (
@@ -1712,12 +1828,19 @@ const gestaoAreas =
 
           // ======================================================
           // 1. CRIAR TREINAMENTO
+          //    Com controle documental, o treinamento nasce INATIVO:
+          //    só fica ativo quando o fluxo publicar a revisão.
           // ======================================================
 
           const treinamentoCriado =
             await gestaoTreinamentos
               .criar(
-                dados
+                controleDocumentalService
+                  ? {
+                    ...dados,
+                    ativo: false
+                  }
+                  : dados
               );
 
           if (
@@ -1728,6 +1851,55 @@ const gestaoAreas =
             throw new Error(
               'O treinamento foi criado, mas não foi possível identificar o registro criado.'
             );
+          }
+
+          // ======================================================
+          // 1.1 DOCUMENTO DE CONTROLE (Rev.00A em Elaboração,
+          //     vinculado ao processo de treinamentos)
+          // ======================================================
+
+          if (
+            controleDocumentalService
+          ) {
+            try {
+              const controle =
+                await controleDocumentalService
+                  .garantirDocumentoControle(
+                    treinamentoCriado.id,
+                    {
+                      id:
+                        autorizacao.contexto?.usuarioId ||
+                        '',
+                      nome:
+                        autorizacao.contexto?.nome ||
+                        userName
+                    }
+                  );
+
+              if (
+                controle.avisos.length > 0
+              ) {
+                window.alert(
+                  controle.avisos.join('\n\n')
+                );
+              }
+            } catch (erroControle) {
+              console.error(
+                erroControle
+              );
+
+              // O treinamento já existe: o documento pode ser criado
+              // depois pela Gestão (menu ⋮ → "Colocar sob controle
+              // documental"). O assistente continua normalmente.
+              window.alert(
+                'O treinamento foi criado, mas o documento de controle não pôde ser criado: ' +
+                (
+                  erroControle instanceof Error
+                    ? erroControle.message
+                    : 'erro desconhecido'
+                )
+              );
+            }
           }
 
           // ======================================================
@@ -1762,8 +1934,11 @@ const gestaoAreas =
 
         },
         [
+          autorizacao.contexto,
+          controleDocumentalService,
           gestaoModulos,
-          gestaoTreinamentos
+          gestaoTreinamentos,
+          userName
         ]
       );
     // ==========================================================
@@ -2097,9 +2272,35 @@ const gestaoAreas =
             IEditarTreinamento
         ): Promise<void> => {
 
+          let dadosGravar =
+            dados;
+
+          // Controle documental: sem revisão publicada o treinamento
+          // não pode ser ativado pela edição (só pela publicação).
+          if (
+            controleDocumentalService &&
+            dados.ativo
+          ) {
+            const controle =
+              await controleDocumentalService
+                .obterPorTreinamento(
+                  dados.id
+                );
+
+            if (
+              controle &&
+              !controle.vigente
+            ) {
+              dadosGravar = {
+                ...dados,
+                ativo: false
+              };
+            }
+          }
+
           await gestaoTreinamentos
             .editar(
-              dados
+              dadosGravar
             );
 
           await gestaoModulos
@@ -2117,6 +2318,7 @@ const gestaoAreas =
           );
         },
         [
+          controleDocumentalService,
           gestaoModulos,
           gestaoTreinamentos
         ]
@@ -2147,9 +2349,48 @@ const gestaoAreas =
             );
           }
 
+          const treinamentoId =
+            fluxoCriacaoTreinamentoId;
+
           setFluxoCriacaoTreinamentoId(
             ''
           );
+
+          // Controle documental: o treinamento segue o fluxo do processo
+          // de treinamentos DENTRO da Gestão de treinamentos. Abre a
+          // análise do treinamento para o autor concluir a 1ª etapa.
+          if (
+            controleDocumentalService
+          ) {
+            try {
+              const controle =
+                await controleDocumentalService
+                  .obterPorTreinamento(
+                    treinamentoId
+                  );
+
+              if (
+                controle &&
+                !controle.vigente
+              ) {
+                await recarregarDocumentos();
+
+                setAnaliseTreinamentoId(
+                  treinamentoId
+                );
+
+                window.alert(
+                  `Treinamento salvo em ${controle.revisaoEmAndamento ? controle.revisaoEmAndamento.revisao : CONTROLE_DOCUMENTAL.REVISAO_INICIAL}. ` +
+                  'Conclua a etapa atual do fluxo para enviá-lo à revisão. ' +
+                  'O treinamento fica inativo até a publicação.'
+                );
+              }
+            } catch (erroControle) {
+              console.error(
+                erroControle
+              );
+            }
+          }
 
           setPaginaAtual(
             'gestao'
@@ -2161,8 +2402,10 @@ const gestaoAreas =
           );
         },
         [
+          controleDocumentalService,
           fluxoCriacaoTreinamentoId,
-          gestaoAvaliacoes.avaliacoes
+          gestaoAvaliacoes.avaliacoes,
+          recarregarDocumentos
         ]
       );
 
@@ -3318,8 +3561,14 @@ const gestaoAreas =
         icon:
           'users' as IconeChave,
 
+        pagina:
+          'rhPessoas',
+
         modulo:
-          'outro'
+          'outro',
+
+        novo:
+          true
       },
 
       {
@@ -3860,6 +4109,15 @@ const gestaoAreas =
                   paginaAtual
                 }
 
+                // RH e Pessoas: leitura da biblioteca Certificados.
+                spHttpClient={
+                  spHttpClient
+                }
+
+                siteUrl={
+                  siteUrl
+                }
+
                 primeiroNome={
                   usuario.primeiroNome
                 }
@@ -3873,7 +4131,25 @@ const gestaoAreas =
                 }
 
                 documentos={
-                  documentos
+                  documentosVisiveis
+                }
+
+                documentosControle={
+                  documentosControle
+                }
+
+                recarregarDocumentos={
+                  recarregarDocumentos
+                }
+
+                analiseTreinamentoId={
+                  analiseTreinamentoId
+                }
+
+                limparAnaliseTreinamento={() =>
+                  setAnaliseTreinamentoId(
+                    ''
+                  )
                 }
 
                 documentoSelecionado={
@@ -4257,7 +4533,7 @@ const gestaoAreas =
                 }
 
                 treinamentosAdministrativos={
-                  gestaoTreinamentos.treinamentos
+                  treinamentosNoEscopo
                 }
 
                 carregandoGestaoTreinamentos={
@@ -4652,7 +4928,7 @@ const gestaoAreas =
                 }
 
                 documentosAdministrativos={
-                  gestaoDocumentos.documentos
+                  documentosAdministrativosVisiveis
                 }
 
                 documentoAdministrativoSelecionado={
