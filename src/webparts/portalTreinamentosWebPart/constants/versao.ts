@@ -21,9 +21,9 @@ export const VERSAO_PORTAL = "1.4.5";
 
 export const VERSAO_SOLUCAO = "1.4.5.0";
 
-export const DATA_BUILD = "2026-10-14T20:24:35.337Z";
+export const DATA_BUILD = "2026-10-15T10:48:20.521Z";
 
-export const COMMIT_BUILD = "75db3f1";
+export const COMMIT_BUILD = "ebc66ae";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {
@@ -474,6 +474,14 @@ export const NOVIDADES: INovidadeVersao[] = [
 
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
 export const NOVIDADES_PENDENTES: INovidadeItem[] = [
+  {
+    "tipo": "Melhoria",
+    "texto": "nova tela da Seleção de kit — projeto (VMS, Digifort, IPX, W-Access) no topo, pontos em cartões com ícones, painel \"Configurar ponto\" (estrutura, soluções no ponto, videomonitoramento, LPR, rede e energia) e painel \"Kit gerado\" (kits aplicados, resumo, alertas e itens do ponto ou do projeto), com barra de ações fixa."
+  },
+  {
+    "tipo": "Melhoria",
+    "texto": "soluções (Safe City, Smart Detect, Face Detect, Safe Way) passam a ser escolhidas por ponto; a estrutura da Torre e do Box entra na lista de itens."
+  },
   {
     "tipo": "Novo",
     "texto": "Arquitetura de Soluções — etapa 3 \"Seleção de kit\" (montador de B.O.M.). Informando pontos (Torre, Box, Mini, porta eletroduto/dutotec, catraca), câmeras/leitoras, pontos iguais e soluções (Safe City ou Digifort, Smart Detect, Face Detect, Safe Way por faixa, IPX, W-Access), o portal monta a lista com código CIGAM e quantidade, com validações (limites de câmeras, Box sem OCR, orçamento PoE com margem de 25%, servidores do Digifort, itens sem código). Modelo de câmera, switch e controlador entram com o padrão e são editáveis; a troca de switch recalcula as fontes. Lista consolidada ou por ponto e download em CSV. Requer scripts/dataverse/criar-coluna-selecao-kit.ps1."

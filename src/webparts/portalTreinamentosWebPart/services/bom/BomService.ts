@@ -1,6 +1,6 @@
 import {
   ISelecaoKit,
-  softwaresPadrao
+  normalizarSelecao
 } from './montadorBom';
 
 import {
@@ -426,12 +426,7 @@ export class BomService {
       if (!json) {
         return undefined;
       }
-      const selecao = JSON.parse(json) as ISelecaoKit;
-      return {
-        ...selecao,
-        softwares: { ...softwaresPadrao(), ...(selecao.softwares || {}) },
-        pontos: selecao.pontos || []
-      };
+      return normalizarSelecao(JSON.parse(json) as ISelecaoKit);
     } catch (erro) {
       if (/dgt_bom_selecaokit/i.test(erro instanceof Error ? erro.message : String(erro))) {
         return 'semColuna';

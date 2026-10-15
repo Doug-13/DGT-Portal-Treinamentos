@@ -21,6 +21,7 @@
 // ============================================================
 
 export type CategoriaItem =
+  | 'Estrutura'
   | 'Câmera'
   | 'Equipamento'
   | 'Infraestrutura'
@@ -53,6 +54,10 @@ export const ITENS = {
   servicoEletroduto: item('6100050043', 'Instalação de eletroduto PVC/zincado barra 3 m', 'Serviço'),
   servicoCatraca: item('6100050068', 'Instalação de controle de acesso corporativo — catraca gate', 'Serviço'),
   servicoLeitora: item('6100050063', 'Instalação e configuração de leitora de acesso', 'Serviço'),
+
+  // Estruturas Bridgefy
+  estruturaTorre: item('6300050083', 'Bridgefy Torre (estrutura PRFV)', 'Estrutura'),
+  estruturaBox: item('6300050085', 'Bridgefy Box (estrutura)', 'Estrutura'),
 
   // Estruturas Bridgefy — infraestrutura comum
   fonte12v35: item('3700010044', 'DGT fonte chaveada de mesa 12V DC 3,5A', 'Infraestrutura'),

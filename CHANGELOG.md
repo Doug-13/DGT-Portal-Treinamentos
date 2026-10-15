@@ -6,6 +6,9 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Melhoria: nova tela da Seleção de kit — projeto (VMS, Digifort, IPX, W-Access) no topo, pontos em cartões com ícones, painel "Configurar ponto" (estrutura, soluções no ponto, videomonitoramento, LPR, rede e energia) e painel "Kit gerado" (kits aplicados, resumo, alertas e itens do ponto ou do projeto), com barra de ações fixa.
+- Melhoria: soluções (Safe City, Smart Detect, Face Detect, Safe Way) passam a ser escolhidas por ponto; a estrutura da Torre e do Box entra na lista de itens.
+
 - Novo: Arquitetura de Soluções — etapa 3 "Seleção de kit" (montador de B.O.M.). Informando pontos (Torre, Box, Mini, porta eletroduto/dutotec, catraca), câmeras/leitoras, pontos iguais e soluções (Safe City ou Digifort, Smart Detect, Face Detect, Safe Way por faixa, IPX, W-Access), o portal monta a lista com código CIGAM e quantidade, com validações (limites de câmeras, Box sem OCR, orçamento PoE com margem de 25%, servidores do Digifort, itens sem código). Modelo de câmera, switch e controlador entram com o padrão e são editáveis; a troca de switch recalcula as fontes. Lista consolidada ou por ponto e download em CSV. Requer scripts/dataverse/criar-coluna-selecao-kit.ps1.
 - Novo: etapa 4 "Cálculo de HH" sinalizada como aguardando as planilhas de HH, com o resumo do kit.
 

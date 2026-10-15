@@ -71,6 +71,14 @@ export interface IPontoKit {
   // Instalação alta (torre, poste, via pública) — Face Detect exige zoom.
   pontoAlto: boolean;
 
+  // Soluções NO PONTO (Bridgefy). Safe City e Safe Way nunca usam a
+  // mesma câmera: vídeo atende Safe City/Smart Detect/Face Detect;
+  // OCR/LPR atende Safe Way.
+  safeCity: boolean;
+  smartDetect: boolean;
+  faceDetect: boolean;
+  safeWay: boolean;
+
   // Controle de acesso
   usaWAccess: boolean;
   portaVidro: boolean;
@@ -151,6 +159,10 @@ export const novoPonto = (tipo: TipoPonto, indice: number): IPontoKit => {
     switchId: idSwitch(SWITCH_PADRAO),
     comunicacaoBidirecional: false,
     pontoAlto: tipo === 'torre' || tipo === 'mini',
+    safeCity: true,
+    smartDetect: false,
+    faceDetect: false,
+    safeWay: false,
     usaWAccess: true,
     portaVidro: false,
     controladorPorta: CONTROLADORES_PORTA[0].codigo,
@@ -250,7 +262,16 @@ const montarBridgefy = (
   if (!estrutura.aceitaOcr && inteiro(ponto.camerasOcr) > 0) {
     avisar('erro', 'O Box não comporta câmera OCR/LPR (tamanho). Use Torre ou Mini.');
   }
-  if (softwares.faceDetect && nV > 0 && ponto.pontoAlto && !camVideo.zoomOptico) {
+  if (ponto.safeWay && nO === 0) {
+    avisar('erro', 'Safe Way marcado sem câmera OCR/LPR: informe as câmeras de leitura de placas.');
+  }
+  if (!ponto.safeWay && nO > 0) {
+    avisar('aviso', 'Há câmeras OCR/LPR sem o Safe Way marcado: as licenças por faixa entram mesmo assim.');
+  }
+  if (nV > 0 && !ponto.safeCity && !ponto.faceDetect && softwares.vms === 'safeCity') {
+    avisar('aviso', 'Câmeras de vídeo sem solução marcada (Safe City ou Face Detect): nenhuma licença de vídeo entra.');
+  }
+  if (ponto.faceDetect && nV > 0 && ponto.pontoAlto && !camVideo.zoomOptico) {
     avisar('aviso', `Face Detect em ponto alto: ${camVideo.modelo} não tem zoom óptico (necessário em ~90% dos casos).`);
   }
   if (nV > 0 && !camVideo.codigo) {
@@ -292,6 +313,7 @@ const montarBridgefy = (
 
   // ---- estrutura
   if (tipo === 'torre') {
+    lista.adicionar('estruturaTorre', 1);
     lista.adicionar('servicoImplantacaoTorre', 1);
     lista.adicionar('giroled', 1);
     lista.adicionar('filtroLinha', 1);
@@ -318,6 +340,7 @@ const montarBridgefy = (
   }
 
   if (tipo === 'box') {
+    lista.adicionar('estruturaBox', 1);
     lista.adicionar('servicoInstalacaoBox', 1);
     lista.adicionar('caixaBox', 1);
     lista.adicionar('kitFitaLedBox', 1);
@@ -338,10 +361,10 @@ const montarBridgefy = (
   }
 
   // ---- licenças por câmera
-  if (softwares.vms === 'safeCity') {
+  if (softwares.vms === 'safeCity' && ponto.safeCity) {
     lista.adicionar('licencaSafeCity', nV);
   }
-  if (softwares.faceDetect) {
+  if (ponto.faceDetect) {
     lista.adicionar('licencaFaceDetect', nV);
   }
   // Safe Way: por FAIXA monitorada (mínimo 1 por câmera OCR).
@@ -504,16 +527,76 @@ export const packsDigifort = (
   ];
 };
 
+// Seleções gravadas antes das soluções por ponto: completa os campos.
+export const normalizarSelecao = (selecao: ISelecaoKit): ISelecaoKit => {
+  const sw = { ...softwaresPadrao(), ...(selecao.softwares || {}) };
+  return {
+    ...selecao,
+    softwares: sw,
+    pontos: (selecao.pontos || []).map(p => {
+      const base = novoPonto(p.tipo, 0);
+      const completo = { ...base, ...p };
+      const p2 = p as Partial<IPontoKit>;
+      return {
+        ...completo,
+        safeCity: p2.safeCity !== undefined ? p2.safeCity : true,
+        smartDetect: p2.smartDetect !== undefined ? p2.smartDetect : sw.smartDetect,
+        faceDetect: p2.faceDetect !== undefined ? p2.faceDetect : sw.faceDetect,
+        safeWay: p2.safeWay !== undefined ? p2.safeWay : (p.camerasOcr || 0) > 0
+      };
+    })
+  };
+};
+
+// Nome do kit cadastrado (base) + adicionais, para exibição.
+export const kitsAplicados = (ponto: IPontoKit): string[] => {
+  if (!ehBridgefy(ponto.tipo)) {
+    return [(TIPOS_PONTO.find(t => t.tipo === ponto.tipo) || { nome: ponto.tipo }).nome];
+  }
+
+  const nV = inteiro(ponto.camerasVideo);
+  const nO = ESTRUTURAS[ponto.tipo].aceitaOcr ? inteiro(ponto.camerasOcr) : 0;
+
+  const bases: Record<EstruturaBridgefy, Array<{ v: number; o: number; nome: string }>> = {
+    torre: [
+      { v: 2, o: 1, nome: 'Torre Bridgefy c/ 1 OCR + 2 VMS' },
+      { v: 2, o: 0, nome: 'Torre Bridgefy Safe City' },
+      { v: 0, o: 1, nome: 'Torre Bridgefy Safe Way' }
+    ],
+    box: [{ v: 2, o: 0, nome: 'Bridgefy Box' }],
+    mini: [
+      { v: 1, o: 1, nome: 'Bridgefy Mini c/ 1 OCR + 1 VMS' },
+      { v: 2, o: 0, nome: 'Bridgefy Mini c/ 2 VMS' },
+      { v: 0, o: 1, nome: 'Bridgefy Mini c/ 1 OCR' }
+    ]
+  };
+
+  const base = bases[ponto.tipo].find(b => b.v <= nV && b.o <= nO);
+  if (!base) {
+    return [`${ESTRUTURAS[ponto.tipo].nome} (sob medida)`];
+  }
+
+  const extras: string[] = [];
+  if (nV - base.v > 0) {
+    extras.push(`+${nV - base.v} câm. adicional vídeo`);
+  }
+  if (nO - base.o > 0) {
+    extras.push(`+${nO - base.o} câm. adicional OCR/LPR`);
+  }
+  return [base.nome, ...extras];
+};
+
 // ------------------------------------------------------------
 // Montagem completa
 // ------------------------------------------------------------
 
 export const montarBom = (
-  selecao: ISelecaoKit
+  selecaoEntrada: ISelecaoKit
 ): IResultadoBom => {
 
   const alertas: IAlertaBom[] = [];
   const porPonto: Array<{ ponto: IPontoKit; itens: IItemBom[] }> = [];
+  const selecao = normalizarSelecao(selecaoEntrada);
   const softwares = selecao.softwares;
 
   let camerasVideo = 0;
@@ -583,7 +666,7 @@ export const montarBom = (
     alertas.push({ nivel: 'aviso', origem: 'W-Access', mensagem: 'O licenciamento varia conforme a cotação da Invenzi — confirmar neste projeto.' });
   }
 
-  if (softwares.faceDetect) {
+  if (selecao.pontos.some(p => ehBridgefy(p.tipo) && p.faceDetect)) {
     alertas.push({ nivel: 'aviso', origem: 'Face Detect', mensagem: 'Licença ainda cadastrada como "Smart Face" no CIGAM — código a levantar.' });
   }
 
@@ -613,7 +696,7 @@ export const montarBom = (
     });
   });
 
-  const ordemCategoria: CategoriaItem[] = ['Câmera', 'Equipamento', 'Infraestrutura', 'Licença', 'Serviço', 'Identificação'];
+  const ordemCategoria: CategoriaItem[] = ['Estrutura', 'Câmera', 'Equipamento', 'Infraestrutura', 'Licença', 'Serviço', 'Identificação'];
   consolidado.sort((a, b) =>
     ordemCategoria.indexOf(a.categoria) - ordemCategoria.indexOf(b.categoria) ||
     a.descricao.localeCompare(b.descricao));

@@ -11,6 +11,8 @@ import {
 } from '../../services/bom/catalogoKits';
 
 import {
+  IAlertaBom,
+  IItemBom,
   IPontoKit,
   ISelecaoKit,
   ISoftwaresKit,
@@ -18,29 +20,35 @@ import {
   TipoPonto,
   csvDoBom,
   ehBridgefy,
+  kitsAplicados,
   montarBom,
+  normalizarSelecao,
   novoPonto,
-  selecaoVazia
+  selecaoVazia,
+  switchDe
 } from '../../services/bom/montadorBom';
 
 import {
   COR,
   FONTE,
   botao,
-  campo,
-  cartao,
-  chip,
-  rotulo
+  campo
 } from './arquiteturaComum';
+
+import {
+  IconeKit,
+  NomeIconeKit
+} from './IconesKit';
 
 // ============================================================
 // ETAPA 3 — SELEÇÃO DE KIT (montador de B.O.M.)
 //
-// O usuário informa os PONTOS (tipo, nº de câmeras/leitoras e
-// quantos pontos iguais) e as SOLUÇÕES de software. A lista de
-// itens (código CIGAM + quantidade) é montada pelas regras — modelo
-// de câmera, switch e controlador entram com o padrão e podem ser
-// trocados no ponto (a troca de switch recalcula as fontes).
+//   ┌ Projeto: VMS, Digifort, IPX, W-Access ──────────────┐
+//   ├ Pontos do projeto (cartões) + Adicionar ponto ──────┤
+//   │ Configurar ponto            │ Kit gerado             │
+//   │ (tipo, soluções, câmeras,   │ (kits aplicados,       │
+//   │  equipamentos)              │  resumo, itens)        │
+//   └ Barra de ações (salvar / concluir) ─────────────────┘
 // ============================================================
 
 export interface ISelecaoKitEtapaProps {
@@ -52,31 +60,239 @@ export interface ISelecaoKitEtapaProps {
   onSalvar: (selecao: ISelecaoKit, concluir: boolean) => Promise<void>;
 }
 
-const numeroCampo = (
-  valor: number,
-  aoMudar: (n: number) => void,
-  minimo = 0,
-  maximo = 999,
-  desabilitado = false
-): React.ReactElement => (
-  <input
-    type="number"
-    min={minimo}
-    max={maximo}
-    value={valor}
-    disabled={desabilitado}
-    onChange={e => aoMudar(Math.max(minimo, Math.min(maximo, Math.floor(Number(e.target.value) || 0))))}
-    style={{ ...campo, width: '90px' }}
-  />
+const VERDE = '#107C10';
+const VERMELHO = '#B42318';
+const AMBAR = '#B45309';
+
+const DESCRICAO_TIPO: Record<TipoPonto, string> = {
+  torre: 'PRFV · até 4 câmeras · giroled 128 LEDs',
+  mini: 'Braço metálico · até 2 câmeras · parede ou poste',
+  box: 'Caixa · 2 domes fixas · só vídeo',
+  portaEletroduto: 'Eletroímã · eletroduto PVC aparente',
+  portaDutotec: 'Fechadura · canaleta Dutotec',
+  catraca: 'Catraca pedestal · rack e switch no ponto'
+};
+
+const NOME_CURTO: Record<TipoPonto, string> = {
+  torre: 'Torre',
+  mini: 'Wallfix (Mini)',
+  box: 'Box',
+  portaEletroduto: 'Porta — eletroduto',
+  portaDutotec: 'Porta — dutotec',
+  catraca: 'Catraca'
+};
+
+// ------------------------------------------------------------
+// Elementos visuais
+// ------------------------------------------------------------
+
+const painel: React.CSSProperties = {
+  background: '#FFFFFF',
+  border: `1px solid ${COR.borda}`,
+  borderRadius: '14px',
+  padding: '18px 20px'
+};
+
+const subPainel = (ativo: boolean): React.CSSProperties => ({
+  border: `1px solid ${COR.borda}`,
+  borderRadius: '12px',
+  padding: '12px 14px',
+  background: ativo ? '#FFFFFF' : COR.fundo,
+  opacity: ativo ? 1 : 0.55
+});
+
+const rotuloCampo: React.CSSProperties = {
+  display: 'block',
+  fontSize: '12px',
+  fontWeight: 700,
+  color: COR.azul,
+  margin: '0 0 5px'
+};
+
+const tituloSubPainel: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '7px',
+  marginBottom: '10px',
+  color: COR.azul,
+  fontWeight: 800,
+  fontSize: '13.5px'
+};
+
+const dica: React.CSSProperties = {
+  fontSize: '11.5px',
+  color: COR.texto2,
+  marginTop: '5px',
+  lineHeight: 1.4
+};
+
+const TituloPainel: React.FC<{ icone: NomeIconeKit; texto: string; extra?: React.ReactNode }> = ({ icone, texto, extra }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+    <IconeKit nome={icone} tamanho={20} cor={COR.indigo} />
+    <h3 style={{ margin: 0, fontSize: '16px', color: COR.azul }}>{texto}</h3>
+    <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' }}>{extra}</div>
+  </div>
 );
 
-const Marcar: React.FC<{ marcado: boolean; texto: string; desabilitado?: boolean; onMudar: (v: boolean) => void; dica?: string }> =
-  ({ marcado, texto, desabilitado, onMudar, dica }) => (
-    <label title={dica} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: COR.azul, cursor: desabilitado ? 'default' : 'pointer', marginRight: '16px' }}>
-      <input type="checkbox" checked={marcado} disabled={desabilitado} onChange={e => onMudar(e.target.checked)} />
-      {texto}
-    </label>
+const Numero: React.FC<{ valor: number; aoMudar: (n: number) => void; minimo?: number; maximo?: number; desabilitado?: boolean; largura?: string }> =
+  ({ valor, aoMudar, minimo = 0, maximo = 999999, desabilitado, largura }) => (
+    <input
+      type="number"
+      min={minimo}
+      max={maximo}
+      value={valor}
+      disabled={desabilitado}
+      onChange={e => aoMudar(Math.max(minimo, Math.min(maximo, Math.floor(Number(e.target.value) || 0))))}
+      style={{ ...campo, width: largura || '100%' }}
+    />
   );
+
+// Cartão selecionável (tipo de ponto / solução).
+const Ladrilho: React.FC<{
+  icone: NomeIconeKit;
+  titulo: string;
+  descricao: string;
+  marcado: boolean;
+  desabilitado?: boolean;
+  caixa?: boolean;
+  onClick: () => void;
+}> = ({ icone, titulo, descricao, marcado, desabilitado, caixa, onClick }) => (
+  <button
+    type="button"
+    disabled={desabilitado}
+    onClick={onClick}
+    aria-pressed={marcado}
+    style={{
+      display: 'flex',
+      gap: '10px',
+      alignItems: 'flex-start',
+      textAlign: 'left',
+      padding: '12px',
+      borderRadius: '12px',
+      border: `${marcado ? 2 : 1}px solid ${marcado ? COR.ciano : COR.borda}`,
+      background: marcado ? '#E6F9FC' : '#FFFFFF',
+      cursor: desabilitado ? 'not-allowed' : 'pointer',
+      opacity: desabilitado ? 0.45 : 1,
+      fontFamily: FONTE,
+      minHeight: '64px'
+    }}
+  >
+    {caixa
+      ? (
+        <span style={{ width: '20px', height: '20px', borderRadius: '5px', border: `2px solid ${marcado ? COR.ciano : '#C5CBD3'}`, background: marcado ? COR.ciano : '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '1px' }}>
+          {marcado && <IconeKit nome="check" tamanho={14} cor="#FFFFFF" />}
+        </span>
+      )
+      : (
+        <span style={{ width: '34px', height: '34px', borderRadius: '9px', background: marcado ? COR.azul : COR.fundo, color: marcado ? '#FFFFFF' : COR.azul, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <IconeKit nome={icone} tamanho={19} />
+        </span>
+      )}
+    <span>
+      <strong style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', color: COR.azul }}>
+        {caixa && <IconeKit nome={icone} tamanho={15} cor={COR.indigo} />}
+        {titulo}
+      </strong>
+      <span style={{ display: 'block', fontSize: '11.5px', color: COR.texto2, marginTop: '2px', lineHeight: 1.35 }}>{descricao}</span>
+    </span>
+  </button>
+);
+
+const Segmentado: React.FC<{ opcoes: Array<{ id: string; texto: string; icone?: NomeIconeKit }>; valor: string; desabilitado?: boolean; onMudar: (id: string) => void }> =
+  ({ opcoes, valor, desabilitado, onMudar }) => (
+    <div style={{ display: 'inline-flex', background: COR.fundo, border: `1px solid ${COR.borda}`, borderRadius: '10px', padding: '3px', gap: '3px' }}>
+      {opcoes.map(o => (
+        <button
+          key={o.id}
+          type="button"
+          disabled={desabilitado}
+          onClick={() => onMudar(o.id)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            border: 0, borderRadius: '8px', padding: '6px 12px',
+            background: valor === o.id ? COR.azul : 'transparent',
+            color: valor === o.id ? '#FFFFFF' : COR.azul,
+            fontWeight: 700, fontSize: '12.5px', cursor: desabilitado ? 'default' : 'pointer', fontFamily: FONTE
+          }}
+        >
+          {o.icone && <IconeKit nome={o.icone} tamanho={15} />}
+          {o.texto}
+        </button>
+      ))}
+    </div>
+  );
+
+const Estatistica: React.FC<{ valor: string; rotulo: string; alerta?: boolean }> = ({ valor, rotulo, alerta }) => (
+  <div style={{ flex: '1 1 0', background: COR.fundo, border: `1px solid ${alerta ? '#F3B8B3' : COR.borda}`, borderRadius: '12px', padding: '12px 8px', textAlign: 'center' }}>
+    <div style={{ fontSize: '22px', fontWeight: 800, color: alerta ? VERMELHO : COR.azul, lineHeight: 1.1 }}>{valor}</div>
+    <div style={{ fontSize: '11.5px', color: COR.texto2, marginTop: '4px' }}>{rotulo}</div>
+  </div>
+);
+
+const ListaAlertas: React.FC<{ alertas: IAlertaBom[]; mostrarOrigem?: boolean }> = ({ alertas, mostrarOrigem }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', margin: '12px 0' }}>
+    {alertas.map((a, i) => (
+      <div
+        key={i}
+        style={{
+          display: 'flex', gap: '8px', alignItems: 'flex-start',
+          background: a.nivel === 'erro' ? '#FDE7E9' : '#FFF4E5',
+          color: a.nivel === 'erro' ? VERMELHO : '#7C2D12',
+          borderRadius: '8px', padding: '7px 10px', fontSize: '12.5px', lineHeight: 1.4
+        }}
+      >
+        <IconeKit nome="alerta" tamanho={15} />
+        <span>{mostrarOrigem && <strong>{a.origem}: </strong>}{a.mensagem}</span>
+      </div>
+    ))}
+  </div>
+);
+
+const TabelaItens: React.FC<{ itens: IItemBom[]; mostrarOrigem: boolean }> = ({ itens, mostrarOrigem }) => (
+  <div style={{ overflowX: 'auto', border: `1px solid ${COR.borda}`, borderRadius: '10px' }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+      <thead>
+        <tr style={{ background: COR.fundo, color: COR.azul, textAlign: 'left' }}>
+          <th style={{ padding: '9px 12px' }}>Código</th>
+          <th style={{ padding: '9px 12px' }}>Item</th>
+          <th style={{ padding: '9px 12px', textAlign: 'right' }}>Qtd.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {itens.map((i, n) => (
+          <tr key={n} style={{ borderTop: `1px solid ${COR.borda}`, background: i.pendente ? '#FFF8EC' : undefined }}>
+            <td style={{ padding: '8px 12px', fontFamily: 'Consolas, monospace', fontSize: '12px', color: COR.texto2, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+              {i.codigo || <span style={{ color: AMBAR, fontWeight: 700, fontFamily: FONTE }}>sem código</span>}
+            </td>
+            <td style={{ padding: '8px 12px' }}>
+              <div style={{ color: COR.azul, fontWeight: 600 }}>{i.descricao}</div>
+              <div style={{ fontSize: '11.5px', color: COR.texto2, marginTop: '1px' }}>
+                {i.categoria}{mostrarOrigem ? ` · ${i.origem}` : ''}
+              </div>
+            </td>
+            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: COR.azul, verticalAlign: 'top' }}>
+              {i.quantidade.toLocaleString('pt-BR')}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+const botaoIcone = (desabilitado: boolean, perigo?: boolean): React.CSSProperties => ({
+  ...botao('secundario', desabilitado),
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  minHeight: '32px',
+  padding: '0 10px',
+  color: perigo ? VERMELHO : COR.azul
+});
+
+// ------------------------------------------------------------
+// Tela
+// ------------------------------------------------------------
 
 const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   selecaoInicial,
@@ -87,55 +303,124 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   onSalvar
 }) => {
 
-  const [selecao, setSelecao] =
-    React.useState<ISelecaoKit>(selecaoInicial || selecaoVazia());
-
-  const [alterado, setAlterado] =
-    React.useState(false);
-
-  const [visao, setVisao] =
-    React.useState<'consolidada' | 'porPonto'>('consolidada');
+  const [selecao, setSelecao] = React.useState<ISelecaoKit>(() => normalizarSelecao(selecaoInicial || selecaoVazia()));
+  const [pontoId, setPontoId] = React.useState<string>('');
+  const [alterado, setAlterado] = React.useState(false);
+  const [visaoKit, setVisaoKit] = React.useState<'ponto' | 'projeto'>('ponto');
+  const [menuNovo, setMenuNovo] = React.useState(false);
+  const [largo, setLargo] = React.useState<boolean>(typeof window !== 'undefined' ? window.innerWidth >= 1100 : true);
 
   React.useEffect(() => {
-    setSelecao(selecaoInicial || selecaoVazia());
+    const aoRedimensionar = (): void => setLargo(window.innerWidth >= 1100);
+    window.addEventListener('resize', aoRedimensionar);
+    return () => window.removeEventListener('resize', aoRedimensionar);
+  }, []);
+
+  React.useEffect(() => {
+    const nova = normalizarSelecao(selecaoInicial || selecaoVazia());
+    setSelecao(nova);
+    setPontoId(nova.pontos.length > 0 ? nova.pontos[0].id : '');
     setAlterado(false);
   }, [selecaoInicial]);
 
   const resultado = React.useMemo(() => montarBom(selecao), [selecao]);
   const erros = resultado.alertas.filter(a => a.nivel === 'erro');
-  const avisos = resultado.alertas.filter(a => a.nivel === 'aviso');
-  const temAcesso = selecao.pontos.some(p => !ehBridgefy(p.tipo));
   const bloqueado = somenteLeitura || salvando;
+  const sw = selecao.softwares;
+  const temAcesso = selecao.pontos.some(p => !ehBridgefy(p.tipo));
+
+  const ponto = selecao.pontos.find(p => p.id === pontoId) || selecao.pontos[0];
+  const grupoPonto = ponto ? resultado.porPonto.find(g => g.ponto.id === ponto.id) : undefined;
+  const alertasPonto = ponto ? resultado.alertas.filter(a => a.origem === ponto.nome) : [];
+  const errosDoPonto = (p: IPontoKit): number => erros.filter(e => e.origem === p.nome).length;
+
+  // ---------------- alterações ----------------
 
   const mudarSoftwares = (parcial: Partial<ISoftwaresKit>): void => {
     setSelecao(atual => ({ ...atual, softwares: { ...atual.softwares, ...parcial } }));
     setAlterado(true);
   };
 
-  const mudarPonto = (id: string, parcial: Partial<IPontoKit>): void => {
-    setSelecao(atual => ({ ...atual, pontos: atual.pontos.map(p => (p.id === id ? { ...p, ...parcial } : p)) }));
+  const mudarPonto = (parcial: Partial<IPontoKit>): void => {
+    if (!ponto) {
+      return;
+    }
+    setSelecao(atual => ({ ...atual, pontos: atual.pontos.map(p => (p.id === ponto.id ? { ...p, ...parcial } : p)) }));
     setAlterado(true);
   };
 
   const adicionarPonto = (tipo: TipoPonto): void => {
-    setSelecao(atual => ({
-      ...atual,
-      pontos: [...atual.pontos, novoPonto(tipo, atual.pontos.filter(p => p.tipo === tipo).length + 1)]
-    }));
+    const novo = { ...novoPonto(tipo, 0), nome: `Ponto ${selecao.pontos.length + 1}` };
+    setSelecao(atual => ({ ...atual, pontos: [...atual.pontos, novo] }));
+    setPontoId(novo.id);
+    setVisaoKit('ponto');
+    setMenuNovo(false);
     setAlterado(true);
   };
 
-  const duplicarPonto = (ponto: IPontoKit): void => {
-    setSelecao(atual => ({
-      ...atual,
-      pontos: [...atual.pontos, { ...ponto, id: novoPonto(ponto.tipo, 0).id, nome: `${ponto.nome} (cópia)` }]
-    }));
+  // Troca o tipo do ponto: mantém nome e quantidade.
+  const trocarTipo = (tipo: TipoPonto): void => {
+    if (!ponto || ponto.tipo === tipo) {
+      return;
+    }
+    mudarPonto({ ...novoPonto(tipo, 0), id: ponto.id, nome: ponto.nome, quantidade: ponto.quantidade });
+  };
+
+  const duplicarPonto = (): void => {
+    if (!ponto) {
+      return;
+    }
+    const copia = { ...ponto, id: novoPonto(ponto.tipo, 0).id, nome: `${ponto.nome} (cópia)` };
+    setSelecao(atual => ({ ...atual, pontos: [...atual.pontos, copia] }));
+    setPontoId(copia.id);
     setAlterado(true);
   };
 
-  const removerPonto = (id: string): void => {
-    setSelecao(atual => ({ ...atual, pontos: atual.pontos.filter(p => p.id !== id) }));
+  const removerPonto = (): void => {
+    if (!ponto || !window.confirm(`Remover "${ponto.nome}"?`)) {
+      return;
+    }
+    const restantes = selecao.pontos.filter(p => p.id !== ponto.id);
+    setSelecao(atual => ({ ...atual, pontos: restantes }));
+    setPontoId(restantes.length > 0 ? restantes[0].id : '');
     setAlterado(true);
+  };
+
+  // Soluções: ligar/desligar ajusta as câmeras correspondentes.
+  const alternarSolucao = (chave: 'safeCity' | 'smartDetect' | 'faceDetect' | 'safeWay'): void => {
+    if (!ponto || !ehBridgefy(ponto.tipo)) {
+      return;
+    }
+    const estrutura = ESTRUTURAS[ponto.tipo];
+    const novo = !ponto[chave];
+    const parcial: Partial<IPontoKit> = { [chave]: novo };
+
+    if (chave === 'safeWay') {
+      parcial.camerasOcr = novo ? Math.max(1, ponto.camerasOcr) : 0;
+      if (novo && ponto.camerasVideo + 1 > estrutura.maxCameras) {
+        parcial.camerasVideo = Math.max(0, estrutura.maxCameras - 1);
+      }
+    }
+    if ((chave === 'safeCity' || chave === 'faceDetect') && novo && ponto.camerasVideo === 0) {
+      parcial.camerasVideo = 1;
+    }
+    if (chave === 'safeCity' && !novo) {
+      parcial.smartDetect = false;
+    }
+    if (chave === 'smartDetect' && novo) {
+      parcial.safeCity = true;
+    }
+
+    const usaVideo =
+      (parcial.safeCity !== undefined ? parcial.safeCity : ponto.safeCity) ||
+      (parcial.faceDetect !== undefined ? parcial.faceDetect : ponto.faceDetect) ||
+      sw.vms === 'digifort';
+
+    if (!usaVideo) {
+      parcial.camerasVideo = 0;
+    }
+
+    mudarPonto(parcial);
   };
 
   const baixarCsv = (): void => {
@@ -156,300 +441,513 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
       .catch(() => undefined);
   };
 
-  const sw = selecao.softwares;
+  // ---------------- projeto (softwares) ----------------
 
-  return (
-    <div style={{ fontFamily: FONTE }}>
+  const blocoProjeto = (
+    <div style={{ ...painel, marginBottom: '14px', display: 'flex', gap: '18px', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <IconeKit nome="kit" tamanho={20} cor={COR.indigo} />
+        <strong style={{ color: COR.azul, fontSize: '14px' }}>Projeto</strong>
+        <span style={{ background: COR.fundo, border: `1px solid ${COR.borda}`, borderRadius: '999px', padding: '3px 10px', fontSize: '12px', color: COR.azul, fontWeight: 700 }}>
+          Canal: {canal || '—'}
+        </span>
+      </div>
 
-      {semColuna && (
-        <div role="alert" style={{ ...cartao, background: '#FFF4E5', borderColor: '#B45309', color: COR.azul, fontSize: '13px' }}>
-          <strong>Configuração pendente:</strong> execute <code>scripts/dataverse/criar-coluna-selecao-kit.ps1</code> para
-          poder salvar a seleção de kit. Você pode montar a lista e baixar o CSV mesmo assim.
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ fontSize: '12.5px', color: COR.texto2, fontWeight: 700 }}>VMS</span>
+        <Segmentado
+          valor={sw.vms}
+          desabilitado={bloqueado}
+          onMudar={id => mudarSoftwares({ vms: id as ISoftwaresKit['vms'] })}
+          opcoes={[
+            { id: 'safeCity', texto: 'Safe City (nuvem)', icone: 'nuvem' },
+            { id: 'digifort', texto: 'Digifort (terceiro)', icone: 'servidor' }
+          ]}
+        />
+      </div>
+
+      {sw.vms === 'digifort' && (
+        <>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul, fontWeight: 700 }} title="Cada servidor exige a própria base de 8 câmeras">
+            Servidores
+            <Numero valor={sw.digifortServidores} aoMudar={n => mudarSoftwares({ digifortServidores: n })} minimo={1} maximo={99} desabilitado={bloqueado} largura="70px" />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul, cursor: 'pointer' }} title="Analíticos por IA (IP Extreme) — roda sobre o Digifort">
+            <input type="checkbox" checked={sw.ipx} disabled={bloqueado} onChange={e => mudarSoftwares({ ipx: e.target.checked })} />
+            <strong>IPX Analytics</strong>
+          </label>
+          {sw.ipx && (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul }}>
+                Pacotes
+                <Numero valor={sw.ipxPacotes} aoMudar={n => mudarSoftwares({ ipxPacotes: n })} minimo={1} maximo={9} desabilitado={bloqueado} largura="60px" />
+              </label>
+              <label title="Decisão pendente — código a levantar" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul, cursor: 'pointer' }}>
+                <input type="checkbox" checked={sw.ipxIntegracao} disabled={bloqueado} onChange={e => mudarSoftwares({ ipxIntegracao: e.target.checked })} />
+                Licença de integração
+              </label>
+            </>
+          )}
+        </>
       )}
 
-      {/* ---------------- Softwares ---------------- */}
-      <div style={cartao}>
-        <h3 style={{ margin: '0 0 4px', color: COR.azul, fontSize: '15px' }}>Soluções de software</h3>
-        <p style={{ margin: '0 0 12px', fontSize: '12.5px', color: COR.texto2 }}>
-          Canal da demanda: <strong>{canal || '—'}</strong>. Nesta versão a licença Safe City é sempre a de 30 dias
-          (3300990057); o código por canal (público/privado) entra numa versão futura.
-        </p>
-
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-          <span style={{ ...rotulo, display: 'inline', marginRight: '6px', alignSelf: 'center' }}>Videomonitoramento (VMS):</span>
-          <button type="button" disabled={bloqueado} style={chip(sw.vms === 'safeCity')} onClick={() => mudarSoftwares({ vms: 'safeCity' })}>
-            Safe City (Bridgefy — nuvem)
-          </button>
-          <button type="button" disabled={bloqueado} style={chip(sw.vms === 'digifort')} onClick={() => mudarSoftwares({ vms: 'digifort' })}>
-            Digifort Enterprise (terceiro)
-          </button>
-        </div>
-
-        {sw.vms === 'digifort' && (
-          <div style={{ background: COR.fundo, borderRadius: '8px', padding: '10px 12px', marginBottom: '10px', fontSize: '13px' }}>
-            <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <span>Servidores: {numeroCampo(sw.digifortServidores, n => mudarSoftwares({ digifortServidores: n }), 1, 99, bloqueado)}</span>
-              <span style={{ color: COR.texto2 }}>Cada servidor exige a própria base de 8 câmeras; os packs se dividem entre eles.</span>
-            </div>
-            <div style={{ marginTop: '8px' }}>
-              <Marcar marcado={sw.ipx} desabilitado={bloqueado} texto="IPX Analytics (IP Extreme)" onMudar={v => mudarSoftwares({ ipx: v })} dica="Analíticos por IA — roda sobre o Digifort. Licença por câmera e por pacote." />
-              {sw.ipx && (
-                <>
-                  <span style={{ marginRight: '14px' }}>Pacotes de analítico: {numeroCampo(sw.ipxPacotes, n => mudarSoftwares({ ipxPacotes: n }), 1, 9, bloqueado)}</span>
-                  <Marcar marcado={sw.ipxIntegracao} desabilitado={bloqueado} texto="Licença de integração (servidor de terceiros)" onMudar={v => mudarSoftwares({ ipxIntegracao: v })} dica="Decisão pendente sobre ser obrigatória — código a levantar." />
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div>
-          <Marcar marcado={sw.smartDetect} desabilitado={bloqueado || sw.vms !== 'safeCity'} texto="Smart Detect (módulo do Safe City — sem licença própria)" onMudar={v => mudarSoftwares({ smartDetect: v })} />
-          <Marcar marcado={sw.faceDetect} desabilitado={bloqueado} texto="Face Detect (1 licença por câmera de vídeo)" onMudar={v => mudarSoftwares({ faceDetect: v })} />
-        </div>
-        <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '6px' }}>
-          Safe Way entra automaticamente com as câmeras OCR/LPR: <strong>1 licença por faixa monitorada</strong>.
-          Safe City e Safe Way nunca usam a mesma câmera — ponto com vídeo e placas leva duas.
-        </div>
-
-        {temAcesso && (
-          <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: `1px solid ${COR.borda}`, display: 'flex', gap: '18px', flexWrap: 'wrap', fontSize: '13px', alignItems: 'center' }}>
-            <strong style={{ color: COR.azul }}>Invenzi W-Access</strong>
-            <span>Cadastros de face: {numeroCampo(sw.waccessCadastros, n => mudarSoftwares({ waccessCadastros: n }), 0, 999999, bloqueado)}</span>
-            <span>Canais de visualização: {numeroCampo(sw.waccessCanais, n => mudarSoftwares({ waccessCanais: n }), 0, 999, bloqueado)}</span>
-          </div>
-        )}
-      </div>
-
-      {/* ---------------- Pontos ---------------- */}
-      <div style={cartao}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
-          <h3 style={{ margin: 0, color: COR.azul, fontSize: '15px' }}>
-            Pontos ({resultado.totais.pontos} · {resultado.totais.camerasVideo} câm. vídeo · {resultado.totais.camerasOcr} OCR · {resultado.totais.leitoras} leitoras)
-          </h3>
-        </div>
-
-        {!somenteLeitura && (
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
-            {TIPOS_PONTO.map(t => (
-              <button key={t.tipo} type="button" style={chip(false)} disabled={bloqueado} onClick={() => adicionarPonto(t.tipo)}>
-                + {t.nome}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {selecao.pontos.length === 0 && (
-          <div style={{ fontSize: '13px', color: COR.texto2 }}>
-            Adicione os pontos do projeto. O modelo dos equipamentos não é escolhido agora: entra o padrão e pode ser trocado no ponto.
-          </div>
-        )}
-
-        {selecao.pontos.map(ponto => {
-          const bridgefy = ehBridgefy(ponto.tipo);
-          const estrutura = bridgefy ? ESTRUTURAS[ponto.tipo as 'torre' | 'box' | 'mini'] : undefined;
-          const erroPonto = erros.filter(e => e.origem === ponto.nome);
-
-          return (
-            <div key={ponto.id} style={{ border: `1px solid ${erroPonto.length ? '#F3B8B3' : COR.borda}`, borderRadius: '10px', padding: '12px 14px', marginBottom: '10px', background: erroPonto.length ? '#FFFBFA' : '#FFFFFF' }}>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div style={{ flex: '1 1 220px' }}>
-                  <label style={rotulo}>{(TIPOS_PONTO.find(t => t.tipo === ponto.tipo) || { nome: '' }).nome}</label>
-                  <input value={ponto.nome} disabled={bloqueado} onChange={e => mudarPonto(ponto.id, { nome: e.target.value })} style={campo} />
-                </div>
-                <div>
-                  <label style={rotulo}>Pontos iguais</label>
-                  {numeroCampo(ponto.quantidade, n => mudarPonto(ponto.id, { quantidade: n }), 1, 999, bloqueado)}
-                </div>
-
-                {bridgefy && estrutura && (
-                  <>
-                    <div>
-                      <label style={rotulo}>Câm. vídeo</label>
-                      {numeroCampo(ponto.camerasVideo, n => mudarPonto(ponto.id, { camerasVideo: n }), 0, estrutura.maxCameras, bloqueado)}
-                    </div>
-                    {estrutura.aceitaOcr && (
-                      <>
-                        <div>
-                          <label style={rotulo}>Câm. OCR/LPR</label>
-                          {numeroCampo(ponto.camerasOcr, n => mudarPonto(ponto.id, { camerasOcr: n }), 0, estrutura.maxCameras, bloqueado)}
-                        </div>
-                        <div>
-                          <label style={rotulo} title="Licença Safe Way é por faixa monitorada">Faixas por OCR</label>
-                          {numeroCampo(ponto.faixasPorOcr, n => mudarPonto(ponto.id, { faixasPorOcr: n }), 1, 4, bloqueado || ponto.camerasOcr === 0)}
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-
-                {ponto.tipo === 'catraca' && (
-                  <>
-                    <div>
-                      <label style={rotulo}>Catracas CAP3100</label>
-                      {numeroCampo(ponto.catracas, n => mudarPonto(ponto.id, { catracas: n }), 0, 20, bloqueado)}
-                    </div>
-                    <div>
-                      <label style={rotulo}>Catracas PNE</label>
-                      {numeroCampo(ponto.catracasPne, n => mudarPonto(ponto.id, { catracasPne: n }), 0, 10, bloqueado)}
-                    </div>
-                  </>
-                )}
-
-                {!somenteLeitura && (
-                  <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
-                    <button type="button" style={botao('secundario', bloqueado)} disabled={bloqueado} onClick={() => duplicarPonto(ponto)}>Duplicar</button>
-                    <button type="button" style={botao('secundario', bloqueado)} disabled={bloqueado} onClick={() => removerPonto(ponto.id)}>Remover</button>
-                  </div>
-                )}
-              </div>
-
-              {/* opções e campos editáveis (padrão já preenchido) */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px', alignItems: 'center', fontSize: '13px' }}>
-                {bridgefy && (
-                  <>
-                    {ponto.camerasVideo > 0 && (
-                      <select value={ponto.modeloVideo} disabled={bloqueado} onChange={e => mudarPonto(ponto.id, { modeloVideo: e.target.value })} style={{ ...campo, width: 'auto' }} title="Modelo da câmera de vídeo">
-                        {CAMERAS_VIDEO.map(c => (
-                          <option key={idCamera(c)} value={idCamera(c)}>
-                            {c.modelo} · {c.formato}{c.zoomOptico ? ' · zoom' : ''}{c.codigo ? '' : ' · sem código'}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    {ponto.camerasOcr > 0 && estrutura && estrutura.aceitaOcr && (
-                      <select value={ponto.modeloOcr} disabled={bloqueado} onChange={e => mudarPonto(ponto.id, { modeloOcr: e.target.value })} style={{ ...campo, width: 'auto' }} title="Modelo da câmera OCR/LPR">
-                        {CAMERAS_OCR.map(c => <option key={idCamera(c)} value={idCamera(c)}>{c.modelo}</option>)}
-                      </select>
-                    )}
-                    <select value={ponto.switchId} disabled={bloqueado} onChange={e => mudarPonto(ponto.id, { switchId: e.target.value })} style={{ ...campo, width: 'auto' }} title="A troca de switch recalcula as fontes">
-                      {SWITCHES.map(s => <option key={idSwitch(s)} value={idSwitch(s)}>{s.modelo}{s.codigo ? '' : ' · sem código'}</option>)}
-                    </select>
-                    {ponto.tipo !== 'box' && (
-                      <Marcar marcado={ponto.pontoAlto} desabilitado={bloqueado} texto="Instalação alta (Face Detect exige zoom)" onMudar={v => mudarPonto(ponto.id, { pontoAlto: v })} />
-                    )}
-                    {ponto.tipo === 'torre' && (
-                      <Marcar marcado={ponto.comunicacaoBidirecional} desabilitado={bloqueado} texto="Comunicação bidirecional (torre de emergência)" onMudar={v => mudarPonto(ponto.id, { comunicacaoBidirecional: v })} />
-                    )}
-                  </>
-                )}
-
-                {(ponto.tipo === 'portaEletroduto' || ponto.tipo === 'portaDutotec') && (
-                  <>
-                    <select value={ponto.controladorPorta} disabled={bloqueado} onChange={e => mudarPonto(ponto.id, { controladorPorta: e.target.value })} style={{ ...campo, width: 'auto' }} title="Controlador de acesso facial">
-                      {CONTROLADORES_PORTA.map(c => <option key={c.codigo} value={c.codigo}>{c.modelo}</option>)}
-                    </select>
-                    <Marcar marcado={ponto.usaWAccess} desabilitado={bloqueado} texto="Usa W-Access" onMudar={v => mudarPonto(ponto.id, { usaWAccess: v })} />
-                    {ponto.tipo === 'portaDutotec' && (
-                      <Marcar marcado={ponto.portaVidro} desabilitado={bloqueado} texto="Porta de vidro (suporte SV 21/22)" onMudar={v => mudarPonto(ponto.id, { portaVidro: v })} />
-                    )}
-                  </>
-                )}
-
-                {ponto.tipo === 'catraca' && (
-                  <Marcar marcado={ponto.usaWAccess} desabilitado={bloqueado} texto="Usa W-Access" onMudar={v => mudarPonto(ponto.id, { usaWAccess: v })} />
-                )}
-              </div>
-
-              {erroPonto.map((e, i) => (
-                <div key={i} style={{ marginTop: '8px', fontSize: '12.5px', color: '#B42318', fontWeight: 700 }}>✕ {e.mensagem}</div>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ---------------- Validações ---------------- */}
-      {(erros.length > 0 || avisos.length > 0) && (
-        <div style={{ ...cartao, background: erros.length ? '#FDE7E9' : '#FFF4E5', borderColor: erros.length ? '#F3B8B3' : '#F5D7A8' }}>
-          <h3 style={{ margin: '0 0 8px', color: COR.azul, fontSize: '14px' }}>
-            Validações — {erros.length} erro(s), {avisos.length} aviso(s)
-          </h3>
-          <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12.5px', color: COR.azul, lineHeight: 1.6 }}>
-            {erros.map((a, i) => <li key={`e${i}`} style={{ color: '#B42318' }}><strong>{a.origem}:</strong> {a.mensagem}</li>)}
-            {avisos.map((a, i) => <li key={`a${i}`}><strong>{a.origem}:</strong> {a.mensagem}</li>)}
-          </ul>
+      {temAcesso && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+          <IconeKit nome="chave" tamanho={17} cor={COR.indigo} />
+          <strong style={{ fontSize: '12.5px', color: COR.azul }}>W-Access</strong>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul }} title="1 licença a cada 1000 cadastros">
+            Cadastros de face
+            <Numero valor={sw.waccessCadastros} aoMudar={n => mudarSoftwares({ waccessCadastros: n })} desabilitado={bloqueado} largura="90px" />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul }} title="1 licença a cada 2 conexões simultâneas">
+            Canais de visualização
+            <Numero valor={sw.waccessCanais} aoMudar={n => mudarSoftwares({ waccessCanais: n })} maximo={999} desabilitado={bloqueado} largura="70px" />
+          </label>
         </div>
       )}
+    </div>
+  );
 
-      {/* ---------------- Lista montada ---------------- */}
-      <div style={cartao}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
-          <h3 style={{ margin: 0, color: COR.azul, fontSize: '15px' }}>
-            Lista montada ({resultado.itens.length} itens)
-          </h3>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <button type="button" style={chip(visao === 'consolidada')} onClick={() => setVisao('consolidada')}>Consolidada</button>
-            <button type="button" style={chip(visao === 'porPonto')} onClick={() => setVisao('porPonto')}>Por ponto</button>
-            <button type="button" style={botao('secundario', resultado.itens.length === 0)} disabled={resultado.itens.length === 0} onClick={baixarCsv}>Baixar CSV</button>
-          </div>
-        </div>
+  // ---------------- pontos (cartões) ----------------
 
-        {resultado.itens.length === 0 && (
-          <div style={{ fontSize: '13px', color: COR.texto2 }}>A lista aparece aqui conforme os pontos forem adicionados.</div>
-        )}
+  const blocoPontos = (
+    <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '14px', alignItems: 'stretch' }}>
+      {selecao.pontos.map(p => {
+        const ativo = !!ponto && p.id === ponto.id;
+        const nErros = errosDoPonto(p);
+        const resumo = ehBridgefy(p.tipo)
+          ? `${p.camerasVideo} vídeo · ${ESTRUTURAS[p.tipo].aceitaOcr ? p.camerasOcr : 0} LPR`
+          : p.tipo === 'catraca'
+            ? `${p.catracas + p.catracasPne} catraca(s)`
+            : '1 leitora';
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => { setPontoId(p.id); setVisaoKit('ponto'); setMenuNovo(false); }}
+            style={{
+              display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0, minWidth: '190px', textAlign: 'left',
+              padding: '10px 12px', borderRadius: '12px', cursor: 'pointer', fontFamily: FONTE,
+              border: `${ativo ? 2 : 1}px solid ${ativo ? COR.ciano : nErros ? '#F3B8B3' : COR.borda}`,
+              background: ativo ? '#E6F9FC' : '#FFFFFF'
+            }}
+          >
+            <span style={{ width: '34px', height: '34px', borderRadius: '9px', background: ativo ? COR.azul : COR.fundo, color: ativo ? '#FFFFFF' : COR.azul, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <IconeKit nome={p.tipo as NomeIconeKit} tamanho={19} />
+            </span>
+            <span style={{ minWidth: 0 }}>
+              <strong style={{ display: 'block', fontSize: '13px', color: COR.azul, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px' }}>
+                {p.nome}{p.quantidade > 1 ? ` ×${p.quantidade}` : ''}
+              </strong>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', color: nErros ? VERMELHO : COR.texto2, whiteSpace: 'nowrap' }}>
+                {nErros > 0
+                  ? <><IconeKit nome="alerta" tamanho={12} /> {nErros} erro(s)</>
+                  : `${NOME_CURTO[p.tipo]} · ${resumo}`}
+              </span>
+            </span>
+          </button>
+        );
+      })}
 
-        {resultado.itens.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-              <thead>
-                <tr style={{ background: COR.fundo, color: COR.azul, textAlign: 'left' }}>
-                  <th style={{ padding: '8px' }}>Código CIGAM</th>
-                  <th style={{ padding: '8px' }}>Descrição</th>
-                  <th style={{ padding: '8px' }}>Categoria</th>
-                  <th style={{ padding: '8px', textAlign: 'right' }}>Qtd</th>
-                  {visao === 'consolidada' && <th style={{ padding: '8px' }}>Origem</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {(visao === 'consolidada'
-                  ? [{ titulo: '', itens: resultado.itens }]
-                  : resultado.porPonto.map(g => ({ titulo: g.ponto.id === 'softwares' ? g.ponto.nome : `${g.ponto.nome} × ${g.ponto.quantidade}`, itens: g.itens }))
-                ).map((grupo, gi) => (
-                  <React.Fragment key={gi}>
-                    {grupo.titulo && (
-                      <tr><td colSpan={4} style={{ padding: '10px 8px 4px', fontWeight: 800, color: COR.indigo }}>{grupo.titulo}</td></tr>
-                    )}
-                    {grupo.itens.map((i, ii) => (
-                      <tr key={`${gi}-${ii}`} style={{ borderTop: `1px solid ${COR.borda}`, background: i.pendente ? '#FFF4E5' : undefined }}>
-                        <td style={{ padding: '6px 8px', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap' }}>
-                          {i.codigo || <span style={{ color: '#B45309', fontWeight: 700 }}>sem código</span>}
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>{i.descricao}</td>
-                        <td style={{ padding: '6px 8px', color: COR.texto2 }}>{i.categoria}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{i.quantidade.toLocaleString('pt-BR')}</td>
-                        {visao === 'consolidada' && <td style={{ padding: '6px 8px', color: COR.texto2, fontSize: '11.5px' }}>{i.origem}</td>}
-                      </tr>
-                    ))}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ---------------- Ações ---------------- */}
       {!somenteLeitura && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-          {alterado && <span style={{ alignSelf: 'center', fontSize: '12.5px', color: '#B45309' }}>Alterações não salvas</span>}
-          <button type="button" style={botao('secundario', salvando || semColuna)} disabled={salvando || semColuna} onClick={() => salvar(false)}>
-            Salvar rascunho
-          </button>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
           <button
             type="button"
-            style={botao('principal', salvando || semColuna || erros.length > 0 || selecao.pontos.length === 0)}
-            disabled={salvando || semColuna || erros.length > 0 || selecao.pontos.length === 0}
-            title={erros.length > 0 ? 'Corrija os erros das validações para concluir' : undefined}
-            onClick={() => salvar(true)}
+            disabled={bloqueado}
+            onClick={() => setMenuNovo(!menuNovo)}
+            aria-pressed={menuNovo}
+            style={{
+              display: 'flex', gap: '8px', alignItems: 'center', height: '100%', minHeight: '58px', padding: '0 16px',
+              borderRadius: '12px', border: `${menuNovo ? 2 : 1}px ${menuNovo ? 'solid' : 'dashed'} ${COR.indigo}`, background: menuNovo ? '#E8EAF8' : '#F5F7FF', color: COR.indigo,
+              fontWeight: 700, fontSize: '13px', cursor: 'pointer', fontFamily: FONTE
+            }}
           >
-            Concluir seleção de kit →
+            <IconeKit nome="mais" tamanho={17} /> Adicionar ponto
           </button>
         </div>
       )}
     </div>
   );
+
+  // Escolha do tipo do novo ponto: na própria tela (painel da
+  // esquerda), sem janela. Aparece sozinha quando não há pontos.
+  const escolhaTipo = (
+    <div style={painel}>
+      <TituloPainel
+        icone="pin"
+        texto={selecao.pontos.length === 0 ? 'Comece adicionando o primeiro ponto' : 'Que tipo de ponto?'}
+        extra={selecao.pontos.length > 0 && (
+          <button type="button" style={botaoIcone(false)} onClick={() => setMenuNovo(false)}>Cancelar</button>
+        )}
+      />
+      <p style={{ fontSize: '13px', color: COR.texto2, margin: '-6px 0 14px' }}>
+        Escolha o tipo de ponto. Depois informe as soluções e quantas câmeras ou leitoras ele tem — o kit é montado automaticamente.
+      </p>
+      {(['Bridgefy', 'Controle de acesso'] as const).map(grupo => (
+        <div key={grupo} style={{ marginBottom: '12px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: COR.texto2, marginBottom: '6px' }}>{grupo}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+            {TIPOS_PONTO.filter(t => t.grupo === grupo).map(t => (
+              <Ladrilho
+                key={t.tipo}
+                icone={t.tipo as NomeIconeKit}
+                titulo={NOME_CURTO[t.tipo]}
+                descricao={DESCRICAO_TIPO[t.tipo]}
+                marcado={false}
+                desabilitado={bloqueado}
+                onClick={() => adicionarPonto(t.tipo)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // ---------------- configurar ponto ----------------
+
+  const renderizarConfigurar = (): React.ReactElement => {
+
+    if (!ponto || menuNovo) {
+      return somenteLeitura && !ponto
+        ? <div style={{ ...painel, color: COR.texto2, fontSize: '13px' }}>Nenhum ponto cadastrado.</div>
+        : escolhaTipo;
+    }
+
+    const bridgefy = ehBridgefy(ponto.tipo);
+    const estrutura = bridgefy ? ESTRUTURAS[ponto.tipo as 'torre' | 'box' | 'mini'] : undefined;
+    const usaVideo = bridgefy && (ponto.safeCity || ponto.faceDetect || sw.vms === 'digifort');
+    const usaLpr = bridgefy && !!estrutura && estrutura.aceitaOcr && ponto.safeWay;
+    const swPonto = switchDe(ponto.switchId);
+
+    return (
+      <div style={painel}>
+        <TituloPainel
+          icone="pin"
+          texto="Configurar ponto"
+          extra={!somenteLeitura && (
+            <>
+              <button type="button" title="Duplicar ponto" style={botaoIcone(bloqueado)} disabled={bloqueado} onClick={duplicarPonto}>
+                <IconeKit nome="copiar" tamanho={15} /> Duplicar
+              </button>
+              <button type="button" title="Remover ponto" style={botaoIcone(bloqueado, true)} disabled={bloqueado} onClick={removerPonto}>
+                <IconeKit nome="lixeira" tamanho={15} /> Remover
+              </button>
+            </>
+          )}
+        />
+
+        {/* nome e quantidade */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '12px', marginBottom: '16px' }}>
+          <div>
+            <label style={rotuloCampo}>Nome do ponto</label>
+            <input value={ponto.nome} disabled={bloqueado} onChange={e => mudarPonto({ nome: e.target.value })} style={campo} />
+          </div>
+          <div>
+            <label style={rotuloCampo} title="Quantos pontos iguais a este o projeto tem">Pontos iguais</label>
+            <Numero valor={ponto.quantidade} aoMudar={n => mudarPonto({ quantidade: n })} minimo={1} maximo={999} desabilitado={bloqueado} />
+          </div>
+        </div>
+
+        {/* tipo */}
+        <label style={rotuloCampo}>{bridgefy ? 'Estrutura' : 'Tipo de ponto'}</label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '16px' }}>
+          {TIPOS_PONTO.filter(t => t.grupo === (bridgefy ? 'Bridgefy' : 'Controle de acesso')).map(t => (
+            <Ladrilho
+              key={t.tipo}
+              icone={t.tipo as NomeIconeKit}
+              titulo={NOME_CURTO[t.tipo]}
+              descricao={DESCRICAO_TIPO[t.tipo]}
+              marcado={ponto.tipo === t.tipo}
+              desabilitado={bloqueado}
+              onClick={() => trocarTipo(t.tipo)}
+            />
+          ))}
+        </div>
+
+        {bridgefy && estrutura && (
+          <>
+            {/* soluções */}
+            <label style={rotuloCampo}>Soluções no ponto</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+              {sw.vms === 'safeCity'
+                ? <Ladrilho caixa icone="nuvem" titulo="Safe City" descricao="VMS em nuvem · RTMP · licença por câmera" marcado={ponto.safeCity} desabilitado={bloqueado} onClick={() => alternarSolucao('safeCity')} />
+                : <Ladrilho caixa icone="servidor" titulo="Digifort (VMS do projeto)" descricao="Licença por servidor + packs, no projeto" marcado desabilitado onClick={() => undefined} />}
+              <Ladrilho caixa icone="radar" titulo="Smart Detect" descricao="Módulo do Safe City · licença inclusa" marcado={ponto.smartDetect} desabilitado={bloqueado || sw.vms !== 'safeCity'} onClick={() => alternarSolucao('smartDetect')} />
+              <Ladrilho caixa icone="rosto" titulo="Face Detect" descricao="Facial · SFTP · licença por câmera" marcado={ponto.faceDetect} desabilitado={bloqueado} onClick={() => alternarSolucao('faceDetect')} />
+              <Ladrilho caixa icone="placa" titulo="Safe Way" descricao={estrutura.aceitaOcr ? 'Leitura de placas · SFTP · licença por faixa' : 'O Box não comporta câmera OCR/LPR'} marcado={ponto.safeWay && estrutura.aceitaOcr} desabilitado={bloqueado || !estrutura.aceitaOcr} onClick={() => alternarSolucao('safeWay')} />
+            </div>
+            <div style={{ ...dica, marginBottom: '16px' }}>
+              Safe City e Safe Way nunca usam a mesma câmera: ponto com vídeo e placas leva duas.
+            </div>
+
+            {/* câmeras */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px', marginBottom: '16px' }}>
+              <div style={subPainel(usaVideo)}>
+                <div style={tituloSubPainel}><IconeKit nome="camera" tamanho={17} cor={COR.indigo} /> Videomonitoramento</div>
+                <label style={rotuloCampo}>Câmeras</label>
+                <Numero valor={ponto.camerasVideo} aoMudar={n => mudarPonto({ camerasVideo: n })} maximo={estrutura.maxCameras} desabilitado={bloqueado || !usaVideo} />
+                <label style={{ ...rotuloCampo, marginTop: '10px' }}>Modelo</label>
+                <select value={ponto.modeloVideo} disabled={bloqueado || !usaVideo} onChange={e => mudarPonto({ modeloVideo: e.target.value })} style={campo}>
+                  {CAMERAS_VIDEO.map(c => (
+                    <option key={idCamera(c)} value={idCamera(c)}>
+                      {c.modelo}{c.padrao ? ' · padrão' : ''}{c.zoomOptico ? ' · zoom' : ''}{c.codigo ? '' : ' · sem código'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={subPainel(usaLpr)}>
+                <div style={tituloSubPainel}><IconeKit nome="placa" tamanho={17} cor={COR.indigo} /> Leitura de placas (LPR)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={rotuloCampo}>Câmeras</label>
+                    <Numero valor={ponto.camerasOcr} aoMudar={n => mudarPonto({ camerasOcr: n })} maximo={estrutura.maxCameras} desabilitado={bloqueado || !usaLpr} />
+                  </div>
+                  <div>
+                    <label style={rotuloCampo} title="A licença Safe Way é por faixa monitorada">Faixas/câmera</label>
+                    <Numero valor={ponto.faixasPorOcr} aoMudar={n => mudarPonto({ faixasPorOcr: n })} minimo={1} maximo={4} desabilitado={bloqueado || !usaLpr} />
+                  </div>
+                </div>
+                <label style={{ ...rotuloCampo, marginTop: '10px' }}>Modelo</label>
+                <select value={ponto.modeloOcr} disabled={bloqueado || !usaLpr} onChange={e => mudarPonto({ modeloOcr: e.target.value })} style={campo}>
+                  {CAMERAS_OCR.map(c => <option key={idCamera(c)} value={idCamera(c)}>{c.modelo}{c.padrao ? ' · padrão' : ''}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* rede, energia e opções */}
+            <div style={subPainel(true)}>
+              <div style={tituloSubPainel}><IconeKit nome="rede" tamanho={17} cor={COR.indigo} /> Rede, energia e opções</div>
+              <label style={rotuloCampo}>Switch</label>
+              <select value={ponto.switchId} disabled={bloqueado} onChange={e => mudarPonto({ switchId: e.target.value })} style={campo}>
+                {SWITCHES.map(s => <option key={idSwitch(s)} value={idSwitch(s)}>{s.modelo}{s.padrao ? ' · padrão' : ''}{s.codigo ? '' : ' · sem código'}</option>)}
+              </select>
+              <div style={dica}>
+                {swPonto.poe
+                  ? `Com PoE as câmeras são alimentadas pelo switch: ${ponto.tipo === 'torre' ? 'fica só a fonte do giroled' : 'as fontes das câmeras saem'}.`
+                  : `Sem PoE: 1 fonte por câmera${ponto.tipo === 'torre' ? ' + 1 do giroled' : ''}.`}
+              </div>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '10px', fontSize: '13px', color: COR.azul }}>
+                {ponto.tipo !== 'box' && (
+                  <label style={{ display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer' }} title="Torre, poste ou via pública: o Face Detect exige zoom óptico">
+                    <input type="checkbox" checked={ponto.pontoAlto} disabled={bloqueado} onChange={e => mudarPonto({ pontoAlto: e.target.checked })} />
+                    Instalação alta
+                  </label>
+                )}
+                {ponto.tipo === 'torre' && (
+                  <label style={{ display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={ponto.comunicacaoBidirecional} disabled={bloqueado} onChange={e => mudarPonto({ comunicacaoBidirecional: e.target.checked })} />
+                    Comunicação bidirecional (torre de emergência)
+                  </label>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {!bridgefy && (
+          <>
+            {ponto.tipo === 'catraca'
+              ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px', marginBottom: '14px' }}>
+                  <div style={subPainel(true)}>
+                    <div style={tituloSubPainel}><IconeKit nome="catraca" tamanho={17} cor={COR.indigo} /> Catracas CAP3100</div>
+                    <Numero valor={ponto.catracas} aoMudar={n => mudarPonto({ catracas: n })} maximo={20} desabilitado={bloqueado} />
+                    <div style={dica}>Já vem com 2 leitoras (entrada e saída).</div>
+                  </div>
+                  <div style={subPainel(true)}>
+                    <div style={tituloSubPainel}><IconeKit nome="pessoas" tamanho={17} cor={COR.indigo} /> Catracas PNE</div>
+                    <Numero valor={ponto.catracasPne} aoMudar={n => mudarPonto({ catracasPne: n })} maximo={10} desabilitado={bloqueado} />
+                    <div style={dica}>Cada uma leva 2 controladores SS 3532 MF W + 2 suportes SC 3000.</div>
+                  </div>
+                </div>
+              )
+              : (
+                <div style={{ ...subPainel(true), marginBottom: '14px' }}>
+                  <div style={tituloSubPainel}><IconeKit nome="rosto" tamanho={17} cor={COR.indigo} /> Controlador de acesso facial</div>
+                  <select value={ponto.controladorPorta} disabled={bloqueado} onChange={e => mudarPonto({ controladorPorta: e.target.value })} style={campo}>
+                    {CONTROLADORES_PORTA.map(c => <option key={c.codigo} value={c.codigo}>{c.modelo}{c.padrao ? ' · padrão' : ''}</option>)}
+                  </select>
+                  <div style={dica}>Faz o papel de leitora e de controladora — sem controladora separada.</div>
+                </div>
+              )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+              <Ladrilho caixa icone="chave" titulo="Usa W-Access" descricao="Licença por leitora + cadastros e conexões no projeto" marcado={ponto.usaWAccess} desabilitado={bloqueado} onClick={() => mudarPonto({ usaWAccess: !ponto.usaWAccess })} />
+              {ponto.tipo === 'portaDutotec' && (
+                <Ladrilho caixa icone="portaDutotec" titulo="Porta de vidro" descricao="Suporte SV 21/22 — 1 por fechadura" marcado={ponto.portaVidro} desabilitado={bloqueado} onClick={() => mudarPonto({ portaVidro: !ponto.portaVidro })} />
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // ---------------- kit gerado ----------------
+
+  const errosPontoAtual = alertasPonto.filter(a => a.nivel === 'erro').length;
+  const valido = visaoKit === 'ponto' ? errosPontoAtual === 0 : erros.length === 0;
+
+  const renderizarResumoPonto = (): React.ReactElement | null => {
+    if (!ponto || !grupoPonto) {
+      return (
+        <div style={{ fontSize: '13px', color: COR.texto2, padding: '20px 0', textAlign: 'center' }}>Os itens do ponto aparecem aqui.</div>
+      );
+    }
+
+    const bridgefy = ehBridgefy(ponto.tipo);
+    const estrutura = bridgefy ? ESTRUTURAS[ponto.tipo as 'torre' | 'box' | 'mini'] : undefined;
+    const nO = estrutura && estrutura.aceitaOcr ? ponto.camerasOcr : 0;
+    const sensores = ponto.camerasVideo + nO;
+
+    return (
+      <>
+        <div style={{ fontSize: '12px', color: COR.texto2, marginBottom: '6px' }}>
+          Kits aplicados{ponto.quantidade > 1 ? ` · quantidades × ${ponto.quantidade} pontos` : ''}
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          {kitsAplicados(ponto).map(k => (
+            <span key={k} style={{ border: `1px solid ${COR.borda}`, background: COR.fundo, borderRadius: '8px', padding: '4px 10px', fontSize: '12.5px', color: COR.azul, fontWeight: 600 }}>{k}</span>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {bridgefy && estrutura
+            ? (
+              <>
+                <Estatistica valor={String(ponto.camerasVideo)} rotulo="câm. vídeo" />
+                <Estatistica valor={String(nO)} rotulo="câm. LPR" />
+                <Estatistica valor={`${sensores}/${estrutura.maxCameras}`} rotulo="sensores" alerta={sensores > estrutura.maxCameras} />
+              </>
+            )
+            : ponto.tipo === 'catraca'
+              ? (
+                <>
+                  <Estatistica valor={String(ponto.catracas + ponto.catracasPne)} rotulo="catracas" />
+                  <Estatistica valor={String(2 * (ponto.catracas + ponto.catracasPne))} rotulo="leitoras" />
+                  <Estatistica valor={ponto.usaWAccess ? 'Sim' : 'Não'} rotulo="W-Access" />
+                </>
+              )
+              : (
+                <>
+                  <Estatistica valor="1" rotulo="leitora" />
+                  <Estatistica valor={ponto.tipo === 'portaDutotec' ? 'Fechadura' : 'Eletroímã'} rotulo="barreira" />
+                  <Estatistica valor={ponto.usaWAccess ? 'Sim' : 'Não'} rotulo="W-Access" />
+                </>
+              )}
+        </div>
+
+        {alertasPonto.length > 0 ? <ListaAlertas alertas={alertasPonto} /> : <div style={{ height: '12px' }} />}
+        <TabelaItens itens={grupoPonto.itens} mostrarOrigem={false} />
+      </>
+    );
+  };
+
+  const blocoKit = (
+    <div style={{ ...painel, position: largo ? 'sticky' : 'static', top: '12px' }}>
+      <TituloPainel
+        icone="kit"
+        texto={visaoKit === 'ponto' && ponto ? `Kit gerado para ${ponto.nome}` : 'Lista do projeto'}
+        extra={(
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', borderRadius: '999px', padding: '3px 10px', fontSize: '12px', fontWeight: 800, background: valido ? '#E7F6EC' : '#FDE7E9', color: valido ? VERDE : VERMELHO }}>
+            <IconeKit nome={valido ? 'check' : 'alerta'} tamanho={13} />
+            {valido ? 'Válido' : `${visaoKit === 'ponto' ? errosPontoAtual : erros.length} erro(s)`}
+          </span>
+        )}
+      />
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '12px' }}>
+        <Segmentado
+          valor={visaoKit}
+          onMudar={id => setVisaoKit(id as 'ponto' | 'projeto')}
+          opcoes={[
+            { id: 'ponto', texto: 'Este ponto', icone: 'pin' },
+            { id: 'projeto', texto: 'Projeto inteiro', icone: 'kit' }
+          ]}
+        />
+        {visaoKit === 'projeto' && (
+          <button type="button" style={botaoIcone(resultado.itens.length === 0)} disabled={resultado.itens.length === 0} onClick={baixarCsv}>
+            <IconeKit nome="baixar" tamanho={15} /> Baixar CSV
+          </button>
+        )}
+      </div>
+
+      {visaoKit === 'ponto' && renderizarResumoPonto()}
+
+      {visaoKit === 'projeto' && (
+        <>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Estatistica valor={String(resultado.totais.pontos)} rotulo="pontos" />
+            <Estatistica valor={String(resultado.totais.camerasVideo)} rotulo="câm. vídeo" />
+            <Estatistica valor={String(resultado.totais.camerasOcr)} rotulo="câm. LPR" />
+            <Estatistica valor={String(resultado.totais.leitoras)} rotulo="leitoras" />
+          </div>
+          {resultado.alertas.length > 0 ? <ListaAlertas alertas={resultado.alertas} mostrarOrigem /> : <div style={{ height: '12px' }} />}
+          {resultado.itens.length > 0
+            ? <TabelaItens itens={resultado.itens} mostrarOrigem />
+            : <div style={{ fontSize: '13px', color: COR.texto2 }}>Nenhum item ainda.</div>}
+        </>
+      )}
+    </div>
+  );
+
+  // ---------------- tela ----------------
+
+  return (
+    <div style={{ fontFamily: FONTE }}>
+
+      {semColuna && (
+        <div role="alert" style={{ ...painel, marginBottom: '14px', background: '#FFF4E5', borderColor: '#F5D7A8', color: COR.azul, fontSize: '13px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <IconeKit nome="alerta" tamanho={17} cor={AMBAR} />
+          <span><strong>Configuração pendente:</strong> execute <code>scripts/dataverse/criar-coluna-selecao-kit.ps1</code> para salvar. Dá para montar a lista e baixar o CSV mesmo assim.</span>
+        </div>
+      )}
+
+      {blocoProjeto}
+      {selecao.pontos.length > 0 && blocoPontos}
+
+      <div style={{ display: 'grid', gridTemplateColumns: largo ? 'minmax(0, 1.1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: '14px', alignItems: 'start' }}>
+        {renderizarConfigurar()}
+        {blocoKit}
+      </div>
+
+      {/* barra de ações */}
+      {!somenteLeitura && (
+        <div
+          style={{
+            position: 'sticky', bottom: 0, zIndex: 10, marginTop: '14px',
+            display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
+            background: '#FFFFFF', border: `1px solid ${COR.borda}`, borderRadius: '14px',
+            padding: '10px 14px', boxShadow: '0 -6px 20px rgba(32,42,68,.08)'
+          }}
+        >
+          <span style={{ fontSize: '12.5px', color: COR.texto2 }}>
+            <strong style={{ color: COR.azul }}>{resultado.totais.pontos}</strong> ponto(s) ·{' '}
+            <strong style={{ color: COR.azul }}>{resultado.itens.length}</strong> itens
+            {erros.length > 0 && <span style={{ color: VERMELHO, fontWeight: 700 }}> · {erros.length} erro(s) para corrigir</span>}
+            {alterado && <span style={{ color: AMBAR, fontWeight: 700 }}> · alterações não salvas</span>}
+          </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+            <button type="button" style={botao('secundario', salvando || semColuna)} disabled={salvando || semColuna} onClick={() => salvar(false)}>
+              Salvar rascunho
+            </button>
+            <button
+              type="button"
+              style={botao('principal', salvando || semColuna || erros.length > 0 || selecao.pontos.length === 0)}
+              disabled={salvando || semColuna || erros.length > 0 || selecao.pontos.length === 0}
+              title={erros.length > 0 ? 'Corrija os erros para concluir' : undefined}
+              onClick={() => salvar(true)}
+            >
+              Concluir seleção de kit →
+            </button>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
 };
 
-export default SelecaoKitEtapa;
+export default SelecaoKitEtapa; 
