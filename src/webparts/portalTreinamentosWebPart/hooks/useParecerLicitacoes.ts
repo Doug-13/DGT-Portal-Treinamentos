@@ -38,6 +38,8 @@ export interface IUseParecerLicitacoes {
   erro?: string;
   total: number;
   podeRegistrar: boolean;
+  // Parecer vigente de cada edital (base de conhecimento da IA).
+  atuais: IParecerLicitacao[];
   obter: (item: ILicitacaoResultado) => ISituacaoParecer | undefined;
   registrar: (
     item: ILicitacaoResultado,
@@ -136,9 +138,15 @@ export const useParecerLicitacoes = (
     []
   );
 
+  const atuais = React.useMemo(
+    () => Object.keys(porEdital).map(chave => porEdital[chave].atual),
+    [porEdital]
+  );
+
   return {
     situacao,
     erro,
+    atuais,
     total: Object.keys(porEdital).length,
     podeRegistrar: situacao === 'ok',
     obter,

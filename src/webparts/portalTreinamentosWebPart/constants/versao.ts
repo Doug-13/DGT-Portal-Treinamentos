@@ -19,11 +19,11 @@ export interface INovidadeVersao {
 
 export const VERSAO_PORTAL = "1.4.5";
 
-export const VERSAO_SOLUCAO = "1.4.5.0";
+export const VERSAO_SOLUCAO = "1.4.4.0";
 
-export const DATA_BUILD = "2026-10-15T18:00:57.213Z";
+export const DATA_BUILD = "2026-10-15T20:14:04.958Z";
 
-export const COMMIT_BUILD = "b0770f3";
+export const COMMIT_BUILD = "cebe00c";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {

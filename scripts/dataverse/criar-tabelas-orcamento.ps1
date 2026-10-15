@@ -38,7 +38,8 @@
       dgt_percentual (4 casas), dgt_ordem, dgt_ativo
 
     Tabela dgt_orcamentoconfigarea (Contas por área do orçamento)
-      dgt_area (pesquisa -> dgt_area), dgt_areanome, dgt_grupos, dgt_ativo
+      dgt_area (pesquisa -> dgt_area), dgt_areanome, dgt_grupos, dgt_ativo,
+      dgt_equipeid (equipe da área, preenchida por sincronizar-equipes-orcamento.ps1)
 
   Já executou uma versão anterior? Execute de novo: só o que falta
   (colunas de devolução e a tabela de histórico) é criado.
@@ -484,6 +485,7 @@ New-Lookup     $C 'dgt_Area'         'Área' 'dgt_area' 'dgt_area_dgt_orcamentoc
 New-Texto      $C 'dgt_AreaNome'     'Nome da área' 200
 New-TextoLongo $C 'dgt_Grupos'       'Grupos (JSON)' 4000
 New-SimNao     $C 'dgt_Ativo'        'Ativo' $true
+New-Texto      $C 'dgt_EquipeId'     'Equipe da área (id)' 100
 
 # ------------------------------------------------------------
 # 4) Publicação
@@ -561,8 +563,13 @@ $acoesEvento = @('Create', 'Read', 'Append')
 # Configuração (regras e contas por área): gestor só lê.
 $tabelasConfig = @('dgt_orcamentoregra', 'dgt_orcamentoconfigarea')
 
+# Assign: o gestor cria linhas/log já com a EQUIPE da área como
+# proprietária (planilha compartilhada pelos gestores da área).
+$tabelasComEquipe = @('dgt_orcamentoplanilha', 'dgt_orcamentolinha', 'dgt_orcamentoevento', 'dgt_orcamentoalteracao')
+
 if ($PapelGestores) {
   Grant-Privilegios $PapelGestores 'Basic' $tabelasOrcamento $acoesOrcamento
+  Grant-Privilegios $PapelGestores 'Basic' $tabelasComEquipe @('Assign')
   Grant-Privilegios $PapelGestores 'Basic' @('dgt_orcamentoevento', 'dgt_orcamentoalteracao') $acoesEvento
   Grant-Privilegios $PapelGestores 'Global' $tabelasConfig @('Read')
   Grant-Privilegios $PapelGestores 'Global' @('dgt_usuario', 'dgt_area') @('AppendTo')
@@ -570,6 +577,7 @@ if ($PapelGestores) {
 
 if ($PapelAdministradores) {
   Grant-Privilegios $PapelAdministradores 'Global' $tabelasOrcamento $acoesOrcamento
+  Grant-Privilegios $PapelAdministradores 'Global' $tabelasComEquipe @('Assign')
   Grant-Privilegios $PapelAdministradores 'Global' @('dgt_orcamentoevento', 'dgt_orcamentoalteracao') $acoesEvento
   Grant-Privilegios $PapelAdministradores 'Global' $tabelasConfig @('Create', 'Read', 'Write', 'Append')
   Grant-Privilegios $PapelAdministradores 'Global' @('dgt_usuario', 'dgt_area') @('AppendTo')
@@ -590,5 +598,6 @@ if (-not $PapelGestores -or -not $PapelAdministradores) {
   Write-Host '       NÃO conceda nada ao perfil dos Colaboradores.'
 }
 
-Write-Host '  2. (Recomendado) Ative a auditoria das duas tabelas (Propriedades da tabela > Auditar alterações nos dados).'
-Write-Host '  3. Gere o pacote (npm run build) e publique o .sppkg.'
+Write-Host '  2. Rode sincronizar-equipes-orcamento.ps1 (cria a equipe de cada área e coloca os gestores nela).'
+Write-Host '  3. (Recomendado) Ative a auditoria das duas tabelas (Propriedades da tabela > Auditar alterações nos dados).'
+Write-Host '  4. Gere o pacote (npm run build) e publique o .sppkg.'

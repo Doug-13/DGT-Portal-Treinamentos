@@ -231,6 +231,10 @@ import RhPessoasPage from
   '../pages/RH/RhPessoasPage';
 
 import {
+  EnviarParaIa
+} from '../services/ia/provedoresIa';
+
+import {
   SPHttpClient
 } from '@microsoft/sp-http';
 
@@ -957,6 +961,10 @@ export interface IPortalRouterProps {
 
   siteUrl?:
   string;
+
+  // Licitações: envio de prompts ao serviço de IA (Claude).
+  enviarParaIa?:
+  EnviarParaIa;
 
   // Diagnóstico de acesso: e-mail do usuário logado e recarga das
   // permissões depois de o administrador corrigir o problema.
@@ -3210,6 +3218,7 @@ const PortalRouter:
             }
             dataverseService={props.dataverseService}
             contexto={props.contextoAcesso}
+            enviarParaIa={props.enviarParaIa}
           />
         );
 
@@ -3284,8 +3293,8 @@ const PortalRouter:
           />
         );
     }
-
-    return null;
+    // (O "return null" que ficava aqui era inalcançável — o switch já
+    // tem "default" — e quebrava a compilação com o erro TS7027.)
     };
 
     const conteudo =

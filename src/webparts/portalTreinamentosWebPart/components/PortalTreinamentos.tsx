@@ -62,6 +62,7 @@ import { ITrilha } from '../models/Trilha';
 import { useModulos } from '../hooks/useModulos';
 import { ProgressoTreinamentoService } from '../services/ProgressoTreinamentoService';
 import { CertificadoService } from '../services/CertificadoService';
+import { criarEnviarParaIaDataverse } from '../services/ia/enviarParaIaDataverse';
 import { TreinamentoRevisaoService, revisaoNaData } from '../services/TreinamentoRevisaoService';
 import { useModuloExecucao, IPerguntaRapidaExecucao } from '../hooks/useModuloExecucao';
 import { IModuloTreinamento, StatusUsuarioModulo } from '../models/Modulo';
@@ -625,6 +626,19 @@ const PortalTreinamentos:
     const avaliacao =
       useAvaliacao(
         dataverseService
+      );
+
+    // IA das licitações: Claude via Custom API do Dataverse
+    // (a chave fica no plugin, nunca no portal).
+    const enviarParaIa =
+      React.useMemo(
+        () =>
+          criarEnviarParaIaDataverse(
+            dataverseService
+          ),
+        [
+          dataverseService
+        ]
       );
 
     const gestaoTreinamentos =
@@ -4107,6 +4121,11 @@ const gestaoAreas =
 
                 pagina={
                   paginaAtual
+                }
+
+                // Licitações: análise por IA (Claude via Dataverse).
+                enviarParaIa={
+                  enviarParaIa
                 }
 
                 // RH e Pessoas: leitura da biblioteca Certificados.

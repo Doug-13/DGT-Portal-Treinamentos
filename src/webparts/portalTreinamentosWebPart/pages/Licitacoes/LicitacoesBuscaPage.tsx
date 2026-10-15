@@ -37,6 +37,25 @@ import {
 } from './ParecerLicitacao';
 
 import {
+  AnaliseIaBloco
+} from './AnaliseIaLicitacao';
+
+import ConfigurarIaModal from
+  './ConfigurarIaModal';
+
+import {
+  useAnaliseIaLicitacoes
+} from '../../hooks/useAnaliseIaLicitacoes';
+
+import {
+  IEstadoAnaliseIa
+} from '../../models/LicitacaoIa';
+
+import {
+  EnviarParaIa
+} from '../../services/ia/provedoresIa';
+
+import {
   converterValor,
   formatarDataPncp,
   formatarMoeda,
@@ -93,11 +112,16 @@ export interface ILicitacoesBuscaPageProps {
   // Opcionais: sem eles a busca funciona, só sem pareceres.
   dataverseService?: DataverseService;
   contexto?: IContextoAcesso;
+  // Chamada à API de IA (ver services/ia/provedoresIa.ts). Sem ela,
+  // a análise roda no modo simulado (histórico de pareceres).
+  enviarParaIa?: EnviarParaIa;
 }
 
 interface IDialogoParecer {
   item: ILicitacaoResultado;
   decisao?: DecisaoParecer;
+  // Texto sugerido pela IA ("Usar sugestão").
+  justificativa?: string;
 }
 
 const FILTROS_PARECER: Array<{ id: FiltroParecer; rotulo: string }> = [
@@ -217,13 +241,17 @@ const CartaoLicitacao: React.FC<{
   onPrevisualizar: (item: ILicitacaoResultado) => void;
   parecer?: ISituacaoParecer;
   situacaoPareceres: SituacaoPareceres;
-  onRegistrarParecer: (item: ILicitacaoResultado, decisao?: DecisaoParecer) => void;
-}> = ({ item, onPrevisualizar, parecer, situacaoPareceres, onRegistrarParecer }) => (
+  onRegistrarParecer: (item: ILicitacaoResultado, decisao?: DecisaoParecer, justificativa?: string) => void;
+  estadoIa: IEstadoAnaliseIa;
+  onAnalisarIa: (item: ILicitacaoResultado) => void;
+}> = ({ item, onPrevisualizar, parecer, situacaoPareceres, onRegistrarParecer, estadoIa, onAnalisarIa }) => (
   <div
     style={{
       ...cartao,
-      borderLeft: `4px solid ${item.score >= 50 ? COR.ciano : COR.indigo}`,
-      marginBottom: 12
+      borderLeft: `4px solid ${parecer && parecer.atual.decisao === 'NaoParticipar' ? '#C0392B' : item.score >= 50 ? COR.ciano : COR.indigo}`,
+      marginBottom: 12,
+      // Edital já descartado: fica visível, mas em segundo plano.
+      opacity: parecer && parecer.atual.decisao === 'NaoParticipar' ? 0.72 : 1
     }}
   >
     <div
@@ -266,6 +294,15 @@ const CartaoLicitacao: React.FC<{
       <Dado titulo="Abertura das propostas" valor={formatarDataPncp(item.abertura)} />
       <Dado titulo="Encerramento das propostas" valor={formatarDataPncp(item.encerramento)} />
     </div>
+
+    {/* Sem parecer: a IA sugere. Com parecer: vale a decisão da DGT. */}
+    {!parecer && (
+      <AnaliseIaBloco
+        estado={estadoIa}
+        onAnalisar={() => onAnalisarIa(item)}
+        onUsarSugestao={(decisao, justificativa) => onRegistrarParecer(item, decisao, justificativa)}
+      />
+    )}
 
     <ParecerCartao
       parecer={parecer}
@@ -322,7 +359,8 @@ const CartaoLicitacao: React.FC<{
 const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
   onIrParaTeste,
   dataverseService,
-  contexto
+  contexto,
+  enviarParaIa
 }) => {
 
   const busca = useBuscaLicitacoes();
@@ -337,11 +375,25 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
   const [avisoParecer, setAvisoParecer] = React.useState<string>('');
 
   const abrirDialogoParecer = React.useCallback(
-    (item: ILicitacaoResultado, decisao?: DecisaoParecer): void => {
-      setDialogo({ item, decisao });
+    (item: ILicitacaoResultado, decisao?: DecisaoParecer, justificativa?: string): void => {
+      setDialogo({ item, decisao, justificativa });
     },
     []
   );
+
+  // Análise por IA (só para editais sem parecer).
+  const ia = useAnaliseIaLicitacoes(
+    dataverseService,
+    busca.resultados,
+    pareceres.obter,
+    pareceres.atuais,
+    pareceres.situacao !== 'carregando',
+    enviarParaIa
+  );
+
+  const [configIaAberta, setConfigIaAberta] = React.useState<boolean>(false);
+
+  const ehAdministrador = !!contexto && contexto.perfil === 'Administrador';
 
   const fecharDialogoParecer = React.useCallback(
     (): void => setDialogo(undefined),
@@ -571,13 +623,25 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
             )}
           </div>
 
-          <button
-            type="button"
-            style={botaoSecundario}
-            onClick={onIrParaTeste}
-          >
-            Testar conexão
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {ehAdministrador && (
+              <button
+                type="button"
+                style={botaoSecundario}
+                onClick={() => setConfigIaAberta(true)}
+                title="Prompt, provedor e parâmetros da análise por IA"
+              >
+                🤖 Configurar IA
+              </button>
+            )}
+            <button
+              type="button"
+              style={botaoSecundario}
+              onClick={onIrParaTeste}
+            >
+              Testar conexão
+            </button>
+          </div>
         </div>
 
         {/* O que procurar */}
@@ -1059,6 +1123,8 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
               parecer={pareceres.obter(item)}
               situacaoPareceres={pareceres.situacao}
               onRegistrarParecer={abrirDialogoParecer}
+              estadoIa={ia.estadoDe(item)}
+              onAnalisarIa={ia.analisar}
             />
           ))}
 
@@ -1086,14 +1152,31 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         parecer={previa ? pareceres.obter(previa) : undefined}
         situacaoPareceres={pareceres.situacao}
         onRegistrarParecer={previa
-          ? (decisao?: DecisaoParecer) => abrirDialogoParecer(previa, decisao)
+          ? (decisao?: DecisaoParecer, justificativa?: string) => abrirDialogoParecer(previa, decisao, justificativa)
           : undefined}
-        dialogoParecerAberto={!!dialogo}
+        dialogoParecerAberto={!!dialogo || configIaAberta}
+        estadoIa={previa ? ia.estadoDe(previa) : undefined}
+        onAnalisarIa={previa ? () => ia.analisar(previa) : undefined}
+      />
+
+      <ConfigurarIaModal
+        aberto={configIaAberta}
+        promptAtual={ia.prompt}
+        promptService={ia.promptService}
+        servicoAnalise={ia.servicoAnalise}
+        tabelasExistem={ia.tabelasIaExistem}
+        resultados={busca.resultados}
+        pareceresAtuais={pareceres.atuais}
+        responsavel={contexto ? contexto.nome : ''}
+        apiDisponivel={ia.apiDisponivel}
+        onSalvo={ia.definirPrompt}
+        onFechar={() => setConfigIaAberta(false)}
       />
 
       <RegistrarParecerDialog
         item={dialogo ? dialogo.item : undefined}
         decisaoInicial={dialogo ? dialogo.decisao : undefined}
+        justificativaInicial={dialogo ? dialogo.justificativa : undefined}
         parecerAtual={dialogo ? pareceres.obter(dialogo.item) : undefined}
         onCancelar={fecharDialogoParecer}
         onSalvar={salvarParecer}

@@ -2614,6 +2614,53 @@ export class DataverseService {
   // ATRIBUIÇÃO CENTRALIZADA
   // ============================================================
 
+  // ==========================================================
+  // IA DAS LICITAÇÕES (Custom API → plugin → Claude)
+  // ==========================================================
+
+  public async analisarLicitacaoIa(
+    requisicao:
+      Record<string, unknown>
+  ): Promise<{
+    texto: string;
+    modelo?: string;
+    tokensEntrada?: number;
+    tokensSaida?: number;
+  }> {
+
+    const resposta =
+      await this.postObject(
+        'dgt_AnalisarLicitacaoIa',
+        {
+          PayloadJson:
+            JSON.stringify(
+              requisicao
+            )
+        }
+      );
+
+    const resultadoJson =
+      String(
+        resposta.ResultadoJson ||
+        ''
+      );
+
+    if (!resultadoJson) {
+      throw new Error(
+        'A IA não retornou resposta.'
+      );
+    }
+
+    return JSON.parse(
+      resultadoJson
+    ) as {
+      texto: string;
+      modelo?: string;
+      tokensEntrada?: number;
+      tokensSaida?: number;
+    };
+  }
+
   public async processarAtribuicao(
     payload:
       Record<string, unknown>
