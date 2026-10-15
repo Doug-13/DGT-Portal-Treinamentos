@@ -151,13 +151,12 @@ namespace DGT.Treinamentos.Plugins
 
             var maxTokens = Math.Max(200, Math.Min((int?)payload["maxTokens"] ?? 1200, _maxTokens));
 
-            var temperatura = Math.Max(0d, Math.Min((double?)payload["temperatura"] ?? 0.2d, 1d));
-
             var corpo = new JObject
             {
                 ["model"] = modelo,
                 ["max_tokens"] = maxTokens,
-                ["temperature"] = temperatura,
+                // "temperature" NÃO é enviado: os modelos atuais do Claude
+                // recusam o parâmetro ("temperature is deprecated").
                 ["system"] = sistema,
                 ["messages"] = new JArray
                 {

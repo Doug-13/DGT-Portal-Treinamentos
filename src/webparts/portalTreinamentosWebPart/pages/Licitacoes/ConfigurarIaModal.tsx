@@ -272,10 +272,6 @@ const ConfigurarIaModal: React.FC<IConfigurarIaModalProps> = ({
                   <input value={form.modeloIa} onChange={e => alterar({ modeloIa: e.target.value })} style={campo} placeholder={IA_MODELO_PADRAO} />
                 </label>
                 <label>
-                  <span style={rotulo}>Temperatura</span>
-                  <input type="number" min={0} max={1} step={0.1} value={form.temperatura} onChange={e => alterar({ temperatura: Number(e.target.value) })} style={campo} />
-                </label>
-                <label>
                   <span style={rotulo}>Máx. tokens</span>
                   <input type="number" min={200} max={8000} step={100} value={form.maxTokens} onChange={e => alterar({ maxTokens: Number(e.target.value) })} style={campo} />
                 </label>
