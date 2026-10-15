@@ -29,6 +29,7 @@ export type ChaveModuloPortal =
   | 'licitacoes'
   | 'arquitetura'
   | 'indicadores'
+  | 'orcamento'
   | 'rh';
 
 export interface IModuloPortal {
@@ -47,6 +48,7 @@ export const MODULOS_PORTAL: IModuloPortal[] = [
   { chave: 'licitacoes', nome: 'Licitações', descricao: 'Busca de oportunidades no PNCP. Liberar só para quem trabalha com licitações.', padrao: false },
   { chave: 'arquitetura', nome: 'Arquitetura de Soluções', descricao: 'Demandas, Matriz Go/No-Go e B.O.M. Liberar para a equipe de Arquitetura.', padrao: false },
   { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI). Dados sensíveis: Colaborador e Editor só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] },
+  { chave: 'orcamento', nome: 'Planejamento orçamentário', descricao: 'Planilha de orçamento anual. Cada um vê só a sua; o Administrador vê todas. Padrão para Gestor; demais só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] },
   { chave: 'rh', nome: 'RH e Pessoas', descricao: 'Certificados e validades de todos os colaboradores. Liberar só para o RH.', padrao: false, padraoPerfis: ['Administrador'] }
 ];
 
@@ -58,6 +60,10 @@ export const moduloDaPagina = (
 
   if (pagina === 'indicadores') {
     return 'indicadores';
+  }
+
+  if (pagina === 'planejamentoOrcamentario') {
+    return 'orcamento';
   }
 
   if (pagina === 'rhPessoas') {

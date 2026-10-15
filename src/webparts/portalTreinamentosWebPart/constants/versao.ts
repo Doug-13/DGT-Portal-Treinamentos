@@ -21,9 +21,9 @@ export const VERSAO_PORTAL = "1.4.5";
 
 export const VERSAO_SOLUCAO = "1.4.5.0";
 
-export const DATA_BUILD = "2026-10-15T10:48:20.521Z";
+export const DATA_BUILD = "2026-10-15T17:48:44.223Z";
 
-export const COMMIT_BUILD = "ebc66ae";
+export const COMMIT_BUILD = "ab3eae9";
 
 export const NOVIDADES: INovidadeVersao[] = [
   {
@@ -475,87 +475,11 @@ export const NOVIDADES: INovidadeVersao[] = [
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
 export const NOVIDADES_PENDENTES: INovidadeItem[] = [
   {
-    "tipo": "Melhoria",
-    "texto": "nova tela da Seleção de kit — projeto (VMS, Digifort, IPX, W-Access) no topo, pontos em cartões com ícones, painel \"Configurar ponto\" (estrutura, soluções no ponto, videomonitoramento, LPR, rede e energia) e painel \"Kit gerado\" (kits aplicados, resumo, alertas e itens do ponto ou do projeto), com barra de ações fixa."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "soluções (Safe City, Smart Detect, Face Detect, Safe Way) passam a ser escolhidas por ponto; a estrutura da Torre e do Box entra na lista de itens."
+    "tipo": "Novo",
+    "texto": "Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir."
   },
   {
     "tipo": "Novo",
-    "texto": "Arquitetura de Soluções — etapa 3 \"Seleção de kit\" (montador de B.O.M.). Informando pontos (Torre, Box, Mini, porta eletroduto/dutotec, catraca), câmeras/leitoras, pontos iguais e soluções (Safe City ou Digifort, Smart Detect, Face Detect, Safe Way por faixa, IPX, W-Access), o portal monta a lista com código CIGAM e quantidade, com validações (limites de câmeras, Box sem OCR, orçamento PoE com margem de 25%, servidores do Digifort, itens sem código). Modelo de câmera, switch e controlador entram com o padrão e são editáveis; a troca de switch recalcula as fontes. Lista consolidada ou por ponto e download em CSV. Requer scripts/dataverse/criar-coluna-selecao-kit.ps1."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "etapa 4 \"Cálculo de HH\" sinalizada como aguardando as planilhas de HH, com o resumo do kit."
-  },
-  {
-    "tipo": "Correção",
-    "texto": "na Visão geral de Treinamentos, os cartões Concluídos, Em andamento, Pendentes e Vencido passam a filtrar \"Meus treinamentos\" (mostrando todos os do cartão; clicar de novo limpa); Trilhas abre a aba Trilhas. \"Pendentes\" agora indica \"a fazer\" (disponíveis e reprovados)."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "módulo \"RH e Pessoas\" no menu, com os certificados e validades de todos os colaboradores, certificados externos e foto do Microsoft 365. Liberado pelo módulo \"RH e Pessoas\" em Usuários e acessos (padrão: Administrador). Requer scripts/dataverse/criar-tabela-certificados-externos.ps1."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "Editor por área: quem é Editor em áreas específicas só vê, cria e mantém os treinamentos dessas áreas."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "copiar o fluxo de um processo para outro, a partir da lista de processos."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "arquivo da revisão nas etapas do fluxo (Opcional/Obrigatório) e opção \"Remover o arquivo\" no evento de revisão."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "revisões antigas dos treinamentos podem ser consultadas em \"Revisões do treinamento\", no mesmo padrão dos documentos: selo Vigente/Obsoleta, faixa \"Revisão obsoleta — não utilizar\" com a revisão que a substituiu e marca d'água no conteúdo."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "o conteúdo do treinamento (dados, módulos e avaliação com questões) é registrado em cada revisão na publicação e antes de abrir uma nova revisão. Requer scripts/dataverse/criar-coluna-conteudo-revisao.ps1."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "na Gestão de treinamentos, os treinamentos sob controle documental trocam o botão \"Editar\" pelos botões da etapa atual do fluxo (ex.: \"Enviar para Avaliação\"); ao clicar, abre uma janela com revisão, etapa, responsável, prazo, os campos da etapa e a confirmação da ação. Sem revisão em andamento aparece \"Nova revisão\"; para quem não é responsável, \"Ver etapa\"."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "o assistente de edição do treinamento volta ao formato anterior, sem o fluxo de revisão."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "a etapa do fluxo do treinamento mostra o resumo do que está sendo elaborado (dados do cadastro, módulos e avaliação), com avisos do que falta e atalhos para editar e testar."
-  },
-  {
-    "tipo": "Correção",
-    "texto": "\"Ver etapa do fluxo\" e \"Revisões do treinamento\" não mostravam os botões da etapa atual; agora mostram a etapa com as ações, e o desenho do fluxo abre sob demanda."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "o Administrador do portal pode executar qualquer etapa do fluxo de revisão, mesmo sem ser o responsável; a tela avisa e o histórico registra a ação como \"Nome (Administrador)\"."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "na lista da Gestão de treinamentos, os treinamentos com etapa aguardando o usuário ficam destacados e no topo, com filtro \"Aguardando você\"; a coluna Status mostra revisão, etapa, responsável e prazo vencido."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "\"Ver etapa do fluxo\" no menu ⋮ mostra onde o treinamento está no fluxo (etapa, responsável, prazo, desenho do fluxo) e permite ao responsável concluir a etapa."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "\"Análise do treinamento\" dentro da Gestão, com etapa atual, conclusão da etapa, anexo de arquivo, nova revisão, edição e teste do conteúdo e lista de revisões."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "os documentos de controle dos treinamentos (tipo TRN) não aparecem mais no módulo Documentos; a gestão deles fica toda na Gestão de treinamentos."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "ao concluir o assistente de criação, o treinamento abre na análise, na etapa atual do fluxo."
+    "texto": "visão \"Todas as planilhas\" para o Administrador, com consolidado por grupo, consulta de cada planilha, reabertura e exportação CSV no layout da planilha de orçamento."
   }
 ];

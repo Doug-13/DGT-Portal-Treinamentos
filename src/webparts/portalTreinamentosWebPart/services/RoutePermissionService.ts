@@ -75,6 +75,15 @@ const LICITACOES: PerfilAcesso[] = [
   'Administrador'
 ];
 
+// Planejamento orçamentário: Gestor (global ou de alguma área) e
+// Administrador. Cada gestor vê só a própria planilha; o
+// Administrador vê todas (regra aplicada na página e nas Security
+// Roles das tabelas dgt_orcamentoplanilha / dgt_orcamentolinha).
+const ORCAMENTO: PerfilAcesso[] = [
+  'Gestor',
+  'Administrador'
+];
+
 const regras:
   IRegraRota[] = [
 
@@ -105,10 +114,6 @@ const regras:
     // Indicadores: a entrada é controlada pelo MÓDULO (Usuários e
     // acessos). O que cada perfil vê lá dentro é tratado na página.
     { rota: 'indicadores', perfis: TODOS },
-
-    // RH e Pessoas: a entrada é controlada pelo MÓDULO "RH e Pessoas"
-    // (Usuários e acessos). Padrão: só Administrador.
-    { rota: 'rhPessoas', perfis: TODOS },
 
     // Cadastro de documentos: quem mantém conteúdo (Editor e
     // Administrador). O Gestor aprova, não cria.
@@ -141,7 +146,10 @@ const regras:
     // Arquitetura de Soluções: qualquer perfil com o MÓDULO liberado
     { rota: 'arquitetura', perfis: LICITACOES },
     { rota: 'arquiteturaROs', perfis: LICITACOES },
-    { rota: 'licitacoesTeste', perfis: LICITACOES }
+    { rota: 'licitacoesTeste', perfis: LICITACOES },
+
+    // Planejamento orçamentário
+    { rota: 'planejamentoOrcamentario', perfis: ORCAMENTO }
   ];
 
 const mensagemNegado = (
