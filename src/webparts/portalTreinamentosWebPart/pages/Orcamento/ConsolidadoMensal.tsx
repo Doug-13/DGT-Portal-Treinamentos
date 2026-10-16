@@ -9,7 +9,8 @@ import {
 
 import {
   NOMES_MESES,
-  STATUS_PLANILHA
+  STATUS_PLANILHA,
+  statusEntregue
 } from '../../services/orcamento/esquemaOrcamento';
 
 import TabelaOrcamento from './TabelaOrcamento';
@@ -60,7 +61,7 @@ const ConsolidadoMensal: React.FC<IConsolidadoMensalProps> = (props) => {
     props.planilhas.filter(item =>
       (areaId === '*' || item.areaId === areaId) &&
       (situacao === 'todas' ||
-        (situacao === 'enviadas' ? item.status === STATUS_PLANILHA.enviada : item.status !== STATUS_PLANILHA.enviada))
+        (situacao === 'enviadas' ? statusEntregue(item.status) : !statusEntregue(item.status)))
     );
 
   const ids = planilhasFiltradas.map(item => item.id);
@@ -138,7 +139,7 @@ const ConsolidadoMensal: React.FC<IConsolidadoMensalProps> = (props) => {
           Situação
           <select value={situacao} onChange={evento => setSituacao(evento.target.value as FiltroSituacao)} style={{ ...campo, width: 'auto' }}>
             <option value="todas">Todas</option>
-            <option value="enviadas">Somente enviadas</option>
+            <option value="enviadas">Enviadas (em aprovação ou aprovadas)</option>
             <option value="pendentes">Em preenchimento / devolvidas</option>
           </select>
         </label>
@@ -154,7 +155,7 @@ const ConsolidadoMensal: React.FC<IConsolidadoMensalProps> = (props) => {
         <CartaoNumero
           titulo="Planilhas consideradas"
           valor={String(planilhasFiltradas.length)}
-          detalhe={`${planilhasFiltradas.filter(item => item.status === STATUS_PLANILHA.enviada).length} enviada(s)`}
+          detalhe={`${planilhasFiltradas.filter(item => statusEntregue(item.status)).length} enviada(s) · ${planilhasFiltradas.filter(item => item.status === STATUS_PLANILHA.aprovada).length} aprovada(s)`}
         />
       </div>
 

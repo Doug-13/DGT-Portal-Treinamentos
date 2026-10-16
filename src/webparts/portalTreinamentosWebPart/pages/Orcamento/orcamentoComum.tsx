@@ -107,6 +107,8 @@ export const estiloAba = (
 export const CORES_STATUS: Record<StatusPlanilha, { cor: string; fundo: string }> = {
   'Em preenchimento': { cor: '#B45309', fundo: '#FFF4E5' },
   Enviada: { cor: '#107C10', fundo: '#E7F6EC' },
+  'Em aprovação': { cor: '#0F4C81', fundo: '#E8F2FF' },
+  Aprovada: { cor: '#FFFFFF', fundo: '#107C10' },
   'Devolvida para ajuste': { cor: '#B42318', fundo: '#FDE7E9' }
 };
 

@@ -22,7 +22,12 @@ import {
   IRegraCalculo
 } from '../../services/orcamento/calculoOrcamento';
 
+import {
+  OrcamentoFluxoService
+} from '../../services/orcamento/OrcamentoFluxoService';
+
 import MinhaPlanilhaView from './MinhaPlanilhaView';
+import AprovacoesView from './AprovacoesView';
 import TodasPlanilhasView from './TodasPlanilhasView';
 import ContasPorAreaView from './ContasPorAreaView';
 import RegrasCalculoView from './RegrasCalculoView';
@@ -62,7 +67,7 @@ export interface IPlanejamentoOrcamentarioPageProps {
   contexto?: IContextoAcesso;
 }
 
-type Aba = 'minha' | 'todas' | 'contas' | 'regras';
+type Aba = 'minha' | 'aprovacoes' | 'todas' | 'contas' | 'regras';
 
 const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps> = (props) => {
 
@@ -75,6 +80,17 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
       () => (dataverseService ? new OrcamentoService(dataverseService) : undefined),
       [dataverseService]
     );
+
+  // Fluxo de aprovação (processo CONT-001).
+  const fluxo =
+    React.useMemo(
+      () => (dataverseService && servico ? new OrcamentoFluxoService(dataverseService, servico) : undefined),
+      [dataverseService, servico]
+    );
+
+  const [fluxoAtivo, setFluxoAtivo] = React.useState(false);
+  const [motivoFluxo, setMotivoFluxo] = React.useState('');
+  const [qtdAprovacoes, setQtdAprovacoes] = React.useState(0);
 
   const anoInicial = anoPadraoOrcamento();
   const anosDisponiveis = [anoInicial - 1, anoInicial, anoInicial + 1];
@@ -149,6 +165,14 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
     Promise.all([
       carregarRegras(),
       carregarConfigs(),
+      fluxo
+        ? fluxo.verificar().then(resultado => {
+          if (ativo) {
+            setFluxoAtivo(resultado.ativo);
+            setMotivoFluxo(resultado.motivo);
+          }
+        }).catch(() => undefined)
+        : Promise.resolve(),
       ehAdmin
         ? servico.listarAreas().then(lista => { if (ativo) { setAreas(lista); } }).catch(() => undefined)
         : Promise.resolve()
@@ -157,7 +181,29 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
       .then(() => { if (ativo) { setCarregandoConfig(false); } })
       .catch(() => undefined);
     return () => { ativo = false; };
-  }, [servico, ehAdmin, carregarRegras, carregarConfigs]);
+  }, [servico, fluxo, ehAdmin, carregarRegras, carregarConfigs]);
+
+  // Quantas aprovações aguardam o usuário no ano (mostra a aba).
+  const contarAprovacoes = React.useCallback(async (): Promise<void> => {
+    if (!servico || !fluxo || !contexto || !fluxoAtivo) {
+      setQtdAprovacoes(0);
+      return;
+    }
+    try {
+      const planilhas = await servico.listarPlanilhas(ano);
+      setQtdAprovacoes((await fluxo.pendenciasDoUsuario(planilhas, contexto)).length);
+    } catch {
+      setQtdAprovacoes(0);
+    }
+  }, [servico, fluxo, contexto, fluxoAtivo, ano]);
+
+  React.useEffect(() => {
+    contarAprovacoes().catch(() => undefined);
+  }, [contarAprovacoes]);
+
+  const aoAlterarFluxo = React.useCallback((): void => {
+    contarAprovacoes().catch(() => undefined);
+  }, [contarAprovacoes]);
 
   const trocarAno = (novoAno: number): void => {
     if (novoAno === ano || !confirmarDescarte()) {
@@ -198,21 +244,54 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
     );
   }
 
+  // "Aprovações" aparece para quem tem etapa aguardando (ou para o
+  // Administrador, quando o fluxo está ativo).
+  const mostrarAprovacoes = fluxoAtivo && (ehAdmin || qtdAprovacoes > 0 || aba === 'aprovacoes');
+
   const abas: Array<{ chave: Aba; titulo: string }> = [
-    { chave: 'minha', titulo: 'Minha planilha' },
-    { chave: 'todas', titulo: 'Todas as planilhas' },
-    { chave: 'contas', titulo: 'Contas por área' },
-    { chave: 'regras', titulo: 'Regras de cálculo' }
-  ];
+    { chave: 'minha' as Aba, titulo: 'Minha planilha' }
+  ]
+    .concat(mostrarAprovacoes ? [{ chave: 'aprovacoes' as Aba, titulo: `Aprovações${qtdAprovacoes > 0 ? ` (${qtdAprovacoes})` : ''}` }] : [])
+    .concat(ehAdmin
+      ? [
+        { chave: 'todas' as Aba, titulo: 'Todas as planilhas' },
+        { chave: 'contas' as Aba, titulo: 'Contas por área' },
+        { chave: 'regras' as Aba, titulo: 'Regras de cálculo' }
+      ]
+      : []);
 
   const conteudo = (): React.ReactNode => {
 
-    if (carregandoConfig) {
+    if (carregandoConfig || !fluxo) {
       return <div style={{ ...cartao, color: COR.texto2 }}>Carregando a configuração do orçamento...</div>;
     }
 
+    if (aba === 'aprovacoes' && fluxoAtivo) {
+      return (
+        <AprovacoesView
+          servico={servico}
+          fluxo={fluxo}
+          contexto={contexto}
+          ano={ano}
+          regras={regras}
+          onQuantidade={setQtdAprovacoes}
+        />
+      );
+    }
+
     if (aba === 'todas' && ehAdmin) {
-      return <TodasPlanilhasView servico={servico} contexto={contexto} ano={ano} areas={areas} regras={regras} />;
+      return (
+        <TodasPlanilhasView
+          servico={servico}
+          contexto={contexto}
+          ano={ano}
+          areas={areas}
+          regras={regras}
+          fluxo={fluxo}
+          fluxoAtivo={fluxoAtivo}
+          onFluxoAlterado={aoAlterarFluxo}
+        />
+      );
     }
 
     if (aba === 'contas' && ehAdmin) {
@@ -231,6 +310,9 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
         regras={regras}
         configs={configs}
         onPendencias={aoMudarPendencias}
+        fluxo={fluxo}
+        fluxoAtivo={fluxoAtivo}
+        onFluxoAlterado={aoAlterarFluxo}
       />
     );
   };
@@ -281,8 +363,9 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
         </label>
       </div>
 
-      {/* Abas (Administrador) */}
-      {ehAdmin && (
+      {/* Abas: o Administrador vê todas; os demais veem "Aprovações"
+          quando têm etapa do fluxo aguardando. */}
+      {abas.length > 1 && (
         <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '16px', overflowX: 'auto' }}>
           {abas.map(item => (
             <button
@@ -300,6 +383,11 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
       )}
 
       <CaixaMensagem tipo="alerta" texto={alertaConfig} />
+
+      {/* Só o Administrador vê por que o fluxo CONT-001 não está ativo. */}
+      {ehAdmin && !carregandoConfig && !fluxoAtivo && motivoFluxo && (
+        <CaixaMensagem tipo="info" texto={`Fluxo de aprovação: ${motivoFluxo}`} />
+      )}
 
       {conteudo()}
     </section>

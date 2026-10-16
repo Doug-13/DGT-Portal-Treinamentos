@@ -86,6 +86,9 @@ export interface IPlanilhaOrcamento {
   // Equipe proprietária ('' = dono é um usuário). Tudo o que for
   // criado na planilha vai para a mesma equipe.
   equipeId: string;
+  // Fluxo de aprovação: etapa atual e prazo dela (vazio = sem fluxo).
+  etapaAtual: string;
+  prazoEtapa: string;
   criadoEm: string;
   alteradoEm: string;
 }
@@ -322,9 +325,16 @@ export class OrcamentoService {
     const gravado =
       texto(registro, PLANILHA.status);
 
+    const conhecidos: string[] = [
+      STATUS_PLANILHA.enviada,
+      STATUS_PLANILHA.devolvida,
+      STATUS_PLANILHA.emAprovacao,
+      STATUS_PLANILHA.aprovada
+    ];
+
     const status: StatusPlanilha =
-      gravado === STATUS_PLANILHA.enviada || gravado === STATUS_PLANILHA.devolvida
-        ? gravado
+      conhecidos.indexOf(gravado) >= 0
+        ? gravado as StatusPlanilha
         : STATUS_PLANILHA.emPreenchimento;
 
     return {
@@ -347,6 +357,8 @@ export class OrcamentoService {
       devolvidoPor: texto(registro, PLANILHA.devolvidoPor),
       prazoAjuste: texto(registro, PLANILHA.prazoAjuste),
       equipeId: guid(registro[PLANILHA.equipeValor]),
+      etapaAtual: texto(registro, PLANILHA.etapaAtual),
+      prazoEtapa: texto(registro, PLANILHA.prazoEtapa),
       criadoEm: texto(registro, PLANILHA.criadoEm),
       alteradoEm: texto(registro, PLANILHA.alteradoEm)
     };
@@ -368,6 +380,33 @@ export class OrcamentoService {
       ordem: numero(registro[LINHA.ordem]),
       valores: LINHA.meses.map(campo => arredondar(numero(registro[campo])))
     };
+  }
+
+  // Colunas do fluxo de aprovação existem no Dataverse? (o script
+  // criar-tabelas-orcamento.ps1 cria). Sem elas a tela continua
+  // funcionando no modo simples. Verificado uma vez por sessão.
+  private colunasFluxo: boolean | undefined;
+
+  public async temColunasFluxo(): Promise<boolean> {
+    if (this.colunasFluxo === undefined) {
+      try {
+        await this.dataverse.listarRegistros(
+          TABELAS_ORCAMENTO.planilha,
+          `$select=${PLANILHA.etapaAtual},${PLANILHA.prazoEtapa},${PLANILHA.fluxoEstado}&$top=1`
+        );
+        this.colunasFluxo = true;
+      } catch {
+        this.colunasFluxo = false;
+      }
+    }
+    return this.colunasFluxo;
+  }
+
+  private async selectPlanilha(): Promise<string> {
+    const base = this.camposPlanilha();
+    return (await this.temColunasFluxo())
+      ? `${base},${PLANILHA.etapaAtual},${PLANILHA.prazoEtapa}`
+      : base;
   }
 
   private camposPlanilha(): string {
@@ -480,7 +519,7 @@ export class OrcamentoService {
     const registros =
       await this.dataverse.listarRegistros(
         TABELAS_ORCAMENTO.planilha,
-        `$select=${this.camposPlanilha()}` +
+        `$select=${await this.selectPlanilha()}` +
         `&$filter=${PLANILHA.ano} eq ${ano}` +
         ` and ${PLANILHA.ativo} eq true` +
         ` and (${condicoes.join(' or ')})` +
@@ -499,7 +538,7 @@ export class OrcamentoService {
     const registros =
       await this.dataverse.listarRegistros(
         TABELAS_ORCAMENTO.planilha,
-        `$select=${this.camposPlanilha()}` +
+        `$select=${await this.selectPlanilha()}` +
         `&$filter=${PLANILHA.ano} eq ${ano} and ${PLANILHA.ativo} eq true` +
         `&$orderby=${PLANILHA.gestorNome} asc`
       );
@@ -865,7 +904,7 @@ export class OrcamentoService {
 
   // Registra no histórico. Uma falha aqui NÃO desfaz a ação principal
   // (devolve a mensagem para a tela avisar).
-  private async registrarEvento(
+  public async registrarEvento(
     planilha: IPlanilhaOrcamento,
     tipo: TipoEventoOrcamento,
     motivo: string,

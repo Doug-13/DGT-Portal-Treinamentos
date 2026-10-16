@@ -21,7 +21,8 @@ import {
 import {
   AREA_GERAL,
   PRAZO_AJUSTE_DIAS_UTEIS,
-  STATUS_PLANILHA
+  STATUS_PLANILHA,
+  statusEditavel
 } from '../../services/orcamento/esquemaOrcamento';
 
 import {
@@ -38,9 +39,26 @@ import {
   situacaoPrazo
 } from '../../services/orcamento/diasUteis';
 
+import {
+  IEstadoFluxoPlanilha,
+  OrcamentoFluxoService,
+  etapaDePreenchimento
+} from '../../services/orcamento/OrcamentoFluxoService';
+
+import {
+  IUsuarioAreaAdmin
+} from '../../services/AreaAdminService';
+
+import {
+  ehAcaoDeDevolucao,
+  obterElementoAtual,
+  validarAcao
+} from '../../services/fluxo/FluxoEngine';
+
 import TabelaOrcamento from './TabelaOrcamento';
 import AdicionarLinhaModal from './AdicionarLinhaModal';
 import PainelAlteracoes from './PainelAlteracoes';
+import PainelFluxoOrcamento from './PainelFluxoOrcamento';
 
 import {
   COR,
@@ -78,6 +96,10 @@ import {
 // • Ao salvar, cada linha alterada vai para o log (anterior → novo).
 // • Devolvida para ajuste: mostra o motivo, o prazo (dias úteis) e as
 //   linhas alteradas.
+// • Aprovação: segue o fluxo publicado do processo CONT-001 (mesmo
+//   motor de Documentos e Treinamentos). "Enviar planilha" conclui a
+//   etapa de preenchimento; as avaliações aprovam ou reprovam (volta
+//   para cá com o motivo). Sem o processo, vale o envio simples.
 // ============================================================
 
 export interface IMinhaPlanilhaViewProps {
@@ -88,6 +110,12 @@ export interface IMinhaPlanilhaViewProps {
   configs: IConfigArea[];
   // Avisa a página quantas alterações não salvas existem.
   onPendencias: (quantidade: number) => void;
+  // Fluxo de aprovação (CONT-001). fluxoAtivo = processo encontrado,
+  // com fluxo publicado e colunas criadas.
+  fluxo: OrcamentoFluxoService;
+  fluxoAtivo: boolean;
+  // Chamado depois de uma ação do fluxo (atualiza "Aprovações").
+  onFluxoAlterado?: () => void;
 }
 
 const guid = (valor: string): string =>
@@ -102,7 +130,7 @@ const assinatura = (linha: ILinhaOrcamento): string =>
 
 const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
 
-  const { servico, contexto, ano, regras, configs, onPendencias } = props;
+  const { servico, contexto, ano, regras, configs, onPendencias, fluxo, fluxoAtivo, onFluxoAlterado } = props;
 
   // Áreas em que o usuário preenche orçamento.
   const areasDoUsuario =
@@ -136,6 +164,11 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   const [modalAberto, setModalAberto] = React.useState(false);
   const [busca, setBusca] = React.useState('');
   const [somenteComValor, setSomenteComValor] = React.useState(false);
+  const [estadoFluxo, setEstadoFluxo] = React.useState<IEstadoFluxoPlanilha | undefined>(undefined);
+  const [podeAgirFluxo, setPodeAgirFluxo] = React.useState(false);
+  const [processandoFluxo, setProcessandoFluxo] = React.useState(false);
+  const [vinculosFluxo, setVinculosFluxo] = React.useState<IUsuarioAreaAdmin[]>([]);
+  const [usuariosFluxo, setUsuariosFluxo] = React.useState<Array<{ id: string; nome: string }>>([]);
 
   // Áreas do usuário + áreas de planilhas já existentes (ex.: uma
   // planilha "Geral" criada antes de a pessoa ter área).
@@ -158,7 +191,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
     return config && config.grupos.length > 0 ? config.grupos : undefined;
   };
 
-  const editavel = !!planilha && planilha.status !== STATUS_PLANILHA.enviada;
+  const editavel = !!planilha && statusEditavel(planilha.status);
   const somenteLeitura = !editavel;
 
   const calculadas =
@@ -270,6 +303,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
       setAlteracoesLog([]);
 
       if (!encontrada) {
+        setEstadoFluxo(undefined);
         aplicarCarregadas([], false);
         return;
       }
@@ -304,7 +338,48 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
         lista = await servico.carregarLinhas(encontrada.id);
       }
 
-      aplicarCarregadas(lista, encontrada.status !== STATUS_PLANILHA.enviada);
+      // Fluxo de aprovação (CONT-001): começa sozinho na primeira
+      // abertura da planilha em preenchimento.
+      let atual = encontrada;
+      let estado: IEstadoFluxoPlanilha | undefined;
+
+      if (fluxoAtivo) {
+        estado = await fluxo.carregar(encontrada);
+
+        if (!estado && statusEditavel(encontrada.status)) {
+          const inicio = await fluxo.iniciar(encontrada, contexto);
+          if (inicio.ok) {
+            const relida =
+              (await servico.listarPlanilhasDoUsuario(ano, contexto.usuarioId, areasDoUsuario.map(area => area.id)))
+                .filter(item => item.id === encontrada.id)[0];
+            if (relida) {
+              atual = relida;
+              setPlanilha(relida);
+            }
+            estado = await fluxo.carregar(atual);
+          } else {
+            setAlerta(`O fluxo de aprovação não pôde ser iniciado: ${inicio.erros.join(' ')}`);
+          }
+          if (inicio.avisos.length > 0) {
+            setAlerta(inicio.avisos.join('\n'));
+          }
+        }
+
+        if (estado) {
+          const [podeAgir, vinculos, usuarios] = await Promise.all([
+            fluxo.podeAgir(estado, atual, contexto),
+            fluxo.vinculos(),
+            fluxo.usuarios()
+          ]);
+          setPodeAgirFluxo(podeAgir);
+          setVinculosFluxo(vinculos);
+          setUsuariosFluxo(usuarios);
+        }
+      }
+
+      setEstadoFluxo(estado);
+
+      aplicarCarregadas(lista, statusEditavel(atual.status));
       carregarLog(encontrada.id).catch(() => undefined);
     } catch (falha) {
       setErro(explicarErro(falha));
@@ -316,7 +391,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
     }
   // configs entra só pelo gruposDaArea na criação do modelo.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [servico, contexto, ano, areaId, areasDoUsuario, carregarLog]);
+  }, [servico, contexto, ano, areaId, areasDoUsuario, carregarLog, fluxo, fluxoAtivo]);
 
   React.useEffect(() => {
     carregar().catch(() => undefined);
@@ -566,6 +641,63 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
     }
   };
 
+  // Executa uma ação do fluxo. Na etapa de preenchimento, grava antes
+  // as alterações não salvas da tabela.
+  const executarFluxo = async (
+    acaoChave: string,
+    comentario: string,
+    valores: Record<string, string>,
+    jaConfirmado = false
+  ): Promise<string[]> => {
+
+    if (!planilha || !estadoFluxo) {
+      return ['O fluxo de aprovação não está disponível.'];
+    }
+
+    const preenchimento = etapaDePreenchimento(estadoFluxo.definicao);
+    const naEtapaDePreenchimento =
+      !!preenchimento && estadoFluxo.instancia.elementoAtualId === preenchimento.id;
+
+    if (naEtapaDePreenchimento && totalPendencias > 0) {
+      const salvou = await salvar();
+      if (!salvou) {
+        return ['As alterações da tabela não puderam ser salvas. Nada foi enviado.'];
+      }
+    }
+
+    setProcessandoFluxo(true);
+    setErro('');
+    try {
+      const resultado =
+        await fluxo.executar(planilha, contexto, acaoChave, comentario, valores);
+      if (!resultado.ok) {
+        if (jaConfirmado) {
+          setErro(resultado.erros.join('\n'));
+        }
+        return resultado.erros;
+      }
+      await carregar();
+      const etapa = obterElementoAtual(estadoFluxo.definicao, estadoFluxo.instancia);
+      const acao = etapa ? etapa.acoes.filter(item => item.chave === acaoChave)[0] : undefined;
+      setAviso(`✓ ${etapa ? etapa.nome : 'Etapa'}: ${acao ? acao.rotulo : 'ação'} registrada.`);
+      if (resultado.avisos.length > 0) {
+        setAlerta(resultado.avisos.join('\n'));
+      }
+      if (onFluxoAlterado) {
+        onFluxoAlterado();
+      }
+      return [];
+    } catch (falha) {
+      const texto = explicarErro(falha);
+      if (jaConfirmado) {
+        setErro(texto);
+      }
+      return [texto];
+    } finally {
+      setProcessandoFluxo(false);
+    }
+  };
+
   const enviar = async (): Promise<void> => {
 
     if (!planilha) {
@@ -578,6 +710,39 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
     }
 
     const reenvio = planilha.status === STATUS_PLANILHA.devolvida;
+
+    // Com o fluxo: "Enviar" = concluir a etapa de preenchimento com a
+    // ação principal configurada no processo.
+    if (estadoFluxo) {
+      const etapa = obterElementoAtual(estadoFluxo.definicao, estadoFluxo.instancia);
+      if (!etapa || etapa.tipo !== 'tarefaHumana') {
+        setErro('A etapa atual do fluxo não aceita envio.');
+        return;
+      }
+      if (!podeAgirFluxo) {
+        setErro(`Você não é responsável pela etapa "${etapa.nome}" do fluxo de aprovação.`);
+        return;
+      }
+      const acao =
+        etapa.acoes.filter(item => item.principal && !ehAcaoDeDevolucao(item))[0] ||
+        etapa.acoes.filter(item => !ehAcaoDeDevolucao(item))[0];
+      if (!acao) {
+        setErro(`A etapa "${etapa.nome}" não tem ação de envio configurada no processo.`);
+        return;
+      }
+      const problemas = validarAcao(etapa, acao, '', estadoFluxo.instancia.valores);
+      if (problemas.length > 0) {
+        setErro(`Para enviar, preencha no quadro "Fluxo de aprovação" (abaixo da tabela) e use o botão "${acao.rotulo}":\n${problemas.join('\n')}`);
+        return;
+      }
+      if (!window.confirm(
+        `${reenvio ? 'Reenviar' : 'Enviar'} a planilha de ${ano} (${areaAtual.nome}) para a próxima etapa do fluxo ("${acao.rotulo}")? Ela fica somente leitura durante a aprovação.`
+      )) {
+        return;
+      }
+      await executarFluxo(acao.chave, '', {}, true);
+      return;
+    }
 
     if (!window.confirm(
       reenvio
@@ -642,7 +807,12 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
       {areasExibidas.map(area => {
         const daArea = planilhasDoAno.filter(item => item.areaId === area.id)[0];
         const ativa = area.id === areaAtual.id;
-        const prazo = daArea && daArea.status === STATUS_PLANILHA.devolvida ? situacaoPrazo(daArea.prazoAjuste, daArea.dataDevolucao) : undefined;
+        const prazo =
+          daArea && daArea.status === STATUS_PLANILHA.devolvida
+            ? situacaoPrazo(daArea.prazoAjuste, daArea.dataDevolucao)
+            : daArea && daArea.status === STATUS_PLANILHA.emAprovacao && daArea.prazoEtapa
+              ? situacaoPrazo(daArea.prazoEtapa)
+              : undefined;
         return (
           <button
             key={area.id || 'geral'}
@@ -666,9 +836,12 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
             {daArea
               ? <SeloStatus status={daArea.status} />
               : <span style={{ fontSize: '12px', color: COR.texto2 }}>Não iniciada</span>}
+            {daArea && daArea.status === STATUS_PLANILHA.emAprovacao && daArea.etapaAtual && (
+              <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '4px' }}>{daArea.etapaAtual}</div>
+            )}
             {prazo && (
               <div style={{ marginTop: '6px' }}>
-                <SeloPrazo prazo={daArea.prazoAjuste} situacao={prazo} />
+                <SeloPrazo prazo={daArea.status === STATUS_PLANILHA.devolvida ? daArea.prazoAjuste : daArea.prazoEtapa} situacao={prazo} />
               </div>
             )}
           </button>
@@ -748,6 +921,14 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
           {planilha.status === STATUS_PLANILHA.enviada && (
             <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '6px' }}>Enviada em {formatarData(planilha.dataEnvio)}</div>
           )}
+          {planilha.status === STATUS_PLANILHA.emAprovacao && (
+            <div style={{ fontSize: '12px', color: COR.azul, marginTop: '6px', fontWeight: 600 }}>
+              Etapa: {planilha.etapaAtual || '—'}
+            </div>
+          )}
+          {planilha.status === STATUS_PLANILHA.emAprovacao && planilha.prazoEtapa && (
+            <div style={{ marginTop: '6px' }}><SeloPrazo prazo={planilha.prazoEtapa} situacao={situacaoPrazo(planilha.prazoEtapa)} /></div>
+          )}
           <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '6px' }}>
             {planilha.areaId ? 'Planilha da área' : 'Planilha pessoal'} · criada por {planilha.gestorNome || '—'}
           </div>
@@ -794,6 +975,17 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
         <CaixaMensagem tipo="info" texto="Esta planilha já foi enviada e está somente para consulta. Se precisar de ajuste, o administrador a devolverá para você com o motivo." />
       )}
 
+      {planilha.status === STATUS_PLANILHA.emAprovacao && (
+        <CaixaMensagem
+          tipo="info"
+          texto={`Planilha em aprovação — etapa "${planilha.etapaAtual || '—'}". Ela fica somente leitura durante a aprovação; se for reprovada, volta para você com o motivo. Acompanhe no quadro "Fluxo de aprovação" abaixo da tabela.`}
+        />
+      )}
+
+      {planilha.status === STATUS_PLANILHA.aprovada && (
+        <CaixaMensagem tipo="sucesso" texto={`✓ Orçamento de ${ano} — ${areaAtual.nome} aprovado. A planilha fica somente para consulta.`} />
+      )}
+
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
         {editavel && (
           <button type="button" onClick={() => setModalAberto(true)} disabled={salvando} style={botao('principal', salvando)}>
@@ -823,7 +1015,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
           <button
             type="button"
             onClick={() => { enviar().catch(() => undefined); }}
-            disabled={salvando || linhas.length === 0}
+            disabled={salvando || processandoFluxo || linhas.length === 0 || (!!estadoFluxo && !podeAgirFluxo)}
             style={botao(planilha.status === STATUS_PLANILHA.devolvida ? 'principal' : 'secundario', salvando || linhas.length === 0)}
             title="Conclui o preenchimento. A planilha fica somente leitura."
           >
@@ -892,6 +1084,22 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
             />
           )}
         </>
+      )}
+
+      {estadoFluxo && (
+        <div style={{ marginTop: '16px' }}>
+          <PainelFluxoOrcamento
+            estado={estadoFluxo}
+            dadosResponsaveis={fluxo.dadosResponsaveis(planilha)}
+            vinculos={vinculosFluxo}
+            usuarios={usuariosFluxo}
+            podeAgir={podeAgirFluxo}
+            processando={processandoFluxo || salvando}
+            onExecutar={executarFluxo}
+            observacaoAcoes={editavel && totalPendencias > 0 ? `As ${totalPendencias} alteração(ões) não salvas da tabela serão salvas antes de concluir a etapa.` : undefined}
+            diagramaAberto={false}
+          />
+        </div>
       )}
 
       <div style={{ marginTop: '16px' }}>

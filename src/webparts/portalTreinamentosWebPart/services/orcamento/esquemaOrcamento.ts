@@ -64,6 +64,11 @@ export const PLANILHA = {
   dataDevolucao: 'dgt_datadevolucao',
   devolvidoPor: 'dgt_devolvidopor',
   prazoAjuste: 'dgt_prazoajuste',
+  // Fluxo de aprovação (processo CONT-001): estado completo em JSON
+  // (etapa, tarefas, prazos, histórico) + resumo para as listas.
+  fluxoEstado: 'dgt_fluxoestado',
+  etapaAtual: 'dgt_etapaatual',
+  prazoEtapa: 'dgt_prazoetapa',
   // Equipe proprietária (null quando o dono é um usuário).
   equipeValor: '_owningteam_value',
   ativo: 'dgt_ativo',
@@ -130,9 +135,10 @@ export const CONFIG_AREA = {
 // Proprietário de um registro (para gravar na equipe da área).
 export const BIND_PROPRIETARIO = 'ownerid@odata.bind';
 
-export type TipoEventoOrcamento =
-  | 'Enviada'
-  | 'Devolvida para ajuste';
+// 'Enviada' e 'Devolvida para ajuste' (modo simples) ou o nome da
+// etapa/ação do fluxo de aprovação (ex.: "Avaliação Controladoria:
+// Aprovado").
+export type TipoEventoOrcamento = string;
 
 export const LINHA = {
   id: 'dgt_orcamentolinhaid',
@@ -188,19 +194,46 @@ export const NOMES_MESES = [
   'Dez'
 ];
 
+// Com o fluxo de aprovação (CONT-001):
+//   Em preenchimento → Em aprovação (etapas de avaliação) → Aprovada
+//   Reprovação em qualquer avaliação → Devolvida para ajuste.
+// Sem o fluxo (processo não encontrado) vale o modo simples:
+//   Em preenchimento → Enviada → (Administrador) Devolvida para ajuste.
 export type StatusPlanilha =
   | 'Em preenchimento'
   | 'Enviada'
+  | 'Em aprovação'
+  | 'Aprovada'
   | 'Devolvida para ajuste';
 
 export const STATUS_PLANILHA: {
   emPreenchimento: StatusPlanilha;
   enviada: StatusPlanilha;
+  emAprovacao: StatusPlanilha;
+  aprovada: StatusPlanilha;
   devolvida: StatusPlanilha;
 } = {
   emPreenchimento: 'Em preenchimento',
   enviada: 'Enviada',
+  emAprovacao: 'Em aprovação',
+  aprovada: 'Aprovada',
   devolvida: 'Devolvida para ajuste'
+};
+
+// Planilha que o gestor pode editar (preenchimento ou ajuste).
+export const statusEditavel = (status: StatusPlanilha): boolean =>
+  status === 'Em preenchimento' || status === 'Devolvida para ajuste';
+
+// Planilha já entregue pelo gestor (aguardando, em análise ou aprovada).
+export const statusEntregue = (status: StatusPlanilha): boolean =>
+  status === 'Enviada' || status === 'Em aprovação' || status === 'Aprovada';
+
+// Processo cujo fluxo publicado governa a aprovação do orçamento
+// (Processos → CONT-001). Sem ele, o portal usa o modo simples.
+export const PROCESSO_ORCAMENTO = {
+  CODIGO: 'CONT-001',
+  // Plano B: primeiro processo ativo cujo nome contenha este texto.
+  NOME_CONTEM: 'orcament'
 };
 
 // Tamanho mínimo do motivo da devolução (evita "ajustar", "ver").

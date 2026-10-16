@@ -15,8 +15,18 @@ import {
 } from '../../services/orcamento/OrcamentoService';
 
 import {
-  STATUS_PLANILHA
+  STATUS_PLANILHA,
+  statusEntregue
 } from '../../services/orcamento/esquemaOrcamento';
+
+import {
+  IEstadoFluxoPlanilha,
+  OrcamentoFluxoService
+} from '../../services/orcamento/OrcamentoFluxoService';
+
+import {
+  IUsuarioAreaAdmin
+} from '../../services/AreaAdminService';
 
 import {
   IRegraCalculo,
@@ -31,6 +41,7 @@ import TabelaOrcamento from './TabelaOrcamento';
 import DevolverPlanilhaModal from './DevolverPlanilhaModal';
 import PainelAlteracoes from './PainelAlteracoes';
 import ConsolidadoMensal from './ConsolidadoMensal';
+import PainelFluxoOrcamento from './PainelFluxoOrcamento';
 
 import {
   COR,
@@ -67,6 +78,10 @@ import {
 // ============================================================
 
 export interface ITodasPlanilhasViewProps {
+  // Fluxo de aprovação (CONT-001).
+  fluxo: OrcamentoFluxoService;
+  fluxoAtivo: boolean;
+  onFluxoAlterado?: () => void;
   servico: OrcamentoService;
   contexto: IContextoAcesso;
   ano: number;
@@ -78,7 +93,13 @@ type Visao = 'lista' | 'planilha' | 'consolidado';
 
 const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
 
-  const { servico, contexto, ano } = props;
+  const { servico, contexto, ano, fluxo, fluxoAtivo, onFluxoAlterado } = props;
+
+  const [estadoFluxo, setEstadoFluxo] = React.useState<IEstadoFluxoPlanilha | undefined>(undefined);
+  const [podeAgirFluxo, setPodeAgirFluxo] = React.useState(false);
+  const [processandoFluxo, setProcessandoFluxo] = React.useState(false);
+  const [vinculosFluxo, setVinculosFluxo] = React.useState<IUsuarioAreaAdmin[]>([]);
+  const [usuariosFluxo, setUsuariosFluxo] = React.useState<Array<{ id: string; nome: string }>>([]);
 
   const [planilhas, setPlanilhas] = React.useState<IPlanilhaOrcamento[]>([]);
   const [linhas, setLinhas] = React.useState<ILinhaOrcamento[]>([]);
@@ -120,6 +141,27 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
   }, [carregar]);
 
   const carregarDetalhes = async (planilhaId: string): Promise<void> => {
+    setEstadoFluxo(undefined);
+    if (fluxoAtivo) {
+      try {
+        const planilha =
+          (await servico.listarPlanilhas(ano)).filter(item => item.id === planilhaId)[0];
+        const estado = planilha ? await fluxo.carregar(planilha) : undefined;
+        if (planilha && estado) {
+          const [podeAgir, vinculos, usuarios] = await Promise.all([
+            fluxo.podeAgir(estado, planilha, contexto),
+            fluxo.vinculos(),
+            fluxo.usuarios()
+          ]);
+          setPodeAgirFluxo(podeAgir);
+          setVinculosFluxo(vinculos);
+          setUsuariosFluxo(usuarios);
+        }
+        setEstadoFluxo(estado);
+      } catch (falha) {
+        setAlerta(`Fluxo de aprovação indisponível: ${explicarErro(falha)}`);
+      }
+    }
     setCarregandoEventos(true);
     setCarregandoAlteracoes(true);
     try {
@@ -162,7 +204,23 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
     setEnviandoDevolucao(true);
     setErroDevolucao('');
     try {
-      const avisoHistorico = await servico.devolverPlanilha(devolvendo, motivo, contexto);
+      // Planilha no fluxo de aprovação: volta para a etapa de
+      // preenchimento (registrado no fluxo e no histórico). Sem fluxo:
+      // devolução simples, como antes.
+      const estado = fluxoAtivo ? await fluxo.carregar(devolvendo) : undefined;
+      let avisoHistorico = '';
+      if (estado) {
+        const resultado = await fluxo.devolverComoAdministrador(devolvendo, motivo, contexto);
+        if (!resultado.ok) {
+          throw new Error(resultado.erros.join(' '));
+        }
+        avisoHistorico = resultado.avisos.join('\n');
+        if (onFluxoAlterado) {
+          onFluxoAlterado();
+        }
+      } else {
+        avisoHistorico = await servico.devolverPlanilha(devolvendo, motivo, contexto);
+      }
       const nome = devolvendo.areaNome || `${devolvendo.gestorNome} (Geral)`;
       setDevolvendo(undefined);
       await carregar();
@@ -177,6 +235,37 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
       setErroDevolucao(explicarErro(falha));
     } finally {
       setEnviandoDevolucao(false);
+    }
+  };
+
+  // Ação do fluxo executada pelo Administrador (quando ele também é
+  // responsável pela etapa atual).
+  const executarFluxo = async (
+    planilha: IPlanilhaOrcamento,
+    acaoChave: string,
+    comentario: string,
+    valores: Record<string, string>
+  ): Promise<string[]> => {
+    setProcessandoFluxo(true);
+    try {
+      const resultado = await fluxo.executar(planilha, contexto, acaoChave, comentario, valores);
+      if (!resultado.ok) {
+        return resultado.erros;
+      }
+      await carregar();
+      await carregarDetalhes(planilha.id);
+      setAviso('✓ Ação do fluxo registrada.');
+      if (resultado.avisos.length > 0) {
+        setAlerta(resultado.avisos.join('\n'));
+      }
+      if (onFluxoAlterado) {
+        onFluxoAlterado();
+      }
+      return [];
+    } catch (falha) {
+      return [explicarErro(falha)];
+    } finally {
+      setProcessandoFluxo(false);
     }
   };
 
@@ -261,8 +350,13 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
           </div>
           <SeloStatus status={aberta.status} />
           {prazo && <SeloPrazo prazo={aberta.prazoAjuste} situacao={prazo} />}
-          {aberta.status === STATUS_PLANILHA.enviada && (
-            <button type="button" onClick={() => { setErroDevolucao(''); setDevolvendo(aberta); }} style={botao('perigo')}>
+          {statusEntregue(aberta.status) && (
+            <button
+              type="button"
+              onClick={() => { setErroDevolucao(''); setDevolvendo(aberta); }}
+              style={botao('perigo')}
+              title={estadoFluxo ? 'Devolve para a etapa de preenchimento do fluxo, fora das ações do processo (fica registrado).' : undefined}
+            >
               Devolver para ajuste
             </button>
           )}
@@ -290,7 +384,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
           </div>
         )}
 
-        {aberta.status === STATUS_PLANILHA.enviada && aberta.dataDevolucao && (
+        {(aberta.status === STATUS_PLANILHA.enviada || aberta.status === STATUS_PLANILHA.emAprovacao) && aberta.dataDevolucao && (
           <CaixaMensagem
             tipo="info"
             texto={`Planilha reenviada após devolução em ${formatarDataHora(aberta.dataDevolucao)}. ${qtdDestacadas} linha(s) alterada(s) pelo gestor desde então — destacadas em azul na tabela e listadas no log abaixo.`}
@@ -301,6 +395,21 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
           <div style={{ ...cartao, textAlign: 'center', color: COR.texto2 }}>Esta planilha ainda não tem valores preenchidos.</div>
         ) : (
           <TabelaOrcamento linhas={linhasDaAberta} ano={ano} somenteLeitura={true} calculadas={calculadas} destacadas={destacadas} />
+        )}
+
+        {estadoFluxo && (
+          <div style={{ marginTop: '16px' }}>
+            <PainelFluxoOrcamento
+              estado={estadoFluxo}
+              dadosResponsaveis={fluxo.dadosResponsaveis(aberta)}
+              vinculos={vinculosFluxo}
+              usuarios={usuariosFluxo}
+              podeAgir={podeAgirFluxo}
+              processando={processandoFluxo}
+              onExecutar={(acaoChave, comentario, valores) => executarFluxo(aberta, acaoChave, comentario, valores)}
+              diagramaAberto={true}
+            />
+          </div>
         )}
 
         <div style={{ marginTop: '16px' }}>
@@ -370,7 +479,9 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
   const idsVisiveis = visiveis.map(item => item.id);
   const linhasVisiveis = linhas.filter(linha => idsVisiveis.indexOf(linha.planilhaId) >= 0);
   const totalConsolidado = somar(somarMeses(linhasVisiveis));
-  const enviadas = visiveis.filter(item => item.status === STATUS_PLANILHA.enviada).length;
+  const enviadas = visiveis.filter(item => statusEntregue(item.status)).length;
+  const emAprovacao = visiveis.filter(item => item.status === STATUS_PLANILHA.emAprovacao).length;
+  const aprovadas = visiveis.filter(item => item.status === STATUS_PLANILHA.aprovada).length;
   const devolvidas = visiveis.filter(item => item.status === STATUS_PLANILHA.devolvida);
   const atrasadas = devolvidas.filter(item => {
     const prazo = situacaoPrazo(item.prazoAjuste, item.dataDevolucao);
@@ -403,6 +514,9 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
         <CartaoNumero titulo="Planilhas" valor={String(visiveis.length)} detalhe={`${enviadas} enviada(s)`} />
+        {fluxoAtivo && (
+          <CartaoNumero titulo="Em aprovação" valor={String(emAprovacao)} detalhe={`${aprovadas} aprovada(s)`} />
+        )}
         <CartaoNumero titulo="Em preenchimento" valor={String(visiveis.length - enviadas - devolvidas.length)} />
         <CartaoNumero titulo="Devolvidas para ajuste" valor={String(devolvidas.length)} detalhe={atrasadas > 0 ? `${atrasadas} com prazo vencido` : 'Nenhuma atrasada'} />
         <CartaoNumero titulo="Total consolidado" valor={formatarMoeda(totalConsolidado)} detalhe={`Ano ${ano}`} />
@@ -456,7 +570,12 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
             <tbody>
               {visiveis.map(item => {
                 const daPlanilha = linhas.filter(linha => linha.planilhaId === item.id);
-                const prazo = item.status === STATUS_PLANILHA.devolvida ? situacaoPrazo(item.prazoAjuste, item.dataDevolucao) : undefined;
+                const prazo =
+                  item.status === STATUS_PLANILHA.devolvida
+                    ? situacaoPrazo(item.prazoAjuste, item.dataDevolucao)
+                    : item.status === STATUS_PLANILHA.emAprovacao && item.prazoEtapa
+                      ? situacaoPrazo(item.prazoEtapa)
+                      : undefined;
                 return (
                   <tr key={item.id}>
                     <td style={{ ...celula, fontWeight: 600 }}>
@@ -475,8 +594,13 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
                     <td style={{ ...celula, color: COR.texto2 }}>{item.gestorNome || '—'}</td>
                     <td style={celula}>
                       <SeloStatus status={item.status} />
+                      {item.status === STATUS_PLANILHA.emAprovacao && item.etapaAtual && (
+                        <div style={{ fontSize: '12px', color: COR.azul, marginTop: '4px', fontWeight: 600 }}>{item.etapaAtual}</div>
+                      )}
                       {prazo && (
-                        <div style={{ marginTop: '4px' }}><SeloPrazo prazo={item.prazoAjuste} situacao={prazo} /></div>
+                        <div style={{ marginTop: '4px' }}>
+                          <SeloPrazo prazo={item.status === STATUS_PLANILHA.devolvida ? item.prazoAjuste : item.prazoEtapa} situacao={prazo} />
+                        </div>
                       )}
                       {item.status === STATUS_PLANILHA.devolvida && item.motivoDevolucao && (
                         <div
@@ -501,7 +625,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
                       >
                         <IconeOlho /> Ver
                       </button>
-                      {item.status === STATUS_PLANILHA.enviada && (
+                      {statusEntregue(item.status) && (
                         <button type="button" onClick={() => { setErroDevolucao(''); setDevolvendo(item); }} style={botao('perigo')}>
                           Devolver
                         </button>

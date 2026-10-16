@@ -66,6 +66,13 @@
   Opcional. Nome do perfil de segurança dos gestores
   (ex.: "DGT Treinamentos - Gestores").
 
+.PARAMETER PapelAprovadores
+  Opcional. Nome do perfil de segurança de quem APROVA o orçamento nas
+  etapas do fluxo CONT-001 (Diretor da Área, Controladoria, Diretoria
+  Financeira…). Recebe: ler todas as planilhas, linhas e log; gravar a
+  situação da planilha; registrar o histórico.
+  (ex.: "DGT Orçamento - Aprovadores")
+
 .PARAMETER PapelAdministradores
   Opcional. Nome do perfil de segurança dos administradores do portal
   (ex.: "DGT Treinamentos - Administradores").
@@ -86,6 +93,7 @@ param(
   [Parameter(Mandatory = $true)] [string] $Solucao,
   [string] $PapelGestores,
   [string] $PapelAdministradores,
+  [string] $PapelAprovadores,
   [string] $Token
 )
 
@@ -393,6 +401,12 @@ New-DataHora   $P 'dgt_DataDevolucao'   'Data da devolução'
 New-Texto      $P 'dgt_DevolvidoPor'    'Devolvido por' 200
 New-DataHora   $P 'dgt_PrazoAjuste'     'Prazo para ajuste'
 
+# Fluxo de aprovação (processo CONT-001): estado do fluxo em JSON
+# (etapa, tarefas, prazos, histórico) + resumo para listas/Power BI.
+New-TextoLongo $P 'dgt_FluxoEstado'     'Estado do fluxo de aprovação (JSON)' 1048576
+New-Texto      $P 'dgt_EtapaAtual'      'Etapa atual do fluxo' 200
+New-DataHora   $P 'dgt_PrazoEtapa'      'Prazo da etapa atual'
+
 # Área da planilha (gestor de 2 áreas = 2 planilhas)
 New-Lookup     $P 'dgt_Area'            'Área' 'dgt_area' 'dgt_area_dgt_orcamentoplanilha_area'
 
@@ -553,7 +567,7 @@ function Grant-Privilegios {
 $tabelasOrcamento = @('dgt_orcamentoplanilha', 'dgt_orcamentolinha')
 $acoesOrcamento = @('Create', 'Read', 'Write', 'Append', 'AppendTo')
 
-if ($PapelGestores -or $PapelAdministradores) {
+if ($PapelGestores -or $PapelAdministradores -or $PapelAprovadores) {
   Write-Host "`n5) Privilégios" -ForegroundColor Cyan
 }
 
@@ -573,6 +587,16 @@ if ($PapelGestores) {
   Grant-Privilegios $PapelGestores 'Basic' @('dgt_orcamentoevento', 'dgt_orcamentoalteracao') $acoesEvento
   Grant-Privilegios $PapelGestores 'Global' $tabelasConfig @('Read')
   Grant-Privilegios $PapelGestores 'Global' @('dgt_usuario', 'dgt_area') @('AppendTo')
+}
+
+# Aprovadores (etapas do fluxo CONT-001): leem todas as planilhas,
+# gravam a situação da planilha ao aprovar/reprovar e registram o
+# histórico (que fica com a equipe da área: precisa de Atribuir).
+if ($PapelAprovadores) {
+  Grant-Privilegios $PapelAprovadores 'Global' @('dgt_orcamentoplanilha') @('Read', 'Write', 'AppendTo')
+  Grant-Privilegios $PapelAprovadores 'Global' @('dgt_orcamentolinha', 'dgt_orcamentoalteracao') @('Read')
+  Grant-Privilegios $PapelAprovadores 'Global' @('dgt_orcamentoevento') @('Create', 'Read', 'Append', 'Assign')
+  Grant-Privilegios $PapelAprovadores 'Global' $tabelasConfig @('Read')
 }
 
 if ($PapelAdministradores) {

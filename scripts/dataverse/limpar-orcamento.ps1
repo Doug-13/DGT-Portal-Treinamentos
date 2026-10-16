@@ -407,7 +407,7 @@ else {
 
   # Colunas da devolução (só existem se o script de criação já foi
   # executado na versão com "Devolver para ajuste").
-  foreach ($coluna in @('dgt_motivodevolucao', 'dgt_datadevolucao', 'dgt_devolvidopor', 'dgt_prazoajuste')) {
+  foreach ($coluna in @('dgt_motivodevolucao', 'dgt_datadevolucao', 'dgt_devolvidopor', 'dgt_prazoajuste', 'dgt_fluxoestado', 'dgt_etapaatual', 'dgt_prazoetapa')) {
     if (Test-Coluna 'dgt_orcamentoplanilha' $coluna) {
       $planilhaZerada[$coluna] = $null
     }
