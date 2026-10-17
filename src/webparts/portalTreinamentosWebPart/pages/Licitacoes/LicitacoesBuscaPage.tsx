@@ -56,6 +56,17 @@ import {
 } from '../../services/ia/provedoresIa';
 
 import {
+  useAcompanhamentoLicitacoes
+} from '../../hooks/useAcompanhamentoLicitacoes';
+
+import {
+  IAcompanhamento
+} from '../../services/licitacoes/AcompanhamentoLicitacaoService';
+
+import AcompanhamentoPainel from
+  './AcompanhamentoPainel';
+
+import {
   converterValor,
   formatarDataPncp,
   formatarMoeda,
@@ -244,7 +255,16 @@ const CartaoLicitacao: React.FC<{
   onRegistrarParecer: (item: ILicitacaoResultado, decisao?: DecisaoParecer, justificativa?: string) => void;
   estadoIa: IEstadoAnaliseIa;
   onAnalisarIa: (item: ILicitacaoResultado) => void;
-}> = ({ item, onPrevisualizar, parecer, situacaoPareceres, onRegistrarParecer, estadoIa, onAnalisarIa }) => (
+  acompanhamento?: IAcompanhamento;
+  novidades: number;
+  acompanhamentoDisponivel: boolean;
+  processandoAcompanhamento: boolean;
+  onAcompanhar: (item: ILicitacaoResultado) => void;
+  onVerAcompanhamento: () => void;
+}> = ({
+  item, onPrevisualizar, parecer, situacaoPareceres, onRegistrarParecer, estadoIa, onAnalisarIa,
+  acompanhamento, novidades, acompanhamentoDisponivel, processandoAcompanhamento, onAcompanhar, onVerAcompanhamento
+}) => (
   <div
     style={{
       ...cartao,
@@ -326,6 +346,31 @@ const CartaoLicitacao: React.FC<{
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        {acompanhamentoDisponivel && (
+          acompanhamento
+            ? (
+              <button
+                type="button"
+                onClick={onVerAcompanhamento}
+                title="Ver a linha do tempo das alterações deste edital"
+                style={{ ...botaoSecundario, padding: '5px 10px', fontSize: 12, borderColor: '#B45309', color: '#B45309' }}
+              >
+                ★ Acompanhando{novidades > 0 ? ` · ${novidades} nova(s)` : ''}
+              </button>
+            )
+            : (
+              <button
+                type="button"
+                disabled={processandoAcompanhamento}
+                onClick={() => onAcompanhar(item)}
+                title="Acompanhar as alterações deste edital (situação, datas, documentos, itens)"
+                style={{ ...botaoSecundario, padding: '5px 10px', fontSize: 12, opacity: processandoAcompanhamento ? 0.5 : 1 }}
+              >
+                {processandoAcompanhamento ? 'Acompanhando…' : '☆ Acompanhar'}
+              </button>
+            )
+        )}
+
         <a
           href={item.url}
           target="_blank"
@@ -393,6 +438,15 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
 
   const [configIaAberta, setConfigIaAberta] = React.useState<boolean>(false);
 
+  // Acompanhamento das alterações dos editais (aba "Acompanhamento").
+  const acompanhamento = useAcompanhamentoLicitacoes(
+    dataverseService,
+    busca.resultados,
+    contexto ? contexto.nome : ''
+  );
+
+  const [aba, setAba] = React.useState<'busca' | 'acompanhamento'>('busca');
+
   const ehAdministrador = !!contexto && contexto.perfil === 'Administrador';
 
   const fecharDialogoParecer = React.useCallback(
@@ -408,6 +462,10 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       return;
     }
     await pareceres.registrar(dialogo.item, decisao, justificativa);
+    // "Participar" passa a acompanhar o edital automaticamente.
+    if (decisao === 'Participar' && acompanhamento.situacao === 'ok' && !acompanhamento.obter(dialogo.item)) {
+      acompanhamento.acompanhar(dialogo.item).catch(() => undefined);
+    }
     setDialogo(undefined);
     setAvisoParecer(`Parecer registrado: ${dialogo.item.orgao}.`);
     window.setTimeout(() => setAvisoParecer(''), 5000);
@@ -580,6 +638,56 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
 
   return (
     <section style={{ fontFamily: FONTE }}>
+
+      {/* ======================================================
+          ABAS: busca × acompanhamento
+          ====================================================== */}
+      <div role="tablist" style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${COR.cinzaClaro}`, marginBottom: 14 }}>
+        {([
+          ['busca', 'Buscar editais'],
+          ['acompanhamento', `Acompanhamento${acompanhamento.acompanhamentos.length ? ` (${acompanhamento.acompanhamentos.length})` : ''}`]
+        ] as Array<['busca' | 'acompanhamento', string]>).map(([id, rotulo]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={aba === id}
+            onClick={() => setAba(id)}
+            style={{
+              padding: '9px 14px',
+              border: 0,
+              borderBottom: `3px solid ${aba === id ? COR.ciano : 'transparent'}`,
+              background: 'transparent',
+              color: aba === id ? COR.azul : COR.textoSecundario,
+              fontWeight: 700,
+              fontSize: 13.5,
+              fontFamily: FONTE,
+              cursor: 'pointer',
+              marginBottom: -1,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            {rotulo}
+            {id === 'acompanhamento' && acompanhamento.totalNaoLidas > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 800, color: '#ffffff', background: '#C0392B', borderRadius: 999, padding: '1px 7px' }}>
+                {acompanhamento.totalNaoLidas}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'acompanhamento' && (
+        <AcompanhamentoPainel
+          acompanhamento={acompanhamento}
+          ehAdministrador={ehAdministrador}
+        />
+      )}
+
+      {/* A busca continua montada (escondida) para não perder os resultados. */}
+      <div style={{ display: aba === 'busca' ? 'block' : 'none' }}>
 
       {/* ======================================================
           FORMULÁRIO
@@ -1125,6 +1233,12 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
               onRegistrarParecer={abrirDialogoParecer}
               estadoIa={ia.estadoDe(item)}
               onAnalisarIa={ia.analisar}
+              acompanhamento={acompanhamento.obter(item)}
+              novidades={(() => { const a = acompanhamento.obter(item); return a ? acompanhamento.naoLidas(a.id) : 0; })()}
+              acompanhamentoDisponivel={acompanhamento.situacao === 'ok'}
+              processandoAcompanhamento={acompanhamento.processandoChave !== '' && acompanhamento.processandoChave !== '*'}
+              onAcompanhar={it => { acompanhamento.acompanhar(it).catch(() => undefined); }}
+              onVerAcompanhamento={() => setAba('acompanhamento')}
             />
           ))}
 
@@ -1145,6 +1259,8 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
           </p>
         </div>
       )}
+
+      </div>
 
       <EditalPreviaModal
         item={previa}

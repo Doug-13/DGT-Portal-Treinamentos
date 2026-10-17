@@ -24,8 +24,14 @@ import {
   detectarDadoSensivel
 } from '../../services/LicitacaoParecerService';
 
+import EstruturaAreaAba from './EstruturaAreaAba';
+
 // ============================================================
 // RH E PESSOAS
+//
+// Aba ESTRUTURA POR ÁREA: cargo de cada pessoa em cada área
+//   (Coordenador, Gestor, Gerente, Head, Diretor), usado pelos fluxos
+//   de aprovação. Ver EstruturaAreaAba.tsx.
 //
 // Aba CERTIFICADOS:
 //   • a tela lista só os COLABORADORES (cards coloridos), com um
@@ -44,10 +50,12 @@ export interface IRhPessoasPageProps {
   usuarioNome?: string;
 }
 
-type Aba = 'certificados';
+type Aba = 'certificados' | 'estrutura';
 
 const ABAS: Array<{ id: Aba; rotulo: string }> = [
-  { id: 'certificados', rotulo: 'Certificados' }
+  { id: 'certificados', rotulo: 'Certificados' },
+  // Hierarquia por área (cargos) usada pelos fluxos de aprovação.
+  { id: 'estrutura', rotulo: 'Estrutura por área' }
 ];
 
 type FiltroStatus = 'todos' | StatusColaboradorRh;
@@ -992,6 +1000,7 @@ const RhPessoasPage: React.FC<IRhPessoasPageProps> = props => {
       </div>
 
       {aba === 'certificados' && <AbaCertificados {...props} />}
+      {aba === 'estrutura' && <EstruturaAreaAba dataverseService={props.dataverseService} />}
     </section>
   );
 };

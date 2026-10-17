@@ -37,7 +37,8 @@ export interface IProvedorIa {
 export const FORMATO_RESPOSTA_IA = `Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
 {
   "recomendacao": "Participar" | "NaoParticipar" | "Avaliar",
-  "confianca": número de 0 a 100,
+  "compatibilidade": número de 0 a 100 (o quanto o edital combina com a DGT: portfólio, critérios e histórico; 0 = nada a ver, 100 = totalmente aderente),
+  "confianca": número de 0 a 100 (sua certeza na recomendação),
   "resumo": "até 3 frases sobre a oportunidade",
   "pontosFavoraveis": ["..."],
   "riscos": ["..."],
@@ -61,10 +62,21 @@ const recomendacaoValida = (valor: unknown): RecomendacaoIa => {
   return 'Avaliar';
 };
 
+// Compatibilidade quando a IA (ou uma análise antiga) não informou:
+// "Participar" com 80% de certeza → 80% compatível; "Não participar"
+// ou "Avaliar" com 40% de certeza → 60% compatível.
+export const compatibilidadeEstimada = (
+  recomendacao: RecomendacaoIa,
+  confianca: number
+): number =>
+  recomendacao === 'Participar'
+    ? confianca
+    : Math.max(0, Math.min(100, 100 - confianca));
+
 // Lê a resposta da IA (aceita JSON cercado por ```json ... ```).
 export const interpretarRespostaIa = (
   texto: string
-): Pick<IAnaliseIaLicitacao, 'recomendacao' | 'confianca' | 'resumo' | 'pontosFavoraveis' | 'riscos' | 'justificativaSugerida' | 'semelhantes'> => {
+): Pick<IAnaliseIaLicitacao, 'recomendacao' | 'confianca' | 'compatibilidade' | 'resumo' | 'pontosFavoraveis' | 'riscos' | 'justificativaSugerida' | 'semelhantes'> => {
 
   const limpo = (texto || '').replace(/```json|```/gi, '').trim();
   const inicio = limpo.indexOf('{');
@@ -76,10 +88,16 @@ export const interpretarRespostaIa = (
 
   const dados = JSON.parse(limpo.substring(inicio, fim + 1)) as Record<string, unknown>;
   const confianca = Math.round(Number(dados.confianca));
+  const recomendacao = recomendacaoValida(dados.recomendacao);
+  const confiancaValida = isNaN(confianca) ? 50 : Math.max(0, Math.min(100, confianca));
+  const compatibilidadeInformada = Math.round(Number(dados.compatibilidade));
 
   return {
-    recomendacao: recomendacaoValida(dados.recomendacao),
-    confianca: isNaN(confianca) ? 50 : Math.max(0, Math.min(100, confianca)),
+    recomendacao,
+    confianca: confiancaValida,
+    compatibilidade: isNaN(compatibilidadeInformada)
+      ? compatibilidadeEstimada(recomendacao, confiancaValida)
+      : Math.max(0, Math.min(100, compatibilidadeInformada)),
     resumo: String(dados.resumo || '').trim().substring(0, 1500),
     pontosFavoraveis: lista(dados.pontosFavoraveis),
     riscos: lista(dados.riscos),
@@ -162,6 +180,7 @@ export class ProvedorIaSimulado implements IProvedorIa {
     return {
       recomendacao,
       confianca,
+      compatibilidade: compatibilidadeEstimada(recomendacao, confianca),
       resumo,
       pontosFavoraveis,
       riscos,

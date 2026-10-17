@@ -10,6 +10,7 @@ import {
 
 import {
   IImpactoRemocao,
+  IOpcoesRemocao,
   TreinamentoRemocaoService
 } from '../services/TreinamentoRemocaoService';
 
@@ -1841,6 +1842,19 @@ const gestaoAreas =
         ): Promise<void> => {
 
           // ======================================================
+          // 0. PRÉ-REQUISITOS — todo treinamento nasce vinculado ao
+          //    fluxo de treinamentos. Sem tipo TRN, sem o processo
+          //    TRE-001 ou sem fluxo publicado, NADA é criado.
+          // ======================================================
+
+          if (
+            controleDocumentalService
+          ) {
+            await controleDocumentalService
+              .verificarPreRequisitos();
+          }
+
+          // ======================================================
           // 1. CRIAR TREINAMENTO
           //    Com controle documental, o treinamento nasce INATIVO:
           //    só fica ativo quando o fluxo publicar a revisão.
@@ -1869,7 +1883,9 @@ const gestaoAreas =
 
           // ======================================================
           // 1.1 DOCUMENTO DE CONTROLE (Rev.00A em Elaboração,
-          //     vinculado ao processo de treinamentos)
+          //     vinculado ao processo de treinamentos) — OBRIGATÓRIO.
+          //     Se falhar, a criação é desfeita: não pode existir
+          //     treinamento fora do fluxo.
           // ======================================================
 
           if (
@@ -1887,6 +1903,10 @@ const gestaoAreas =
                       nome:
                         autorizacao.contexto?.nome ||
                         userName
+                    },
+                    {
+                      exigirFluxo:
+                        true
                     }
                   );
 
@@ -1902,15 +1922,27 @@ const gestaoAreas =
                 erroControle
               );
 
-              // O treinamento já existe: o documento pode ser criado
-              // depois pela Gestão (menu ⋮ → "Colocar sob controle
-              // documental"). O assistente continua normalmente.
-              window.alert(
-                'O treinamento foi criado, mas o documento de controle não pôde ser criado: ' +
+              try {
+                await controleDocumentalService
+                  .desfazerCriacao(
+                    treinamentoCriado.id
+                  );
+              } catch (erroDesfazer) {
+                console.error(
+                  'Não foi possível desfazer a criação do treinamento:',
+                  erroDesfazer
+                );
+              }
+
+              await gestaoTreinamentos
+                .carregar();
+
+              throw new Error(
+                'O treinamento NÃO foi criado: não foi possível vinculá-lo ao fluxo de treinamentos. ' +
                 (
                   erroControle instanceof Error
                     ? erroControle.message
-                    : 'erro desconhecido'
+                    : ''
                 )
               );
             }
@@ -2301,8 +2333,10 @@ const gestaoAreas =
                   dados.id
                 );
 
+            // Sem documento de controle (fora do fluxo) ou sem revisão
+            // publicada: não pode ser ativado pela edição.
             if (
-              controle &&
+              !controle ||
               !controle.vigente
             ) {
               dadosGravar = {
@@ -2489,21 +2523,31 @@ const gestaoAreas =
           treinamento:
             ITreinamentoAdmin,
           aoProgredir:
-            (mensagem: string) => void
+            (mensagem: string) => void,
+          opcoes?:
+            IOpcoesRemocao
         ): Promise<void> => {
 
           await treinamentoRemocaoService
             .remover(
               treinamento.id,
-              aoProgredir
+              aoProgredir,
+              {
+                ...(opcoes || {}),
+                usuarioNome:
+                  autorizacao.contexto?.nome ||
+                  userName
+              }
             );
 
           await gestaoTreinamentos
             .carregar();
         },
         [
+          autorizacao.contexto,
           gestaoTreinamentos,
-          treinamentoRemocaoService
+          treinamentoRemocaoService,
+          userName
         ]
       );
 

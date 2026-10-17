@@ -39,12 +39,19 @@ export type TipoElementoFluxo =
 //   gestorArea   → Gestores da área do documento (dgt_usuarioarea, perfil Gestor)
 //   area         → membros (ou só Gestores) de uma área escolhida
 //   usuario      → um usuário específico (dgt_usuario)
+//   cargoArea        → quem tem um CARGO na área (ex.: Diretor da área),
+//                      cadastrado em RH e Pessoas → Estrutura por área
+//   nivelHierarquico → o N-ésimo nível da cadeia da área (1º, 2º, 3º…
+//                      ou o topo). A cadeia sai dos cargos cadastrados
+//                      (ex.: Coordenador → Head → Diretor).
 // Ainda não resolvidos (exigem vínculo usuário × grupo/função/setor):
 //   grupo, funcao, setor
 export type TipoResponsavelFluxo =
   | 'autorRevisao'
   | 'gestorArea'
   | 'area'
+  | 'cargoArea'
+  | 'nivelHierarquico'
   | 'grupo'
   | 'funcao'
   | 'setor'
@@ -64,6 +71,19 @@ export interface IFluxoResponsavel {
   // tipo = 'area': só os Gestores da área (e não todos os membros).
   somenteGestores?: boolean;
 
+  // tipo = 'cargoArea': cargo exigido (ex.: 'Diretor').
+  cargo?: string;
+
+  // tipo = 'nivelHierarquico': 1 = primeiro nível da cadeia da área,
+  // 2 = segundo…; 0 = topo da cadeia.
+  nivel?: number;
+
+  // cargoArea / nivelHierarquico — de qual área:
+  //   referenciaId preenchido      → área fixa
+  //   origemArea = 'autor'         → área de QUEM CRIOU a revisão/planilha
+  //   vazio (padrão)               → área do documento/planilha
+  origemArea?: 'documento' | 'autor';
+
   // Chave do "papel" deste responsável. Identifica o responsável no
   // motor: no modo de teste vira um usuário simulado; no Dataverse
   // é calculada a partir do usuário real.
@@ -79,6 +99,19 @@ export interface IResponsavelResolvido {
   usuarioId?: string;
   areaId?: string;
   somenteGestores?: boolean;
+  // Hierarquia: quem tem este cargo na área (cargoArea) ou o nível da
+  // cadeia da área (nivelHierarquico). Conferido na hora, com os
+  // cargos atuais — trocar o Diretor vale para as pendências abertas.
+  cargo?: string;
+  nivel?: number;
+  // Hierarquia pela área de quem criou: as áreas são as do autor
+  // (vínculos ativos). Se o autor também é da área do documento,
+  // vale só ela (areaPreferidaId).
+  autorId?: string;
+  areaPreferidaId?: string;
+  // Hierarquia: pessoas que respondiam quando a pendência foi criada
+  // (para avisos/notificações). Quem pode agir é conferido na hora.
+  usuariosIds?: string[];
 }
 
 // Status do documento (dgt_documentorevisao.dgt_status) enquanto a

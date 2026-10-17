@@ -20,7 +20,8 @@ import RemoverTreinamentoModal from
   './RemoverTreinamentoModal';
 
 import {
-  IImpactoRemocao
+  IImpactoRemocao,
+  IOpcoesRemocao
 } from '../../services/TreinamentoRemocaoService';
 
 import {
@@ -285,7 +286,10 @@ export interface IGestaoPageProps {
       treinamento:
         ITreinamentoAdmin,
       aoProgredir:
-        (mensagem: string) => void
+        (mensagem: string) => void,
+      // Remoção forçada (Administrador): motivo obrigatório.
+      opcoes?:
+        IOpcoesRemocao
     ) => Promise<void>;
 
   // Quando informado, exibe o botão "Testar" (modo de teste).
@@ -1243,11 +1247,11 @@ const GestaoPage:
           const confirmado =
             window.confirm(
               treinamento.ativo
-                ? `Colocar ${treinamento.codigo} sob controle documental?\n\n` +
+                ? `Vincular ${treinamento.codigo} ao fluxo de treinamentos?\n\n` +
                   `Será criado o documento ${treinamento.codigo} (tipo ${CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO}), já VIGENTE na ${revisao}, ` +
                   `vinculado ao processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO}. ` +
                   'As próximas revisões seguirão o fluxo do processo. Nenhuma conclusão é alterada.'
-                : `Colocar ${treinamento.codigo} sob controle documental?\n\n` +
+                : `Vincular ${treinamento.codigo} ao fluxo de treinamentos?\n\n` +
                   `Será criado o documento ${treinamento.codigo} em ${CONTROLE_DOCUMENTAL.REVISAO_INICIAL} (Elaboração), ` +
                   `que seguirá o fluxo do processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO}. ` +
                   'O treinamento continua inativo até a publicação.'
@@ -1262,6 +1266,10 @@ const GestaoPage:
           );
 
           try {
+            // O vínculo com o fluxo é obrigatório: confere antes.
+            await controleService
+              .verificarPreRequisitos();
+
             const resultado =
               await controleService
                 .garantirDocumentoControle(
@@ -1277,9 +1285,14 @@ const GestaoPage:
                   treinamento.ativo
                     ? {
                       jaVigenteNaRevisao:
-                        revisao
+                        revisao,
+                      exigirFluxo:
+                        true
                     }
-                    : {}
+                    : {
+                      exigirFluxo:
+                        true
+                    }
                 );
 
             await carregarControles();
@@ -1287,8 +1300,8 @@ const GestaoPage:
             window.alert(
               [
                 resultado.criado
-                  ? `Documento ${resultado.codigo} criado.`
-                  : `O documento ${resultado.codigo} já existia; os vínculos foram conferidos.`,
+                  ? `${resultado.codigo} vinculado ao fluxo de treinamentos.`
+                  : `${resultado.codigo} já tinha documento de controle; os vínculos com o fluxo foram conferidos.`,
                 resultado.processoNome
                   ? `Processo: ${resultado.processoNome}.`
                   : '',
@@ -2231,14 +2244,15 @@ const GestaoPage:
                                 ) {
                                   return (
                                     <div
-                                      title="Este treinamento ainda não tem documento de controle (menu ⋮ → Colocar sob controle documental)"
+                                      title="Este treinamento não está vinculado ao fluxo de treinamentos: use o botão Vincular ao fluxo"
                                       style={{
                                         marginTop: '5px',
                                         fontSize: '11px',
-                                        color: CORES_STATUS.neutro.texto
+                                        color: '#B45309',
+                                        fontWeight: 700
                                       }}
                                     >
-                                      Sem controle documental
+                                      ⚠ Fora do fluxo de treinamentos
                                     </div>
                                   );
                                 }
@@ -2467,25 +2481,53 @@ const GestaoPage:
                                       </div>
                                     );
                                   })()
-                                  : (
-                                    <button
-                                      type="button"
-                                      disabled={
-                                        processando
-                                      }
-                                      onClick={() =>
-                                        editarTreinamento(
-                                          treinamento
-                                        )
-                                      }
-                                      style={{
-                                        ...botaoEditar,
-                                        opacity: processando ? .6 : 1
-                                      }}
-                                    >
-                                      Editar
-                                    </button>
-                                  )
+                                  : controleService &&
+                                    controleCarregado &&
+                                    !controle
+                                    ? (
+                                      // Fora do fluxo: antes de qualquer
+                                      // ação, o treinamento precisa ser
+                                      // vinculado ao fluxo de treinamentos.
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          processando
+                                        }
+                                        onClick={() => {
+                                          void colocarSobControle(
+                                            treinamento
+                                          );
+                                        }}
+                                        title="Este treinamento está fora do fluxo de treinamentos. Vincule-o para editar, revisar ou ativar."
+                                        style={{
+                                          ...botaoEditar,
+                                          background: DGT.azul,
+                                          color: '#FFFFFF',
+                                          opacity: processando ? .6 : 1
+                                        }}
+                                      >
+                                        Vincular ao fluxo
+                                      </button>
+                                    )
+                                    : (
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          processando
+                                        }
+                                        onClick={() =>
+                                          editarTreinamento(
+                                            treinamento
+                                          )
+                                        }
+                                        style={{
+                                          ...botaoEditar,
+                                          opacity: processando ? .6 : 1
+                                        }}
+                                      >
+                                        Editar
+                                      </button>
+                                    )
                               }
 
                               {props.onTestarTreinamento && (
@@ -2591,7 +2633,7 @@ const GestaoPage:
                                       ? [
                                         {
                                           rotulo:
-                                            'Colocar sob controle documental',
+                                            'Vincular ao fluxo de treinamentos',
 
                                           titulo:
                                             `Criar o documento de controle e vincular ao processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO}`,
@@ -2655,15 +2697,17 @@ const GestaoPage:
                                     // depois da publicação pelo fluxo.
                                     desabilitado:
                                       !treinamento.ativo &&
-                                      !!controle &&
-                                      !controle.vigente,
+                                      !!controleService &&
+                                      (!controle || !controle.vigente),
 
                                     titulo:
-                                      !treinamento.ativo &&
-                                      !!controle &&
-                                      !controle.vigente
-                                        ? `O treinamento é ativado automaticamente quando o documento ${controle.codigo} for publicado pelo fluxo`
-                                        : undefined,
+                                      !treinamento.ativo && !!controleService && !controle
+                                        ? 'Vincule o treinamento ao fluxo de treinamentos antes de ativá-lo'
+                                        : !treinamento.ativo &&
+                                          !!controle &&
+                                          !controle.vigente
+                                          ? `O treinamento é ativado automaticamente quando o documento ${controle.codigo} for publicado pelo fluxo`
+                                          : undefined,
 
                                     onClick: () => {
                                       props

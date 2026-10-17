@@ -2615,6 +2615,38 @@ export class DataverseService {
   // ============================================================
 
   // ==========================================================
+  // CUSTOM API GENÉRICA: { PayloadJson } → { ResultadoJson }
+  // (ex.: dgt_AcompanharLicitacao, dgt_AtualizarAcompanhamentos)
+  // ==========================================================
+
+  public async chamarCustomApiJson(
+    nome: string,
+    payload: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+
+    const resposta =
+      await this.postObject(
+        nome,
+        {
+          PayloadJson:
+            JSON.stringify(
+              payload
+            )
+        }
+      );
+
+    const json =
+      String(
+        resposta.ResultadoJson ||
+        ''
+      );
+
+    return json
+      ? JSON.parse(json) as Record<string, unknown>
+      : {};
+  }
+
+  // ==========================================================
   // IA DAS LICITAÇÕES (Custom API → plugin → Claude)
   // ==========================================================
 

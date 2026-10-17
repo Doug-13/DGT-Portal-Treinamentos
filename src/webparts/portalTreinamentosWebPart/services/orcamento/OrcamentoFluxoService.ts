@@ -377,7 +377,9 @@ export class OrcamentoFluxoService {
   private contextoExecucao(planilha: IPlanilhaOrcamento): IContextoExecucaoFluxo {
     const dados = this.dadosResponsaveis(planilha);
     return {
-      resolverResponsaveis: responsaveis => resolverResponsaveis(responsaveis, dados),
+      // Com os vínculos, a hierarquia (ex.: Head da área de quem criou)
+      // já sai com as pessoas certas na pendência.
+      resolverResponsaveis: responsaveis => resolverResponsaveis(responsaveis, dados, this.vinculosCache),
       rotuloRevisao: `Orçamento ${planilha.ano} — ${planilha.areaNome || planilha.gestorNome}`,
       // O fluxo do orçamento não publica documentos: tarefas de
       // sistema (se houver no desenho) apenas seguem adiante.
@@ -582,7 +584,7 @@ export class OrcamentoFluxoService {
       elementoId: preenchimento.id,
       elementoNome: preenchimento.nome,
       responsaveis: preenchimento.responsaveis,
-      responsaveisResolvidos: resolverResponsaveis(preenchimento.responsaveis, this.dadosResponsaveis(planilha)),
+      responsaveisResolvidos: resolverResponsaveis(preenchimento.responsaveis, this.dadosResponsaveis(planilha), await this.vinculos()),
       status: 'pendente',
       criadaEm: agora,
       prazo: prazoEmDiasUteisDoMotor(preenchimento.prazoDiasUteis || PRAZO_AJUSTE_DIAS_UTEIS)

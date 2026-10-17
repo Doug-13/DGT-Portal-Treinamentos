@@ -42,6 +42,7 @@ import DevolverPlanilhaModal from './DevolverPlanilhaModal';
 import PainelAlteracoes from './PainelAlteracoes';
 import ConsolidadoMensal from './ConsolidadoMensal';
 import PainelFluxoOrcamento from './PainelFluxoOrcamento';
+import EtapasFluxoOrcamento from './EtapasFluxoOrcamento';
 
 import {
   COR,
@@ -98,6 +99,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
   const [estadoFluxo, setEstadoFluxo] = React.useState<IEstadoFluxoPlanilha | undefined>(undefined);
   const [podeAgirFluxo, setPodeAgirFluxo] = React.useState(false);
   const [processandoFluxo, setProcessandoFluxo] = React.useState(false);
+  const refFluxo = React.useRef<HTMLDivElement>(null);
   const [vinculosFluxo, setVinculosFluxo] = React.useState<IUsuarioAreaAdmin[]>([]);
   const [usuariosFluxo, setUsuariosFluxo] = React.useState<Array<{ id: string; nome: string }>>([]);
 
@@ -240,6 +242,46 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
 
   // Ação do fluxo executada pelo Administrador (quando ele também é
   // responsável pela etapa atual).
+  // Planilha enviada no modo simples (antes do CONT-001 estar ativo):
+  // coloca no fluxo. Ela volta para a etapa de preenchimento e o
+  // gestor envia de novo — a partir daí segue as etapas do processo.
+  const iniciarFluxoLegado = async (planilha: IPlanilhaOrcamento): Promise<void> => {
+    if (!window.confirm(
+      `Colocar a planilha de ${planilha.areaNome || planilha.gestorNome} no fluxo de aprovação do processo?\n\n` +
+      'Ela volta para a etapa de preenchimento (os valores não mudam) e o gestor precisa enviar de novo (botão da 1ª etapa do processo). ' +
+      'A partir daí ela segue as etapas, responsáveis e prazos do processo.'
+    )) {
+      return;
+    }
+    setProcessandoFluxo(true);
+    try {
+      const resultado = await fluxo.iniciar(planilha, contexto);
+      if (!resultado.ok) {
+        setErro(resultado.erros.join('\n'));
+        return;
+      }
+      await servico.registrarEvento(
+        planilha,
+        'Colocada no fluxo de aprovação',
+        'Planilha enviada antes do fluxo do processo estar ativo; devolvida ao preenchimento para seguir as etapas do processo.',
+        contexto.nome
+      );
+      await carregar();
+      await carregarDetalhes(planilha.id);
+      setAviso('✓ Planilha colocada no fluxo de aprovação. Avise o gestor para enviar de novo (botão da 1ª etapa do processo).');
+      if (resultado.avisos.length > 0) {
+        setAlerta(resultado.avisos.join('\n'));
+      }
+      if (onFluxoAlterado) {
+        onFluxoAlterado();
+      }
+    } catch (falha) {
+      setErro(explicarErro(falha));
+    } finally {
+      setProcessandoFluxo(false);
+    }
+  };
+
   const executarFluxo = async (
     planilha: IPlanilhaOrcamento,
     acaoChave: string,
@@ -375,6 +417,33 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
           </button>
         </div>
 
+        {fluxoAtivo && !estadoFluxo && aberta.status === STATUS_PLANILHA.enviada && (
+          <div style={{ ...cartao, background: '#FFF8E1', borderColor: '#F5D58A', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+            <div style={{ flex: 1, minWidth: '260px', fontSize: '13px', color: '#8A5A00' }}>
+              <strong>Esta planilha está fora do fluxo de aprovação.</strong> Ela foi enviada no modo simples, antes de o
+              processo ficar ativo, por isso não mostra as etapas nem os botões de aprovação.
+            </div>
+            <button
+              type="button"
+              onClick={() => { iniciarFluxoLegado(aberta).catch(() => undefined); }}
+              disabled={processandoFluxo}
+              style={botao('principal', processandoFluxo)}
+            >
+              {processandoFluxo ? 'Processando...' : 'Colocar no fluxo de aprovação'}
+            </button>
+          </div>
+        )}
+
+        {estadoFluxo && (
+          <EtapasFluxoOrcamento
+            estado={estadoFluxo}
+            dadosResponsaveis={fluxo.dadosResponsaveis(aberta)}
+            vinculos={vinculosFluxo}
+            usuarios={usuariosFluxo}
+            onVerDetalhes={() => { if (refFluxo.current) { refFluxo.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }}
+          />
+        )}
+
         {aberta.status === STATUS_PLANILHA.devolvida && (
           <div style={{ ...cartao, background: '#FFF5F5', borderColor: '#F3C1C1', fontSize: '13px', color: COR.azul }}>
             <strong style={{ color: COR.perigo }}>Aguardando ajuste do gestor.</strong>{' '}
@@ -398,7 +467,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
         )}
 
         {estadoFluxo && (
-          <div style={{ marginTop: '16px' }}>
+          <div ref={refFluxo} style={{ marginTop: '16px' }}>
             <PainelFluxoOrcamento
               estado={estadoFluxo}
               dadosResponsaveis={fluxo.dadosResponsaveis(aberta)}
@@ -588,6 +657,11 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
                       {item.areaId && !item.equipeId && (
                         <div style={{ fontSize: '11.5px', color: '#B45309', fontWeight: 600 }} title="Rode o script sincronizar-equipes-orcamento.ps1">
                           sem equipe (só quem criou vê)
+                        </div>
+                      )}
+                      {fluxoAtivo && item.status === STATUS_PLANILHA.enviada && !item.etapaAtual && (
+                        <div style={{ fontSize: '11.5px', color: '#8A5A00', fontWeight: 600 }} title="Abra a planilha (Ver) e use “Colocar no fluxo de aprovação”">
+                          fora do fluxo de aprovação
                         </div>
                       )}
                     </td>

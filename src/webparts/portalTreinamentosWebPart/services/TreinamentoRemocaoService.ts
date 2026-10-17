@@ -13,6 +13,12 @@ import {
 // Se houver atribuições (e, portanto, possíveis tentativas, notas
 // e certificados), a remoção é bloqueada: o caminho é DESATIVAR.
 //
+// EXCEÇÃO — REMOÇÃO FORÇADA (somente Administrador): com motivo
+// obrigatório e confirmação, remove também atribuições, tentativas,
+// respostas, certificados (registros), progresso, vínculos com
+// trilhas e o documento de controle (TRN) com o fluxo. O motivo e o
+// resumo do que foi apagado ficam no histórico de auditoria.
+//
 // A exclusão é feita de baixo para cima:
 //   alternativas → questões → avaliações
 //   alternativas de perguntas → perguntas → conteúdos → módulos
@@ -42,6 +48,36 @@ export interface IImpactoRemocao {
 
   podeRemover: boolean;
   motivoBloqueio: string;
+
+  // Remoção forçada (Administrador): o que sai junto.
+  podeForcar: boolean;
+  tentativas: number;
+  certificados: number;
+  progressos: number;
+  documentoControle: string;
+}
+
+export interface IOpcoesRemocao {
+  // Administrador: remove mesmo com atribuições/trilhas.
+  forcar?: boolean;
+  motivo?: string;
+  usuarioNome?: string;
+}
+
+interface IHistorico {
+  tentativas: string[];
+  questoesTentativa: string[];
+  respostas: string[];
+  certificados: string[];
+  progressos: string[];
+  respostasPerguntas: string[];
+  revisoesTreinamento: string[];
+  documentoId: string;
+  documentoCodigo: string;
+  revisoesDocumento: string[];
+  tarefasFluxo: string[];
+  historicoFluxo: string[];
+  vinculosProcesso: string[];
 }
 
 interface IEstrutura {
@@ -57,6 +93,9 @@ interface IEstrutura {
   atribuicoes: string[];
   trilhas: string[];
 }
+
+const unicos = (lista: string[]): string[] =>
+  lista.filter((item, i) => !!item && lista.indexOf(item) === i);
 
 export class TreinamentoRemocaoService {
 
@@ -138,11 +177,101 @@ export class TreinamentoRemocaoService {
     };
   }
 
+  // Histórico e controle documental (só na remoção forçada).
+  private async levantarHistorico(
+    treinamentoId: string,
+    e: IEstrutura
+  ): Promise<IHistorico> {
+
+    const id = [treinamentoId];
+
+    const [tentativasPorAtribuicao, tentativasPorAvaliacao] = await Promise.all([
+      this.listarSeguro('dgt_tentativa', 'dgt_usuariotreinamento', e.atribuicoes),
+      this.listarSeguro('dgt_tentativa', 'dgt_avaliacao', e.avaliacoes)
+    ]);
+
+    const tentativas = unicos([...tentativasPorAtribuicao, ...tentativasPorAvaliacao]);
+
+    const [questoesPorTentativa, questoesPorQuestao] = await Promise.all([
+      this.listarSeguro('dgt_tentativaquestao', 'dgt_tentativa', tentativas),
+      this.listarSeguro('dgt_tentativaquestao', 'dgt_questao', e.questoes)
+    ]);
+
+    const questoesTentativa = unicos([...questoesPorTentativa, ...questoesPorQuestao]);
+
+    const [respostasPorQuestao, respostasPorAlternativa] = await Promise.all([
+      this.listarSeguro('dgt_resposta', 'dgt_tentativaquestao', questoesTentativa),
+      this.listarSeguro('dgt_resposta', 'dgt_alternativa', e.alternativas)
+    ]);
+
+    const [certPorAtribuicao, certPorTreinamento, progressos, respostasPerguntas, revisoesTreinamento] = await Promise.all([
+      this.listarSeguro('dgt_certificado', 'dgt_usuariotreinamento', e.atribuicoes),
+      this.listarSeguro('dgt_certificado', 'dgt_treinamento', id),
+      this.listarSeguro('dgt_usuariomodulo', 'dgt_modulo', e.modulos),
+      this.listarSeguro('dgt_moduloperguntaresposta', 'dgt_modulopergunta', e.perguntas),
+      this.listarSeguro('dgt_treinamentorevisao', 'dgt_treinamento', id)
+    ]);
+
+    // Documento de controle (mesmo código, tipo TRN).
+    let documentoId = '';
+    let documentoCodigo = '';
+    let revisoesDocumento: string[] = [];
+    let tarefasFluxo: string[] = [];
+    let historicoFluxo: string[] = [];
+    let vinculosProcesso: string[] = [];
+
+    try {
+      const lido = await this.dataverse.obterRegistro('dgt_treinamento', treinamentoId, ['dgt_codigo']);
+      const codigo = lido ? String(lido.registro.dgt_codigo || '').trim().toUpperCase() : '';
+
+      if (codigo) {
+        const docs = await this.dataverse.listarRegistros(
+          'dgt_documento',
+          `$select=dgt_documentoid,dgt_codigo&$filter=dgt_codigo eq '${codigo.replace(/'/g, "''")}'&$top=1`
+        );
+
+        if (docs.length > 0) {
+          documentoId = String(docs[0].dgt_documentoid || '').replace(/[{}]/g, '').toLowerCase();
+          documentoCodigo = codigo;
+
+          [revisoesDocumento, vinculosProcesso] = await Promise.all([
+            this.listarSeguro('dgt_documentorevisao', 'dgt_documento', [documentoId]),
+            this.listarSeguro('dgt_documentoprocesso', 'dgt_documento', [documentoId])
+          ]);
+
+          [tarefasFluxo, historicoFluxo] = await Promise.all([
+            this.listarSeguro('dgt_tarefafluxo', 'dgt_documentorevisao', revisoesDocumento),
+            this.listarSeguro('dgt_historicofluxo', 'dgt_documentorevisao', revisoesDocumento)
+          ]);
+        }
+      }
+    } catch (erro) {
+      console.error('Documento de controle não levantado:', erro);
+    }
+
+    return {
+      tentativas,
+      questoesTentativa,
+      respostas: unicos([...respostasPorQuestao, ...respostasPorAlternativa]),
+      certificados: unicos([...certPorAtribuicao, ...certPorTreinamento]),
+      progressos,
+      respostasPerguntas,
+      revisoesTreinamento,
+      documentoId,
+      documentoCodigo,
+      revisoesDocumento,
+      tarefasFluxo,
+      historicoFluxo,
+      vinculosProcesso
+    };
+  }
+
   public async analisar(
     treinamentoId: string
   ): Promise<IImpactoRemocao> {
 
     const e = await this.levantar(treinamentoId);
+    const h = await this.levantarHistorico(treinamentoId, e);
 
     let motivoBloqueio = '';
 
@@ -170,22 +299,77 @@ export class TreinamentoRemocaoService {
       documentosVinculados: e.documentos.length,
       regrasArea: e.regrasArea.length,
       podeRemover: !motivoBloqueio,
-      motivoBloqueio
+      motivoBloqueio,
+      podeForcar: !!motivoBloqueio,
+      tentativas: h.tentativas.length,
+      certificados: h.certificados.length,
+      progressos: h.progressos.length,
+      documentoControle: h.documentoCodigo
     };
   }
 
   public async remover(
     treinamentoId: string,
-    aoProgredir?: (mensagem: string) => void
+    aoProgredir?: (mensagem: string) => void,
+    opcoes: IOpcoesRemocao = {}
   ): Promise<void> {
 
     // Levanta de novo no momento da remoção (algo pode ter mudado).
     const e = await this.levantar(treinamentoId);
+    const forcar = !!opcoes.forcar;
 
-    if (e.atribuicoes.length || e.trilhas.length) {
+    if ((e.atribuicoes.length || e.trilhas.length) && !forcar) {
       throw new Error(
         'O treinamento passou a ter atribuições ou trilhas e não pode mais ser removido. Use "Desativar".'
       );
+    }
+
+    if (forcar && !(opcoes.motivo || '').trim()) {
+      throw new Error('Informe o motivo da remoção forçada.');
+    }
+
+    // Remoção forçada: histórico dos colaboradores e controle
+    // documental saem ANTES da estrutura (filhos antes dos pais).
+    const h = await this.levantarHistorico(treinamentoId, e);
+
+    const etapasHistorico: Array<[string, string, string[]]> = forcar
+      ? [
+        ['Respostas das tentativas', 'dgt_resposta', h.respostas],
+        ['Questões das tentativas', 'dgt_tentativaquestao', h.questoesTentativa],
+        ['Tentativas das avaliações', 'dgt_tentativa', h.tentativas],
+        ['Certificados', 'dgt_certificado', h.certificados],
+        ['Respostas das perguntas dos módulos', 'dgt_moduloperguntaresposta', h.respostasPerguntas],
+        ['Progresso nos módulos', 'dgt_usuariomodulo', h.progressos],
+        ['Atribuições', 'dgt_usuariotreinamento', e.atribuicoes],
+        ['Vínculos com trilhas', 'dgt_trilhatreinamento', e.trilhas]
+      ]
+      : [];
+
+    // Documento de controle (TRN): sai sempre junto com o treinamento.
+    const etapasControle: Array<[string, string, string[]]> = [
+      ['Revisões do treinamento', 'dgt_treinamentorevisao', h.revisoesTreinamento],
+      ['Histórico do fluxo', 'dgt_historicofluxo', h.historicoFluxo],
+      ['Pendências do fluxo', 'dgt_tarefafluxo', h.tarefasFluxo],
+      ['Vínculo documento × processo', 'dgt_documentoprocesso', h.vinculosProcesso],
+      ['Revisões do documento de controle', 'dgt_documentorevisao', h.revisoesDocumento]
+    ];
+
+    for (const [rotulo, tabela, ids] of [...etapasHistorico, ...etapasControle]) {
+      if (!ids.length) {
+        continue;
+      }
+      if (aoProgredir) {
+        aoProgredir(`Removendo ${rotulo.toLowerCase()} (${ids.length})...`);
+      }
+      for (const id of ids) {
+        await this.dataverse.excluirRegistro(tabela, id);
+      }
+    }
+
+    // Motivo e resumo no histórico de auditoria (antes de apagar o
+    // treinamento, para registrar o código e o nome).
+    if (forcar) {
+      await this.registrarRemocaoForcada(treinamentoId, e, h, opcoes);
     }
 
     const etapas: Array<[string, string, string[]]> = [
@@ -198,6 +382,7 @@ export class TreinamentoRemocaoService {
       ['Módulos', 'dgt_modulo', e.modulos],
       ['Documentos vinculados', 'dgt_treinamentodocumento', e.documentos],
       ['Regras de atribuição por área', 'dgt_treinamentoarea', e.regrasArea],
+      ['Documento de controle', 'dgt_documento', h.documentoId ? [h.documentoId] : []],
       ['Treinamento', 'dgt_treinamento', [treinamentoId]]
     ];
 
@@ -216,4 +401,48 @@ export class TreinamentoRemocaoService {
       }
     }
   }
+
+  private async registrarRemocaoForcada(
+    treinamentoId: string,
+    e: IEstrutura,
+    h: IHistorico,
+    opcoes: IOpcoesRemocao
+  ): Promise<void> {
+    try {
+      const lido = await this.dataverse.obterRegistro('dgt_treinamento', treinamentoId, ['dgt_codigo', 'dgt_name']);
+      const codigo = lido ? String(lido.registro.dgt_codigo || '') : '';
+      const nome = lido ? String(lido.registro.dgt_name || '') : '';
+      const resumo = {
+        tipo: 'REMOCAO_FORCADA',
+        codigo,
+        nome,
+        motivo: opcoes.motivo,
+        por: opcoes.usuarioNome,
+        atribuicoes: e.atribuicoes.length,
+        tentativas: h.tentativas.length,
+        certificados: h.certificados.length,
+        trilhas: e.trilhas.length,
+        documentoControle: h.documentoCodigo
+      };
+
+      await this.dataverse.criarRegistro('dgt_auditorianegocio', {
+        dgt_name: `Remoção forçada — ${codigo}`.substring(0, 100),
+        dgt_entidade: 'dgt_treinamento',
+        dgt_registroid: treinamentoId.replace(/[{}]/g, '').toLowerCase(),
+        dgt_dataevento: new Date().toISOString(),
+        dgt_descricao: (
+          `Treinamento ${codigo} — ${nome} removido pelo Administrador ${opcoes.usuarioNome || ''}, ` +
+          `com ${e.atribuicoes.length} atribuição(ões), ${h.tentativas.length} tentativa(s) e ${h.certificados.length} certificado(s). ` +
+          `Motivo: ${opcoes.motivo || ''}`
+        ).substring(0, 1900),
+        dgt_dadosnovos: JSON.stringify(resumo),
+        dgt_origem: 'Portal — Remoção forçada',
+        dgt_ativo: true
+      });
+    } catch (erro) {
+      // O registro do motivo nunca impede a remoção.
+      console.error('Motivo da remoção forçada não registrado:', erro);
+    }
+  }
 }
+

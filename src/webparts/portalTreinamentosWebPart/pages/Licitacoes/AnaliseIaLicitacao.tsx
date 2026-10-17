@@ -46,6 +46,10 @@ const botao: React.CSSProperties = {
   whiteSpace: 'nowrap'
 };
 
+// Barra de compatibilidade: verde-água (alta), âmbar (média), vermelho (baixa).
+const corCompatibilidade = (valor: number): string =>
+  valor >= 60 ? '#047C8C' : valor >= 35 ? '#B45309' : '#9B2C1F';
+
 const decisaoDaRecomendacao = (r: RecomendacaoIa): DecisaoParecer | undefined =>
   r === 'Participar' ? 'Participar' : r === 'NaoParticipar' ? 'NaoParticipar' : undefined;
 
@@ -155,11 +159,15 @@ export const AnaliseIaBloco: React.FC<IAnaliseIaBlocoProps> = ({
           <span aria-hidden="true">{v.icone}</span>
           Sugestão: {ROTULO_RECOMENDACAO_IA[a.recomendacao]}
         </span>
-        <span title="Confiança da análise" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: COR.textoSecundario }}>
+        <span
+          title={`Compatibilidade do edital com a DGT (portfólio, critérios e histórico). Certeza da IA na sugestão: ${a.confianca}%.`}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: COR.textoSecundario }}
+        >
+          Compatibilidade
           <span style={{ width: 60, height: 5, borderRadius: 3, background: COR.neutro, overflow: 'hidden', display: 'inline-block' }}>
-            <span style={{ display: 'block', width: `${a.confianca}%`, height: '100%', background: v.cor }} />
+            <span style={{ display: 'block', width: `${a.compatibilidade}%`, height: '100%', background: corCompatibilidade(a.compatibilidade) }} />
           </span>
-          {a.confianca}%
+          <strong style={{ color: corCompatibilidade(a.compatibilidade) }}>{a.compatibilidade}%</strong>
         </span>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {!completo && temDetalhes && (

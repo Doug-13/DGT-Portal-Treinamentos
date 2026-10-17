@@ -522,7 +522,9 @@ export const useFluxoRevisaoTeste = (
         {
           ...dadosResponsaveis,
           revisaoResponsavelId: autorIdRef.current || dadosResponsaveis.revisaoResponsavelId
-        }
+        },
+        // Hierarquia: grava na pendência quem responde agora (avisos).
+        vinculosUsuarios
       ),
 
     // Publicação REAL (só no Dataverse; no teste é apenas simulada).

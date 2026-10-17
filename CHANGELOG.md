@@ -8,6 +8,16 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 - Novo: Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir.
 - Novo: visão "Todas as planilhas" para o Administrador, com consolidado por grupo, consulta de cada planilha, reabertura e exportação CSV no layout da planilha de orçamento.
+- Novo: aprovação das planilhas do Planejamento orçamentário pelo fluxo CONT-001, com a tela Aprovações e o painel do fluxo na planilha.
+- Novo: etapas do fluxo de aprovação exibidas no Planejamento orçamentário, mostrando em que ponto está cada planilha.
+- Novo: painel de Acompanhamento de licitações, com o registro das licitações acompanhadas e um retrato (snapshot) do edital no momento do acompanhamento.
+- Novo: aba Estrutura da área em RH e Pessoas, com a hierarquia das áreas e o cargo de cada pessoa na área.
+- Novo: scripts criar-tabelas-acompanhamento-licitacoes.ps1 e criar-coluna-cargo-area.ps1 para o Dataverse.
+- Melhoria: os responsáveis das etapas do fluxo passam a considerar a hierarquia das áreas.
+- Melhoria: análise por IA das licitações ajustada (provedores e montagem da análise).
+- Correção: todo treinamento passa a nascer obrigatoriamente vinculado ao fluxo de treinamentos. Antes de criar, o portal confere o tipo TRN, o processo TRE-001 e o fluxo publicado; se o vínculo falhar, a criação é desfeita e nada fica gravado.
+- Correção: treinamento fora do fluxo não pode ser ativado nem editado: a lista mostra "⚠ Fora do fluxo de treinamentos" e o botão "Vincular ao fluxo" no lugar de Editar.
+- Correção: ajustes na remoção de treinamento na Gestão.
 
 ## [1.4.4] - 2026-10-09
 
@@ -131,4 +141,3 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Novo: aba Catálogo e modo de teste do treinamento (visão do colaborador, sem registros).
 - Correção: editar um treinamento não cria mais uma cópia.
 - Correção: validação do tamanho e conversão automática do link da imagem do SharePoint.
-

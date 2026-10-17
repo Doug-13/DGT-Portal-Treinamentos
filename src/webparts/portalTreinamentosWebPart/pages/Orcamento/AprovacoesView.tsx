@@ -33,6 +33,7 @@ import {
 import TabelaOrcamento from './TabelaOrcamento';
 import PainelAlteracoes from './PainelAlteracoes';
 import PainelFluxoOrcamento from './PainelFluxoOrcamento';
+import EtapasFluxoOrcamento from './EtapasFluxoOrcamento';
 
 import {
   COR,
@@ -86,6 +87,7 @@ const AprovacoesView: React.FC<IAprovacoesViewProps> = (props) => {
   const [vinculos, setVinculos] = React.useState<IUsuarioAreaAdmin[]>([]);
   const [usuarios, setUsuarios] = React.useState<Array<{ id: string; nome: string }>>([]);
   const [totais, setTotais] = React.useState<{ [planilhaId: string]: number }>({});
+  const refFluxo = React.useRef<HTMLDivElement>(null);
 
   const calculadas = React.useMemo(() => contasCalculadas(props.regras), [props.regras]);
 
@@ -220,6 +222,14 @@ const AprovacoesView: React.FC<IAprovacoesViewProps> = (props) => {
           )}
         </div>
 
+        <EtapasFluxoOrcamento
+          estado={aberta.estado}
+          dadosResponsaveis={fluxo.dadosResponsaveis(aberta.planilha)}
+          vinculos={vinculos}
+          usuarios={usuarios}
+          onVerDetalhes={() => { if (refFluxo.current) { refFluxo.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }}
+        />
+
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
           <CartaoNumero titulo="Total anual" valor={formatarMoeda(somar(linhas.map(linha => totalLinha(linha))))} detalhe={`${comValor.length} linha(s) com valor`} />
           {aberta.planilha.dataDevolucao && (
@@ -235,7 +245,7 @@ const AprovacoesView: React.FC<IAprovacoesViewProps> = (props) => {
           <TabelaOrcamento linhas={comValor} ano={ano} somenteLeitura={true} calculadas={calculadas} destacadas={destacadas} />
         )}
 
-        <div style={{ marginTop: '16px' }}>
+        <div ref={refFluxo} style={{ marginTop: '16px' }}>
           <PainelFluxoOrcamento
             estado={aberta.estado}
             dadosResponsaveis={fluxo.dadosResponsaveis(aberta.planilha)}

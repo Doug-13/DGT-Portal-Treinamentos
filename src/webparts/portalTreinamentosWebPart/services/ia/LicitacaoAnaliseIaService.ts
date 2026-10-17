@@ -28,7 +28,8 @@ import {
 
 import {
   FORMATO_RESPOSTA_IA,
-  IProvedorIa
+  IProvedorIa,
+  compatibilidadeEstimada
 } from './provedoresIa';
 
 import {
@@ -261,11 +262,17 @@ export class LicitacaoAnaliseIaService {
         } catch {
           detalhes = {};
         }
+        const recomendacao = (texto(r, C.recomendacao) || 'Avaliar') as RecomendacaoIa;
+        const confianca = Number(r[C.confianca]) || 0;
         mapa[chave] = {
           id: texto(r, C.id),
           chaveEdital: chave,
-          recomendacao: (texto(r, C.recomendacao) || 'Avaliar') as RecomendacaoIa,
-          confianca: Number(r[C.confianca]) || 0,
+          recomendacao,
+          confianca,
+          // Análises antigas não tinham o campo: estima pela recomendação.
+          compatibilidade: typeof detalhes.compatibilidade === 'number'
+            ? detalhes.compatibilidade
+            : compatibilidadeEstimada(recomendacao, confianca),
           resumo: texto(r, C.resumo),
           pontosFavoraveis: detalhes.pontosFavoraveis || [],
           riscos: detalhes.riscos || [],
@@ -307,6 +314,7 @@ export class LicitacaoAnaliseIaService {
           [C.confianca]: analise.confianca,
           [C.resumo]: analise.resumo.substring(0, 4000),
           [C.json]: JSON.stringify({
+            compatibilidade: analise.compatibilidade,
             pontosFavoraveis: analise.pontosFavoraveis,
             riscos: analise.riscos,
             justificativaSugerida: analise.justificativaSugerida,

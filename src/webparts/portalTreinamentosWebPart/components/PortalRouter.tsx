@@ -193,7 +193,8 @@ import CatalogoTreinamentosPage from
   '../pages/Treinamentos/CatalogoTreinamentosPage';
 
 import {
-  IImpactoRemocao
+  IImpactoRemocao,
+  IOpcoesRemocao
 } from '../services/TreinamentoRemocaoService';
 
 import {
@@ -782,7 +783,9 @@ export interface IPortalRouterProps {
       treinamento:
         ITreinamentoAdmin,
       aoProgredir:
-        (mensagem: string) => void
+        (mensagem: string) => void,
+      opcoes?:
+        IOpcoesRemocao
     ) => Promise<void>;
 
   // Modo de teste do treinamento (visão do colaborador, sem registros).

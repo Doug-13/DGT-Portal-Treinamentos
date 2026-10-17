@@ -102,6 +102,11 @@ export interface IOpcoesDocumentoControle {
   jaVigenteNaRevisao?: string;
 
   motivo?: string;
+
+  // true = o vínculo com o fluxo de treinamentos é OBRIGATÓRIO: se o
+  // processo não for encontrado (ou o vínculo falhar), lança erro em
+  // vez de só avisar. Usado na criação de treinamentos.
+  exigirFluxo?: boolean;
 }
 
 export interface IResultadoDocumentoControle {
@@ -335,6 +340,9 @@ export class TreinamentoDocumentoControleService {
     try {
       await this.garantirVinculoTreinamento(documentoId, guid(treinamentoId));
     } catch (erro) {
+      if (opcoes.exigirFluxo) {
+        throw new Error(`Não foi possível vincular o documento ao treinamento: ${mensagem(erro)}`);
+      }
       avisos.push(`Não foi possível vincular o documento ao treinamento: ${mensagem(erro)}`);
     }
 
@@ -344,6 +352,12 @@ export class TreinamentoDocumentoControleService {
     try {
       processoNome = await this.garantirProcesso(documentoId);
 
+      if (!processoNome && opcoes.exigirFluxo) {
+        throw new Error(
+          `Processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO} não encontrado: o treinamento precisa estar vinculado ao fluxo de treinamentos.`
+        );
+      }
+
       if (!processoNome) {
         avisos.push(
           `Processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO} não encontrado: o documento ${codigo} foi criado sem fluxo. ` +
@@ -351,6 +365,9 @@ export class TreinamentoDocumentoControleService {
         );
       }
     } catch (erro) {
+      if (opcoes.exigirFluxo) {
+        throw erro instanceof Error ? erro : new Error(mensagem(erro));
+      }
       avisos.push(`Não foi possível vincular o documento ao processo: ${mensagem(erro)}`);
     }
 
@@ -502,6 +519,98 @@ export class TreinamentoDocumentoControleService {
     }
 
     return partes.join(' ');
+  }
+
+  // ==========================================================
+  // PRÉ-REQUISITOS (antes de criar um treinamento)
+  //
+  // Todo treinamento nasce vinculado ao fluxo de treinamentos. Antes
+  // de gravar qualquer coisa, confere se isso é possível; se não for,
+  // o treinamento NÃO é criado.
+  // ==========================================================
+
+  public async verificarPreRequisitos(): Promise<void> {
+
+    try {
+      await this.dataverse.getChoiceOptionValue(
+        'dgt_documento',
+        'dgt_tipo',
+        CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO
+      );
+    } catch {
+      throw new Error(
+        `O tipo de documento "${CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO}" não existe no Dataverse. ` +
+        'Execute scripts/dataverse/criar-tipo-documento-treinamento.ps1 antes de criar treinamentos.'
+      );
+    }
+
+    const persistencia = obterPersistenciaFluxo(this.dataverse);
+    const dados = await persistencia.processos.carregar(false, []);
+    const codigoProcesso = normalizar(CONTROLE_DOCUMENTAL.PROCESSO_CODIGO);
+    const ativos = dados.processos.filter(item => item.ativo !== false);
+
+    const processo =
+      ativos.find(item => normalizar(item.codigo) === codigoProcesso) ||
+      ativos.find(item => /treinamento/.test(normalizar(item.nome)));
+
+    if (!processo) {
+      throw new Error(
+        `O processo ${CONTROLE_DOCUMENTAL.PROCESSO_CODIGO} (fluxo de treinamentos) não foi encontrado. ` +
+        'Cadastre-o em Processos antes de criar treinamentos.'
+      );
+    }
+
+    const publicado = await persistencia.catalogo.versaoPublicada(processo.id);
+
+    if (!publicado) {
+      throw new Error(
+        `O processo ${processo.codigo || processo.nome} não tem fluxo publicado. ` +
+        'Publique o fluxo em Processos antes de criar treinamentos.'
+      );
+    }
+  }
+
+  // ==========================================================
+  // DESFAZER A CRIAÇÃO (o vínculo com o fluxo falhou)
+  //
+  // Só para o treinamento RECÉM-CRIADO no assistente (ainda sem
+  // módulos, atribuições ou histórico): apaga o que foi gravado nesta
+  // tentativa, para não sobrar treinamento fora do fluxo.
+  // ==========================================================
+
+  public async desfazerCriacao(treinamentoId: string): Promise<void> {
+
+    const id = guid(treinamentoId);
+    const treinamento = await this.lerTreinamento(id);
+    const codigo = texto(treinamento, 'dgt_codigo').toUpperCase();
+    const documentoId = codigo ? await this.buscarDocumentoPorCodigo(codigo) : '';
+
+    const apagar = async (tabela: string, filtro: string, chave: string): Promise<void> => {
+      try {
+        const registros = await this.dataverse.listarRegistros(tabela, `$select=${chave}&$filter=${filtro}`);
+        for (const r of registros) {
+          await this.dataverse.excluirRegistro(tabela, guid(r[chave]));
+        }
+      } catch (erro) {
+        console.error(`Desfazer criação: ${tabela}`, erro);
+      }
+    };
+
+    if (documentoId) {
+      await apagar('dgt_treinamentodocumento', `_dgt_documento_value eq ${documentoId}`, 'dgt_treinamentodocumentoid');
+      await apagar('dgt_documentoprocesso', `_dgt_documento_value eq ${documentoId}`, 'dgt_documentoprocessoid');
+      await apagar('dgt_documentorevisao', `_dgt_documento_value eq ${documentoId}`, 'dgt_documentorevisaoid');
+      try {
+        await this.dataverse.excluirRegistro('dgt_documento', documentoId);
+      } catch (erro) {
+        console.error('Desfazer criação: dgt_documento', erro);
+      }
+    }
+
+    if (ehGuid(id)) {
+      await apagar('dgt_treinamentodocumento', `_dgt_treinamento_value eq ${id}`, 'dgt_treinamentodocumentoid');
+      await this.dataverse.excluirRegistro('dgt_treinamento', id);
+    }
   }
 
   // ==========================================================

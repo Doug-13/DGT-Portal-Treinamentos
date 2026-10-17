@@ -27,6 +27,11 @@ import {
   IElementoSelecionadoBpmn
 } from '../../components/fluxo/bpmn/IModelerFluxo';
 
+import {
+  CARGOS_HIERARQUIA,
+  rotuloNivel
+} from '../../services/fluxo/hierarquiaArea';
+
 import CaminhosSaida, {
   FormCondicaoLigacao,
   IResultadoDisponivel,
@@ -146,8 +151,26 @@ const TIPOS_RESPONSAVEL: Array<{ valor: TipoResponsavelFluxo; rotulo: string }> 
   { valor: 'autorRevisao', rotulo: 'Autor da revisão' },
   { valor: 'gestorArea', rotulo: 'Gestor da área do documento' },
   { valor: 'area', rotulo: 'Área específica' },
-  { valor: 'usuario', rotulo: 'Usuário específico' }
+  { valor: 'usuario', rotulo: 'Usuário específico' },
+  { valor: 'cargoArea', rotulo: 'Hierarquia — cargo (ex.: Head, Diretor)' },
+  { valor: 'nivelHierarquico', rotulo: 'Hierarquia — nível (1º, 2º, 3º, topo)' }
 ];
+
+// Níveis oferecidos para "Nível da hierarquia" (0 = topo).
+const NIVEIS_HIERARQUIA: number[] = [1, 2, 3, 4, 0];
+
+// Descrição automática dos responsáveis por hierarquia.
+const descricaoHierarquia = (
+  responsavel: Pick<IFluxoResponsavel, 'tipo' | 'cargo' | 'nivel' | 'referenciaNome' | 'origemArea'>
+): string => {
+  const area =
+    responsavel.referenciaNome
+      ? `da área ${responsavel.referenciaNome}`
+      : responsavel.origemArea === 'autor' ? 'da área de quem criou' : 'da área do documento';
+  return responsavel.tipo === 'cargoArea'
+    ? `${responsavel.cargo || 'Diretor'} ${area}`
+    : `${rotuloNivel(responsavel.nivel)} ${area}`;
+};
 
 const DESCRICAO_PADRAO_RESPONSAVEL: Record<TipoResponsavelFluxo, string> = {
   autorRevisao: 'Autor da revisão',
@@ -156,7 +179,9 @@ const DESCRICAO_PADRAO_RESPONSAVEL: Record<TipoResponsavelFluxo, string> = {
   grupo: 'Grupo',
   funcao: 'Função',
   setor: 'Setor',
-  usuario: 'Usuário'
+  usuario: 'Usuário',
+  cargoArea: 'Head da área de quem criou',
+  nivelHierarquico: '1º nível da hierarquia da área de quem criou'
 };
 
 const STATUS_DOCUMENTO: Array<{ valor: StatusDocumentoEtapa; rotulo: string }> = [
@@ -196,9 +221,11 @@ const modoDoCampo = (
 // Identifica o responsável no motor. Área/usuário entram pelo id
 // (dois responsáveis iguais têm o mesmo papel).
 const papelTesteDe = (
-  responsavel: Pick<IFluxoResponsavel, 'tipo' | 'descricao' | 'referenciaId' | 'somenteGestores'>
+  responsavel: Pick<IFluxoResponsavel, 'tipo' | 'descricao' | 'referenciaId' | 'somenteGestores' | 'cargo' | 'nivel' | 'origemArea'>
 ): string =>
-  responsavel.referenciaId
+  responsavel.tipo === 'cargoArea' || responsavel.tipo === 'nivelHierarquico'
+    ? `${responsavel.tipo}:${responsavel.tipo === 'cargoArea' ? gerarChave(responsavel.cargo || '') : String(responsavel.nivel !== undefined ? responsavel.nivel : 1)}:${responsavel.referenciaId || (responsavel.origemArea === 'autor' ? 'autor' : 'documento')}`
+    : responsavel.referenciaId
     ? `${responsavel.tipo}:${responsavel.referenciaId}${responsavel.somenteGestores ? ':gestores' : ''}`
     : `${responsavel.tipo}:${gerarChave(responsavel.descricao)}`;
 
@@ -562,6 +589,20 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
             novo.referenciaId = undefined;
             novo.referenciaNome = undefined;
             novo.somenteGestores = parcial.tipo === 'area' ? true : undefined;
+            novo.cargo = parcial.tipo === 'cargoArea' ? 'Head' : undefined;
+            novo.nivel = parcial.tipo === 'nivelHierarquico' ? 1 : undefined;
+            // Padrão: a hierarquia de QUEM CRIOU (ex.: criador de
+            // Processos → Head de Processos).
+            novo.origemArea =
+              parcial.tipo === 'cargoArea' || parcial.tipo === 'nivelHierarquico' ? 'autor' : undefined;
+          }
+
+          // Hierarquia: descrição automática ao trocar cargo/nível/área.
+          if (
+            (novo.tipo === 'cargoArea' || novo.tipo === 'nivelHierarquico') &&
+            (parcial.tipo !== undefined || parcial.cargo !== undefined || parcial.nivel !== undefined || parcial.referenciaId !== undefined || 'origemArea' in parcial)
+          ) {
+            novo.descricao = descricaoHierarquia(novo);
           }
 
           // Descrição automática ao escolher área/usuário.
@@ -824,6 +865,70 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                 }
 
                 {
+                  (responsavel.tipo === 'cargoArea' || responsavel.tipo === 'nivelHierarquico') && (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {
+                        responsavel.tipo === 'cargoArea'
+                          ? (
+                            <select
+                              aria-label={`Cargo do responsável ${indice + 1}`}
+                              value={responsavel.cargo || 'Head'}
+                              disabled={!editavel}
+                              onChange={evento => alterarResponsavel(indice, { cargo: evento.target.value })}
+                              style={{ ...estiloEntradaPainel, flex: '1 1 140px' }}
+                            >
+                              {CARGOS_HIERARQUIA.map(cargo => <option key={cargo} value={cargo}>{cargo}</option>)}
+                            </select>
+                          )
+                          : (
+                            <select
+                              aria-label={`Nível do responsável ${indice + 1}`}
+                              value={String(responsavel.nivel !== undefined ? responsavel.nivel : 1)}
+                              disabled={!editavel}
+                              onChange={evento => alterarResponsavel(indice, { nivel: Number(evento.target.value) })}
+                              style={{ ...estiloEntradaPainel, flex: '1 1 140px' }}
+                            >
+                              {NIVEIS_HIERARQUIA.map(nivel => <option key={nivel} value={String(nivel)}>{rotuloNivel(nivel)}</option>)}
+                            </select>
+                          )
+                      }
+                      <select
+                        aria-label={`Área do responsável ${indice + 1}`}
+                        value={responsavel.referenciaId || (responsavel.origemArea === 'autor' ? '__autor__' : '')}
+                        disabled={!editavel}
+                        onChange={evento => {
+                          const valor = evento.target.value;
+                          if (valor === '__autor__') {
+                            alterarResponsavel(indice, { origemArea: 'autor', referenciaId: '', referenciaNome: undefined });
+                            return;
+                          }
+                          const area = areas.find(item => item.id === valor);
+                          alterarResponsavel(indice, {
+                            origemArea: area ? undefined : 'documento',
+                            referenciaId: area ? area.id : '',
+                            referenciaNome: area ? area.nome : undefined
+                          });
+                        }}
+                        style={{ ...estiloEntradaPainel, flex: '1 1 200px' }}
+                      >
+                        <option value="__autor__">Área de quem criou (automático)</option>
+                        <option value="">Área do documento / planilha</option>
+                        {
+                          areas.map(
+                            area => <option key={area.id} value={area.id}>{area.sigla ? `${area.sigla} — ` : ''}{area.nome}</option>
+                          )
+                        }
+                      </select>
+                      <div style={{ flexBasis: '100%', fontSize: '11.5px', color: '#64748B' }}>
+                        {responsavel.tipo === 'cargoArea'
+                          ? 'Quem tem este cargo na área (RH e Pessoas → Estrutura por área). Ex.: quem criou é de Processos → a pendência vai para o Head de Processos.'
+                          : 'A cadeia da área sai dos cargos cadastrados (ex.: Coordenador → Head → Diretor). Se a área tiver menos níveis, vale o topo.'}
+                      </div>
+                    </div>
+                  )
+                }
+
+                {
                   responsavel.tipo === 'usuario' && (
                     <select
                       aria-label={`Usuário responsável ${indice + 1}`}
@@ -899,6 +1004,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         }
 
         <div style={{ fontSize: '12px', lineHeight: '17px' }}>
+          <strong>Hierarquia</strong>: o cargo (ex.: Head, Diretor) ou o nível da hierarquia da área de quem criou, do documento ou de uma área fixa — cadastrados em RH e Pessoas → Estrutura por área; a pendência vai automaticamente para a pessoa certa.{' '}
           <strong>Autor da revisão</strong>: quem criou a revisão (no primeiro cadastro, quem criou o documento).{' '}
           <strong>Gestor da área do documento</strong>: os Gestores da área do documento (Áreas e acessos).{' '}
           <strong>Área específica</strong>: membros (ou só gestores) da área escolhida.{' '}

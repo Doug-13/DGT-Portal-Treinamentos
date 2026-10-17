@@ -52,13 +52,20 @@ import {
 import {
   ehAcaoDeDevolucao,
   obterElementoAtual,
+  tarefaPendente,
   validarAcao
 } from '../../services/fluxo/FluxoEngine';
+
+import {
+  descreverResolvido,
+  resolverResponsaveis
+} from '../../services/fluxo/ResolvedorResponsaveis';
 
 import TabelaOrcamento from './TabelaOrcamento';
 import AdicionarLinhaModal from './AdicionarLinhaModal';
 import PainelAlteracoes from './PainelAlteracoes';
 import PainelFluxoOrcamento from './PainelFluxoOrcamento';
+import EtapasFluxoOrcamento from './EtapasFluxoOrcamento';
 
 import {
   COR,
@@ -97,7 +104,8 @@ import {
 // • Devolvida para ajuste: mostra o motivo, o prazo (dias úteis) e as
 //   linhas alteradas.
 // • Aprovação: segue o fluxo publicado do processo CONT-001 (mesmo
-//   motor de Documentos e Treinamentos). "Enviar planilha" conclui a
+//   motor de Documentos e Treinamentos). O botão de envio (com o nome
+//   da ação principal da etapa, ex.: "Concluir") conclui a
 //   etapa de preenchimento; as avaliações aprovam ou reprovam (volta
 //   para cá com o motivo). Sem o processo, vale o envio simples.
 // ============================================================
@@ -167,6 +175,8 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   const [estadoFluxo, setEstadoFluxo] = React.useState<IEstadoFluxoPlanilha | undefined>(undefined);
   const [podeAgirFluxo, setPodeAgirFluxo] = React.useState(false);
   const [processandoFluxo, setProcessandoFluxo] = React.useState(false);
+  // Quadro do fluxo (para o botão "Ver desenho, ações e histórico").
+  const refFluxo = React.useRef<HTMLDivElement>(null);
   const [vinculosFluxo, setVinculosFluxo] = React.useState<IUsuarioAreaAdmin[]>([]);
   const [usuariosFluxo, setUsuariosFluxo] = React.useState<Array<{ id: string; nome: string }>>([]);
 
@@ -736,7 +746,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
         return;
       }
       if (!window.confirm(
-        `${reenvio ? 'Reenviar' : 'Enviar'} a planilha de ${ano} (${areaAtual.nome}) para a próxima etapa do fluxo ("${acao.rotulo}")? Ela fica somente leitura durante a aprovação.`
+        `${acao.rotulo}: ${reenvio ? 'reenviar' : 'enviar'} a planilha de ${ano} (${areaAtual.nome}) para a próxima etapa do fluxo? Ela fica somente leitura durante a aprovação.`
       )) {
         return;
       }
@@ -899,6 +909,32 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   const prazo = planilha.status === STATUS_PLANILHA.devolvida ? situacaoPrazo(planilha.prazoAjuste, planilha.dataDevolucao) : undefined;
   const qtdDestacadas = Object.keys(destacadas).length;
 
+  // Quem pode concluir a etapa atual (definido no processo). Mostrado
+  // quando o usuário pode preencher, mas não é responsável pelo envio.
+  const tarefaAtual = estadoFluxo ? tarefaPendente(estadoFluxo.instancia) : undefined;
+  const etapaAtualFluxo = estadoFluxo ? obterElementoAtual(estadoFluxo.definicao, estadoFluxo.instancia) : undefined;
+  const quemConclui =
+    tarefaAtual
+      ? (tarefaAtual.responsaveisResolvidos || resolverResponsaveis(tarefaAtual.responsaveis, fluxo.dadosResponsaveis(planilha)))
+        .map(item => descreverResolvido(item, vinculosFluxo, usuariosFluxo))
+        .filter((texto, indice, lista) => !!texto && lista.indexOf(texto) === indice)
+        .join(' · ')
+      : '';
+  const semPermissaoDeEnvio = !!estadoFluxo && editavel && !podeAgirFluxo;
+
+  // Com o fluxo, o botão de envio usa o NOME da ação principal da etapa
+  // (ex.: "Concluir"), como definido no processo. Sem fluxo: "Enviar
+  // planilha" / "Reenviar planilha".
+  const acaoEnvioFluxo =
+    etapaAtualFluxo && etapaAtualFluxo.tipo === 'tarefaHumana'
+      ? etapaAtualFluxo.acoes.filter(item => item.principal && !ehAcaoDeDevolucao(item))[0] ||
+        etapaAtualFluxo.acoes.filter(item => !ehAcaoDeDevolucao(item))[0]
+      : undefined;
+  const rotuloEnvio =
+    acaoEnvioFluxo
+      ? acaoEnvioFluxo.rotulo
+      : planilha.status === STATUS_PLANILHA.devolvida ? 'Reenviar planilha' : 'Enviar planilha';
+
   return (
     <>
       {areasExibidas.length > 1 && seletorAreas}
@@ -943,6 +979,28 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
         </div>
       </div>
 
+      {semPermissaoDeEnvio && (
+        <CaixaMensagem
+          tipo="alerta"
+          texto={
+            `Você pode preencher e salvar a planilha, mas o envio na etapa "${etapaAtualFluxo ? etapaAtualFluxo.nome : 'atual'}" ` +
+            `é feito por: ${quemConclui || 'responsável não configurado'}.\n` +
+            'Quem responde por cada etapa é definido no processo (Processos → CONT-001 → Responsáveis) e, para os responsáveis por hierarquia, ' +
+            'em RH e Pessoas → Estrutura por área. Avise o responsável quando terminar, ou peça ao administrador para ajustar o processo.'
+          }
+        />
+      )}
+
+      {estadoFluxo && (
+        <EtapasFluxoOrcamento
+          estado={estadoFluxo}
+          dadosResponsaveis={fluxo.dadosResponsaveis(planilha)}
+          vinculos={vinculosFluxo}
+          usuarios={usuariosFluxo}
+          onVerDetalhes={() => { if (refFluxo.current) { refFluxo.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }}
+        />
+      )}
+
       {planilha.status === STATUS_PLANILHA.devolvida && (
         <div
           role="alert"
@@ -965,7 +1023,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
             {planilha.motivoDevolucao || 'Motivo não informado.'}
           </div>
           <div style={{ fontSize: '12.5px', color: COR.texto2, marginTop: '8px' }}>
-            Faça os ajustes, clique em <strong>Salvar alterações</strong> e depois em <strong>Reenviar planilha</strong>.
+            Faça os ajustes, clique em <strong>Salvar alterações</strong> e depois em <strong>{rotuloEnvio}</strong>.
             {qtdDestacadas > 0 && ` Você já alterou ${qtdDestacadas} linha(s) desde a devolução (destacadas em azul na tabela).`}
           </div>
         </div>
@@ -1017,9 +1075,9 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
             onClick={() => { enviar().catch(() => undefined); }}
             disabled={salvando || processandoFluxo || linhas.length === 0 || (!!estadoFluxo && !podeAgirFluxo)}
             style={botao(planilha.status === STATUS_PLANILHA.devolvida ? 'principal' : 'secundario', salvando || linhas.length === 0)}
-            title="Conclui o preenchimento. A planilha fica somente leitura."
+            title={semPermissaoDeEnvio ? `Somente ${quemConclui || 'o responsável da etapa'} pode enviar nesta etapa.` : 'Conclui o preenchimento. A planilha fica somente leitura.'}
           >
-            {planilha.status === STATUS_PLANILHA.devolvida ? 'Reenviar planilha' : 'Enviar planilha'}
+            {rotuloEnvio}
           </button>
         )}
       </div>
@@ -1087,7 +1145,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
       )}
 
       {estadoFluxo && (
-        <div style={{ marginTop: '16px' }}>
+        <div ref={refFluxo} style={{ marginTop: '16px' }}>
           <PainelFluxoOrcamento
             estado={estadoFluxo}
             dadosResponsaveis={fluxo.dadosResponsaveis(planilha)}

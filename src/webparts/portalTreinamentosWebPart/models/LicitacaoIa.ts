@@ -83,7 +83,10 @@ export interface IAnaliseIaLicitacao {
   id?: string;
   chaveEdital: string;
   recomendacao: RecomendacaoIa;
-  confianca: number;          // 0–100
+  confianca: number;          // 0–100 (certeza da IA na recomendação)
+  // 0–100: o quanto o edital combina com a DGT (portfólio, critérios
+  // e histórico). É o número mostrado na barra da tela.
+  compatibilidade: number;
   resumo: string;
   pontosFavoraveis: string[];
   riscos: string[];
