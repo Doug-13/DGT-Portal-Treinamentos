@@ -5,7 +5,9 @@ import {
 
 import {
   ChaveModuloPortal,
-  lerModulosAcesso
+  MODULOS_PORTAL,
+  lerModulosAcesso,
+  lerModulosAdministrados
 } from '../utils/modulosPortal';
 
 import {
@@ -64,6 +66,8 @@ export interface IContextoAcesso {
   areasEditor?: string[];
   // Áreas em que é "Administrador da área" (admin com escopo na área).
   areasAdministrador?: string[];
+  // Módulos que administra ("Administrador do módulo").
+  modulosAdministrados?: ChaveModuloPortal[];
 
   // Áreas cujas pessoas o usuário acompanha (equipe, atribuição,
   // conformidade). undefined = todas.
@@ -133,6 +137,11 @@ export const descreverPerfil = (
 
   if (adminEm.length > 0) {
     partes.push(`Administrador em ${resumir(adminEm)}`);
+  }
+
+  if ((contexto.modulosAdministrados || []).length > 0) {
+    const nomes = (contexto.modulosAdministrados || []).map(chave => (MODULOS_PORTAL.find(item => item.chave === chave) || { nome: chave }).nome);
+    partes.push(`Admin. de ${nomes.length === 1 ? nomes[0] : `${nomes.length} módulos`}`);
   }
 
   if (gestorEm.length > 0 && contexto.perfil !== 'Gestor') {
@@ -389,6 +398,8 @@ export class AutorizacaoService {
 
     // Módulos liberados (coluna opcional dgt_modulosacesso).
     let modulosPermitidos: ChaveModuloPortal[] | undefined;
+    // Módulos que administra ("admin:<módulo>" na mesma coluna).
+    let modulosAdministrados: ChaveModuloPortal[] = [];
 
     if (!admin && usuarioId) {
       try {
@@ -398,10 +409,9 @@ export class AutorizacaoService {
             usuarioId,
             ['dgt_modulosacesso']
           );
-        modulosPermitidos =
-          lido && lido.registro
-            ? lerModulosAcesso((lido.registro as Record<string, unknown>).dgt_modulosacesso)
-            : undefined;
+        const valor = lido && lido.registro ? (lido.registro as Record<string, unknown>).dgt_modulosacesso : undefined;
+        modulosPermitidos = lerModulosAcesso(valor);
+        modulosAdministrados = lerModulosAdministrados(valor);
       } catch {
         // Coluna ainda não criada: sem restrição de módulos.
         modulosPermitidos = undefined;
@@ -412,7 +422,8 @@ export class AutorizacaoService {
       calcularRegrasAcesso(
         perfil,
         vinculosArea,
-        modulosPermitidos
+        modulosPermitidos,
+        modulosAdministrados
       );
 
     return {
@@ -475,6 +486,9 @@ export class AutorizacaoService {
 
       areasAdministrador:
         regras.areasAdministrador,
+
+      modulosAdministrados:
+        regras.modulosAdministrados,
 
       escopoAreas:
         regras.escopoAreas,

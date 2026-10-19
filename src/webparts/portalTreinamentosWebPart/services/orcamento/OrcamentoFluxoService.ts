@@ -551,7 +551,7 @@ export class OrcamentoFluxoService {
     contexto: IContextoAcesso
   ): Promise<IResultadoAcaoFluxo> {
 
-    if (!administraArea(contexto.perfil, contexto.areasAdministrador, planilha.areaId)) {
+    if (!(administraArea(contexto.perfil, contexto.areasAdministrador, planilha.areaId) || (contexto.modulosAdministrados || []).indexOf('orcamento') >= 0)) {
       return { ok: false, erros: ['Somente o Administrador (ou o Administrador da área da planilha) pode devolvê-la.'], avisos: [] };
     }
 

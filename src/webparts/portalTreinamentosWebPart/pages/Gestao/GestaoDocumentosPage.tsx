@@ -1,5 +1,9 @@
 import * as React from 'react';
 
+import {
+  ehAdministrador
+} from '../../services/DocumentoVisibilidade';
+
 import PageHeader from
   '../../components/layout/PageHeader';
 
@@ -205,7 +209,7 @@ const GestaoDocumentosPage:
           }
 
           if (
-            props.contexto?.perfil === 'Administrador'
+            ehAdministrador(props.contexto)
           ) {
             return true;
           }
@@ -835,7 +839,7 @@ const GestaoDocumentosPage:
                                 {props.contexto?.email || 'usuário não identificado'}
                               </strong>
                               {
-                                props.contexto?.perfil === 'Administrador'
+                                ehAdministrador(props.contexto)
                                   ? ' — perfil Administrador, pode aprovar qualquer documento.'
                                   : gestoresDaAreaDocumento.length === 0
                                     ? (

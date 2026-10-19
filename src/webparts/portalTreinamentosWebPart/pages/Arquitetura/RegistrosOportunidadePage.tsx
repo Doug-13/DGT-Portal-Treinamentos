@@ -425,7 +425,7 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
   );
 
   const podeDesativar =
-    !!contexto && (contexto.perfil === 'Administrador' || contexto.perfil === 'Editor');
+    !!contexto && (contexto.perfil === 'Administrador' || contexto.perfil === 'Editor' || (contexto.modulosAdministrados || []).indexOf('arquitetura') >= 0);
 
   const [registros, setRegistros] = React.useState<IRegistroOportunidade[]>([]);
   const [carregando, setCarregando] = React.useState(true);

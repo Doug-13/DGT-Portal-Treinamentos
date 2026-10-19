@@ -52,6 +52,14 @@ import {
 } from '../services/DocumentoVisibilidade';
 
 import {
+  ChaveModuloPortal
+} from '../utils/modulosPortal';
+
+import {
+  CONTROLE_DOCUMENTAL
+} from '../constants/controleDocumental';
+
+import {
   DocumentoHistoricoService
 } from '../services/DocumentoHistoricoService';
 
@@ -256,6 +264,13 @@ export const useFluxoRevisaoTeste = (
   onRevisaoAlterada?: () => Promise<void>
 ): IUseFluxoRevisaoTeste => {
 
+  // Documento de controle de treinamento (TRN) → administrador do módulo
+  // Treinamentos; demais → administrador do módulo Documentos.
+  const moduloDoFluxo: ChaveModuloPortal =
+    documento && String(documento.tipo || '').toUpperCase() === CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO
+      ? 'treinamentos'
+      : 'documentos';
+
   const persistencia =
     React.useMemo(
       () => obterPersistenciaFluxo(dataverseService),
@@ -380,7 +395,7 @@ export const useFluxoRevisaoTeste = (
     React.useMemo(
       (): boolean => {
 
-        if (local || !definicao || !instancia || !ehAdministrador(contexto)) {
+        if (local || !definicao || !instancia || !ehAdministrador(contexto, moduloDoFluxo)) {
           return false;
         }
 
@@ -427,7 +442,7 @@ export const useFluxoRevisaoTeste = (
           // fluxo. Quando age numa etapa da qual não é responsável, o
           // nome vai ao histórico como "Nome (Administrador)".
           if (
-            ehAdministrador(contexto) &&
+            ehAdministrador(contexto, moduloDoFluxo) &&
             definicao
           ) {
             const todos =

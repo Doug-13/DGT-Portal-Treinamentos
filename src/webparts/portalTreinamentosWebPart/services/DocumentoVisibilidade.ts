@@ -1,4 +1,8 @@
 import {
+  ChaveModuloPortal
+} from '../utils/modulosPortal';
+
+import {
   IDocumento
 } from '../models/Documento';
 
@@ -55,10 +59,17 @@ const normalizar = (
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
 
+// Administrador global OU "Administrador do módulo" (padrão:
+// Documentos; o fluxo de treinamentos usa 'treinamentos').
 export const ehAdministrador = (
-  contexto?: IContextoAcesso
+  contexto?: IContextoAcesso,
+  modulo: ChaveModuloPortal = 'documentos'
 ): boolean =>
-  contexto?.perfil === 'Administrador';
+  !!contexto &&
+  (
+    contexto.perfil === 'Administrador' ||
+    (contexto.modulosAdministrados || []).indexOf(modulo) >= 0
+  );
 
 // Vínculos ativos do usuário logado (por id do dgt_usuario ou e-mail).
 export const obterMeusVinculos = (

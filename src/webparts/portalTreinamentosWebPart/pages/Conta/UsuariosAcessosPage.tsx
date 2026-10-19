@@ -156,8 +156,11 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
   const [novoPerfil, setNovoPerfil] = React.useState<PerfilArea>('Membro');
 
   const [modulos, setModulos] = React.useState<ChaveModuloPortal[] | undefined>(item.modulos);
+  // Módulos que o usuário administra ("Administrador do módulo").
+  const [administrados, setAdministrados] = React.useState<ChaveModuloPortal[]>(item.modulosAdministrados || []);
 
   React.useEffect(() => setModulos(item.modulos), [item.modulos]);
+  React.useEffect(() => setAdministrados(item.modulosAdministrados || []), [item.modulosAdministrados]);
 
   const executar = async (acao: () => Promise<void>, sucesso: string): Promise<void> => {
     setOcupado(true);
@@ -226,10 +229,29 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
     const novo = atual.indexOf(chave) >= 0 ? atual.filter(m => m !== chave) : atual.concat([chave]);
     const igualPadrao = novo.length === MODULOS_PADRAO.length && novo.every(m => MODULOS_PADRAO.indexOf(m) >= 0);
     setModulos(igualPadrao ? undefined : novo);
+    // Tirou o módulo: deixa de administrá-lo.
+    if (novo.indexOf(chave) < 0) {
+      setAdministrados(lista => lista.filter(m => m !== chave));
+    }
+  };
+
+  const alternarAdministrador = (chave: ChaveModuloPortal): void => {
+    setAdministrados(lista => (lista.indexOf(chave) >= 0 ? lista.filter(m => m !== chave) : lista.concat([chave])));
   };
 
   const modulosAlterados =
-    JSON.stringify(modulos || []) !== JSON.stringify(item.modulos || []);
+    JSON.stringify(modulos || []) !== JSON.stringify(item.modulos || []) ||
+    JSON.stringify(administrados.slice().sort()) !== JSON.stringify((item.modulosAdministrados || []).slice().sort());
+
+  // Com módulos administrados a lista é gravada explícita (com os módulos
+  // efetivos do perfil, para não perder os liberados por padrão).
+  const salvarModulos = (): Promise<void> =>
+    servico.definirModulos(
+      contexto,
+      item.usuario.id,
+      administrados.length > 0 ? (modulos && modulos.length > 0 ? modulos : efetivos) : modulos,
+      administrados
+    );
 
   const secao: React.CSSProperties = { marginBottom: '20px' };
   const titulo: React.CSSProperties = { fontSize: '11px', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: COR_TEXTO_2, margin: '0 0 8px' };
@@ -375,11 +397,61 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
                       {
                         MODULOS_PORTAL.map(modulo => {
                           const marcado = efetivos.indexOf(modulo.chave) >= 0;
+                          const administra = administrados.indexOf(modulo.chave) >= 0;
+                          const ehAdminGlobal = item.usuario.perfilAcesso === 'Administrador';
                           return (
-                            <label key={modulo.chave} title={modulo.descricao} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', padding: '8px 10px', border: `1px solid ${marcado ? '#05C3DD' : COR_BORDA}`, background: marcado ? '#E6F9FC' : '#FFFFFF', borderRadius: '8px', fontSize: '13px', cursor: admin ? 'pointer' : 'default' }}>
-                              <input type="checkbox" checked={marcado} disabled={!admin || ocupado || item.usuario.perfilAcesso === 'Administrador'} onChange={() => alternarModulo(modulo.chave)} />
-                              <span><strong>{modulo.nome}</strong><span style={{ display: 'block', fontSize: '11px', color: COR_TEXTO_2 }}>{modulo.descricao}</span></span>
-                            </label>
+                            <div
+                              key={modulo.chave}
+                              title={modulo.descricao}
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '6px',
+                                padding: '8px 10px',
+                                border: `1px solid ${administra ? '#202A44' : marcado ? '#05C3DD' : COR_BORDA}`,
+                                background: administra ? '#EEF2F8' : marcado ? '#E6F9FC' : '#FFFFFF',
+                                borderRadius: '8px',
+                                fontSize: '13px'
+                              }}
+                            >
+                              <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', cursor: admin ? 'pointer' : 'default' }}>
+                                <input type="checkbox" checked={marcado} disabled={!admin || ocupado || ehAdminGlobal} onChange={() => alternarModulo(modulo.chave)} />
+                                <span><strong>{modulo.nome}</strong><span style={{ display: 'block', fontSize: '11px', color: COR_TEXTO_2 }}>{modulo.descricao}</span></span>
+                              </label>
+                              {
+                                // Administrador do módulo: só para módulo liberado e
+                                // quem não é Administrador global.
+                                marcado && !ehAdminGlobal && (
+                                  <label
+                                    title="Tudo o que o Administrador faz, mas só neste módulo: todas as áreas, aprovações e telas de administração. Não inclui Usuários e acessos."
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      marginLeft: '22px',
+                                      padding: '3px 8px',
+                                      borderRadius: '999px',
+                                      alignSelf: 'flex-start',
+                                      background: administra ? '#202A44' : '#FFFFFF',
+                                      color: administra ? '#FFFFFF' : '#202A44',
+                                      border: `1px solid ${administra ? '#202A44' : COR_BORDA}`,
+                                      fontSize: '11.5px',
+                                      fontWeight: 700,
+                                      cursor: admin ? 'pointer' : 'default'
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={administra}
+                                      disabled={!admin || ocupado}
+                                      onChange={() => alternarAdministrador(modulo.chave)}
+                                      style={{ margin: 0 }}
+                                    />
+                                    Administrador deste módulo
+                                  </label>
+                                )
+                              }
+                            </div>
                           );
                         })
                       }
@@ -393,6 +465,10 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
                               ? 'Módulos padrão (Licitações não incluída).'
                               : `Personalizado: ${efetivos.length} de ${MODULOS_PORTAL.length} módulos.`
                         }
+                        {
+                          administrados.length > 0 &&
+                          ` Administra: ${administrados.map(chave => (MODULOS_PORTAL.find(m => m.chave === chave) || { nome: chave }).nome).join(', ')}.`
+                        }
                         {!admin && ' Somente administradores alteram os módulos (valem para o portal inteiro).'}
                       </span>
                       {
@@ -400,7 +476,7 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
                           <button
                             type="button"
                             disabled={!modulosAlterados || ocupado}
-                            onClick={() => executar(() => servico.definirModulos(contexto, item.usuario.id, modulos), 'Módulos atualizados.').catch(() => undefined)}
+                            onClick={() => executar(salvarModulos, 'Módulos atualizados.').catch(() => undefined)}
                             style={botao(true, !modulosAlterados || ocupado)}
                           >
                             Salvar módulos
@@ -420,6 +496,7 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
               perfil={item.usuario.perfilAcesso}
               vinculos={item.vinculos.filter(vinculo => vinculo.ativo).map(vinculo => ({ areaId: vinculo.areaId, areaNome: vinculo.areaNome, perfil: vinculo.perfil }))}
               modulos={modulos}
+              administrados={administrados}
             />
           </div>
         </div>
@@ -856,9 +933,13 @@ const UsuariosAcessosPage: React.FC<IUsuariosAcessosPageProps> = ({
                         {
                           !item.modulos
                             ? <span style={{ fontSize: '12.5px', color: COR_TEXTO_2 }}>{item.usuario.perfilAcesso === 'Administrador' ? 'Todos' : 'Padrão'}</span>
-                            : item.modulos.map(chave => (
-                              <Chip key={chave} texto={(MODULOS_PORTAL.find(m => m.chave === chave) || { nome: chave }).nome} cor="#0B6B3A" fundo="#E7F6EC" />
-                            ))
+                            : item.modulos.map(chave => {
+                              const administra = (item.modulosAdministrados || []).indexOf(chave) >= 0;
+                              const nome = (MODULOS_PORTAL.find(m => m.chave === chave) || { nome: chave }).nome;
+                              return administra
+                                ? <Chip key={chave} texto={`${nome} · Admin`} cor="#FFFFFF" fundo="#202A44" />
+                                : <Chip key={chave} texto={nome} cor="#0B6B3A" fundo="#E7F6EC" />;
+                            })
                         }
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COR_BORDA}`, verticalAlign: 'top', textAlign: 'right' }}>

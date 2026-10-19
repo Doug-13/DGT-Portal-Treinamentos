@@ -972,7 +972,7 @@ export class OrcamentoService {
       throw new Error(`Informe o motivo da devolução (mínimo de ${MOTIVO_DEVOLUCAO_MINIMO} caracteres).`);
     }
 
-    if (!administraArea(contexto.perfil, contexto.areasAdministrador, planilha.areaId)) {
+    if (!(administraArea(contexto.perfil, contexto.areasAdministrador, planilha.areaId) || (contexto.modulosAdministrados || []).indexOf('orcamento') >= 0)) {
       throw new Error('Somente o Administrador (ou o Administrador da área da planilha) pode devolvê-la.');
     }
 

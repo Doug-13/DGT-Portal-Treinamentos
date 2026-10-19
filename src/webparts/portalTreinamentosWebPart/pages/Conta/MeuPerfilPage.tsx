@@ -87,7 +87,7 @@ const MeuPerfilPage: React.FC<IMeuPerfilPageProps> = ({
 
       <div style={{ marginBottom: '16px' }}>
         <h2 style={{ margin: '0 0 10px', fontSize: '15px', color: COR_AZUL }}>O que eu acesso</h2>
-        <ResumoAcessoEfetivo perfil={contexto.perfil} vinculos={vinculos} modulos={contexto.modulosPermitidos} />
+        <ResumoAcessoEfetivo perfil={contexto.perfil} vinculos={vinculos} modulos={contexto.modulosPermitidos} administrados={contexto.modulosAdministrados} />
       </div>
 
       <p style={{ fontSize: '12px', color: '#64748b' }}>

@@ -1111,9 +1111,11 @@ const GestaoPage:
         undefined
       );
 
+    // Administrador global ou administrador do módulo Treinamentos.
     const souAdministrador =
       ehAdministrador(
-        props.contexto
+        props.contexto,
+        'treinamentos'
       );
 
     // Filtro "Aguardando você"

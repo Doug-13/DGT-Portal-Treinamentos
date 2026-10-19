@@ -34,6 +34,8 @@ export interface IResumoAcessoEfetivoProps {
   perfil: PerfilAcesso;
   vinculos: IVinculoResumo[];
   modulos?: ChaveModuloPortal[];
+  // Módulos que administra ("Administrador do módulo").
+  administrados?: ChaveModuloPortal[];
 }
 
 const COR_AZUL = '#202A44';
@@ -60,11 +62,12 @@ const Linha: React.FC<{ ok: boolean; titulo: string; detalhe?: string }> = ({ ok
 export const ResumoAcessoEfetivo: React.FC<IResumoAcessoEfetivoProps> = ({
   perfil,
   vinculos,
-  modulos
+  modulos,
+  administrados
 }) => {
 
   const regras =
-    calcularRegrasAcesso(perfil, vinculos, modulos);
+    calcularRegrasAcesso(perfil, vinculos, modulos, administrados);
 
   const admin = regras.admin;
 
@@ -127,6 +130,11 @@ export const ResumoAcessoEfetivo: React.FC<IResumoAcessoEfetivoProps> = ({
             ok={admin || adminEm.length > 0}
             titulo="Administrar a área (visões de administrador dos módulos liberados)"
             detalhe={admin ? 'Todas as áreas' : adminEm.length > 0 ? `Em: ${adminEm.join(', ')}` : undefined}
+          />
+          <Linha
+            ok={admin || regras.modulosAdministrados.length > 0}
+            titulo="Administrar módulos (todas as áreas, aprovações e telas de administração)"
+            detalhe={admin ? 'Todos os módulos' : regras.modulosAdministrados.length > 0 ? `Módulos: ${regras.modulosAdministrados.map(chave => (MODULOS_PORTAL.find(item => item.chave === chave) || { nome: chave }).nome).join(', ')}` : undefined}
           />
           <Linha ok={regras.podeGerenciarUsuarios} titulo="Cadastrar usuários e alterar acessos" />
           <Linha ok={admin} titulo="Administrar o portal (perfis, módulos, áreas, permissões)" />

@@ -87,6 +87,12 @@ const ORCAMENTO: PerfilAcesso[] = [
   'Administrador'
 ];
 
+// Nunca liberadas pelo "Administrador do módulo".
+const ROTAS_SO_DO_ADMINISTRADOR_GLOBAL: string[] = [
+  'gestaoAreas',
+  'usuariosAcessos'
+];
+
 const regras:
   IRegraRota[] = [
 
@@ -262,6 +268,17 @@ export const verificarPermissaoRota = (
     if ((contexto.areasAdministrador || []).length > 0) {
       perfisEfetivos.push('Gestor', 'Editor');
     }
+  }
+
+  // Administrador do módulo: nas páginas DESTE módulo vale como
+  // Administrador (ex.: telas de administração de Treinamentos).
+  // Áreas e Usuários e acessos são do PORTAL: só o Administrador global.
+  if (
+    modulo &&
+    ROTAS_SO_DO_ADMINISTRADOR_GLOBAL.indexOf(rota) < 0 &&
+    (contexto.modulosAdministrados || []).indexOf(modulo) >= 0
+  ) {
+    perfisEfetivos.push('Administrador');
   }
 
   if (

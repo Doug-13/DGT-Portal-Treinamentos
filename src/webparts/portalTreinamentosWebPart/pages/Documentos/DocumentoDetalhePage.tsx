@@ -1,6 +1,10 @@
 import * as React from 'react';
 
 import {
+  ehAdministrador
+} from '../../services/DocumentoVisibilidade';
+
+import {
   IDocumento,
   IDocumentoEvento,
   IDocumentoRevisao
@@ -560,7 +564,7 @@ const DocumentoDetalhePage:
         () => {
 
           if (
-            contexto?.perfil === 'Administrador'
+            ehAdministrador(contexto)
           ) {
             return true;
           }

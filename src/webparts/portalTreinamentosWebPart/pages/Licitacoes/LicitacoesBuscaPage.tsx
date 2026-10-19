@@ -447,7 +447,8 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
 
   const [aba, setAba] = React.useState<'busca' | 'acompanhamento'>('busca');
 
-  const ehAdministrador = !!contexto && contexto.perfil === 'Administrador';
+  // Administrador global ou administrador do módulo Licitações.
+  const ehAdministrador = !!contexto && (contexto.perfil === 'Administrador' || (contexto.modulosAdministrados || []).indexOf('licitacoes') >= 0);
 
   const fecharDialogoParecer = React.useCallback(
     (): void => setDialogo(undefined),

@@ -3,6 +3,13 @@ import {
   moduloLiberado
 } from './modulosPortal';
 
+// ADMINISTRADOR DO MÓDULO (dgt_modulosacesso "admin:<módulo>"): tudo
+// o que o Administrador faz, só naquele módulo — todas as áreas do
+// módulo, aprovações e telas de administração. Ex.: administrador de
+// Treinamentos gerencia treinamentos de todas as áreas e atribui para
+// todos; de Documentos vê e aprova qualquer documento. Usuários e
+// acessos continua só com o Administrador global.
+
 // ============================================================
 // REGRAS DE ACESSO DO PORTAL (fonte única)
 //
@@ -73,6 +80,8 @@ export interface IRegrasAcesso {
   areasEditor: string[];
   // Áreas em que é "Administrador da área" (admin com escopo na área).
   areasAdministrador: string[];
+  // Módulos que administra (além do Administrador global, que é tudo).
+  modulosAdministrados: ChaveModuloPortal[];
 
   // undefined = todas as áreas
   escopoAreas?: string[];
@@ -140,10 +149,20 @@ export const noEscopoDeConteudo = (
 export const calcularRegrasAcesso = (
   perfil: PerfilGlobal | string,
   vinculosAtivos: IVinculoRegra[],
-  modulos?: ChaveModuloPortal[]
+  modulos?: ChaveModuloPortal[],
+  modulosAdministradosInformados?: ChaveModuloPortal[]
 ): IRegrasAcesso => {
 
   const admin = perfil === 'Administrador';
+
+  // Só vale para módulos liberados (o próprio gravar já garante).
+  const modulosAdministrados =
+    admin
+      ? []
+      : (modulosAdministradosInformados || []).filter(chave => moduloLiberado(perfil, modulos, chave));
+
+  const administra = (chave: ChaveModuloPortal): boolean =>
+    admin || modulosAdministrados.indexOf(chave) >= 0;
 
   const areasGestor =
     vinculosAtivos
@@ -176,6 +195,7 @@ export const calcularRegrasAcesso = (
 
   if (
     admin ||
+    administra('treinamentos') ||
     perfil === 'Gestor' ||
     (perfil === 'Editor' && areasEditor.length === 0)
   ) {
@@ -193,8 +213,10 @@ export const calcularRegrasAcesso = (
   }
 
   // Conteúdo: áreas de Editor + áreas de Administrador da área.
+  // (Usado na Gestão de Treinamentos: o administrador de Treinamentos
+  // vê e mantém os treinamentos de todas as áreas.)
   const areasConteudo: string[] | undefined =
-    admin || (perfil === 'Editor' && areasEditor.length === 0)
+    admin || administra('treinamentos') || (perfil === 'Editor' && areasEditor.length === 0)
       ? undefined
       : areasEditor
         .concat(areasAdministrador)
@@ -204,9 +226,9 @@ export const calcularRegrasAcesso = (
     moduloLiberado(perfil, modulos, chave);
 
   const conteudo = (chave: ChaveModuloPortal): boolean =>
-    admin || (editor && modulo(chave));
+    administra(chave) || (editor && modulo(chave));
 
-  const pessoas = admin || editor || gestor;
+  const pessoas = admin || editor || gestor || administra('treinamentos');
 
   return {
     admin,
@@ -215,6 +237,7 @@ export const calcularRegrasAcesso = (
     areasGestor,
     areasEditor,
     areasAdministrador,
+    modulosAdministrados,
     escopoAreas,
     areasConteudo,
 
@@ -222,7 +245,7 @@ export const calcularRegrasAcesso = (
     podeAtribuirTreinamentos: pessoas,
     podeVerIndicadoresGerenciais: pessoas,
 
-    podeAprovarDocumentos: gestor,
+    podeAprovarDocumentos: gestor || administra('documentos'),
 
     podeGerenciarTreinamentos: conteudo('treinamentos'),
     podeGerenciarDocumentos: conteudo('documentos'),

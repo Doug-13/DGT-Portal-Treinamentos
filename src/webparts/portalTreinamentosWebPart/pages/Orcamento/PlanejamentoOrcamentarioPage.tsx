@@ -76,7 +76,8 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
   // Administrador global: todas as áreas. Administrador da área: as
   // mesmas visões de administração, só com as áreas que administra.
   // Regras de cálculo (valem para todas as áreas) só o global.
-  const ehAdminGlobal = !!contexto && contexto.perfil === 'Administrador';
+  // Administrador global ou administrador do módulo Planejamento orçamentário.
+  const ehAdminGlobal = !!contexto && (contexto.perfil === 'Administrador' || (contexto.modulosAdministrados || []).indexOf('orcamento') >= 0);
   const areasAdministradas =
     React.useMemo(
       () => (contexto && !ehAdminGlobal ? (contexto.areasAdministrador || []).map(id => id.replace(/[{}]/g, '').toLowerCase()) : undefined),
