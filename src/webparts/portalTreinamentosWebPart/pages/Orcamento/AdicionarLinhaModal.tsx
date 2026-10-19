@@ -183,7 +183,7 @@ const AdicionarLinhaModal: React.FC<IAdicionarLinhaModalProps> = (props) => {
                     {item.conta}
                   </div>
                   <div style={{ fontSize: '12px', color: COR.texto2 }}>
-                    {item.codigo} · {item.grupo}
+                    {item.codigo} · {item.grupo}{item.pai ? ` · subitem de ${item.pai} (${item.subdivisao || ''})` : ''}
                     {jaExiste && (
                       <span style={{ marginLeft: '8px', color: '#0F6CBD', fontWeight: 700 }}>
                         já na planilha

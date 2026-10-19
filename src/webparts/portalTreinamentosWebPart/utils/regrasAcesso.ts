@@ -22,11 +22,18 @@ import {
 //
 // PAPÉIS POR ÁREA (dgt_usuarioarea.dgt_perfilarea)
 //   Membro                → participa da área.
-//   Gestor / Administrador da área → gestão de pessoas e aprovação
-//                           naquela área (mesmo com perfil global
-//                           Colaborador).
+//   Gestor                → gestão de pessoas e aprovação naquela área
+//                           (mesmo com perfil global Colaborador).
 //   Editor                → editor com escopo naquela área (mesmo com
 //                           perfil global Colaborador).
+//   Administrador da área → TUDO o que o Administrador faz, mas só
+//                           naquela área: pessoas, aprovação, criar e
+//                           manter conteúdo dos módulos liberados e as
+//                           visões de administração dos módulos (ex.:
+//                           todas as planilhas de orçamento da área),
+//                           mesmo com perfil global Colaborador. Não
+//                           cadastra usuários nem altera acessos (isso
+//                           continua só com o Administrador global).
 //
 // ESCOPO DE PESSOAS (equipe, atribuição, conformidade)
 //   Administrador ou Gestor global      → todas as áreas.
@@ -64,6 +71,8 @@ export interface IRegrasAcesso {
 
   areasGestor: string[];
   areasEditor: string[];
+  // Áreas em que é "Administrador da área" (admin com escopo na área).
+  areasAdministrador: string[];
 
   // undefined = todas as áreas
   escopoAreas?: string[];
@@ -102,6 +111,18 @@ export const ehPapelGestor = (papel: string): boolean =>
 export const ehPapelEditor = (papel: string): boolean =>
   papel === 'Editor';
 
+export const ehPapelAdministradorArea = (papel: string): boolean =>
+  papel === 'Administrador da área';
+
+// É Administrador (global) ou Administrador da área informada?
+export const administraArea = (
+  perfil: string,
+  areasAdministrador: string[] | undefined,
+  areaId: string | undefined
+): boolean =>
+  perfil === 'Administrador' ||
+  (!!areaId && (areasAdministrador || []).some(id => guid(id) === guid(areaId)));
+
 // O conteúdo (ex.: treinamento) da área informada está no escopo de
 // edição da pessoa? Sem lista = todas as áreas. Conteúdo SEM área só
 // é visto por quem tem escopo total.
@@ -134,10 +155,17 @@ export const calcularRegrasAcesso = (
       .filter(v => ehPapelEditor(v.perfil))
       .map(v => v.areaId);
 
+  // Administrador da área: gestor E editor daquela área.
+  const areasAdministrador =
+    vinculosAtivos
+      .filter(v => ehPapelAdministradorArea(v.perfil))
+      .map(v => v.areaId);
+
   const editor =
     admin ||
     perfil === 'Editor' ||
-    areasEditor.length > 0;
+    areasEditor.length > 0 ||
+    areasAdministrador.length > 0;
 
   const gestor =
     admin ||
@@ -164,10 +192,13 @@ export const calcularRegrasAcesso = (
     });
   }
 
+  // Conteúdo: áreas de Editor + áreas de Administrador da área.
   const areasConteudo: string[] | undefined =
     admin || (perfil === 'Editor' && areasEditor.length === 0)
       ? undefined
-      : areasEditor.filter((id, i, lista) => lista.map(guid).indexOf(guid(id)) === i);
+      : areasEditor
+        .concat(areasAdministrador)
+        .filter((id, i, lista) => lista.map(guid).indexOf(guid(id)) === i);
 
   const modulo = (chave: ChaveModuloPortal): boolean =>
     moduloLiberado(perfil, modulos, chave);
@@ -183,6 +214,7 @@ export const calcularRegrasAcesso = (
     gestor,
     areasGestor,
     areasEditor,
+    areasAdministrador,
     escopoAreas,
     areasConteudo,
 

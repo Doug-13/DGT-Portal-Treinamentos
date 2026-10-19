@@ -258,6 +258,10 @@ export const verificarPermissaoRota = (
     if ((contexto.areasEditor || []).length > 0) {
       perfisEfetivos.push('Editor');
     }
+    // Administrador da área: gestor e editor (com escopo na área).
+    if ((contexto.areasAdministrador || []).length > 0) {
+      perfisEfetivos.push('Gestor', 'Editor');
+    }
   }
 
   if (

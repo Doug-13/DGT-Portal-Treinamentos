@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import Icones, { IconeChave } from './common/Icones';
 import VersaoPortal from './common/VersaoPortal';
+import MenuUsuario from './common/MenuUsuario';
 
 import {
   IEventoTreinamento,
@@ -3984,73 +3985,32 @@ const gestaoAreas =
 
               {
                 menuUsuarioAberto && (
-                  <div
-                    role="menu"
-                    style={{
-                      position: 'absolute',
-                      right: 0,
-                      top: 'calc(100% + 8px)',
-                      width: '290px',
-                      background: '#FFFFFF',
-                      color: '#202A44',
-                      border: '1px solid #E5E7EB',
-                      borderRadius: '12px',
-                      boxShadow: '0 16px 40px rgba(32,42,68,.22)',
-                      zIndex: 1000,
-                      overflow: 'hidden',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <div style={{ padding: '14px 16px', borderBottom: '1px solid #E5E7EB', background: '#F7F9FB' }}>
-                      <strong style={{ display: 'block', fontSize: '14px' }}>{autorizacao.contexto?.nome || usuario.primeiroNome}</strong>
-                      <span style={{ display: 'block', fontSize: '12px', color: '#64748b', overflowWrap: 'anywhere' }}>{autorizacao.contexto?.email || ''}</span>
-                      <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0F6CBD', marginTop: '4px' }}>{perfilExibicao}</span>
-                      {
-                        (autorizacao.contexto?.vinculosArea || []).length > 0 && (
-                          <span style={{ display: 'block', fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
-                            {(autorizacao.contexto?.vinculosArea || []).map(item => `${item.areaNome}: ${item.perfil}`).join(' · ')}
-                          </span>
-                        )
-                      }
-                    </div>
-                    {
+                  <MenuUsuario
+                    nome={autorizacao.contexto?.nome || usuario.primeiroNome}
+                    email={autorizacao.contexto?.email || ''}
+                    perfil={autorizacao.contexto?.perfil || 'Funcionario'}
+                    fotoUrl={usuario.fotoUsuario && !usuario.erroFotoUsuario ? usuario.fotoUsuario : undefined}
+                    inicial={(usuario.primeiroNome || '?').charAt(0).toUpperCase()}
+                    vinculos={autorizacao.contexto?.vinculosArea || []}
+                    itens={
                       [
-                        { pagina: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', icone: '◉', visivel: true },
-                        { pagina: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', icone: '⚿', visivel: podeAdministrarAcessos(autorizacao.contexto) },
-                        { pagina: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', icone: '▦', visivel: autorizacao.contexto?.perfil === 'Administrador' }
+                        { chave: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', descricao: 'Seus dados, papéis e o que você acessa', icone: 'perfil' as const, visivel: true },
+                        { chave: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', descricao: 'Cadastro, perfis e módulos liberados', icone: 'usuarios' as const, visivel: podeAdministrarAcessos(autorizacao.contexto) },
+                        { chave: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', descricao: 'Áreas, equipes e papéis por área', icone: 'areas' as const, visivel: autorizacao.contexto?.perfil === 'Administrador' }
                       ]
                         .filter(item => item.visivel)
-                        .map(item => (
-                          <button
-                            key={item.pagina}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setMenuUsuarioAberto(false);
-                              navegar(item.pagina);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              width: '100%',
-                              padding: '11px 16px',
-                              border: 0,
-                              borderBottom: '1px solid #F1F5F9',
-                              background: '#FFFFFF',
-                              color: '#202A44',
-                              fontSize: '13.5px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              textAlign: 'left'
-                            }}
-                          >
-                            <span aria-hidden="true" style={{ width: '18px', textAlign: 'center' }}>{item.icone}</span>
-                            {item.rotulo}
-                          </button>
-                        ))
+                        .map(item => ({
+                          chave: item.chave,
+                          rotulo: item.rotulo,
+                          descricao: item.descricao,
+                          icone: item.icone,
+                          onClick: () => {
+                            setMenuUsuarioAberto(false);
+                            navegar(item.chave);
+                          }
+                        }))
                     }
-                  </div>
+                  />
                 )
               }
               </div>

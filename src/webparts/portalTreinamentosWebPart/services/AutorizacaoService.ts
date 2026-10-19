@@ -62,6 +62,8 @@ export interface IContextoAcesso {
   vinculosArea?: IVinculoAcesso[];
   areasGestor?: string[];
   areasEditor?: string[];
+  // Áreas em que é "Administrador da área" (admin com escopo na área).
+  areasAdministrador?: string[];
 
   // Áreas cujas pessoas o usuário acompanha (equipe, atribuição,
   // conformidade). undefined = todas.
@@ -112,9 +114,14 @@ export const descreverPerfil = (
   const resumir = (lista: string[]): string =>
     lista.length === 1 ? lista[0] : `${lista.length} áreas`;
 
+  const adminEm =
+    (contexto.vinculosArea || [])
+      .filter(item => item.perfil === 'Administrador da área')
+      .map(item => item.areaNome);
+
   const gestorEm =
     (contexto.vinculosArea || [])
-      .filter(item => item.perfil === 'Gestor' || item.perfil === 'Administrador da área')
+      .filter(item => item.perfil === 'Gestor')
       .map(item => item.areaNome);
 
   const editorEm =
@@ -123,6 +130,10 @@ export const descreverPerfil = (
       .map(item => item.areaNome);
 
   const partes: string[] = [global];
+
+  if (adminEm.length > 0) {
+    partes.push(`Administrador em ${resumir(adminEm)}`);
+  }
 
   if (gestorEm.length > 0 && contexto.perfil !== 'Gestor') {
     partes.push(`Gestor em ${resumir(gestorEm)}`);
@@ -461,6 +472,9 @@ export class AutorizacaoService {
 
       areasEditor:
         regras.areasEditor,
+
+      areasAdministrador:
+        regras.areasAdministrador,
 
       escopoAreas:
         regras.escopoAreas,

@@ -6,6 +6,8 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.6] - 2026-10-19
+
 - Novo: Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir.
 - Novo: visão "Todas as planilhas" para o Administrador, com consolidado por grupo, consulta de cada planilha, reabertura e exportação CSV no layout da planilha de orçamento.
 - Novo: aprovação das planilhas do Planejamento orçamentário pelo fluxo CONT-001, com a tela Aprovações e o painel do fluxo na planilha.

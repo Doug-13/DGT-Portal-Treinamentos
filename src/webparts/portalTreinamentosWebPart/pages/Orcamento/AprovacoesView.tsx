@@ -47,8 +47,14 @@ import {
   explicarErro,
   formatarDataHora,
   formatarMoeda,
-  somar
+  somar,
+  somarComSinal
 } from './orcamentoComum';
+
+import {
+  calcularDre,
+  totalAnualDre
+} from '../../services/orcamento/dreOrcamento';
 
 // ============================================================
 // APROVAÇÕES — etapas do fluxo CONT-001 aguardando o usuário
@@ -108,7 +114,8 @@ const AprovacoesView: React.FC<IAprovacoesViewProps> = (props) => {
         const todas = await servico.carregarLinhasDePlanilhas(lista.map(item => item.planilha.id));
         const mapa: { [id: string]: number } = {};
         todas.forEach(linha => {
-          mapa[linha.planilhaId] = (mapa[linha.planilhaId] || 0) + totalLinha(linha);
+          // Saldo com sinal (receitas − deduções/custos/despesas).
+          mapa[linha.planilhaId] = (mapa[linha.planilhaId] || 0) + somar(somarComSinal([linha]));
         });
         setTotais(mapa);
       } else {
@@ -231,7 +238,8 @@ const AprovacoesView: React.FC<IAprovacoesViewProps> = (props) => {
         />
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-          <CartaoNumero titulo="Total anual" valor={formatarMoeda(somar(linhas.map(linha => totalLinha(linha))))} detalhe={`${comValor.length} linha(s) com valor`} />
+          <CartaoNumero titulo="Receita bruta (ano)" valor={formatarMoeda(totalAnualDre('RECEITA BRUTA', calcularDre(linhas)))} detalhe={`${comValor.length} linha(s) com valor`} />
+          <CartaoNumero titulo="EBITDA (ano)" valor={formatarMoeda(totalAnualDre('EBITDA', calcularDre(linhas)))} detalhe={`Saldo do ano ${formatarMoeda(somar(somarComSinal(linhas)))}`} />
           {aberta.planilha.dataDevolucao && (
             <CartaoNumero titulo="Alteradas após a devolução" valor={String(qtdDestacadas)} detalhe={`Devolvida em ${formatarDataHora(aberta.planilha.dataDevolucao)}`} />
           )}
@@ -317,7 +325,7 @@ const AprovacoesView: React.FC<IAprovacoesViewProps> = (props) => {
                 <th style={cabecalho}>Área</th>
                 <th style={cabecalho}>Etapa</th>
                 <th style={cabecalho}>Prazo</th>
-                <th style={{ ...cabecalho, textAlign: 'right' }}>Total anual</th>
+                <th style={{ ...cabecalho, textAlign: 'right' }}>Saldo do ano</th>
                 <th style={cabecalho}>Enviada em</th>
                 <th style={cabecalho} />
               </tr>

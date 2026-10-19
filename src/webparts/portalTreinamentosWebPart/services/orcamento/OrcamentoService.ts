@@ -8,6 +8,10 @@ import {
 } from '../AutorizacaoService';
 
 import {
+  administraArea
+} from '../../utils/regrasAcesso';
+
+import {
   ALTERACAO,
   BIND_ORCAMENTO,
   BIND_PROPRIETARIO,
@@ -30,7 +34,8 @@ import {
 } from './esquemaOrcamento';
 
 import {
-  PLANO_CONTAS
+  PLANO_CONTAS,
+  nomeGrupoAtual
 } from './planoContasOrcamento';
 
 import {
@@ -373,7 +378,8 @@ export class OrcamentoService {
       id,
       chave: id,
       planilhaId: guid(registro[LINHA.planilhaValor]),
-      grupo: texto(registro, LINHA.grupo),
+      // Nome do grupo da versão anterior do plano → nome atual.
+      grupo: nomeGrupoAtual(texto(registro, LINHA.grupo)),
       codigo: texto(registro, LINHA.codigo),
       conta: texto(registro, LINHA.conta),
       descricao: texto(registro, LINHA.descricao),
@@ -966,8 +972,8 @@ export class OrcamentoService {
       throw new Error(`Informe o motivo da devolução (mínimo de ${MOTIVO_DEVOLUCAO_MINIMO} caracteres).`);
     }
 
-    if (contexto.perfil !== 'Administrador') {
-      throw new Error('Somente o Administrador pode devolver uma planilha.');
+    if (!administraArea(contexto.perfil, contexto.areasAdministrador, planilha.areaId)) {
+      throw new Error('Somente o Administrador (ou o Administrador da área da planilha) pode devolvê-la.');
     }
 
     if (planilha.status !== STATUS_PLANILHA.enviada) {
@@ -1036,17 +1042,39 @@ export class OrcamentoService {
         `&$orderby=${REGRA.ordem} asc`
       );
 
-    return registros.map(registro => ({
-      id: guid(registro[REGRA.id]),
-      nome: texto(registro, REGRA.nome),
-      contaDestino: texto(registro, REGRA.contaDestino),
-      contaDestinoNome: texto(registro, REGRA.contaDestinoNome),
-      tipoBase: (texto(registro, REGRA.tipoBase) === 'Contas' ? 'Contas' : 'Grupo') as TipoBaseRegra,
-      base: lerListaJson(texto(registro, REGRA.base)),
-      percentual: numero(registro[REGRA.percentual]),
-      ordem: numero(registro[REGRA.ordem]),
-      ativo: registro[REGRA.ativo] !== false
-    }));
+    return registros.map(registro => {
+      // dgt_base: lista (formato antigo) ou { refs, grupoDestino }.
+      let base: string[] = [];
+      let grupoDestino: string | undefined;
+      try {
+        const lido = JSON.parse(texto(registro, REGRA.base) || '[]');
+        if (Array.isArray(lido)) {
+          base = lido.map(item => String(item));
+        } else if (lido && typeof lido === 'object') {
+          base = Array.isArray(lido.refs) ? lido.refs.map((item: unknown) => String(item)) : [];
+          grupoDestino = lido.grupoDestino ? nomeGrupoAtual(String(lido.grupoDestino)) : undefined;
+        }
+      } catch {
+        base = [];
+      }
+      const tipoGravado = texto(registro, REGRA.tipoBase);
+      const tipoBase: TipoBaseRegra =
+        tipoGravado === 'Contas' || tipoGravado === 'Misto' ? tipoGravado : 'Grupo';
+      return {
+        id: guid(registro[REGRA.id]),
+        nome: texto(registro, REGRA.nome),
+        contaDestino: texto(registro, REGRA.contaDestino),
+        contaDestinoNome: texto(registro, REGRA.contaDestinoNome),
+        grupoDestino,
+        tipoBase,
+        base: tipoBase === 'Grupo'
+          ? base.map(grupo => nomeGrupoAtual(grupo))
+          : base.map(ref => (ref.indexOf('grupo:') === 0 ? `grupo:${nomeGrupoAtual(ref.substring(6))}` : ref)),
+        percentual: numero(registro[REGRA.percentual]),
+        ordem: numero(registro[REGRA.ordem]),
+        ativo: registro[REGRA.ativo] !== false
+      };
+    });
   }
 
   // Cria (id vazio) ou atualiza uma regra.
@@ -1059,7 +1087,12 @@ export class OrcamentoService {
       [REGRA.contaDestino]: regra.contaDestino,
       [REGRA.contaDestinoNome]: (regra.contaDestinoNome || '').substring(0, 200),
       [REGRA.tipoBase]: regra.tipoBase,
-      [REGRA.base]: JSON.stringify(regra.base).substring(0, 4000),
+      // Com grupo destino ou referências mistas: { refs, grupoDestino }.
+      [REGRA.base]: (
+        regra.tipoBase === 'Misto' || regra.grupoDestino
+          ? JSON.stringify({ refs: regra.base, grupoDestino: regra.grupoDestino || '' })
+          : JSON.stringify(regra.base)
+      ).substring(0, 4000),
       [REGRA.percentual]: Math.round((regra.percentual || 0) * 10000) / 10000,
       [REGRA.ordem]: Math.round(regra.ordem || 0),
       [REGRA.ativo]: regra.ativo
@@ -1089,7 +1122,7 @@ export class OrcamentoService {
       id: guid(registro[CONFIG_AREA.id]),
       areaId: guid(registro[CONFIG_AREA.areaValor]),
       areaNome: texto(registro, CONFIG_AREA.areaNome),
-      grupos: lerListaJson(texto(registro, CONFIG_AREA.grupos)),
+      grupos: lerListaJson(texto(registro, CONFIG_AREA.grupos)).map(grupo => nomeGrupoAtual(grupo)),
       equipeId: guid(registro[CONFIG_AREA.equipeId]),
       alteradoEm: texto(registro, CONFIG_AREA.alteradoEm)
     }));

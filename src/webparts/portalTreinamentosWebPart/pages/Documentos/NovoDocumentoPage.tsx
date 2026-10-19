@@ -102,7 +102,17 @@ const TIPOS_DOCUMENTO:
     { sigla: 'MNS', nome: 'Manual de Nomenclatura e Simbologia', descricao: 'Define regras de nomenclatura, áreas, tipos de documento e pastas de processo.' },
     { sigla: 'LMP', nome: 'Lista Mestra de Processos', descricao: 'Controla sequenciais, nomes de processos e respectivas pastas.' },
     { sigla: 'LMD', nome: 'Lista Mestra de Documentos', descricao: 'Controla sequencial, revisão e status dos documentos controlados.' },
-    { sigla: 'LD', nome: 'Lista de Documentos do Processo', descricao: 'Relação consolidada dos documentos produzidos em cada processo.' }
+
+    { sigla: 'MQI', nome: 'Manual da Qualidade Integrado', descricao: 'Recodificada de MQ — Manual da Qualidade/do SGI.' },
+    { sigla: 'PSQ', nome: 'Procedimento Sistêmico da Qualidade', descricao: 'Recodificada de PQ — procedimento sistêmico, aplicável a toda a organização.' },
+    { sigla: 'POS', nome: 'Procedimento Operacional Setorial', descricao: 'Recodificada de PO — procedimento de um setor ou processo específico.' },
+    { sigla: 'IT', nome: 'Instrução de Trabalho', descricao: 'Sem alteração — exceção documentada, 2 letras.' },
+    { sigla: 'FRM', nome: 'Formulário', descricao: 'Recodificada de FR — modelo em branco a ser preenchido. ' },
+    { sigla: 'REG', nome: 'Registro da Qualidade', descricao: 'Recodificada de RQ — evidência objetiva de execução.' },
+    { sigla: 'FLX', nome: 'Fluxograma / Mapa de Processo', descricao: 'Sem alteração.' },
+    { sigla: 'DOE', nome: 'Documento de Origem Externo', descricao: 'Recodificada de DE — norma, legislação, manual de fabricante ou documento de cliente.' },
+
+
   ];
 
 const C = {

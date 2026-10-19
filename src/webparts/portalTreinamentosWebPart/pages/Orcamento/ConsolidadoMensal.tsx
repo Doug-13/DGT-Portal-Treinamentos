@@ -8,7 +8,6 @@ import {
 } from '../../services/orcamento/OrcamentoService';
 
 import {
-  NOMES_MESES,
   STATUS_PLANILHA,
   statusEntregue
 } from '../../services/orcamento/esquemaOrcamento';
@@ -18,20 +17,20 @@ import TabelaOrcamento from './TabelaOrcamento';
 import {
   COR,
   CartaoNumero,
-  FONTE,
-  agruparLinhas,
   baixarCsv,
   botao,
   campo,
   cartao,
   consolidarLinhas,
   formatarMoeda,
-  formatarValor,
   gerarCsvOrcamento,
-  nomeArquivoSeguro,
-  somar,
-  somarMeses
+  nomeArquivoSeguro
 } from './orcamentoComum';
+
+import {
+  calcularDre,
+  totalAnualDre
+} from '../../services/orcamento/dreOrcamento';
 
 // ============================================================
 // CONSOLIDADO GERAL MÊS A MÊS (Administrador)
@@ -42,6 +41,8 @@ import {
 // ============================================================
 
 export interface IConsolidadoMensalProps {
+  // (grupo|código) → regra que calcula a conta (marca ƒ nas contas).
+  calculadas?: { [chave: string]: string };
   ano: number;
   planilhas: IPlanilhaOrcamento[];
   linhas: ILinhaOrcamento[];
@@ -74,9 +75,11 @@ const ConsolidadoMensal: React.FC<IConsolidadoMensalProps> = (props) => {
       [props.linhas, ids.join('|')]
     );
 
-  const grupos = agruparLinhas(consolidadas);
-  const totais = somarMeses(consolidadas);
-  const total = somar(totais);
+  // Valores com sinal (como na planilha).
+  const dre = calcularDre(consolidadas);
+  const receita = totalAnualDre('RECEITA BRUTA', dre);
+  const ebitda = totalAnualDre('EBITDA', dre);
+  const lucroLiquido = totalAnualDre('LL', dre);
 
   // Áreas que aparecem nas planilhas (inclui "Geral").
   const areasComPlanilha: IAreaOrcamento[] = [];
@@ -91,15 +94,6 @@ const ConsolidadoMensal: React.FC<IConsolidadoMensalProps> = (props) => {
   const nomeFiltro =
     areaId === '*' ? 'todas as áreas' : (areasComPlanilha.filter(area => area.id === areaId)[0] || { nome: '' }).nome;
 
-  const celula: React.CSSProperties = {
-    padding: '8px 10px',
-    fontSize: '13px',
-    color: COR.azul,
-    borderBottom: `1px solid ${COR.borda}`,
-    textAlign: 'right',
-    whiteSpace: 'nowrap',
-    fontFamily: FONTE
-  };
 
   const exportar = (): void => {
     baixarCsv(
@@ -150,8 +144,9 @@ const ConsolidadoMensal: React.FC<IConsolidadoMensalProps> = (props) => {
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-        <CartaoNumero titulo="Total anual" valor={formatarMoeda(total)} detalhe={`${consolidadas.length} conta(s) com valor`} />
-        <CartaoNumero titulo="Média mensal" valor={formatarMoeda(total / 12)} />
+        <CartaoNumero titulo="Receita bruta (ano)" valor={formatarMoeda(receita)} detalhe={`${consolidadas.length} conta(s) com valor`} />
+        <CartaoNumero titulo="EBITDA (ano)" valor={formatarMoeda(ebitda)} detalhe={receita ? `${totalAnualDre('PCT_EBITDA', dre).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% sobre a receita` : undefined} />
+        <CartaoNumero titulo="Lucro líquido (ano)" valor={formatarMoeda(lucroLiquido)} />
         <CartaoNumero
           titulo="Planilhas consideradas"
           valor={String(planilhasFiltradas.length)}
@@ -163,44 +158,16 @@ const ConsolidadoMensal: React.FC<IConsolidadoMensalProps> = (props) => {
         <div style={{ ...cartao, textAlign: 'center', color: COR.texto2, fontSize: '13.5px' }}>
           Nenhum valor lançado nas planilhas selecionadas.
         </div>
-      ) : detalhar ? (
-        <TabelaOrcamento linhas={consolidadas} ano={props.ano} somenteLeitura={true} />
       ) : (
-        <div style={{ overflow: 'auto', maxHeight: '68vh', maxWidth: '100%', border: `1px solid ${COR.borda}`, borderRadius: '10px', background: '#FFFFFF' }}>
-          <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', fontFamily: FONTE }}>
-            <thead>
-              <tr>
-                <th style={{ ...celula, textAlign: 'left', background: '#F1F5F9', position: 'sticky', left: 0, top: 0, minWidth: '240px', zIndex: 3 }}>Grupo</th>
-                {NOMES_MESES.map(mes => (
-                  <th key={mes} style={{ ...celula, background: '#F1F5F9', minWidth: '96px', position: 'sticky', top: 0, zIndex: 2 }}>{mes}/{String(props.ano).substring(2)}</th>
-                ))}
-                <th style={{ ...celula, background: '#F1F5F9', minWidth: '112px', position: 'sticky', top: 0, zIndex: 2 }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {grupos.map(grupo => (
-                <tr key={grupo.grupo}>
-                  <td style={{ ...celula, textAlign: 'left', fontWeight: 600, position: 'sticky', left: 0, background: '#FFFFFF', boxShadow: `1px 0 0 ${COR.borda}`, whiteSpace: 'normal' }}>
-                    {grupo.grupo}
-                  </td>
-                  {grupo.totais.map((valor, mes) => (
-                    <td key={mes} style={celula}>{valor ? formatarValor(valor) : <span style={{ color: '#CBD5E1' }}>0,00</span>}</td>
-                  ))}
-                  <td style={{ ...celula, fontWeight: 700 }}>{formatarValor(grupo.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td style={{ ...celula, textAlign: 'left', background: COR.azul, color: '#FFFFFF', fontWeight: 700, position: 'sticky', left: 0 }}>TOTAL GERAL</td>
-                {totais.map((valor, mes) => (
-                  <td key={mes} style={{ ...celula, background: COR.azul, color: '#FFFFFF', fontWeight: 700 }}>{formatarValor(valor)}</td>
-                ))}
-                <td style={{ ...celula, background: COR.azul, color: '#FFFFFF', fontWeight: 700 }}>{formatarValor(total)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        // Formato da planilha: seções, grupos, resultados (Lucro Bruto,
+        // LAIR, EBITDA…) e %; "Detalhar por conta" mostra as contas.
+        <TabelaOrcamento
+          linhas={consolidadas}
+          ano={props.ano}
+          somenteLeitura={true}
+          somenteTotais={!detalhar}
+          calculadas={props.calculadas}
+        />
       )}
     </>
   );

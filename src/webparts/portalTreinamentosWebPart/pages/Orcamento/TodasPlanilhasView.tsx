@@ -64,8 +64,13 @@ import {
   gerarCsvOrcamento,
   nomeArquivoSeguro,
   somar,
-  somarMeses
+  somarComSinal
 } from './orcamentoComum';
+
+import {
+  calcularDre,
+  totalAnualDre
+} from '../../services/orcamento/dreOrcamento';
 
 // ============================================================
 // TODAS AS PLANILHAS (Administrador)
@@ -88,6 +93,9 @@ export interface ITodasPlanilhasViewProps {
   ano: number;
   areas: IAreaOrcamento[];
   regras: IRegraCalculo[];
+  // Administrador da área: só as planilhas destas áreas (undefined =
+  // todas, Administrador global).
+  areasPermitidas?: string[];
 }
 
 type Visao = 'lista' | 'planilha' | 'consolidado';
@@ -124,7 +132,9 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
     setCarregando(true);
     setErro('');
     try {
-      const lista = await servico.listarPlanilhas(ano);
+      const todas = await servico.listarPlanilhas(ano);
+      const permitidas = props.areasPermitidas;
+      const lista = permitidas ? todas.filter(item => !!item.areaId && permitidas.indexOf(item.areaId) >= 0) : todas;
       setPlanilhas(lista);
       setLinhas(lista.length > 0 ? await servico.carregarLinhasDePlanilhas(lista.map(item => item.id)) : []);
     } catch (falha) {
@@ -134,7 +144,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
     } finally {
       setCarregando(false);
     }
-  }, [servico, ano]);
+  }, [servico, ano, props.areasPermitidas]);
 
   React.useEffect(() => {
     setVisao('lista');
@@ -347,6 +357,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
   if (visao === 'consolidado') {
     return (
       <ConsolidadoMensal
+        calculadas={calculadas}
         ano={ano}
         planilhas={planilhas}
         linhas={linhas}
@@ -547,7 +558,10 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
   });
   const idsVisiveis = visiveis.map(item => item.id);
   const linhasVisiveis = linhas.filter(linha => idsVisiveis.indexOf(linha.planilhaId) >= 0);
-  const totalConsolidado = somar(somarMeses(linhasVisiveis));
+  // Valores com sinal, como na planilha.
+  const dreConsolidada = calcularDre(linhasVisiveis);
+  const receitaConsolidada = totalAnualDre('RECEITA BRUTA', dreConsolidada);
+  const ebitdaConsolidado = totalAnualDre('EBITDA', dreConsolidada);
   const enviadas = visiveis.filter(item => statusEntregue(item.status)).length;
   const emAprovacao = visiveis.filter(item => item.status === STATUS_PLANILHA.emAprovacao).length;
   const aprovadas = visiveis.filter(item => item.status === STATUS_PLANILHA.aprovada).length;
@@ -588,7 +602,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
         )}
         <CartaoNumero titulo="Em preenchimento" valor={String(visiveis.length - enviadas - devolvidas.length)} />
         <CartaoNumero titulo="Devolvidas para ajuste" valor={String(devolvidas.length)} detalhe={atrasadas > 0 ? `${atrasadas} com prazo vencido` : 'Nenhuma atrasada'} />
-        <CartaoNumero titulo="Total consolidado" valor={formatarMoeda(totalConsolidado)} detalhe={`Ano ${ano}`} />
+        <CartaoNumero titulo="EBITDA consolidado" valor={formatarMoeda(ebitdaConsolidado)} detalhe={`Receita bruta ${formatarMoeda(receitaConsolidada)} · ano ${ano}`} />
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -631,7 +645,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
                 <th style={cabecalho}>Criada por</th>
                 <th style={cabecalho}>Situação</th>
                 <th style={{ ...cabecalho, textAlign: 'right' }}>Linhas com valor</th>
-                <th style={{ ...cabecalho, textAlign: 'right' }}>Total anual</th>
+                <th style={{ ...cabecalho, textAlign: 'right' }} title="Receitas − deduções, custos e despesas lançados no ano">Saldo do ano</th>
                 <th style={cabecalho}>Atualizada em</th>
                 <th style={cabecalho} />
               </tr>
@@ -687,7 +701,9 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
                     </td>
                     <td style={{ ...celula, textAlign: 'right' }}>{daPlanilha.filter(linha => totalLinha(linha) !== 0).length}</td>
                     <td style={{ ...celula, textAlign: 'right', fontWeight: 700 }}>
-                      {formatarMoeda(somar(daPlanilha.map(linha => totalLinha(linha))))}
+                      <span style={{ color: somar(somarComSinal(daPlanilha)) < 0 ? COR.perigo : undefined }}>
+                        {formatarMoeda(somar(somarComSinal(daPlanilha)))}
+                      </span>
                     </td>
                     <td style={{ ...celula, color: COR.texto2 }}>{formatarData(item.alteradoEm)}</td>
                     <td style={{ ...celula, textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -732,16 +748,16 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
               <tr>
                 <th style={cabecalho}>Grupo</th>
                 <th style={{ ...cabecalho, textAlign: 'right' }}>Total anual</th>
-                <th style={{ ...cabecalho, textAlign: 'right' }}>% do total</th>
+                <th style={{ ...cabecalho, textAlign: 'right' }}>% da receita bruta</th>
               </tr>
             </thead>
             <tbody>
               {grupos.map(item => (
                 <tr key={item.grupo}>
                   <td style={celula}>{item.grupo}</td>
-                  <td style={{ ...celula, textAlign: 'right', fontWeight: 600 }}>{formatarMoeda(item.total)}</td>
+                  <td style={{ ...celula, textAlign: 'right', fontWeight: 600, color: item.total < 0 ? COR.perigo : undefined }}>{formatarMoeda(item.total)}</td>
                   <td style={{ ...celula, textAlign: 'right', color: COR.texto2 }}>
-                    {totalConsolidado ? `${((item.total / totalConsolidado) * 100).toFixed(1).replace('.', ',')}%` : '—'}
+                    {receitaConsolidada ? `${((item.total / receitaConsolidada) * 100).toFixed(1).replace('.', ',')}%` : '—'}
                   </td>
                 </tr>
               ))}

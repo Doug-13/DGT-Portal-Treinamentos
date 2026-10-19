@@ -73,7 +73,16 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
 
   const { dataverseService, contexto } = props;
 
-  const ehAdmin = !!contexto && contexto.perfil === 'Administrador';
+  // Administrador global: todas as áreas. Administrador da área: as
+  // mesmas visões de administração, só com as áreas que administra.
+  // Regras de cálculo (valem para todas as áreas) só o global.
+  const ehAdminGlobal = !!contexto && contexto.perfil === 'Administrador';
+  const areasAdministradas =
+    React.useMemo(
+      () => (contexto && !ehAdminGlobal ? (contexto.areasAdministrador || []).map(id => id.replace(/[{}]/g, '').toLowerCase()) : undefined),
+      [contexto, ehAdminGlobal]
+    );
+  const ehAdmin = ehAdminGlobal || (!!areasAdministradas && areasAdministradas.length > 0);
 
   const servico =
     React.useMemo(
@@ -174,14 +183,18 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
         }).catch(() => undefined)
         : Promise.resolve(),
       ehAdmin
-        ? servico.listarAreas().then(lista => { if (ativo) { setAreas(lista); } }).catch(() => undefined)
+        ? servico.listarAreas().then(lista => {
+          if (ativo) {
+            setAreas(areasAdministradas ? lista.filter(area => areasAdministradas.indexOf(area.id) >= 0) : lista);
+          }
+        }).catch(() => undefined)
         : Promise.resolve()
     ])
       .catch(() => undefined)
       .then(() => { if (ativo) { setCarregandoConfig(false); } })
       .catch(() => undefined);
     return () => { ativo = false; };
-  }, [servico, fluxo, ehAdmin, carregarRegras, carregarConfigs]);
+  }, [servico, fluxo, ehAdmin, areasAdministradas, carregarRegras, carregarConfigs]);
 
   // Quantas aprovações aguardam o usuário no ano (mostra a aba).
   const contarAprovacoes = React.useCallback(async (): Promise<void> => {
@@ -255,9 +268,8 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
     .concat(ehAdmin
       ? [
         { chave: 'todas' as Aba, titulo: 'Todas as planilhas' },
-        { chave: 'contas' as Aba, titulo: 'Contas por área' },
-        { chave: 'regras' as Aba, titulo: 'Regras de cálculo' }
-      ]
+        { chave: 'contas' as Aba, titulo: 'Contas por área' }
+      ].concat(ehAdminGlobal ? [{ chave: 'regras' as Aba, titulo: 'Regras de cálculo' }] : [])
       : []);
 
   const conteudo = (): React.ReactNode => {
@@ -290,6 +302,7 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
           fluxo={fluxo}
           fluxoAtivo={fluxoAtivo}
           onFluxoAlterado={aoAlterarFluxo}
+          areasPermitidas={areasAdministradas}
         />
       );
     }
@@ -298,7 +311,7 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
       return <ContasPorAreaView servico={servico} areas={areas} configs={configs} onSalvo={carregarConfigs} />;
     }
 
-    if (aba === 'regras' && ehAdmin) {
+    if (aba === 'regras' && ehAdminGlobal) {
       return <RegrasCalculoView servico={servico} regras={regras} onSalvo={carregarRegras} />;
     }
 
@@ -343,8 +356,10 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
             Planejamento orçamentário
           </div>
           <div style={{ fontSize: '13.5px', opacity: 0.85, marginTop: '4px' }}>
-            {ehAdmin
+            {ehAdminGlobal
               ? 'Preencha as suas planilhas, acompanhe as de todos os gestores e configure contas por área e regras de cálculo.'
+              : ehAdmin
+                ? 'Preencha as suas planilhas e administre as das áreas em que você é Administrador da área.'
               : 'Preencha o orçamento de cada área sob sua gestão, mês a mês. Só você e os administradores veem estas planilhas.'}
           </div>
         </div>

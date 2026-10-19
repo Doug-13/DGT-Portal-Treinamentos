@@ -118,7 +118,9 @@ export const REGRA = {
   alteradoEm: 'modifiedon'
 };
 
-export type TipoBaseRegra = 'Grupo' | 'Contas';
+// 'Misto': referências "grupo:…", "linha:…" e "conta:…" (ver
+// calculoOrcamento.ts). 'Grupo'/'Contas': formato antigo.
+export type TipoBaseRegra = 'Grupo' | 'Contas' | 'Misto';
 
 export const CONFIG_AREA = {
   id: 'dgt_orcamentoconfigareaid',

@@ -36,6 +36,13 @@ import {
 } from '../../services/orcamento/calculoOrcamento';
 
 import {
+  calcularDre,
+  sinalDaConta,
+  totalAnualDre,
+  valoresComSinal
+} from '../../services/orcamento/dreOrcamento';
+
+import {
   situacaoPrazo
 } from '../../services/orcamento/diasUteis';
 
@@ -82,9 +89,7 @@ import {
   formatarDataHora,
   formatarMoeda,
   gerarCsvOrcamento,
-  nomeArquivoSeguro,
-  somar,
-  somarMeses
+  nomeArquivoSeguro
 } from './orcamentoComum';
 
 // ============================================================
@@ -129,7 +134,6 @@ export interface IMinhaPlanilhaViewProps {
 const guid = (valor: string): string =>
   (valor || '').replace(/[{}]/g, '').trim().toLowerCase();
 
-const NOMES_MES_LONGOS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 const clonar = (linha: ILinhaOrcamento): ILinhaOrcamento => ({ ...linha, valores: linha.valores.slice() });
 
@@ -207,7 +211,8 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   const calculadas =
     React.useMemo(() => contasCalculadas(regras), [regras]);
 
-  const codigosCalculados = Object.keys(calculadas);
+  // Códigos das contas calculadas (chaves "grupo|código").
+  const codigosCalculados = Object.keys(calculadas).map(chave => chave.split('|')[1]);
 
   // Regras em ref: os manipuladores memorizados sempre usam as atuais.
   const regrasRef = React.useRef(regras);
@@ -903,9 +908,17 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
     );
   }
 
-  const totais = somarMeses(linhas);
-  const total = somar(totais);
-  const maiorMes = totais.reduce((maior, valor, indice) => (valor > totais[maior] ? indice : maior), 0);
+  // Resumo no formato da planilha (valores com sinal).
+  const dreResumo = calcularDre(linhas);
+  const receitaAno = totalAnualDre('RECEITA BRUTA', dreResumo);
+  const ebitdaAno = totalAnualDre('EBITDA', dreResumo);
+  const pctEbitda = totalAnualDre('PCT_EBITDA', dreResumo);
+  const custosAno =
+    arredondar(
+      linhas
+        .filter(linha => sinalDaConta(linha.codigo) < 0)
+        .reduce((soma, linha) => soma + valoresComSinal(linha).reduce((parcial, valor) => parcial + valor, 0), 0)
+    );
   const prazo = planilha.status === STATUS_PLANILHA.devolvida ? situacaoPrazo(planilha.prazoAjuste, planilha.dataDevolucao) : undefined;
   const qtdDestacadas = Object.keys(destacadas).length;
 
@@ -944,13 +957,9 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
       <CaixaMensagem tipo="sucesso" texto={aviso} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-        <CartaoNumero titulo="Total anual" valor={formatarMoeda(total)} detalhe={`${linhas.filter(linha => totalLinha(linha) !== 0).length} de ${linhas.length} linha(s) com valor`} />
-        <CartaoNumero titulo="Média mensal" valor={formatarMoeda(arredondar(total / 12))} />
-        <CartaoNumero
-          titulo="Mês de maior valor"
-          valor={total ? formatarMoeda(totais[maiorMes]) : '—'}
-          detalhe={total ? NOMES_MES_LONGOS[maiorMes] : undefined}
-        />
+        <CartaoNumero titulo="Receita bruta (ano)" valor={formatarMoeda(receitaAno)} detalhe={`${linhas.filter(linha => totalLinha(linha) !== 0).length} de ${linhas.length} linha(s) com valor`} />
+        <CartaoNumero titulo="Deduções, custos e despesas (ano)" valor={formatarMoeda(custosAno)} detalhe={`Média mensal ${formatarMoeda(arredondar(custosAno / 12))}`} />
+        <CartaoNumero titulo="EBITDA (ano)" valor={formatarMoeda(ebitdaAno)} detalhe={receitaAno ? `${pctEbitda.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% sobre a receita` : 'Sem receita lançada'} />
         <div style={{ ...cartao, marginBottom: 0, flex: '1 1 180px', minWidth: '180px' }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px' }}>Situação</div>
           <div style={{ marginTop: '8px' }}><SeloStatus status={planilha.status} /></div>
@@ -1112,7 +1121,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
             </label>
             {filtroAtivo && (
               <span style={{ fontSize: '12px', color: '#B45309', fontWeight: 600 }}>
-                Filtro ativo: exibindo {linhasVisiveis.length} de {linhas.length} linhas (subtotais da tabela consideram só as exibidas; os cartões acima mostram o total da planilha).
+                Filtro ativo: exibindo {linhasVisiveis.length} de {linhas.length} linhas (os totais e resultados da tabela consideram a planilha inteira).
               </span>
             )}
           </div>
@@ -1129,6 +1138,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
           ) : (
             <TabelaOrcamento
               linhas={linhasVisiveis}
+              linhasTotais={linhas}
               ano={ano}
               somenteLeitura={somenteLeitura}
               chavesAlteradas={chavesAlteradas}

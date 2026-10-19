@@ -71,8 +71,12 @@ export const ResumoAcessoEfetivo: React.FC<IResumoAcessoEfetivoProps> = ({
   const gestorEm =
     vinculos.filter(item => ehPapelGestor(item.perfil)).map(item => item.areaNome);
 
+  // Administrador da área também cria e mantém conteúdo da área.
   const editorEm =
-    vinculos.filter(item => ehPapelEditor(item.perfil)).map(item => item.areaNome);
+    vinculos.filter(item => ehPapelEditor(item.perfil) || item.perfil === 'Administrador da área').map(item => item.areaNome);
+
+  const adminEm =
+    vinculos.filter(item => item.perfil === 'Administrador da área').map(item => item.areaNome);
 
   const membroEm =
     vinculos.filter(item => item.perfil === 'Membro').map(item => item.areaNome);
@@ -118,6 +122,11 @@ export const ResumoAcessoEfetivo: React.FC<IResumoAcessoEfetivoProps> = ({
                 ? `Módulos: ${modulosConteudo.join(', ')} · Áreas: ${regras.areasConteudo === undefined ? 'todas' : (editorEm.join(', ') || '—')}`
                 : (regras.editor ? 'Nenhum módulo de conteúdo liberado' : undefined)
             }
+          />
+          <Linha
+            ok={admin || adminEm.length > 0}
+            titulo="Administrar a área (visões de administrador dos módulos liberados)"
+            detalhe={admin ? 'Todas as áreas' : adminEm.length > 0 ? `Em: ${adminEm.join(', ')}` : undefined}
           />
           <Linha ok={regras.podeGerenciarUsuarios} titulo="Cadastrar usuários e alterar acessos" />
           <Linha ok={admin} titulo="Administrar o portal (perfis, módulos, áreas, permissões)" />

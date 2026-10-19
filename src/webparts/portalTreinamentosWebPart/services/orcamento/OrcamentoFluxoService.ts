@@ -7,6 +7,10 @@ import {
 } from '../AutorizacaoService';
 
 import {
+  administraArea
+} from '../../utils/regrasAcesso';
+
+import {
   AreaAdminService,
   IUsuarioAreaAdmin
 } from '../AreaAdminService';
@@ -547,8 +551,8 @@ export class OrcamentoFluxoService {
     contexto: IContextoAcesso
   ): Promise<IResultadoAcaoFluxo> {
 
-    if (contexto.perfil !== 'Administrador') {
-      return { ok: false, erros: ['Somente o Administrador pode devolver uma planilha.'], avisos: [] };
+    if (!administraArea(contexto.perfil, contexto.areasAdministrador, planilha.areaId)) {
+      return { ok: false, erros: ['Somente o Administrador (ou o Administrador da área da planilha) pode devolvê-la.'], avisos: [] };
     }
 
     const estado = await this.carregar(planilha);

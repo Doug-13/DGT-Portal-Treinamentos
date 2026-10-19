@@ -12,9 +12,16 @@ import {
 } from '../../services/orcamento/esquemaOrcamento';
 
 import {
+  CONTAS_MAE,
   GRUPOS_ORCAMENTO,
   PLANO_CONTAS
 } from '../../services/orcamento/planoContasOrcamento';
+
+import {
+  ITENS_DRE,
+  calcularDre,
+  valoresComSinal
+} from '../../services/orcamento/dreOrcamento';
 
 // ============================================================
 // PLANEJAMENTO ORÇAMENTÁRIO — ELEMENTOS VISUAIS E UTILITÁRIOS
@@ -126,7 +133,8 @@ export const SeloStatus: React.FC<{ status: StatusPlanilha }> = ({ status }) => 
 export const CartaoNumero: React.FC<{ titulo: string; valor: string; detalhe?: string }> = ({ titulo, valor, detalhe }) => (
   <div style={{ ...cartao, marginBottom: 0, flex: '1 1 180px', minWidth: '180px' }}>
     <div style={{ fontSize: '12px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px' }}>{titulo}</div>
-    <div style={{ fontSize: '22px', fontWeight: 700, color: COR.azul, marginTop: '6px' }}>{valor}</div>
+    {/* Valor negativo (dedução, prejuízo) em vermelho. */}
+    <div style={{ fontSize: '22px', fontWeight: 700, color: /(^|\s)-\d/.test(valor) ? COR.perigo : COR.azul, marginTop: '6px' }}>{valor}</div>
     {detalhe && <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '4px' }}>{detalhe}</div>}
   </div>
 );
@@ -230,6 +238,17 @@ export const somarMeses = (linhas: ILinhaOrcamento[]): number[] => {
 export const somar = (valores: number[]): number =>
   arredondar(valores.reduce((soma, valor) => soma + (valor || 0), 0));
 
+// Soma mês a mês dos valores com sinal (receitas +, custos −).
+export const somarComSinal = (linhas: ILinhaOrcamento[]): number[] => {
+  const totais = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  linhas.forEach(linha => {
+    valoresComSinal(linha).forEach((valor, indice) => {
+      totais[indice] = arredondar(totais[indice] + valor);
+    });
+  });
+  return totais;
+};
+
 export const agruparLinhas = (linhas: ILinhaOrcamento[]): IGrupoLinhas[] => {
 
   const nomes: string[] = GRUPOS_ORCAMENTO.slice();
@@ -247,7 +266,8 @@ export const agruparLinhas = (linhas: ILinhaOrcamento[]): IGrupoLinhas[] => {
         linhas
           .filter(linha => linha.grupo === grupo)
           .sort((a, b) => (ordemConta(a.codigo) - ordemConta(b.codigo)) || (a.ordem - b.ordem));
-      const totais = somarMeses(doGrupo);
+      // Totais COM SINAL (custos/despesas negativos), como na planilha.
+      const totais = somarComSinal(doGrupo);
       return { grupo, linhas: doGrupo, totais, total: somar(totais) };
     })
     .filter(item => item.linhas.length > 0);
@@ -259,8 +279,10 @@ export const agruparLinhas = (linhas: ILinhaOrcamento[]): IGrupoLinhas[] => {
 //
 // Contas iguais (mesmo grupo e código) são SOMADAS, então serve
 // tanto para a planilha de um gestor quanto para o consolidado.
-// As linhas calculadas da DRE (Lucro bruto, EBITDA...) não são
-// exportadas: elas dependem de fórmulas da Controladoria.
+// Segue a ordem da aba ORÇAMENTO 2027, com valores COM SINAL
+// (deduções/custos negativos), as contas mãe (soma dos subitens) e as
+// linhas calculadas (Receita Operacional Líquida, Lucro Bruto, LAIR,
+// Lucro Líquido, EBITDA e %).
 // ------------------------------------------------------------
 
 const numeroCsv = (valor: number): string =>
@@ -273,6 +295,8 @@ interface IContaSomada {
   codigo: string;
   conta: string;
   valores: number[];
+  // Subitem de conta mãe (ex.: 6.1.1.01.* → 4.1.4.01.01.018).
+  pai?: string;
 }
 
 const agruparTodasContas = (
@@ -297,7 +321,7 @@ const agruparTodasContas = (
         .forEach(item => {
           const lancadas = linhas.filter(linha => linha.grupo === grupo && linha.codigo === item.codigo);
           if (lancadas.length > 0 || incluirContasZeradas) {
-            contas.push({ codigo: item.codigo, conta: item.conta, valores: somarMeses(lancadas) });
+            contas.push({ codigo: item.codigo, conta: item.conta, valores: somarComSinal(lancadas), pai: item.pai });
           }
         });
 
@@ -308,13 +332,11 @@ const agruparTodasContas = (
           !PLANO_CONTAS.some(item => item.grupo === grupo && item.codigo === linha.codigo))
         .forEach(linha => {
           const existente = contas.filter(item => item.codigo === linha.codigo)[0];
+          const doCodigo = somarComSinal([linha]);
           if (existente) {
-            existente.valores = somarMeses([
-              { ...linha, valores: existente.valores },
-              linha
-            ]);
+            existente.valores = existente.valores.map((valor, mes) => arredondar(valor + doCodigo[mes]));
           } else {
-            contas.push({ codigo: linha.codigo, conta: linha.conta, valores: linha.valores.slice() });
+            contas.push({ codigo: linha.codigo, conta: linha.conta, valores: doCodigo, pai: CONTAS_MAE[linha.codigo] ? linha.codigo : undefined });
           }
         });
 
@@ -347,12 +369,44 @@ export const gerarCsvOrcamento = (
       .concat([numeroCsv(somar(valores))])
       .join(';');
 
-  agruparTodasContas(linhas, incluirContasZeradas).forEach(grupo => {
+  // Na ordem da planilha: grupos (TOTAL + contas), seções, resultados
+  // e % — valores com sinal (deduções/custos negativos).
+  const grupos = agruparTodasContas(linhas, incluirContasZeradas);
+  const dre = calcularDre(linhas);
+
+  const exportarGrupo = (grupo: { grupo: string; totais: number[]; contas: IContaSomada[] }): void => {
     saida.push(linhaCsv(grupo.grupo, '', 'TOTAL', grupo.totais));
+    const paisExportados: string[] = [];
     grupo.contas.forEach(conta => {
-      saida.push(linhaCsv(grupo.grupo, conta.codigo, conta.conta, conta.valores));
+      if (conta.pai && paisExportados.indexOf(conta.pai) < 0) {
+        paisExportados.push(conta.pai);
+        const soma = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        grupo.contas
+          .filter(item => item.pai === conta.pai)
+          .forEach(item => item.valores.forEach((valor, mes) => { soma[mes] = arredondar(soma[mes] + valor); }));
+        saida.push(linhaCsv(grupo.grupo, conta.pai, CONTAS_MAE[conta.pai] || conta.pai, soma));
+      }
+      if (conta.codigo !== conta.pai) {
+        saida.push(linhaCsv(grupo.grupo, conta.codigo, conta.conta, conta.valores));
+      }
     });
+  };
+
+  ITENS_DRE.forEach(item => {
+    if (item.tipo === 'grupo') {
+      const grupo = grupos.filter(atual => atual.grupo === item.id)[0];
+      if (grupo) {
+        exportarGrupo(grupo);
+      }
+      return;
+    }
+    saida.push(linhaCsv(item.nome, '', item.tipo === 'percentual' ? '%' : 'RESULTADO', dre[item.id] || []));
   });
+
+  // Grupos que não existem mais no plano.
+  grupos
+    .filter(grupo => !ITENS_DRE.some(item => item.tipo === 'grupo' && item.id === grupo.grupo))
+    .forEach(exportarGrupo);
 
   return saida.join('\r\n');
 };

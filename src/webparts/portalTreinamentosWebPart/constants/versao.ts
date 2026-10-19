@@ -17,15 +17,69 @@ export interface INovidadeVersao {
   itens: INovidadeItem[];
 }
 
-export const VERSAO_PORTAL = "1.4.5";
+export const VERSAO_PORTAL = "1.4.6";
 
-export const VERSAO_SOLUCAO = "1.4.5.0";
+export const VERSAO_SOLUCAO = "1.4.6.0";
 
-export const DATA_BUILD = "2026-10-17T18:52:09.212Z";
+export const DATA_BUILD = "2026-10-19T16:10:52.151Z";
 
-export const COMMIT_BUILD = "8c21bc4";
+export const COMMIT_BUILD = "c8ad944";
 
 export const NOVIDADES: INovidadeVersao[] = [
+  {
+    "versao": "1.4.6",
+    "data": "2026-10-19",
+    "itens": [
+      {
+        "tipo": "Novo",
+        "texto": "Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "visão \"Todas as planilhas\" para o Administrador, com consolidado por grupo, consulta de cada planilha, reabertura e exportação CSV no layout da planilha de orçamento."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "aprovação das planilhas do Planejamento orçamentário pelo fluxo CONT-001, com a tela Aprovações e o painel do fluxo na planilha."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "etapas do fluxo de aprovação exibidas no Planejamento orçamentário, mostrando em que ponto está cada planilha."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "painel de Acompanhamento de licitações, com o registro das licitações acompanhadas e um retrato (snapshot) do edital no momento do acompanhamento."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "aba Estrutura da área em RH e Pessoas, com a hierarquia das áreas e o cargo de cada pessoa na área."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "scripts criar-tabelas-acompanhamento-licitacoes.ps1 e criar-coluna-cargo-area.ps1 para o Dataverse."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "os responsáveis das etapas do fluxo passam a considerar a hierarquia das áreas."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "análise por IA das licitações ajustada (provedores e montagem da análise)."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "todo treinamento passa a nascer obrigatoriamente vinculado ao fluxo de treinamentos. Antes de criar, o portal confere o tipo TRN, o processo TRE-001 e o fluxo publicado; se o vínculo falhar, a criação é desfeita e nada fica gravado."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "treinamento fora do fluxo não pode ser ativado nem editado: a lista mostra \"⚠ Fora do fluxo de treinamentos\" e o botão \"Vincular ao fluxo\" no lugar de Editar."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "ajustes na remoção de treinamento na Gestão."
+      }
+    ]
+  },
   {
     "versao": "1.4.4",
     "data": "2026-10-09",
@@ -473,53 +527,4 @@ export const NOVIDADES: INovidadeVersao[] = [
 ];
 
 // Itens de "## [Não publicado]" (próxima versão, em preparação).
-export const NOVIDADES_PENDENTES: INovidadeItem[] = [
-  {
-    "tipo": "Novo",
-    "texto": "Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "visão \"Todas as planilhas\" para o Administrador, com consolidado por grupo, consulta de cada planilha, reabertura e exportação CSV no layout da planilha de orçamento."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "aprovação das planilhas do Planejamento orçamentário pelo fluxo CONT-001, com a tela Aprovações e o painel do fluxo na planilha."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "etapas do fluxo de aprovação exibidas no Planejamento orçamentário, mostrando em que ponto está cada planilha."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "painel de Acompanhamento de licitações, com o registro das licitações acompanhadas e um retrato (snapshot) do edital no momento do acompanhamento."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "aba Estrutura da área em RH e Pessoas, com a hierarquia das áreas e o cargo de cada pessoa na área."
-  },
-  {
-    "tipo": "Novo",
-    "texto": "scripts criar-tabelas-acompanhamento-licitacoes.ps1 e criar-coluna-cargo-area.ps1 para o Dataverse."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "os responsáveis das etapas do fluxo passam a considerar a hierarquia das áreas."
-  },
-  {
-    "tipo": "Melhoria",
-    "texto": "análise por IA das licitações ajustada (provedores e montagem da análise)."
-  },
-  {
-    "tipo": "Correção",
-    "texto": "todo treinamento passa a nascer obrigatoriamente vinculado ao fluxo de treinamentos. Antes de criar, o portal confere o tipo TRN, o processo TRE-001 e o fluxo publicado; se o vínculo falhar, a criação é desfeita e nada fica gravado."
-  },
-  {
-    "tipo": "Correção",
-    "texto": "treinamento fora do fluxo não pode ser ativado nem editado: a lista mostra \"⚠ Fora do fluxo de treinamentos\" e o botão \"Vincular ao fluxo\" no lugar de Editar."
-  },
-  {
-    "tipo": "Correção",
-    "texto": "ajustes na remoção de treinamento na Gestão."
-  }
-];
+export const NOVIDADES_PENDENTES: INovidadeItem[] = [];
