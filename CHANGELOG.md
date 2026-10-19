@@ -6,6 +6,10 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.7] - 2026-10-19
+
+- Melhoria: ajustes e correções internas.
+
 ## [1.4.6] - 2026-10-19
 
 - Novo: Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir.
