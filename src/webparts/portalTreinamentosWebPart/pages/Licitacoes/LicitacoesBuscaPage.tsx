@@ -371,6 +371,18 @@ const CartaoLicitacao: React.FC<{
             )
         )}
 
+        {acompanhamento && acompanhamento.clickupUrl && (
+          <a
+            href={acompanhamento.clickupUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Tarefa de acompanhamento no ClickUp"
+            style={{ fontSize: 12, fontWeight: 700, color: '#7B68EE', textDecoration: 'none', whiteSpace: 'nowrap' }}
+          >
+            ClickUp ↗
+          </a>
+        )}
+
         <a
           href={item.url}
           target="_blank"
@@ -463,9 +475,22 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       return;
     }
     await pareceres.registrar(dialogo.item, decisao, justificativa);
-    // "Participar" passa a acompanhar o edital automaticamente.
-    if (decisao === 'Participar' && acompanhamento.situacao === 'ok' && !acompanhamento.obter(dialogo.item)) {
-      acompanhamento.acompanhar(dialogo.item).catch(() => undefined);
+    // "Participar": acompanha o edital e cria a tarefa no ClickUp.
+    if (decisao === 'Participar' && acompanhamento.situacao === 'ok') {
+      const estadoIa = ia.estadoDe(dialogo.item);
+      acompanhamento.participar(dialogo.item, {
+        justificativa,
+        responsavel: contexto ? contexto.nome : '',
+        analiseIa: estadoIa.analise
+          ? {
+            recomendacao: estadoIa.analise.recomendacao === 'Participar'
+              ? 'Participar'
+              : estadoIa.analise.recomendacao === 'NaoParticipar' ? 'Não participar' : 'Avaliar com cuidado',
+            compatibilidade: estadoIa.analise.compatibilidade,
+            resumo: estadoIa.analise.resumo
+          }
+          : undefined
+      }).catch(() => undefined);
     }
     setDialogo(undefined);
     setAvisoParecer(`Parecer registrado: ${dialogo.item.orgao}.`);
@@ -684,6 +709,14 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         <AcompanhamentoPainel
           acompanhamento={acompanhamento}
           ehAdministrador={ehAdministrador}
+          onCriarTarefaClickUp={acomp => {
+            const parecer = pareceres.atuais.find(p => p.chaveEdital === acomp.chaveEdital);
+            const item = busca.resultados.find(r => acompanhamento.obter(r) === acomp);
+            acompanhamento.criarTarefaClickUp(acomp, item, {
+              justificativa: parecer ? parecer.justificativa : '',
+              responsavel: parecer ? parecer.responsavel : (contexto ? contexto.nome : '')
+            }).catch(() => undefined);
+          }}
         />
       )}
 

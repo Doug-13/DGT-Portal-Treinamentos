@@ -1,6 +1,10 @@
 import * as React from 'react';
 
 import {
+  estagioRevisao
+} from '../services/DocumentoRevisaoFluxoService';
+
+import {
   DataverseService,
   IDataverseRecord
 } from '../services/DataverseService';
@@ -218,6 +222,18 @@ export const useDocumentosPendencias = (
           const iniciais: Record<string, { etapa: string; responsaveis: IResponsavelResolvido[] }> = {};
 
           for (const registro of semFluxo) {
+
+            // Revisão que já saiu da Elaboração pelo fluxo padrão segue
+            // nele até o fim: a pendência continua sendo a do fluxo
+            // padrão (ex.: aprovação do Gestor), não a 1ª etapa do
+            // fluxo do processo publicado depois.
+            if (
+              estagioRevisao(
+                texto(registro, 'dgt_status@OData.Community.Display.V1.FormattedValue')
+              ) !== 'elaboracao'
+            ) {
+              continue;
+            }
 
             const documentoId =
               guid(texto(registro, '_dgt_documento_value'));

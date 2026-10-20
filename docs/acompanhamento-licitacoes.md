@@ -68,6 +68,61 @@ A conta da conexão do fluxo precisa de Ler/Gravar em *Acompanhamentos* e Criar 
 Cada execução verifica até onde cabe no limite de tempo do Dataverse (~95 s); o que sobrar entra
 primeiro na rodada seguinte. Para muitos editais, rode o fluxo 2–3 vezes ao dia.
 
+## Tarefa no ClickUp ao "Participar"
+
+Ao registrar o parecer **Participar**, o portal acompanha o edital e cria **uma** tarefa
+no ClickUp (nunca duplica), na coluna **ANÁLISE** da lista **Licitações**:
+
+- **Nome:** `Edital de {Município} — Nº {número}`
+- **Prazo:** encerramento das propostas · **Início:** dia do parecer
+- **Prioridade:** até 3 dias = urgente; até 7 = alta; demais = normal
+- **Etiquetas:** `licitação`, modalidade (ex.: `pregão eletrônico`) e UF (ex.: `rs`)
+- **Descrição:** destaque do prazo; tabela-resumo (órgão, unidade compradora, município/UF,
+  esfera, modalidade, modo de disputa, SRP, número, processo, valor, datas, situação, amparo
+  legal, aderência); objeto e informação complementar; **onde participar** (plataforma da
+  disputa); **itens** (até 15, com quantidade e valor); **documentos publicados**; parecer da
+  DGT; análise da IA (sugestão e compatibilidade); link para o portal
+- **Checklist "Etapas da participação":** ler edital/TR, habilitação, visita técnica/amostras,
+  custos e proposta, cadastro na plataforma, enviar proposta até o prazo, acompanhar a sessão
+- **Campos personalizados** (opcional): preenchidos se mapeados na configuração
+
+Sem CNPJ e sem o link do PNCP (que contém o CNPJ): o link da tarefa leva ao portal.
+
+### Ativar
+
+1. `scripts/dataverse/criar-integracao-clickup-licitacoes.ps1` (colunas + Custom API).
+2. Compilar o plugin e dar **Update** no assembly.
+3. Registrar o passo do **CriarTarefaClickUpPlugin**:
+
+| Campo | Valor |
+|---|---|
+| Message | `dgt_CriarTarefaClickUp` |
+| Stage / Mode | PostOperation · Synchronous (Delete AsyncOperation desmarcado) |
+| Secure Configuration | o token pessoal do ClickUp (`pk_...`) |
+| Unsecure Configuration | ver o exemplo abaixo |
+
+```json
+{
+  "listId": "<id da lista Licitações>",
+  "status": "análise",
+  "tags": ["licitação"],
+  "campos": {
+    "orgao": "<id do campo Órgão>",
+    "valorEstimado": "<id do campo Valor (moeda)>",
+    "encerramento": "<id do campo Encerramento (data)>",
+    "compatibilidade": "<id do campo Compatibilidade (número)>"
+  }
+}
+```
+
+`campos` é opcional. Chaves aceitas: `orgao`, `municipio`, `uf`, `modalidade`, `numero`,
+`valorEstimado` (moeda/número), `abertura` e `encerramento` (data), `compatibilidade` e
+`aderencia` (número), `plataforma`, `linkPortal` (texto/URL). O id de cada campo aparece em
+ClickUp → lista → **Campos personalizados** → "…" do campo → **Copiar ID**.
+
+Editais acompanhados antes da integração: botão **+ Criar tarefa no ClickUp** na aba
+Acompanhamento.
+
 ## Texto para o "de acordo" da governança
 
 > Para acompanhar editais de licitação no PNCP, o portal precisa guardar o número de controle

@@ -100,6 +100,20 @@ export interface IAcompanhamento {
   ultimaVerificacao: string;
   responsavel: string;
   criadoEm: string;
+  // Tarefa de acompanhamento no ClickUp (criada ao "Participar").
+  clickupTarefaId: string;
+  clickupUrl: string;
+}
+
+// Dados do parecer e da IA que vão para a tarefa do ClickUp.
+export interface IContextoTarefaClickUp {
+  justificativa: string;
+  responsavel: string;
+  analiseIa?: {
+    recomendacao: string;
+    compatibilidade: number;
+    resumo: string;
+  };
 }
 
 export type OrigemAlteracao = 'busca' | 'automatica' | 'portal';
@@ -149,7 +163,9 @@ const mapearAcompanhamento = (r: IDataverseRecord): IAcompanhamento => ({
   automatico: r[A.automatico] === true,
   ultimaVerificacao: texto(r, A.ultima),
   responsavel: texto(r, A.responsavel),
-  criadoEm: texto(r, 'createdon')
+  criadoEm: texto(r, 'createdon'),
+  clickupTarefaId: texto(r, 'dgt_clickuptarefaid'),
+  clickupUrl: texto(r, 'dgt_clickupurl')
 });
 
 const mapearAlteracao = (r: IDataverseRecord): IAlteracaoLicitacao => ({
@@ -170,6 +186,23 @@ export const ehTabelaAcompanhamentoInexistente = (erro: unknown): boolean => {
   return /\b404\b|0x80060888|could not find|does not exist|não localizado/i.test(m);
 };
 
+// Junta as linhas da descrição: tira as linhas vazias de dentro das
+// tabelas (linhas condicionais) e as vazias repetidas.
+const juntarMarkdown = (linhas: string[]): string => {
+  const saida: string[] = [];
+  linhas.forEach((linha, k) => {
+    if (linha === '') {
+      const anterior = saida.length > 0 ? saida[saida.length - 1] : '';
+      const proxima = linhas.slice(k + 1).find(l => l !== '') || '';
+      if (anterior === '' || (anterior.indexOf('|') === 0 && proxima.indexOf('|') === 0)) {
+        return;
+      }
+    }
+    saida.push(linha);
+  });
+  return saida.join('\n').trim();
+};
+
 export class AcompanhamentoLicitacaoService {
 
   private readonly dataverse: DataverseService;
@@ -185,8 +218,9 @@ export class AcompanhamentoLicitacaoService {
   public async listar(): Promise<IAcompanhamento[]> {
     const registros = await this.dataverse.listarRegistros(
       TABELA_ACOMPANHAMENTO,
-      '$select=' + Object.keys(A).map(k => (A as Record<string, string>)[k]).join(',') + ',createdon' +
-      `&$filter=${A.ativo} eq true&$orderby=${A.ultima} desc`
+      // Sem $select: traz também as colunas do ClickUp quando já
+      // existirem (o script delas pode ser rodado depois).
+      `$filter=${A.ativo} eq true&$orderby=${A.ultima} desc`
     );
     return registros.map(mapearAcompanhamento);
   }
@@ -310,7 +344,7 @@ export class AcompanhamentoLicitacaoService {
 
     const lidos = await this.dataverse.listarRegistros(
       TABELA_ACOMPANHAMENTO,
-      `$select=${Object.keys(A).map(k => (A as Record<string, string>)[k]).join(',')},createdon&$filter=${A.id} eq ${id}`
+      `$filter=${A.id} eq ${id}`
     );
 
     return {
@@ -383,6 +417,213 @@ export class AcompanhamentoLicitacaoService {
 
   public async verificarAgora(): Promise<Record<string, unknown>> {
     return this.dataverse.chamarCustomApiJson('dgt_AtualizarAcompanhamentos', {});
+  }
+
+  // ----------------------------------------------------------
+  // Tarefa no ClickUp (Custom API dgt_CriarTarefaClickUp)
+  // ----------------------------------------------------------
+  // O token do ClickUp fica SÓ no plugin. A descrição vai SEM CNPJ
+  // e SEM link do PNCP (que contém o CNPJ); o link é para o portal.
+
+  public async criarTarefaClickUp(
+    item: ILicitacaoResultado,
+    acompanhamento: IAcompanhamento,
+    contexto: IContextoTarefaClickUp
+  ): Promise<{ id: string; url: string; existente: boolean }> {
+
+    const encerramento = item.encerramento ? new Date(item.encerramento) : undefined;
+    const prazoValido = !!encerramento && !isNaN(encerramento.getTime());
+    const dias = prazoValido && encerramento
+      ? Math.ceil((encerramento.getTime() - Date.now()) / 86400000)
+      : undefined;
+
+    // 1 = urgente, 2 = alta, 3 = normal (prioridades do ClickUp)
+    const prioridade = dias === undefined ? 3 : dias <= 3 ? 1 : dias <= 7 ? 2 : 3;
+
+    const moeda = (v?: number): string =>
+      v === undefined || v === null || isNaN(v) ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    const data = (v?: string): string => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}:\d{2}))?/.exec(v || '');
+      return m ? `${m[3]}/${m[2]}/${m[1]}${m[4] ? ` ${m[4]}` : ''}` : '—';
+    };
+
+    const limpo = (v?: string): string => mascararDadosSensiveis(v || '').trim();
+
+    // Detalhes atualizados do PNCP (itens, documentos, onde disputar).
+    let detalhe: ILicitacaoResultado['dados'] | undefined;
+    let documentos: Array<{ titulo: string; tipo: string; publicacao?: string }> = [];
+    let itens: Array<{ numeroItem: number; descricao: string; quantidade?: number; unidade?: string; valorTotal?: number; tipo: string }> = [];
+
+    if (item.idPncp) {
+      const [d, docs, its] = await Promise.all([
+        carregarDetalheEdital(item.idPncp).catch(() => undefined),
+        carregarDocumentosEdital(item.idPncp).catch(() => []),
+        carregarItensEdital(item.idPncp).then(r => r.itens).catch(() => [])
+      ]);
+      detalhe = d;
+      documentos = docs;
+      itens = its;
+    }
+
+    const portal = `${window.location.origin}${window.location.pathname}`;
+    const orgao = limpo(item.orgao);
+    const numero = limpo(item.numero);
+    const municipio = (item.local || orgao).split('/')[0].trim();
+    const uf = (item.local || '').split('/')[1] ? (item.local || '').split('/')[1].trim() : '';
+    const prazoTexto = dias === undefined ? '' : dias < 0 ? ' (encerrado)' : ` (faltam ${dias} dia${dias === 1 ? '' : 's'})`;
+
+    // ---------------- Descrição (Markdown) ----------------
+
+    const linhas: string[] = [
+      `> **${item.modalidade || 'Edital'} ${numero}** · ${orgao} · ${item.local || ''}`,
+      `> ⏰ **Encerramento das propostas: ${data(item.encerramento)}**${prazoTexto}`,
+      '',
+      '## Resumo',
+      `| | |`,
+      `|---|---|`,
+      `| **Órgão** | ${orgao} |`,
+      detalhe && detalhe.unidadeCompradora ? `| **Unidade compradora** | ${limpo(detalhe.unidadeCompradora)} |` : '',
+      `| **Município / UF** | ${item.local || '—'} |`,
+      detalhe && detalhe.esfera ? `| **Esfera** | ${detalhe.esfera}${detalhe.poder ? ` / ${detalhe.poder}` : ''} |` : '',
+      `| **Modalidade** | ${item.modalidade || '—'} |`,
+      detalhe && detalhe.modoDisputa ? `| **Modo de disputa** | ${detalhe.modoDisputa} |` : '',
+      detalhe && detalhe.srp !== undefined ? `| **Registro de preços** | ${detalhe.srp ? 'Sim' : 'Não'} |` : '',
+      `| **Número** | ${numero || '—'} |`,
+      detalhe && detalhe.processo ? `| **Processo** | ${limpo(detalhe.processo)} |` : '',
+      `| **Valor estimado** | ${moeda(item.valor)} |`,
+      `| **Publicação** | ${data(item.publicacao)} |`,
+      `| **Abertura das propostas** | ${data(item.abertura)} |`,
+      `| **Encerramento das propostas** | **${data(item.encerramento)}**${prazoTexto} |`,
+      `| **Situação no PNCP** | ${acompanhamento.situacao || (detalhe && detalhe.situacao) || '—'} |`,
+      detalhe && detalhe.amparoLegalNome ? `| **Amparo legal** | ${limpo(detalhe.amparoLegalNome)} |` : '',
+      `| **Aderência da busca** | ${item.score}%${item.motivos.length ? ` (${item.motivos.join('; ')})` : ''} |`,
+      '',
+      '## Objeto',
+      limpo(item.objeto) || '—'
+    ];
+
+    if (detalhe && detalhe.informacaoComplementar) {
+      linhas.push('', '**Informação complementar:** ' + limpo(detalhe.informacaoComplementar).substring(0, 1500));
+    }
+
+    // Onde participar (plataforma da disputa)
+    if (detalhe && (detalhe.sistemaOrigem || detalhe.linkSistemaOrigem)) {
+      linhas.push('', '## Onde participar');
+      if (detalhe.sistemaOrigem) {
+        linhas.push(`- **Plataforma:** ${limpo(detalhe.sistemaOrigem)}`);
+      }
+      const link = detalhe.linkSistemaOrigem || '';
+      // Só links que não carregam CNPJ (regra da DGT).
+      if (link && /^https?:\/\//i.test(link) && limpo(link) === link) {
+        linhas.push(`- **Link da disputa:** ${link}`);
+      }
+      linhas.push('- Confirmar o cadastro da DGT na plataforma antes do prazo.');
+    }
+
+    // Itens
+    if (itens.length > 0) {
+      const somaItens = itens.reduce((t, i) => t + (i.valorTotal || 0), 0);
+      linhas.push('', `## Itens (${itens.length}${somaItens > 0 ? ` · soma ${moeda(somaItens)}` : ''})`, '| Nº | Descrição | Qtd. | Valor total |', '|---|---|---|---|');
+      itens.slice(0, 15).forEach(i => {
+        linhas.push(`| ${i.numeroItem} | ${limpo(i.descricao).replace(/\|/g, '/').substring(0, 120)} | ${i.quantidade !== undefined ? `${i.quantidade}${i.unidade ? ` ${i.unidade}` : ''}` : '—'} | ${moeda(i.valorTotal)} |`);
+      });
+      if (itens.length > 15) {
+        linhas.push('', `_+ ${itens.length - 15} item(ns) — ver o edital completo no portal._`);
+      }
+    }
+
+    // Documentos
+    if (documentos.length > 0) {
+      linhas.push('', `## Documentos publicados (${documentos.length})`);
+      documentos.slice(0, 20).forEach(d => {
+        linhas.push(`- ${limpo(d.titulo)}${d.tipo ? ` — _${d.tipo}_` : ''}${d.publicacao ? ` (${data(d.publicacao)})` : ''}`);
+      });
+    }
+
+    // Parecer e IA
+    linhas.push(
+      '',
+      '## Parecer da DGT',
+      `✓ **Participar** — ${contexto.responsavel || 'equipe DGT'}`,
+      '',
+      limpo(contexto.justificativa) || '—'
+    );
+
+    if (contexto.analiseIa) {
+      linhas.push(
+        '',
+        '## Análise da IA',
+        `- **Sugestão:** ${contexto.analiseIa.recomendacao}`,
+        `- **Compatibilidade com a DGT:** ${contexto.analiseIa.compatibilidade}%`,
+        '',
+        limpo(contexto.analiseIa.resumo)
+      );
+    }
+
+    linhas.push(
+      '',
+      '## Acompanhamento',
+      `Alterações do edital (situação, prazos, documentos, itens) no [Portal DGT › Licitações › Acompanhamento](${portal}).`
+    );
+
+    // ---------------- Etiquetas ----------------
+
+    const tags = [
+      (item.modalidade || '').toLowerCase().replace(/\s*-\s*/g, ' ').trim(),
+      uf.toLowerCase()
+    ].filter(t => t.length > 0);
+
+    // ---------------- Checklist da participação ----------------
+
+    const checklist = [
+      'Ler o edital e o termo de referência completos',
+      'Conferir os documentos de habilitação exigidos',
+      'Verificar visita técnica / amostras / atestados',
+      'Levantar custos e montar a proposta',
+      detalhe && detalhe.sistemaOrigem
+        ? `Confirmar o cadastro da DGT em ${limpo(detalhe.sistemaOrigem)}`
+        : 'Confirmar o cadastro da DGT na plataforma da disputa',
+      `Enviar a proposta até ${data(item.encerramento)}`,
+      'Acompanhar a sessão / disputa'
+    ];
+
+    // ---------------- Campos personalizados ----------------
+    // O plugin só preenche os campos mapeados na configuração
+    // ("campos": { "orgao": "<id do campo>", ... }).
+
+    const campos: Record<string, unknown> = {
+      orgao,
+      municipio,
+      uf,
+      modalidade: item.modalidade || '',
+      numero,
+      valorEstimado: item.valor === undefined ? null : Math.round(item.valor * 100) / 100,
+      abertura: item.abertura && !isNaN(new Date(item.abertura).getTime()) ? new Date(item.abertura).getTime() : null,
+      encerramento: prazoValido && encerramento ? encerramento.getTime() : null,
+      compatibilidade: contexto.analiseIa ? contexto.analiseIa.compatibilidade : null,
+      aderencia: item.score,
+      plataforma: detalhe && detalhe.sistemaOrigem ? limpo(detalhe.sistemaOrigem) : '',
+      linkPortal: portal
+    };
+
+    const resultado = await this.dataverse.chamarCustomApiJson('dgt_CriarTarefaClickUp', {
+      chaveEdital: acompanhamento.chaveEdital,
+      // Padrão das tarefas do ClickUp: "Edital de Serafina Corrêa — Nº 51/2026"
+      nome: `Edital de ${municipio}${numero ? ` — Nº ${numero}` : ''}`.substring(0, 250),
+      descricao: juntarMarkdown(linhas),
+      dataLimite: prazoValido && encerramento ? encerramento.getTime() : null,
+      prioridade,
+      tags,
+      checklist,
+      campos
+    });
+
+    return {
+      id: String(resultado.id || ''),
+      url: String(resultado.url || ''),
+      existente: resultado.existente === true
+    };
   }
 
   public async marcarLidas(alteracoes: IAlteracaoLicitacao[]): Promise<void> {

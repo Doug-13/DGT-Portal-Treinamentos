@@ -35,6 +35,7 @@ import {
 import {
   calcularPrazoRevisao,
   calcularProximaRevisao,
+  estagioRevisao,
   obterRevisaoEmAndamento
 } from '../services/DocumentoRevisaoFluxoService';
 
@@ -125,6 +126,10 @@ export interface IRevisaoAlvoFluxo {
   // true = sem revisão em andamento: mostra o fluxo da última revisão
   // (ex.: a vigente) só para consulta. Nunca inicia um fluxo novo.
   somenteConsulta?: boolean;
+
+  // Status atual da revisão (dgt_status). Usado para não adotar o
+  // fluxo do processo numa revisão que já andou no fluxo padrão.
+  status?: string;
 }
 
 // Em que ponto a tela está:
@@ -132,6 +137,10 @@ export interface IRevisaoAlvoFluxo {
 //   semProcesso       → documento não vinculado a nenhum processo
 //   escolherPrincipal → vinculado a vários; falta escolher qual governa
 //   semFluxo          → o processo não tem fluxo publicado
+//   foraDoFluxo       → a revisão já avançou no fluxo padrão (antigo)
+//                       antes de o processo ter fluxo publicado: ela
+//                       termina no fluxo padrão; a próxima segue o
+//                       fluxo do processo
 //   pronto            → fluxo em andamento ou concluído
 export type SituacaoFluxoRevisao =
   | 'carregando'
@@ -139,6 +148,7 @@ export type SituacaoFluxoRevisao =
   | 'semProcesso'
   | 'escolherPrincipal'
   | 'semFluxo'
+  | 'foraDoFluxo'
   | 'pronto'
   | 'erro';
 
@@ -350,7 +360,8 @@ export const useFluxoRevisaoTeste = (
           return {
             id: revisaoEmAndamento.id,
             revisao: revisaoEmAndamento.revisao,
-            virtual: false
+            virtual: false,
+            status: revisaoEmAndamento.status
           };
         }
 
@@ -814,7 +825,21 @@ export const useFluxoRevisaoTeste = (
             return;
           }
 
-          // 3) Inicia com a versão publicada do fluxo do processo.
+          // 3) TRAVA: revisão que já saiu da Elaboração pelo fluxo
+          //    padrão (ex.: "Enviar para aprovação do Gestor") não é
+          //    puxada para o fluxo do processo no meio do caminho.
+          //    Iniciar aqui recolocaria a revisão na 1ª etapa e
+          //    sobrescreveria o status (ex.: Aprovação → Elaboração),
+          //    perdendo o envio já feito — só por abrir esta aba.
+          if (
+            !revisaoAlvo.virtual &&
+            estagioRevisao(revisaoAlvo.status || '') !== 'elaboracao'
+          ) {
+            setSituacao('foraDoFluxo');
+            return;
+          }
+
+          // 4) Inicia com a versão publicada do fluxo do processo.
           const resultado =
             await servico.iniciar(
               processo,

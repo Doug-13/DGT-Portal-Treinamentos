@@ -1,6 +1,10 @@
 import * as React from 'react';
 
 import {
+  estagioRevisao
+} from '../services/DocumentoRevisaoFluxoService';
+
+import {
   DataverseService,
   IDataverseRecord
 } from '../services/DataverseService';
@@ -271,6 +275,14 @@ export const useEtapasFluxoTreinamentos = (
                   texto(tarefa, TAREFA.etapaNome)
                 )
               });
+              continue;
+            }
+
+            // Revisão que já saiu da Elaboração pelo fluxo padrão segue
+            // nele até o fim: não vira 1ª etapa do fluxo do processo.
+            if (
+              estagioRevisao(controle.revisaoEmAndamento ? controle.revisaoEmAndamento.status || '' : '') !== 'elaboracao'
+            ) {
               continue;
             }
 

@@ -90,6 +90,7 @@ import {
 } from '../../constants/featureFlags';
 
 import {
+  IRevisaoSegueFluxo,
   useRevisaoSegueFluxo
 } from '../../hooks/useRevisaoSegueFluxo';
 
@@ -321,6 +322,244 @@ const ItemResumo:
       </div>
     </div>
   );
+
+// ============================================================
+// PROCESSO VINCULADO (item do resumo)
+//
+// Mostra o processo do documento (dgt_documentoprocesso) e a etapa
+// do fluxo de revisão em que ele está. Quando não há processo, ou
+// há vários sem principal, leva para a aba "Fluxo de revisão",
+// onde o vínculo é feito.
+// ============================================================
+
+const estiloEtapa = (
+  tipo: 'ativo' | 'neutro' | 'atencao'
+): React.CSSProperties => ({
+  display: 'inline-block',
+  marginTop: '5px',
+  padding: '2px 8px',
+  borderRadius: '10px',
+  fontSize: '11.5px',
+  fontWeight: 700,
+  lineHeight: 1.4,
+  color: tipo === 'atencao' ? COR_INDIGO : COR_AZUL,
+  background:
+    tipo === 'ativo'
+      ? '#E6F9FC'
+      : tipo === 'atencao'
+        ? '#E8EAF8'
+        : '#F2F2F2',
+  border:
+    tipo === 'ativo'
+      ? `1px solid ${COR_CIANO}`
+      : '1px solid transparent'
+});
+
+const estiloLinkResumo: React.CSSProperties = {
+  padding: 0,
+  border: 0,
+  background: 'transparent',
+  color: COR_INDIGO,
+  fontSize: '12.5px',
+  fontWeight: 700,
+  textDecoration: 'underline',
+  cursor: 'pointer',
+  textAlign: 'left'
+};
+
+const ProcessoDoDocumento:
+  React.FC<{
+    info: IRevisaoSegueFluxo;
+    revisaoEmAndamento: string;
+    revisaoVigente: string;
+    onAbrirProcesso?: (processoId: string) => void;
+    onIrParaFluxo: () => void;
+  }> = ({
+    info,
+    revisaoEmAndamento,
+    revisaoVigente,
+    onAbrirProcesso,
+    onIrParaFluxo
+  }) => {
+
+    if (info.verificando && !info.situacao && !info.processoNome) {
+      return <span style={{ color: '#64748B', fontWeight: 500 }}>Verificando…</span>;
+    }
+
+    if (info.situacao === 'erro') {
+      return (
+        <span style={{ color: '#64748B', fontWeight: 500 }}>
+          Não foi possível ler os processos
+        </span>
+      );
+    }
+
+    if (info.situacao === 'semProcesso') {
+      return (
+        <div>
+          <span>Não vinculado</span>
+          <br />
+          <button type="button" style={estiloLinkResumo} onClick={onIrParaFluxo}>
+            Vincular a um processo
+          </button>
+        </div>
+      );
+    }
+
+    if (info.situacao === 'variosProcessos') {
+      return (
+        <div>
+          <span>{info.totalProcessos} processos vinculados</span>
+          <br />
+          <button type="button" style={estiloLinkResumo} onClick={onIrParaFluxo}>
+            Definir o processo principal
+          </button>
+        </div>
+      );
+    }
+
+    if (info.situacao === 'processoIndisponivel') {
+      return (
+        <div>
+          <span>Processo inativo ou sem acesso</span>
+          <br />
+          <button type="button" style={estiloLinkResumo} onClick={onIrParaFluxo}>
+            Ver vínculo
+          </button>
+        </div>
+      );
+    }
+
+    const nome =
+      [info.processoCodigo, info.processoNome]
+        .filter(item => !!item && !!item.trim())
+        .join(' — ') || '-';
+
+    const versao =
+      info.fluxoVersao ? ` · fluxo v${info.fluxoVersao}` : '';
+
+    let etapa: { texto: string; tipo: 'ativo' | 'neutro' | 'atencao'; dica: string } | undefined;
+
+    switch (info.situacao) {
+
+      case 'emAndamento':
+        etapa = info.etapaAtual
+          ? {
+            texto: `Etapa: ${info.etapaAtual}${revisaoEmAndamento ? ` (${revisaoEmAndamento})` : ''}`,
+            tipo: 'ativo',
+            dica: `Etapa atual do fluxo de revisão${versao}.`
+          }
+          : {
+            texto: 'Fluxo em andamento',
+            tipo: 'ativo',
+            dica: `Revisão em andamento no fluxo do processo${versao}.`
+          };
+        break;
+
+      case 'aguardandoInicio':
+        etapa = {
+          texto: `Aguardando início${info.etapaAtual ? ` · 1ª etapa: ${info.etapaAtual}` : ''}`,
+          tipo: 'ativo',
+          dica: 'O fluxo começa ao abrir a aba "Fluxo de revisão".'
+        };
+        break;
+
+      case 'concluido':
+        etapa = {
+          texto: `Fluxo concluído${revisaoVigente ? ` · ${revisaoVigente} vigente` : ''}`,
+          tipo: 'neutro',
+          dica:
+            [
+              info.ultimaEtapa ? `Última etapa: ${info.ultimaEtapa}.` : '',
+              info.concluidoEm ? `Concluído em ${formatarDataCurta(info.concluidoEm)}.` : '',
+              versao ? `Fluxo${versao.replace(' · fluxo', '')}.` : ''
+            ].filter(item => !!item).join(' ')
+        };
+        break;
+
+      case 'semRevisaoEmAndamento':
+        etapa = {
+          texto: 'Sem revisão em andamento',
+          tipo: 'neutro',
+          dica: `A próxima revisão seguirá o fluxo publicado do processo${versao}.`
+        };
+        break;
+
+      case 'semFluxoPublicado':
+        etapa = revisaoEmAndamento
+          ? {
+            texto: 'Sem fluxo publicado · segue o fluxo padrão',
+            tipo: 'atencao',
+            dica:
+              `A ${revisaoEmAndamento} usa o fluxo padrão (aprovação do Gestor da área). ` +
+              'Se o fluxo do processo for publicado enquanto ela ainda estiver em Elaboração, ela passa a segui-lo; ' +
+              'depois de enviada para aprovação, termina no fluxo padrão.'
+          }
+          : {
+            texto: 'Processo sem fluxo publicado',
+            tipo: 'atencao',
+            dica: 'Publique o fluxo no módulo Processos para que as revisões o sigam.'
+          };
+        break;
+
+      case 'foraDoFluxo':
+        etapa = {
+          texto: `Fluxo padrão${revisaoEmAndamento ? ` (${revisaoEmAndamento})` : ''}`,
+          tipo: 'atencao',
+          dica:
+            'Esta revisão já avançou no fluxo padrão antes de o processo ter fluxo publicado e será concluída nele. ' +
+            `A próxima revisão seguirá o fluxo do processo${versao}.`
+        };
+        break;
+
+      default:
+        etapa = undefined;
+    }
+
+    return (
+      <div>
+        {
+          onAbrirProcesso && info.processoId
+            ? (
+              <button
+                type="button"
+                title="Abrir o processo no módulo Processos"
+                onClick={() => onAbrirProcesso(info.processoId)}
+                style={{
+                  ...estiloLinkResumo,
+                  color: COR_AZUL,
+                  fontSize: '13.5px',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  borderBottom: `1px dashed ${COR_CIANO}`
+                }}
+              >
+                {nome}
+              </button>
+            )
+            : <span>{nome}</span>
+        }
+
+        {
+          info.totalProcessos > 1 && (
+            <span style={{ marginLeft: '6px', color: '#64748B', fontSize: '11.5px', fontWeight: 500 }}>
+              (principal · +{info.totalProcessos - 1})
+            </span>
+          )
+        }
+
+        {
+          etapa && (
+            <div>
+              <span style={estiloEtapa(etapa.tipo)} title={etapa.dica}>
+                {etapa.texto}
+              </span>
+            </div>
+          )
+        }
+      </div>
+    );
+  };
 
 const BlocoTexto:
   React.FC<{
@@ -644,7 +883,29 @@ const DocumentoDetalhePage:
     // Revisão governada pelo fluxo do processo (modo Dataverse): os
     // botões do fluxo fixo antigo dão lugar à aba "Fluxo de revisão".
     const [versaoFluxo, setVersaoFluxo] = React.useState<number>(0);
-    const segueFluxo = useRevisaoSegueFluxo(documento, revisaoEmAndamento ? revisaoEmAndamento.id : undefined, dataverseService, versaoFluxo);
+    const segueFluxo = useRevisaoSegueFluxo(
+      documento,
+      revisaoEmAndamento ? revisaoEmAndamento.id : undefined,
+      dataverseService,
+      versaoFluxo,
+      revisaoVigente ? revisaoVigente.id : undefined,
+      revisaoEmAndamento ? (revisaoEmAndamento.status || '') : undefined
+    );
+
+    // Ao sair da aba "Fluxo de revisão" relê o processo do documento:
+    // o vínculo (ou o processo principal) pode ter sido alterado lá.
+    const abaAnterior =
+      React.useRef<Aba>(aba);
+
+    React.useEffect(
+      () => {
+        if (abaAnterior.current === 'fluxo' && aba !== 'fluxo') {
+          setVersaoFluxo(atual => atual + 1);
+        }
+        abaAnterior.current = aba;
+      },
+      [aba]
+    );
 
     const proximaRevisao =
       React.useMemo(
@@ -1090,6 +1351,23 @@ const DocumentoDetalhePage:
                   (
                     <ItemResumo titulo="Nova revisão">
                       {revisaoEmAndamento.revisao} · {seloAndamento.texto.toLowerCase()}
+                    </ItemResumo>
+                  )
+                }
+
+                {
+                  // Processo ao qual o documento pertence e etapa do
+                  // fluxo em que ele está (com ou sem revisão aberta).
+                  FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE &&
+                  (
+                    <ItemResumo titulo="Processo vinculado">
+                      <ProcessoDoDocumento
+                        info={segueFluxo}
+                        revisaoEmAndamento={revisaoEmAndamento ? revisaoEmAndamento.revisao : ''}
+                        revisaoVigente={revisaoVigente ? revisaoVigente.revisao : ''}
+                        onAbrirProcesso={onAbrirProcesso}
+                        onIrParaFluxo={() => setAba('fluxo')}
+                      />
                     </ItemResumo>
                   )
                 }

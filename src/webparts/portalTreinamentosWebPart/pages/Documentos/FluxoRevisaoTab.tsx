@@ -327,6 +327,27 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
     );
   }
 
+  // Revisão que já avançou no fluxo padrão antes de o processo ter
+  // fluxo publicado: termina no fluxo padrão (aba Revisão).
+  if (fluxo.situacao === 'foraDoFluxo') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
+        {avisoTeste}
+        <section style={{ ...estiloCartao, padding: '18px 20px' }}>
+          <div style={{ fontSize: '17px', fontWeight: 700 }}>
+            Esta revisão segue o fluxo padrão até o fim
+          </div>
+          <div style={{ fontSize: '14px', marginTop: '6px', lineHeight: 1.5 }}>
+            A revisão já foi enviada no fluxo padrão (aprovação do Gestor da área) antes de o processo
+            {fluxo.processoAtual ? ` “${fluxo.processoAtual.nome}”` : ''} ter fluxo publicado. Para não
+            perder o que já foi feito, ela é concluída na aba “Revisão”. A próxima revisão do documento
+            seguirá automaticamente o fluxo publicado do processo.
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   if (
     fluxo.situacao === 'semProcesso' ||
     fluxo.situacao === 'escolherPrincipal' ||
@@ -358,7 +379,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
         ? 'O fluxo de revisão é definido no processo. Vincule o documento a um processo para que a revisão siga o fluxo dele.'
         : fluxo.situacao === 'escolherPrincipal'
           ? 'Escolha qual processo governa a revisão deste documento. Os demais vínculos continuam valendo para consulta.'
-          : 'Crie e publique o fluxo no módulo Processos. Depois volte aqui: a revisão começa automaticamente na versão publicada.';
+          : 'Enquanto isso, esta revisão usa o fluxo padrão (aba “Revisão”). Se o fluxo for publicado com a revisão ainda em Elaboração, ela passa a seguir o fluxo do processo; depois de enviada para aprovação, termina no fluxo padrão.';
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>

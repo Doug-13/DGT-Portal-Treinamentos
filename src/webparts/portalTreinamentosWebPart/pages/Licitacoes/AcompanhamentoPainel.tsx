@@ -31,6 +31,8 @@ import {
 export interface IAcompanhamentoPainelProps {
   acompanhamento: IUseAcompanhamentoLicitacoes;
   ehAdministrador: boolean;
+  // Cria a tarefa no ClickUp para um edital que ainda não tem.
+  onCriarTarefaClickUp?: (acompanhamento: IAcompanhamento) => void;
 }
 
 type Filtro = 'todos' | 'novidades';
@@ -138,7 +140,8 @@ const ItemLinhaTempo: React.FC<{ alteracao: IAlteracaoLicitacao }> = ({ alteraca
 
 const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
   acompanhamento,
-  ehAdministrador
+  ehAdministrador,
+  onCriarTarefaClickUp
 }) => {
 
   const [selecionadoId, setSelecionadoId] = React.useState<string>('');
@@ -316,7 +319,29 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
                         <strong>Datas:</strong> Abertura {formatarDataSnapshot(selecionado.abertura)} · Encerramento {formatarDataSnapshot(selecionado.encerramento)}
                       </span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      {selecionado.clickupUrl
+                        ? (
+                          <a
+                            href={selecionado.clickupUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ ...botao(true), background: '#7B68EE', textDecoration: 'none' }}
+                            title="Tarefa de acompanhamento deste edital no ClickUp"
+                          >
+                            ✓ Abrir no ClickUp ↗
+                          </a>
+                        )
+                        : onCriarTarefaClickUp && (
+                          <button
+                            type="button"
+                            style={{ ...botao(true, acompanhamento.processandoChave === selecionado.chaveEdital), background: '#7B68EE' }}
+                            disabled={acompanhamento.processandoChave === selecionado.chaveEdital}
+                            onClick={() => onCriarTarefaClickUp(selecionado)}
+                          >
+                            + Criar tarefa no ClickUp
+                          </button>
+                        )}
                       <button
                         type="button"
                         style={{ ...botao(false, acompanhamento.processandoChave === selecionado.chaveEdital), background: 'transparent', color: '#ffffff', borderColor: 'rgba(255,255,255,.5)' }}

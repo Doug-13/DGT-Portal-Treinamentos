@@ -11,6 +11,7 @@ import {
 import {
   AcompanhamentoLicitacaoService,
   IAcompanhamento,
+  IContextoTarefaClickUp,
   IAlteracaoLicitacao,
   ehTabelaAcompanhamentoInexistente
 } from '../services/licitacoes/AcompanhamentoLicitacaoService';
@@ -44,12 +45,32 @@ export interface IUseAcompanhamentoLicitacoes {
   obter: (item: ILicitacaoResultado) => IAcompanhamento | undefined;
   naoLidas: (acompanhamentoId: string) => number;
   totalNaoLidas: number;
-  acompanhar: (item: ILicitacaoResultado) => Promise<void>;
+  acompanhar: (item: ILicitacaoResultado) => Promise<IAcompanhamento | undefined>;
+  // "Participar": acompanha (se preciso) e cria a tarefa no ClickUp.
+  participar: (item: ILicitacaoResultado, contexto: IContextoTarefaClickUp) => Promise<void>;
+  criarTarefaClickUp: (acompanhamento: IAcompanhamento, item: ILicitacaoResultado | undefined, contexto: IContextoTarefaClickUp) => Promise<void>;
   parar: (acompanhamento: IAcompanhamento) => Promise<void>;
   marcarLidas: (acompanhamentoId: string) => void;
   verificarAgora: () => Promise<void>;
   recarregar: () => void;
 }
+
+// Mensagem do plugin sem os restos do JSON do Dataverse.
+const extrairMensagem = (falha: unknown): string => {
+  const bruto = falha instanceof Error ? falha.message : String(falha);
+  const json = /\{[\s\S]*\}/.exec(bruto);
+  if (json) {
+    try {
+      const dados = JSON.parse(json[0]) as { error?: { message?: string } };
+      if (dados.error && dados.error.message) {
+        return dados.error.message.substring(0, 300);
+      }
+    } catch {
+      return bruto.substring(0, 300);
+    }
+  }
+  return bruto.substring(0, 300);
+};
 
 export const useAcompanhamentoLicitacoes = (
   dataverseService: DataverseService | undefined,
@@ -150,9 +171,9 @@ export const useAcompanhamentoLicitacoes = (
     })().catch(() => undefined);
   }, [resultados, porChave, servico, situacao, recarregar]);
 
-  const acompanhar = React.useCallback(async (item: ILicitacaoResultado): Promise<void> => {
+  const acompanhar = React.useCallback(async (item: ILicitacaoResultado): Promise<IAcompanhamento | undefined> => {
     if (!servico) {
-      return;
+      return undefined;
     }
     const chave = gerarChaveEdital(item);
     setProcessandoChave(chave);
@@ -164,12 +185,65 @@ export const useAcompanhamentoLicitacoes = (
         ? `Acompanhando "${item.orgao}" — verificação automática diária ligada.`
         : `Acompanhando "${item.orgao}". ${r.aviso || 'A linha do tempo é atualizada a cada busca.'}`);
       recarregar();
+      return r.acompanhamento;
     } catch (falha) {
       setMensagem(`Não foi possível acompanhar: ${falha instanceof Error ? falha.message : String(falha)}`);
+      return undefined;
     } finally {
       setProcessandoChave('');
     }
   }, [servico, responsavel, porChave, recarregar]);
+
+  // Cria a tarefa de acompanhamento no ClickUp (uma por edital).
+  const criarTarefaClickUp = React.useCallback(async (
+    acomp: IAcompanhamento,
+    item: ILicitacaoResultado | undefined,
+    contexto: IContextoTarefaClickUp
+  ): Promise<void> => {
+    if (!servico) {
+      return;
+    }
+    if (acomp.clickupUrl) {
+      setMensagem('Este edital já tem tarefa no ClickUp.');
+      return;
+    }
+    // Sem o resultado da busca, monta a tarefa com a última foto.
+    const base: ILicitacaoResultado = item || {
+      chave: acomp.chaveEdital,
+      score: 0,
+      motivos: [],
+      numero: acomp.numero,
+      orgao: acomp.orgao,
+      local: acomp.local,
+      modalidade: acomp.modalidade,
+      objeto: acomp.objeto,
+      valor: acomp.valor,
+      abertura: acomp.abertura,
+      encerramento: acomp.encerramento,
+      url: '',
+      dados: { fontesOrcamentarias: [] }
+    };
+    setProcessandoChave(acomp.chaveEdital);
+    try {
+      const r = await servico.criarTarefaClickUp(base, acomp, contexto);
+      setMensagem(r.existente ? 'Este edital já tinha tarefa no ClickUp.' : 'Tarefa de acompanhamento criada no ClickUp.');
+      recarregar();
+    } catch (falha) {
+      setMensagem(`Não foi possível criar a tarefa no ClickUp: ${extrairMensagem(falha)}`);
+    } finally {
+      setProcessandoChave('');
+    }
+  }, [servico, recarregar]);
+
+  const participar = React.useCallback(async (
+    item: ILicitacaoResultado,
+    contexto: IContextoTarefaClickUp
+  ): Promise<void> => {
+    const acomp = porChave[gerarChaveEdital(item)] || await acompanhar(item);
+    if (acomp && !acomp.clickupUrl) {
+      await criarTarefaClickUp(acomp, item, contexto);
+    }
+  }, [porChave, acompanhar, criarTarefaClickUp]);
 
   const parar = React.useCallback(async (acomp: IAcompanhamento): Promise<void> => {
     if (!servico) {
@@ -229,6 +303,8 @@ export const useAcompanhamentoLicitacoes = (
     naoLidas: id => naoLidasPorId[id] || 0,
     totalNaoLidas: Object.keys(naoLidasPorId).reduce((s, k) => s + naoLidasPorId[k], 0),
     acompanhar,
+    participar,
+    criarTarefaClickUp,
     parar,
     marcarLidas,
     verificarAgora,
