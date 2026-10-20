@@ -3,6 +3,7 @@ import * as React from 'react';
 import Icones, { IconeChave } from './common/Icones';
 import VersaoPortal from './common/VersaoPortal';
 import MenuUsuario from './common/MenuUsuario';
+import AvisosPortal from './common/AvisosPortal';
 
 import {
   IEventoTreinamento,
@@ -4018,6 +4019,14 @@ const gestaoAreas =
             </div>
 
           </header>
+
+          {/* Avisos no canto da tela (configuráveis em Meu perfil). */}
+          <AvisosPortal
+            dataverseService={dataverseService}
+            contexto={autorizacao.contexto}
+            onNavegar={pagina => navegar(pagina as Pagina)}
+            onAbrirDocumento={abrirDocumentoPorId}
+          />
 
           {/* CONTEÚDO */}
 

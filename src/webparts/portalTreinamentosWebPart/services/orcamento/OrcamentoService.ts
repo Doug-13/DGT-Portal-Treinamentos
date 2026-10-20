@@ -847,6 +847,45 @@ export class OrcamentoService {
     );
   }
 
+  // Subitens (ex.: 6.1.1.01.* da conta 4.1.4.01.01.018) que faltam na
+  // planilha: quando ela tem a conta mãe ou alguma conta do grupo da
+  // conta mãe, os subitens são gravados zerados (planilhas criadas antes
+  // dos subitens existirem no plano). Não gera log.
+  public subitensFaltantes(
+    planilhaId: string,
+    linhas: ILinhaOrcamento[]
+  ): ILinhaOrcamento[] {
+    const gruposComMae: string[] = [];
+    PLANO_CONTAS.forEach(conta => {
+      if (conta.pai && gruposComMae.indexOf(conta.grupo) < 0) {
+        gruposComMae.push(conta.grupo);
+      }
+    });
+    const gruposNaPlanilha = gruposComMae.filter(grupo => linhas.some(linha => linha.grupo === grupo));
+    if (gruposNaPlanilha.length === 0) {
+      return [];
+    }
+    return linhasDoModelo(planilhaId, gruposNaPlanilha)
+      .filter(modelo => PLANO_CONTAS.some(conta => conta.grupo === modelo.grupo && conta.codigo === modelo.codigo && !!conta.pai))
+      .filter(modelo => !linhas.some(linha => linha.grupo === modelo.grupo && linha.codigo === modelo.codigo));
+  }
+
+  public async incluirSubitensFaltantes(
+    planilha: IPlanilhaOrcamento,
+    linhas: ILinhaOrcamento[],
+    aoProgredir?: (feitas: number, total: number) => void
+  ): Promise<IResultadoGravacao | undefined> {
+    const novas = this.subitensFaltantes(planilha.id, linhas);
+    if (novas.length === 0) {
+      return undefined;
+    }
+    return this.salvarAlteracoes(
+      planilha.id,
+      { novas, alteradas: [], removidas: [], equipeId: planilha.equipeId },
+      aoProgredir
+    );
+  }
+
   // ----------------------------------------------------------
   // Log de alterações
   // ----------------------------------------------------------

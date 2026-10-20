@@ -353,6 +353,32 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
         lista = await servico.carregarLinhas(encontrada.id);
       }
 
+      // Subitens da conta mãe (6.1.1.01.* → 4.1.4.01.01.018) que faltam
+      // em planilhas criadas antes deles: grava zerados.
+      if (
+        (encontrada.status === STATUS_PLANILHA.emPreenchimento || encontrada.status === STATUS_PLANILHA.devolvida) &&
+        servico.subitensFaltantes(encontrada.id, lista).length > 0
+      ) {
+        setProgresso('Incluindo os subitens da conta 4.1.4.01.01.018...');
+        try {
+          const resultado =
+            await servico.incluirSubitensFaltantes(
+              encontrada,
+              lista,
+              (feitas, total) => setProgresso(`Incluindo os subitens da conta 4.1.4.01.01.018 (${feitas} de ${total})...`)
+            );
+          if (resultado && resultado.falhas.length > 0) {
+            setAlerta(
+              `${resultado.falhas.length} subitem(ns) não puderam ser incluídos. ` +
+              'Use "+ Adicionar linha" > "Incluir as contas que faltam".'
+            );
+          }
+          lista = await servico.carregarLinhas(encontrada.id);
+        } catch (falha) {
+          setAlerta(`Não foi possível incluir os subitens: ${explicarErro(falha)}`);
+        }
+      }
+
       // Fluxo de aprovação (CONT-001): começa sozinho na primeira
       // abertura da planilha em preenchimento.
       let atual = encontrada;

@@ -416,6 +416,43 @@ const ROTULOS_PERIODO: Array<{ chave: PeriodoTabela; rotulo: string }> = [
 
 const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
 
+  // Grupos e contas mãe minimizados (mostram só a linha de total).
+  const [recolhidos, setRecolhidos] = React.useState<string[]>([]);
+
+  const alternarRecolhido = (chave: string): void =>
+    setRecolhidos(atual => (atual.indexOf(chave) >= 0 ? atual.filter(item => item !== chave) : atual.concat([chave])));
+
+  // Botão ▾/▸ ao lado do nome do grupo.
+  const botaoRecolher = (chave: string, nome: string): React.ReactNode => {
+    const recolhido = recolhidos.indexOf(chave) >= 0;
+    return (
+      <button
+        type="button"
+        onClick={() => alternarRecolhido(chave)}
+        aria-expanded={!recolhido}
+        aria-label={`${recolhido ? 'Expandir' : 'Minimizar'} ${nome}`}
+        title={recolhido ? 'Expandir' : 'Minimizar'}
+        style={{
+          border: `1px solid ${COR.borda}`,
+          background: '#FFFFFF',
+          borderRadius: '5px',
+          width: '22px',
+          height: '22px',
+          marginRight: '8px',
+          cursor: 'pointer',
+          color: COR.azul,
+          fontSize: '11px',
+          lineHeight: '18px',
+          padding: 0,
+          verticalAlign: 'middle',
+          fontFamily: FONTE
+        }}
+      >
+        {recolhido ? '▸' : '▾'}
+      </button>
+    );
+  };
+
   const [periodo, setPeriodo] = React.useState<PeriodoTabela>(
     props.periodoInicial || (props.somenteLeitura ? 'ano' : 'sem1')
   );
@@ -494,20 +531,38 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
         subdivisaoAtual = '';
         const filhos = linhas.filter(item => {
           const infoFilho = infoDoPlano(item.grupo, item.codigo);
-          return infoFilho.pai === pai || item.codigo === pai;
+          return infoFilho.pai === pai;
         });
         const soma = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         (totais.filter(item => item.grupo === grupo && (infoDoPlano(item.grupo, item.codigo).pai === pai || item.codigo === pai)))
           .forEach(item => valoresComSinal(item).forEach((valor, mes) => { soma[mes] += valor; }));
         saida.push(linhaTotal(
           `pai-${grupo}-${pai}`,
-          <>
-            <span style={{ fontSize: '11.5px', color: COR.texto2, display: 'block' }}>{pai} · conta com subitens ({filhos.length})</span>
-            {CONTAS_MAE[pai] || pai}
-          </>,
+          <span style={{ display: 'flex', alignItems: 'flex-start' }}>
+            {!props.somenteTotais && botaoRecolher(`pai-${grupo}-${pai}`, CONTAS_MAE[pai] || pai)}
+            <span>
+              <span style={{ fontSize: '11.5px', color: COR.texto2, display: 'block' }}>{pai} · conta com subitens ({filhos.length})</span>
+              {CONTAS_MAE[pai] || pai}
+            </span>
+          </span>,
           soma.map(valor => Math.round(valor * 100) / 100),
           { fundo: '#F8FAFC', negrito: true, recuo: 1 }
         ));
+      }
+
+      // Conta mãe minimizada: esconde os subitens.
+      if (pai && recolhidos.indexOf(`pai-${grupo}-${pai}`) >= 0) {
+        return;
+      }
+
+      // Lançamento antigo direto na conta mãe, zerado, com os subitens
+      // na planilha: não aparece (a conta mãe é a soma dos subitens).
+      if (
+        CONTAS_MAE[linha.codigo] &&
+        linha.valores.every(valor => !valor) &&
+        linhas.some(item => infoDoPlano(item.grupo, item.codigo).pai === linha.codigo)
+      ) {
+        return;
       }
 
       if (!props.somenteTotais) {
@@ -574,6 +629,40 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
             </button>
           );
         })}
+        {!props.somenteTotais && (
+          <>
+            <span style={{ fontSize: '12.5px', color: COR.texto2, fontWeight: 600, margin: '0 4px 0 10px' }}>Grupos:</span>
+            <button
+              type="button"
+              onClick={() => setRecolhidos(
+                ITENS_DRE.filter(item => item.tipo === 'grupo').map(item => item.id)
+                  .concat(Object.keys(CONTAS_MAE).map(codigo => `pai-Custos Diretos Locações Bens (sem amortização)-${codigo}`))
+              )}
+              style={{ padding: '5px 12px', borderRadius: '999px', border: `1px solid ${COR.borda}`, background: '#FFFFFF', color: COR.texto2, fontWeight: 700, fontSize: '12px', cursor: 'pointer', fontFamily: FONTE }}
+            >
+              ▸ Minimizar todos
+            </button>
+            <button
+              type="button"
+              onClick={() => setRecolhidos([])}
+              style={{ padding: '5px 12px', borderRadius: '999px', border: `1px solid ${COR.borda}`, background: '#FFFFFF', color: COR.texto2, fontWeight: 700, fontSize: '12px', cursor: 'pointer', fontFamily: FONTE }}
+            >
+              ▾ Expandir todos
+            </button>
+            <button
+              type="button"
+              title="Minimiza os grupos sem nenhum valor lançado"
+              onClick={() => setRecolhidos(
+                ITENS_DRE
+                  .filter(item => item.tipo === 'grupo' && (dre[item.id] || []).every(valor => !valor))
+                  .map(item => item.id)
+              )}
+              style={{ padding: '5px 12px', borderRadius: '999px', border: `1px solid ${COR.borda}`, background: '#FFFFFF', color: COR.texto2, fontWeight: 700, fontSize: '12px', cursor: 'pointer', fontFamily: FONTE }}
+            >
+              Minimizar os vazios
+            </button>
+          </>
+        )}
         <span style={{ fontSize: '12px', color: COR.texto2 }}>
           · deduções, custos e despesas aparecem <span style={{ color: COR.perigo, fontWeight: 700 }}>negativos</span>
           {periodo !== 'ano' ? ' · Total (ano) soma os 12 meses' : ''}
@@ -606,8 +695,13 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
               }
               return (
                 <React.Fragment key={item.id}>
-                  {linhaTotal(item.id, item.nome, valores, { fundo: COR.fundoGrupo, negrito: true, recuo: item.nivel || 0 })}
-                  {renderContas(item.id)}
+                  {linhaTotal(
+                    item.id,
+                    <span>{!props.somenteTotais && botaoRecolher(item.id, item.nome)}{item.nome}</span>,
+                    valores,
+                    { fundo: COR.fundoGrupo, negrito: true, recuo: item.nivel || 0 }
+                  )}
+                  {recolhidos.indexOf(item.id) < 0 && renderContas(item.id)}
                 </React.Fragment>
               );
             })}

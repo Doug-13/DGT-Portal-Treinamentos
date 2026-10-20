@@ -10,6 +10,8 @@ import {
   ResumoAcessoEfetivo
 } from './ResumoAcessoEfetivo';
 
+import PreferenciasAvisos from './PreferenciasAvisos';
+
 // ============================================================
 // MEU PERFIL (menu do nome do usuário, no topo)
 // Dados do usuário logado, papéis por área e o que ele acessa.
@@ -88,6 +90,11 @@ const MeuPerfilPage: React.FC<IMeuPerfilPageProps> = ({
       <div style={{ marginBottom: '16px' }}>
         <h2 style={{ margin: '0 0 10px', fontSize: '15px', color: COR_AZUL }}>O que eu acesso</h2>
         <ResumoAcessoEfetivo perfil={contexto.perfil} vinculos={vinculos} modulos={contexto.modulosPermitidos} administrados={contexto.modulosAdministrados} />
+      </div>
+
+      <div style={{ marginBottom: '16px' }}>
+        <h2 style={{ margin: '0 0 10px', fontSize: '15px', color: COR_AZUL }}>Avisos</h2>
+        <PreferenciasAvisos email={contexto.email} />
       </div>
 
       <p style={{ fontSize: '12px', color: '#64748b' }}>
