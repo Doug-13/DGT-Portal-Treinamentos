@@ -497,7 +497,7 @@ export class AcompanhamentoLicitacaoService {
       `| **Encerramento das propostas** | **${data(item.encerramento)}**${prazoTexto} |`,
       `| **Situação no PNCP** | ${acompanhamento.situacao || (detalhe && detalhe.situacao) || '—'} |`,
       detalhe && detalhe.amparoLegalNome ? `| **Amparo legal** | ${limpo(detalhe.amparoLegalNome)} |` : '',
-      `| **Aderência da busca** | ${item.score}%${item.motivos.length ? ` (${item.motivos.join('; ')})` : ''} |`,
+      item.score >= 0 ? `| **Aderência da busca** | ${item.score}%${item.motivos.length ? ` (${item.motivos.join('; ')})` : ''} |` : '',
       '',
       '## Objeto',
       limpo(item.objeto) || '—'
@@ -574,25 +574,26 @@ export class AcompanhamentoLicitacaoService {
       uf.toLowerCase()
     ].filter(t => t.length > 0);
 
-    // ---------------- Checklist da participação ----------------
-
-    const checklist = [
-      'Ler o edital e o termo de referência completos',
-      'Conferir os documentos de habilitação exigidos',
-      'Verificar visita técnica / amostras / atestados',
-      'Levantar custos e montar a proposta',
-      detalhe && detalhe.sistemaOrigem
-        ? `Confirmar o cadastro da DGT em ${limpo(detalhe.sistemaOrigem)}`
-        : 'Confirmar o cadastro da DGT na plataforma da disputa',
-      `Enviar a proposta até ${data(item.encerramento)}`,
-      'Acompanhar a sessão / disputa'
-    ];
-
     // ---------------- Campos personalizados ----------------
     // O plugin só preenche os campos mapeados na configuração
     // ("campos": { "orgao": "<id do campo>", ... }).
 
+    // Resumo curto para o campo "Resumo do Edital" (texto longo).
+    const resumo = [
+      `${item.modalidade || 'Edital'} ${numero} — ${orgao} (${item.local || ''})`,
+      `Valor estimado: ${moeda(item.valor)} · Encerramento das propostas: ${data(item.encerramento)}`,
+      detalhe && detalhe.sistemaOrigem ? `Plataforma: ${limpo(detalhe.sistemaOrigem)}` : '',
+      `Objeto: ${(limpo(item.objeto) || '—').substring(0, 1200)}`,
+      contexto.analiseIa
+        ? `IA: ${contexto.analiseIa.recomendacao} · compatibilidade ${contexto.analiseIa.compatibilidade}%`
+        : '',
+      `Parecer DGT: Participar — ${(limpo(contexto.justificativa) || '—').substring(0, 600)}`
+    ].filter(l => l.length > 0).join('\n');
+
     const campos: Record<string, unknown> = {
+      orgaoMunicipio: `${orgao} — ${item.local || municipio}`,
+      dataPregao: prazoValido && encerramento ? encerramento.getTime() : null,
+      resumo,
       orgao,
       municipio,
       uf,
@@ -602,7 +603,11 @@ export class AcompanhamentoLicitacaoService {
       abertura: item.abertura && !isNaN(new Date(item.abertura).getTime()) ? new Date(item.abertura).getTime() : null,
       encerramento: prazoValido && encerramento ? encerramento.getTime() : null,
       compatibilidade: contexto.analiseIa ? contexto.analiseIa.compatibilidade : null,
-      aderencia: item.score,
+      // score < 0 = tarefa criada pela aba Acompanhamento, sem a busca:
+      // a aderência fica em branco (e não 0).
+      aderencia: item.score >= 0 ? item.score : null,
+      parecer: `Participar — ${contexto.responsavel || 'equipe DGT'} em ${new Date().toLocaleDateString('pt-BR')}: ` +
+        (limpo(contexto.justificativa) || '—').substring(0, 1800),
       plataforma: detalhe && detalhe.sistemaOrigem ? limpo(detalhe.sistemaOrigem) : '',
       linkPortal: portal
     };
@@ -615,7 +620,6 @@ export class AcompanhamentoLicitacaoService {
       dataLimite: prazoValido && encerramento ? encerramento.getTime() : null,
       prioridade,
       tags,
-      checklist,
       campos
     });
 

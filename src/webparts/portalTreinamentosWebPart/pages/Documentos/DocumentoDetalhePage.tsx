@@ -488,12 +488,11 @@ const ProcessoDoDocumento:
       case 'semFluxoPublicado':
         etapa = revisaoEmAndamento
           ? {
-            texto: 'Sem fluxo publicado · segue o fluxo padrão',
+            texto: 'Sem fluxo publicado · documento não avança',
             tipo: 'atencao',
             dica:
-              `A ${revisaoEmAndamento} usa o fluxo padrão (aprovação do Gestor da área). ` +
-              'Se o fluxo do processo for publicado enquanto ela ainda estiver em Elaboração, ela passa a segui-lo; ' +
-              'depois de enviada para aprovação, termina no fluxo padrão.'
+              `A ${revisaoEmAndamento} não pode ser enviada enquanto o processo não tiver fluxo publicado. ` +
+              'Publique o fluxo no módulo Processos; a revisão passa a segui-lo automaticamente.'
           }
           : {
             texto: 'Processo sem fluxo publicado',
@@ -608,6 +607,10 @@ const seloStatus = (
     return revisao.id === vigenteAtualId
       ? { texto: 'Vigente', cor: '#107C10', fundo: '#E7F6EC' }
       : { texto: 'Obsoleta', cor: '#B42318', fundo: '#FDE7E9' };
+  }
+
+  if (estagio === 'cancelada') {
+    return { texto: 'Cancelada', cor: '#5E6670', fundo: '#F2F2F2' };
   }
 
   if (estagio === 'aprovacao') {
@@ -1084,12 +1087,30 @@ const DocumentoDetalhePage:
         return ok;
       };
 
+    // Documento vinculado a processo SEM fluxo publicado: não avança
+    // (o processo precisa ser publicado antes).
+    const nomeProcessoVinculado =
+      [segueFluxo.processoCodigo, segueFluxo.processoNome]
+        .filter(item => !!item && !!item.trim())
+        .join(' — ');
+
+    const bloqueioSemFluxo =
+      segueFluxo.situacao === 'semFluxoPublicado'
+        ? `O processo “${nomeProcessoVinculado || 'vinculado'}” ainda não tem fluxo publicado. ` +
+          'O processo precisa ser publicado no módulo Processos para que este documento possa avançar.'
+        : '';
+
     const enviarParaAprovacao =
       (
         revisao: IDocumentoRevisao
       ): void => {
 
         setErroLegado('');
+
+        if (bloqueioSemFluxo) {
+          setErroLegado(bloqueioSemFluxo);
+          return;
+        }
 
         const acao: Promise<unknown> =
           fluxoDisponivel
@@ -1772,7 +1793,8 @@ const DocumentoDetalhePage:
                             : undefined;
 
                         const emAndamento =
-                          estagio !== 'vigente';
+                          estagio !== 'vigente' &&
+                          estagio !== 'cancelada';
 
                         const substituida =
                           estagio === 'vigente' &&
@@ -2264,6 +2286,12 @@ const DocumentoDetalhePage:
                                       setMotivoReprovacao('');
                                       setRevisaoParaReprovar(revisao);
                                     }}
+                                    bloqueioEnvio={bloqueioSemFluxo || undefined}
+                                    onAbrirProcesso={
+                                      onAbrirProcesso && segueFluxo.processoId
+                                        ? () => onAbrirProcesso(segueFluxo.processoId)
+                                        : undefined
+                                    }
                                   />
                                       )
                                   }
@@ -2293,7 +2321,8 @@ const DocumentoDetalhePage:
           }
           rascunho={
             !!revisaoEmPrevia &&
-            estagioRevisao(revisaoEmPrevia.status) !== 'vigente'
+            estagioRevisao(revisaoEmPrevia.status) !== 'vigente' &&
+            estagioRevisao(revisaoEmPrevia.status) !== 'cancelada'
           }
           onFechar={fecharPrevia}
         />

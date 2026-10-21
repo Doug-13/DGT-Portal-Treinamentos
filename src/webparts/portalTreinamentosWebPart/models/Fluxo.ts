@@ -401,7 +401,10 @@ export interface IFluxoDefinicao {
 
 export type StatusInstanciaFluxo =
   | 'emAndamento'
-  | 'concluido';
+  | 'concluido'
+  // Revisão cancelada por um administrador (retorno para a revisão
+  // vigente anterior). O histórico é preservado.
+  | 'cancelado';
 
 export interface IFluxoHistorico {
   id: string;

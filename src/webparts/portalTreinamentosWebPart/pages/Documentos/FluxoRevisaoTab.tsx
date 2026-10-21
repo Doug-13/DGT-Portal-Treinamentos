@@ -1,5 +1,7 @@
 import * as React from 'react';
 
+import RetornarEtapaPainel from './RetornarEtapaPainel';
+
 import {
   ESTILO_PASSO_FLUXO,
   categoriaDoPasso
@@ -379,7 +381,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
         ? 'O fluxo de revisão é definido no processo. Vincule o documento a um processo para que a revisão siga o fluxo dele.'
         : fluxo.situacao === 'escolherPrincipal'
           ? 'Escolha qual processo governa a revisão deste documento. Os demais vínculos continuam valendo para consulta.'
-          : 'Enquanto isso, esta revisão usa o fluxo padrão (aba “Revisão”). Se o fluxo for publicado com a revisão ainda em Elaboração, ela passa a seguir o fluxo do processo; depois de enviada para aprovação, termina no fluxo padrão.';
+          : 'O processo precisa ser publicado antes de o documento avançar. Publique o fluxo no módulo Processos e volte aqui: a revisão passa a segui-lo automaticamente.';
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
@@ -397,6 +399,23 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
               <div style={{ fontSize: '17px', fontWeight: 700 }}>{titulo}</div>
               <div style={{ fontSize: '14px', marginTop: '4px' }}>{explicacao}</div>
             </div>
+
+            {
+              fluxo.erro && (
+                <div
+                  role="alert"
+                  style={{
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #485CC7',
+                    background: '#E8EAF8',
+                    fontSize: '13px'
+                  }}
+                >
+                  {fluxo.erro}
+                </div>
+              )
+            }
 
             {
               fluxo.situacao !== 'semFluxo' && (
@@ -432,12 +451,21 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                           <option value="">Selecione...</option>
                           {
                             opcoes.map(
-                              processo => (
-                                <option key={processo.id} value={processo.id}>
-                                  {processo.codigo ? `${processo.codigo} — ` : ''}{processo.nome}
-                                  {processo.origem === 'teste' ? ' (teste)' : ''}
-                                </option>
-                              )
+                              processo => {
+                                // Sem fluxo publicado: aparece, mas não pode ser escolhido.
+                                const versao = fluxo.fluxosPublicados[processo.id];
+                                return (
+                                  <option
+                                    key={processo.id}
+                                    value={processo.id}
+                                    disabled={!versao}
+                                  >
+                                    {processo.codigo ? `${processo.codigo} — ` : ''}{processo.nome}
+                                    {processo.origem === 'teste' ? ' (teste)' : ''}
+                                    {versao ? ` · fluxo v${versao}` : ' · sem fluxo publicado (indisponível)'}
+                                  </option>
+                                );
+                              }
                             )
                           }
                         </select>
@@ -445,7 +473,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
                       <button
                         type="button"
-                        disabled={!processoEscolhido}
+                        disabled={!processoEscolhido || !fluxo.fluxosPublicados[processoEscolhido]}
                         onClick={() => {
                           const acao =
                             fluxo.situacao === 'semProcesso'
@@ -456,7 +484,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                             (error: unknown) => console.error(error)
                           );
                         }}
-                        style={estiloBotao(true, !processoEscolhido)}
+                        style={estiloBotao(true, !processoEscolhido || !fluxo.fluxosPublicados[processoEscolhido])}
                       >
                         {fluxo.situacao === 'semProcesso' ? `Vincular${teste}` : `Definir como principal${teste}`}
                       </button>
@@ -1445,6 +1473,19 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                         errosExecucao={fluxo.errosAcao}
                         onConfirmar={confirmarAcao}
                         onCancelar={fecharConfirmacao}
+                      />
+                    )
+                  }
+
+                  {
+                    // Corrige avanço indevido: volta UMA etapa
+                    // (somente administrador, com justificativa).
+                    fluxo.podeRetornar && !somenteAcao && (
+                      <RetornarEtapaPainel
+                        previa={fluxo.previaRetorno}
+                        revisaoAtual={instancia.revisao || (fluxo.revisaoAlvo ? fluxo.revisaoAlvo.revisao : '')}
+                        processando={fluxo.processando}
+                        onConfirmar={fluxo.retornarUmPasso}
                       />
                     )
                   }

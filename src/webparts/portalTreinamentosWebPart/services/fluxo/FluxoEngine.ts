@@ -608,6 +608,36 @@ const limparTransicoesOrfas = (
     );
 };
 
+// Só é apagado o valor de um campo que é PREENCHIDO (editável) em
+// etapas fora do caminho atual e em NENHUMA etapa do caminho. Assim
+// um metadado preenchido na Elaboração e exibido (somente leitura)
+// nas etapas seguintes nunca é apagado ao avançar.
+const limparValoresForaDoCaminho = (
+  definicao: IFluxoDefinicao,
+  instancia: IFluxoInstancia
+): void => {
+
+  const chavesDoCaminho: string[] = [];
+
+  definicao.elementos
+    .filter(item => instancia.percorridos.indexOf(item.id) >= 0)
+    .forEach(item =>
+      item.campos
+        .filter(campo => !campo.somenteLeitura)
+        .forEach(campo => chavesDoCaminho.push(campo.chave))
+    );
+
+  definicao.elementos
+    .filter(item => instancia.percorridos.indexOf(item.id) < 0)
+    .forEach(item =>
+      item.campos
+        .filter(campo => !campo.somenteLeitura && chavesDoCaminho.indexOf(campo.chave) < 0)
+        .forEach(campo => {
+          delete instancia.valores[campo.chave];
+        })
+    );
+};
+
 const criarTarefa = (
   elemento: IFluxoElemento,
   agora: string
@@ -1011,6 +1041,14 @@ export const executarAcao = (
     };
   }
 
+  if (instanciaOriginal.status === 'cancelado') {
+    return {
+      ok: false,
+      erros: ['Esta revisão foi cancelada por um administrador.'],
+      acoesSistema: []
+    };
+  }
+
   if (
     instanciaOriginal.fluxoId !== definicao.id ||
     instanciaOriginal.fluxoVersao !== definicao.versao
@@ -1252,32 +1290,8 @@ export const executarAcao = (
 
   // Ao VOLTAR para uma etapa já percorrida, as respostas dadas nas
   // etapas seguintes deixam de valer (serão respondidas de novo).
-  //
-  // Só é apagado o valor de um campo que é PREENCHIDO (editável) em
-  // etapas fora do caminho atual e em NENHUMA etapa do caminho. Assim
-  // um metadado preenchido na Elaboração e exibido (somente leitura)
-  // nas etapas seguintes nunca é apagado ao avançar.
   if (instancia.status !== 'concluido') {
-
-    const chavesDoCaminho: string[] = [];
-
-    definicao.elementos
-      .filter(item => instancia.percorridos.indexOf(item.id) >= 0)
-      .forEach(item =>
-        item.campos
-          .filter(campo => !campo.somenteLeitura)
-          .forEach(campo => chavesDoCaminho.push(campo.chave))
-      );
-
-    definicao.elementos
-      .filter(item => instancia.percorridos.indexOf(item.id) < 0)
-      .forEach(item =>
-        item.campos
-          .filter(campo => !campo.somenteLeitura && chavesDoCaminho.indexOf(campo.chave) < 0)
-          .forEach(campo => {
-            delete instancia.valores[campo.chave];
-          })
-      );
+    limparValoresForaDoCaminho(definicao, instancia);
   }
 
   return {
@@ -1285,6 +1299,607 @@ export const executarAcao = (
     erros: [],
     instancia,
     acoesSistema
+  };
+};
+
+// ------------------------------------------------------------
+// RETORNO DE UM PASSO (somente administrador)
+//
+// Corrige um avanço indevido voltando a revisão UMA etapa, para o
+// lugar onde ela estava imediatamente antes — e só para lá:
+//
+//   • modo 'etapa': volta para a etapa humana anterior do caminho
+//     desta revisão. Se nesse trecho houve um evento de revisão
+//     (ex.: 00A → 00B), o número anterior é restaurado; se o arquivo
+//     foi removido pelo evento, o endereço anterior é devolvido para
+//     ser regravado.
+//   • modo 'revisao': a revisão está na 1ª etapa (ex.: Rev.01A em
+//     Elaboração, aberta a partir da Rev.00 vigente). Voltar um passo
+//     é CANCELAR esta revisão: o documento volta para a revisão
+//     vigente. Só é permitido quando existe revisão vigente.
+//
+// Nunca apaga histórico: o passo é registrado como
+// "alterado por administrador", com a justificativa.
+// ------------------------------------------------------------
+
+// Endereço do arquivo removido por um evento de revisão (guardado
+// nos valores da instância para poder ser restaurado no retorno).
+export const CHAVE_ARQUIVO_ANTERIOR = '__arquivoAnteriorUrl';
+
+export const ACAO_RETORNO_ADMINISTRADOR = 'retornoAdministrador';
+
+export const ACAO_CANCELAMENTO_ADMINISTRADOR = 'cancelarRevisaoAdministrador';
+
+export type ModoRetornoFluxo =
+  | 'etapa'
+  | 'revisao';
+
+export interface IDadosRetornoFluxo {
+  ator: IFluxoAtor;
+  justificativa: string;
+  // Só com revisão vigente (e fora do modo de teste) a 1ª etapa pode
+  // voltar para ela (cancelando a revisão em andamento).
+  permitirCancelarRevisao: boolean;
+  revisaoVigente?: string;
+  // O que o usuário viu e confirmou na tela. Se o estado relido for
+  // diferente (alguém agiu no meio-tempo), nada é feito.
+  modoEsperado?: ModoRetornoFluxo;
+  destinoEsperadoId?: string;
+}
+
+export interface IResultadoRetorno {
+  ok: boolean;
+  erros: string[];
+  modo?: ModoRetornoFluxo;
+  instancia?: IFluxoInstancia;
+  etapaOrigem?: string;
+  etapaDestino?: string;
+  destinoId?: string;
+  statusDestino?: string;
+  rotuloAnterior?: string;
+  // Preenchido quando o retorno desfaz um evento de revisão.
+  rotuloRestaurado?: string;
+  arquivoRemovidoNoTrecho?: boolean;
+  arquivoRestaurarUrl?: string;
+  avisos?: string[];
+}
+
+const ACOES_EVENTO_REVISAO = ['novaRevisao', 'novaSubRevisao', 'proximaRevisao'];
+
+export const retornarUmPasso = (
+  definicao: IFluxoDefinicao,
+  instanciaOriginal: IFluxoInstancia,
+  dados: IDadosRetornoFluxo
+): IResultadoRetorno => {
+
+  if (instanciaOriginal.status === 'concluido') {
+    return {
+      ok: false,
+      erros: ['Esta revisão já foi concluída (publicada). Para alterar o documento, crie uma nova revisão.']
+    };
+  }
+
+  if (instanciaOriginal.status === 'cancelado') {
+    return {
+      ok: false,
+      erros: ['Esta revisão já foi cancelada.']
+    };
+  }
+
+  if (
+    instanciaOriginal.fluxoId !== definicao.id ||
+    instanciaOriginal.fluxoVersao !== definicao.versao
+  ) {
+    return {
+      ok: false,
+      erros: ['A definição informada não é a mesma versão com que esta revisão começou.']
+    };
+  }
+
+  const atual =
+    obterElementoAtual(definicao, instanciaOriginal);
+
+  if (!atual || atual.tipo !== 'tarefaHumana') {
+    return {
+      ok: false,
+      erros: ['A etapa atual não permite retorno.']
+    };
+  }
+
+  const justificativa =
+    (dados.justificativa || '').trim();
+
+  if (!justificativa) {
+    return {
+      ok: false,
+      erros: ['Informe a justificativa do retorno.']
+    };
+  }
+
+  const agora =
+    agoraIso();
+
+  const instancia =
+    copiarInstancia(instanciaOriginal);
+
+  // Pendência da etapa atual: cancelada (não apagada).
+  const cancelarPendentes = (): void => {
+    instancia.tarefas.forEach(
+      tarefa => {
+        if (tarefa.status === 'pendente') {
+          tarefa.status = 'cancelada';
+          tarefa.concluidaEm = agora;
+          tarefa.concluidaPorNome = dados.ator.nome;
+        }
+      }
+    );
+  };
+
+  // Etapa humana imediatamente anterior no caminho desta revisão.
+  const indiceAtual =
+    instancia.percorridos.lastIndexOf(atual.id);
+
+  let destino: IFluxoElemento | undefined;
+
+  for (let indice = indiceAtual - 1; indice >= 0; indice--) {
+    const elemento =
+      obterElemento(definicao, instancia.percorridos[indice]);
+
+    if (elemento && elemento.tipo === 'tarefaHumana') {
+      destino = elemento;
+      break;
+    }
+  }
+
+  const mudouDesdeAPrevia =
+    (!!dados.modoEsperado && dados.modoEsperado !== (destino ? 'etapa' : 'revisao')) ||
+    (!!dados.destinoEsperadoId && !!destino && destino.id !== dados.destinoEsperadoId);
+
+  if (mudouDesdeAPrevia) {
+    return {
+      ok: false,
+      erros: ['A revisão foi alterada por outra pessoa desde que a tela foi aberta. Recarregue a página e confira antes de voltar a etapa.']
+    };
+  }
+
+  // ---------- 1ª etapa: volta para a revisão vigente ----------
+  if (!destino) {
+
+    if (!dados.permitirCancelarRevisao || !dados.revisaoVigente) {
+      return {
+        ok: false,
+        erros: [
+          `A revisão está na primeira etapa do fluxo ("${atual.nome}") e não há revisão vigente para a qual voltar.`
+        ]
+      };
+    }
+
+    cancelarPendentes();
+
+    instancia.status = 'cancelado';
+    instancia.concluidoEm = agora;
+
+    instancia.historico.unshift({
+      id: gerarId('hist'),
+      data: agora,
+      elementoId: atual.id,
+      elementoNome: atual.nome,
+      acaoChave: ACAO_CANCELAMENTO_ADMINISTRADOR,
+      acaoRotulo:
+        `Revisão ${instancia.revisao} cancelada — alterado por administrador ` +
+        `(retorno para a ${dados.revisaoVigente} vigente)`,
+      resultado: 'retornado',
+      comentario: justificativa,
+      executadoPorId: dados.ator.id,
+      executadoPorNome: dados.ator.nome,
+      sistema: false,
+      revisao: instancia.revisao
+    });
+
+    return {
+      ok: true,
+      erros: [],
+      modo: 'revisao',
+      instancia,
+      etapaOrigem: atual.nome,
+      etapaDestino: `Vigente (${dados.revisaoVigente})`,
+      rotuloAnterior: instanciaOriginal.revisao
+    };
+  }
+
+  // ---------- Etapa anterior desta revisão ----------
+  const destinoFinal =
+    destino;
+
+  // Trecho a desfazer: tudo o que aconteceu depois da última ação
+  // executada na etapa de destino (histórico: mais novo primeiro).
+  const indiceAcaoDestino =
+    instancia.historico.findIndex(
+      passo =>
+        !passo.sistema &&
+        passo.elementoId === destinoFinal.id &&
+        passo.acaoChave !== ACAO_RETORNO_ADMINISTRADOR
+    );
+
+  const trecho =
+    indiceAcaoDestino >= 0
+      ? instancia.historico.slice(0, indiceAcaoDestino)
+      : [];
+
+  const houveEventoRevisao =
+    trecho.some(
+      passo => passo.sistema && ACOES_EVENTO_REVISAO.indexOf(passo.acaoChave) >= 0
+    );
+
+  let rotuloRestaurado: string | undefined;
+
+  if (houveEventoRevisao) {
+
+    const rotuloNaEtapa =
+      instancia.historico[indiceAcaoDestino].revisao;
+
+    if (!rotuloNaEtapa) {
+      return {
+        ok: false,
+        erros: [
+          'Entre a etapa atual e a anterior houve mudança no número da revisão, mas o registro antigo não guarda o número anterior. ' +
+          'O retorno foi bloqueado para não deixar a revisão com número errado.'
+        ]
+      };
+    }
+
+    if (rotuloNaEtapa !== instancia.revisao) {
+      rotuloRestaurado = rotuloNaEtapa;
+      instancia.revisao = rotuloNaEtapa;
+    }
+  }
+
+  const arquivoRemovidoNoTrecho =
+    trecho.some(
+      passo => passo.sistema && passo.acaoChave === 'removerArquivoRevisao'
+    );
+
+  const arquivoRestaurarUrl =
+    arquivoRemovidoNoTrecho
+      ? (instancia.valores[CHAVE_ARQUIVO_ANTERIOR] || undefined)
+      : undefined;
+
+  if (arquivoRemovidoNoTrecho) {
+    delete instancia.valores[CHAVE_ARQUIVO_ANTERIOR];
+  }
+
+  cancelarPendentes();
+
+  // A revisão reassume a etapa de destino.
+  instancia.percorridos =
+    instancia.percorridos.slice(
+      0,
+      instancia.percorridos.lastIndexOf(destinoFinal.id) + 1
+    );
+
+  limparTransicoesOrfas(definicao, instancia);
+
+  instancia.elementoAtualId =
+    destinoFinal.id;
+
+  instancia.tarefas.push(
+    criarTarefa(destinoFinal, agora)
+  );
+
+  limparValoresForaDoCaminho(definicao, instancia);
+
+  const detalhes: string[] = [justificativa];
+
+  if (rotuloRestaurado) {
+    detalhes.push(`Número da revisão restaurado: ${instanciaOriginal.revisao} → ${rotuloRestaurado}`);
+  }
+
+  if (arquivoRemovidoNoTrecho) {
+    detalhes.push(
+      arquivoRestaurarUrl
+        ? 'Arquivo removido no evento de revisão foi restaurado'
+        : 'O arquivo removido no evento de revisão precisa ser anexado novamente (o anterior continua no SharePoint)'
+    );
+  }
+
+  instancia.historico.unshift({
+    id: gerarId('hist'),
+    data: agora,
+    elementoId: atual.id,
+    elementoNome: atual.nome,
+    acaoChave: ACAO_RETORNO_ADMINISTRADOR,
+    acaoRotulo: `Retorno de etapa — alterado por administrador: ${atual.nome} → ${destinoFinal.nome}`,
+    resultado: 'retornado',
+    comentario: detalhes.join(' · '),
+    executadoPorId: dados.ator.id,
+    executadoPorNome: dados.ator.nome,
+    sistema: false,
+    revisao: instancia.revisao
+  });
+
+  return {
+    ok: true,
+    erros: [],
+    modo: 'etapa',
+    instancia,
+    etapaOrigem: atual.nome,
+    etapaDestino: destinoFinal.nome,
+    destinoId: destinoFinal.id,
+    statusDestino: destinoFinal.statusDocumento,
+    rotuloAnterior: instanciaOriginal.revisao,
+    rotuloRestaurado,
+    arquivoRemovidoNoTrecho,
+    arquivoRestaurarUrl
+  };
+};
+
+// ------------------------------------------------------------
+// TRANSFERÊNCIA PARA O FLUXO DE OUTRO PROCESSO (administrador)
+//
+// Usada quando documentos foram criados em processos duplicados e
+// devem passar a um único processo. A revisão em andamento sai do
+// fluxo de origem e continua NA MESMA ETAPA do fluxo de destino.
+//
+// Correspondência das etapas: pelo id (fluxos copiados mantêm os ids)
+// e, se não houver, pelo nome + tipo (único). Se a etapa atual não
+// existir no destino, nada é feito.
+//
+// Nada do histórico é apagado: a pendência atual é cancelada e
+// recriada na etapa equivalente, e o passo fica registrado como
+// "alterado por administrador".
+// ------------------------------------------------------------
+
+export const ACAO_TRANSFERENCIA_ADMINISTRADOR = 'transferenciaProcessoAdministrador';
+
+export type CriterioMapeamento =
+  | 'id'
+  | 'nome';
+
+export interface IMapeamentoEtapa {
+  origemId: string;
+  origemNome: string;
+  destinoId?: string;
+  destinoNome?: string;
+  criterio?: CriterioMapeamento;
+}
+
+export interface IDadosTransferenciaFluxo {
+  processoId: string;
+  processoNome: string;
+  ator: IFluxoAtor;
+  justificativa: string;
+}
+
+export interface IResultadoTransferencia {
+  ok: boolean;
+  erros: string[];
+  avisos: string[];
+  instancia?: IFluxoInstancia;
+  etapaOrigem?: string;
+  etapaDestino?: string;
+  mapeamento: IMapeamentoEtapa[];
+}
+
+const normalizarNomeEtapa = (
+  valor?: string
+): string =>
+  (valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+// Etapa equivalente no fluxo de destino.
+export const mapearElemento = (
+  elemento: IFluxoElemento,
+  destino: IFluxoDefinicao
+): { elemento?: IFluxoElemento; criterio?: CriterioMapeamento } => {
+
+  const porId =
+    destino.elementos.find(item => item.id === elemento.id && item.tipo === elemento.tipo);
+
+  if (porId) {
+    return { elemento: porId, criterio: 'id' };
+  }
+
+  const nome =
+    normalizarNomeEtapa(elemento.nome);
+
+  const porNome =
+    destino.elementos.filter(
+      item => item.tipo === elemento.tipo && !!nome && normalizarNomeEtapa(item.nome) === nome
+    );
+
+  return porNome.length === 1
+    ? { elemento: porNome[0], criterio: 'nome' }
+    : {};
+};
+
+export const transferirInstancia = (
+  origem: IFluxoDefinicao,
+  destino: IFluxoDefinicao,
+  instanciaOriginal: IFluxoInstancia,
+  dados: IDadosTransferenciaFluxo
+): IResultadoTransferencia => {
+
+  const mapeamento: IMapeamentoEtapa[] = [];
+
+  const falha = (mensagem: string): IResultadoTransferencia => ({
+    ok: false,
+    erros: [mensagem],
+    avisos: [],
+    mapeamento
+  });
+
+  if (instanciaOriginal.status !== 'emAndamento') {
+    return falha('Só revisões com o fluxo em andamento são transferidas (as concluídas ficam no histórico do processo de origem).');
+  }
+
+  if (destino.status !== 'publicado') {
+    return falha('O fluxo de destino precisa estar publicado.');
+  }
+
+  if (
+    instanciaOriginal.fluxoId === destino.id &&
+    instanciaOriginal.fluxoVersao === destino.versao
+  ) {
+    return falha('A revisão já está neste fluxo.');
+  }
+
+  const atual =
+    obterElementoAtual(origem, instanciaOriginal);
+
+  if (!atual) {
+    return falha('A etapa atual da revisão não foi encontrada no fluxo de origem.');
+  }
+
+  // Mapeia tudo o que a revisão percorreu (para o diagrama e as
+  // regras de retorno continuarem coerentes no destino).
+  const mapa: Record<string, IFluxoElemento | undefined> = {};
+
+  const idsParaMapear =
+    instanciaOriginal.percorridos
+      .concat([atual.id])
+      .concat(instanciaOriginal.tarefas.map(tarefa => tarefa.elementoId))
+      .filter((id, indice, lista) => !!id && lista.indexOf(id) === indice);
+
+  idsParaMapear.forEach(
+    id => {
+      const elemento = obterElemento(origem, id);
+      if (!elemento) {
+        return;
+      }
+      const resultado = mapearElemento(elemento, destino);
+      mapa[id] = resultado.elemento;
+      mapeamento.push({
+        origemId: elemento.id,
+        origemNome: elemento.nome,
+        destinoId: resultado.elemento ? resultado.elemento.id : undefined,
+        destinoNome: resultado.elemento ? resultado.elemento.nome : undefined,
+        criterio: resultado.criterio
+      });
+    }
+  );
+
+  const atualDestino =
+    mapa[atual.id];
+
+  if (!atualDestino) {
+    return falha(`A etapa atual "${atual.nome}" não existe no fluxo de destino (nem com o mesmo nome).`);
+  }
+
+  if (atualDestino.tipo !== atual.tipo) {
+    return falha(`A etapa "${atual.nome}" tem outro tipo no fluxo de destino.`);
+  }
+
+  const avisos: string[] = [];
+
+  const naoMapeadas =
+    mapeamento.filter(item => !item.destinoId && item.origemId !== atual.id);
+
+  if (naoMapeadas.length > 0) {
+    avisos.push(
+      `Etapas já percorridas sem equivalente no destino (ficam só no histórico): ${naoMapeadas.map(item => item.origemNome).join(', ')}.`
+    );
+  }
+
+  const porNome =
+    mapeamento.filter(item => item.criterio === 'nome');
+
+  if (porNome.length > 0) {
+    avisos.push(
+      `Correspondência feita pelo nome da etapa: ${porNome.map(item => item.origemNome).join(', ')}.`
+    );
+  }
+
+  const agora =
+    agoraIso();
+
+  const instancia =
+    copiarInstancia(instanciaOriginal);
+
+  // Caminho percorrido traduzido para o destino.
+  instancia.percorridos =
+    instanciaOriginal.percorridos
+      .map(id => mapa[id])
+      .filter((item): item is IFluxoElemento => !!item)
+      .map(item => item.id)
+      .filter((id, indice, lista) => lista.indexOf(id) === indice);
+
+  if (instancia.percorridos.indexOf(atualDestino.id) < 0) {
+    instancia.percorridos.push(atualDestino.id);
+  }
+
+  instancia.transicoesPercorridas =
+    instanciaOriginal.transicoesPercorridas
+      .map(id => origem.transicoes.find(item => item.id === id))
+      .map(transicao => {
+        if (!transicao) {
+          return undefined;
+        }
+        const de = mapa[transicao.origemId];
+        const para = mapa[transicao.destinoId];
+        return de && para
+          ? destino.transicoes.find(item => item.origemId === de.id && item.destinoId === para.id)
+          : undefined;
+      })
+      .filter((item): item is IFluxoTransicao => !!item)
+      .map(item => item.id)
+      .filter((id, indice, lista) => lista.indexOf(id) === indice);
+
+  // Tarefas já concluídas passam a apontar para a etapa equivalente
+  // (o nome registrado não muda). A pendência atual é cancelada e
+  // recriada no destino, com os responsáveis do fluxo de destino.
+  instancia.tarefas =
+    instancia.tarefas.map(
+      tarefa => {
+        if (tarefa.status === 'pendente') {
+          return { ...tarefa, status: 'cancelada', concluidaEm: agora, concluidaPorNome: dados.ator.nome };
+        }
+        const equivalente = mapa[tarefa.elementoId];
+        return equivalente ? { ...tarefa, elementoId: equivalente.id } : tarefa;
+      }
+    );
+
+  instancia.tarefas.push(
+    criarTarefa(atualDestino, agora)
+  );
+
+  const processoAnterior =
+    instanciaOriginal.processoNome || 'processo anterior';
+
+  instancia.processoId = dados.processoId;
+  instancia.processoNome = dados.processoNome;
+  instancia.fluxoId = destino.id;
+  instancia.fluxoVersao = destino.versao;
+  instancia.elementoAtualId = atualDestino.id;
+
+  instancia.historico.unshift({
+    id: gerarId('hist'),
+    data: agora,
+    elementoId: atualDestino.id,
+    elementoNome: atualDestino.nome,
+    acaoChave: ACAO_TRANSFERENCIA_ADMINISTRADOR,
+    acaoRotulo:
+      `Processo alterado — alterado por administrador: ${processoAnterior} (fluxo v${instanciaOriginal.fluxoVersao}) → ` +
+      `${dados.processoNome} (fluxo v${destino.versao}); etapa mantida: ${atualDestino.nome}`,
+    resultado: 'transferido',
+    comentario: (dados.justificativa || '').trim(),
+    executadoPorId: dados.ator.id,
+    executadoPorNome: dados.ator.nome,
+    sistema: false,
+    revisao: instancia.revisao
+  });
+
+  return {
+    ok: true,
+    erros: [],
+    avisos,
+    instancia,
+    etapaOrigem: atual.nome,
+    etapaDestino: atualDestino.nome,
+    mapeamento
   };
 };
 

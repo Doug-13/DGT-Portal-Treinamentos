@@ -2489,6 +2489,15 @@ const PortalRouter:
               props.colaboradores
             }
 
+            // Filtro e agrupamento por área (Gestão → Áreas e acessos).
+            areas={
+              props.areasAdministrativas
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
             carregando={
               props.carregandoDataverse
             }
@@ -2683,6 +2692,19 @@ const PortalRouter:
 
             dataverseService={
               props.dataverseService
+            }
+
+            // Envio de imagens pelo portal (Midias de Treinamento).
+            spHttpClient={
+              props.spHttpClient
+            }
+
+            siteUrl={
+              props.siteUrl
+            }
+
+            usuarioEmail={
+              props.usuarioEmail
             }
             
             treinamentos={

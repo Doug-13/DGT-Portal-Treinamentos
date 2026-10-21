@@ -12,6 +12,10 @@ import {
   DataverseService
 } from '../../services/DataverseService';
 
+import SeletorMidiaImagem, {
+  IContextoMidiasEditor
+} from './SeletorMidiaImagem';
+
 import PerguntaRapidaConfigModal from
   './PerguntaRapidaConfigModal';
 
@@ -80,6 +84,12 @@ export interface IModuloConteudosEditorProps {
   // feedback) nos conteúdos do tipo Pergunta rápida.
   dataverseService?:
     DataverseService;
+
+  // Opcional: habilita "Enviar imagem do computador" / "Escolher
+  // imagem já enviada" nos conteúdos do tipo Imagem (biblioteca
+  // Midias de Treinamento + tabela dgt_midia).
+  midias?:
+    IContextoMidiasEditor;
 }
 
 const tipos:
@@ -1824,6 +1834,20 @@ const ModuloConteudosEditor:
                             '6px'
                         }}
                       />
+
+                      {
+                        tipo ===
+                          'Imagem' &&
+                        props.midias &&
+                        (
+                          <SeletorMidiaImagem
+                            contexto={props.midias}
+                            urlAtual={url}
+                            desabilitado={props.processando}
+                            onSelecionar={novaUrl => setUrl(novaUrl)}
+                          />
+                        )
+                      }
 
                       {
                         tipo ===

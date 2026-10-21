@@ -210,7 +210,8 @@ export const useAcompanhamentoLicitacoes = (
     // Sem o resultado da busca, monta a tarefa com a última foto.
     const base: ILicitacaoResultado = item || {
       chave: acomp.chaveEdital,
-      score: 0,
+      // -1 = aderência desconhecida (não veio da busca)
+      score: -1,
       motivos: [],
       numero: acomp.numero,
       orgao: acomp.orgao,

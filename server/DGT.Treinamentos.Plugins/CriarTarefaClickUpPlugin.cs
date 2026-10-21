@@ -36,6 +36,7 @@ namespace DGT.Treinamentos.Plugins
     //     "status": "análise",                 (coluna onde a tarefa nasce)
     //     "tags": ["licitação"],               (somadas às do portal: modalidade, UF)
     //     "campos": {                          (opcional: campos personalizados da lista)
+    //       "orgaoMunicipio": "...", "dataPregao": "...", "resumo": "...", "parecer": "...",
     //       "orgao": "<id do campo>", "municipio": "...", "uf": "...",
     //       "modalidade": "...", "numero": "...", "valorEstimado": "...",
     //       "abertura": "...", "encerramento": "...", "compatibilidade": "...",
@@ -185,6 +186,7 @@ namespace DGT.Treinamentos.Plugins
 
             // Campos personalizados mapeados na configuração.
             var valores = payload["campos"] as JObject ?? new JObject();
+            CompletarValores(valores, payload);
             var personalizados = new JArray();
             foreach (var mapa in _campos.Properties())
             {
@@ -195,11 +197,19 @@ namespace DGT.Treinamentos.Plugins
                 {
                     continue;
                 }
-                personalizados.Add(new JObject
+                var campo = new JObject
                 {
                     ["id"] = idCampo,
                     ["value"] = valor.Type == JTokenType.String ? (JToken)Mascarar((string)valor) : valor
-                });
+                };
+
+                // Campos de data: mostra também a hora.
+                if (mapa.Name == "abertura" || mapa.Name == "encerramento" || mapa.Name == "dataPregao")
+                {
+                    campo["value_options"] = new JObject { ["time"] = true };
+                }
+
+                personalizados.Add(campo);
             }
             if (personalizados.Count > 0)
             {
@@ -301,6 +311,46 @@ namespace DGT.Treinamentos.Plugins
                     ["url"] = url,
                     ["existente"] = false
                 }.ToString(Formatting.None);
+            }
+        }
+
+        // Preenche os campos que o portal não mandou, a partir dos outros
+        // (assim os campos não ficam vazios se o portal for de uma
+        // versão anterior).
+        private static void CompletarValores(JObject v, JObject payload)
+        {
+            string Texto(string chave) => ((string)v[chave] ?? string.Empty).Trim();
+
+            if (Texto("orgaoMunicipio").Length == 0 && Texto("orgao").Length > 0)
+            {
+                var local = Texto("municipio") + (Texto("uf").Length > 0 ? "/" + Texto("uf") : string.Empty);
+                v["orgaoMunicipio"] = Texto("orgao") + (local.Length > 0 ? " — " + local : string.Empty);
+            }
+
+            var encerramento = v["encerramento"];
+            if ((v["dataPregao"] == null || v["dataPregao"].Type == JTokenType.Null) &&
+                encerramento != null && encerramento.Type != JTokenType.Null)
+            {
+                v["dataPregao"] = encerramento.DeepClone();
+            }
+
+            if (Texto("resumo").Length == 0)
+            {
+                var descricao = ((string)payload["descricao"] ?? string.Empty)
+                    .Replace("**", string.Empty)
+                    .Replace("> ", string.Empty)
+                    .Trim();
+                if (descricao.Length > 0)
+                {
+                    v["resumo"] = descricao.Length > 3000 ? descricao.Substring(0, 3000) + "…" : descricao;
+                }
+            }
+
+            // Aderência 0 ou negativa = desconhecida (tarefa criada fora da busca).
+            var aderencia = (int?)v["aderencia"];
+            if (aderencia.HasValue && aderencia.Value <= 0)
+            {
+                v["aderencia"] = null;
             }
         }
 

@@ -4369,6 +4369,24 @@ export class DataverseService {
         'Vigente'
       );
 
+    // Revisões canceladas (retorno pelo administrador) não são
+    // pendências. A opção "Cancelada" pode ainda não existir no
+    // ambiente: nesse caso o filtro simplesmente não é aplicado.
+    let filtroCancelada = '';
+
+    try {
+      const cancelada =
+        await this.getChoiceOptionValue(
+          'dgt_documentorevisao',
+          'dgt_status',
+          'Cancelada'
+        );
+
+      filtroCancelada = ` and dgt_status ne ${cancelada}`;
+    } catch {
+      filtroCancelada = '';
+    }
+
     return this.get(
       `${entitySet}?$select=` +
       [
@@ -4383,7 +4401,7 @@ export class DataverseService {
         '_dgt_documento_value',
         '_dgt_responsavel_value'
       ].join(',') +
-      `&$filter=dgt_status ne ${vigente} or dgt_status eq null` +
+      `&$filter=(dgt_status ne ${vigente}${filtroCancelada}) or dgt_status eq null` +
       '&$orderby=modifiedon asc' +
       '&$top=500'
     );

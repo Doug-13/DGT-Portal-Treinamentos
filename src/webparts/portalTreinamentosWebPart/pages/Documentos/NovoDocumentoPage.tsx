@@ -1,6 +1,12 @@
 import * as React from 'react';
 
 import {
+  ehNomeAreaGeral,
+  idsAreasGerais,
+  limparIdArea
+} from '../../utils/areaGeral';
+
+import {
   IAreaAdmin,
   IUsuarioAreaAdmin
 } from '../../services/AreaAdminService';
@@ -502,18 +508,59 @@ const NovoDocumentoPage:
       React.useState('');
 
     // Processos da área escolhida + processos ainda sem área.
+    // Áreas "Geral": os processos delas valem para todas as áreas.
+    const areasGerais =
+      React.useMemo(
+        () => idsAreasGerais(props.areas),
+        [
+          props.areas
+        ]
+      );
+
+    const processoDaAreaGeral = (
+      processo: { areaId?: string; areaNome?: string }
+    ): boolean =>
+      areasGerais.indexOf(limparIdArea(processo.areaId)) >= 0 ||
+      ehNomeAreaGeral(processo.areaNome);
+
+    // Processos oferecidos para a área escolhida: os da própria área,
+    // os da área Geral e os sem área. Ordem: própria área primeiro.
     const processosDisponiveis =
       React.useMemo(
-        () =>
-          dadosProcessos.processos.filter(
-            processo =>
-              !processo.areaId ||
-              !areaId ||
-              processo.areaId === areaId
-          ),
+        () => {
+
+          const area =
+            limparIdArea(areaId);
+
+          const peso = (
+            processo: { areaId?: string; areaNome?: string }
+          ): number =>
+            area && limparIdArea(processo.areaId) === area
+              ? 0
+              : processoDaAreaGeral(processo)
+                ? 1
+                : 2;
+
+          return dadosProcessos.processos
+            .filter(
+              processo =>
+                !processo.areaId ||
+                !area ||
+                limparIdArea(processo.areaId) === area ||
+                processoDaAreaGeral(processo)
+            )
+            .slice()
+            .sort(
+              (a, b) =>
+                peso(a) - peso(b) ||
+                (a.codigo || a.nome).localeCompare(b.codigo || b.nome, 'pt-BR')
+            );
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [
           dadosProcessos.processos,
-          areaId
+          areaId,
+          areasGerais
         ]
       );
 
@@ -546,6 +593,36 @@ const NovoDocumentoPage:
         ? publicada.versao
         : undefined;
     };
+
+    // Processos da lista que ainda não têm fluxo publicado: aparecem,
+    // mas não podem ser escolhidos (o documento não teria fluxo para
+    // seguir).
+    const processosSemFluxo =
+      dadosProcessos.carregando
+        ? []
+        : processosDisponiveis.filter(
+          processo => !versaoPublicada(processo.id)
+        );
+
+    // Segurança: se o processo escolhido perdeu o fluxo publicado
+    // (ex.: recarga dos dados), desfaz a escolha.
+    React.useEffect(
+      () => {
+        if (
+          processoId &&
+          !dadosProcessos.carregando &&
+          !versaoPublicada(processoId)
+        ) {
+          setProcessoId('');
+        }
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [
+        processoId,
+        dadosProcessos.carregando,
+        dadosProcessos.fluxosPorProcesso
+      ]
+    );
 
     // --------------------------------------------------------
     // Gestor da área: é o responsável pelo documento (dono). Quem
@@ -679,6 +756,22 @@ const NovoDocumentoPage:
         ) {
           setErroLocal(
             'Selecione o arquivo do documento.'
+          );
+
+          return;
+        }
+
+        if (
+          usarProcessos &&
+          processoId &&
+          !versaoPublicada(processoId)
+        ) {
+          const processo =
+            processosDisponiveis.find(item => item.id === processoId);
+
+          setErroLocal(
+            `O processo "${processo ? `${processo.codigo ? `${processo.codigo} — ` : ''}${processo.nome}` : processoId}" ainda não tem fluxo publicado. ` +
+            'Publique o fluxo no módulo Processos ou escolha "Nenhum (vincular depois)".'
           );
 
           return;
@@ -1279,10 +1372,24 @@ const NovoDocumentoPage:
                               <option
                                 key={processo.id}
                                 value={processo.id}
+                                // Sem fluxo publicado: aparece, mas não
+                                // pode ser escolhido.
+                                disabled={!versao}
+                                title={
+                                  versao
+                                    ? undefined
+                                    : 'Publique o fluxo deste processo no módulo Processos para poder escolhê-lo.'
+                                }
                               >
                                 {processo.codigo ? `${processo.codigo} — ` : ''}
                                 {processo.nome}
-                                {versao ? ` · fluxo v${versao}` : ' · sem fluxo publicado'}
+                                {
+                                  // Indica de onde vem o processo quando não é da área escolhida.
+                                  areaId && limparIdArea(processo.areaId) !== limparIdArea(areaId)
+                                    ? (processoDaAreaGeral(processo) ? ' · Geral' : !processo.areaId ? ' · sem área' : '')
+                                    : ''
+                                }
+                                {versao ? ` · fluxo v${versao}` : ' · sem fluxo publicado (indisponível)'}
                               </option>
                             );
                           }
@@ -1301,17 +1408,43 @@ const NovoDocumentoPage:
                         !processoId
                           ? (
                             areaId
-                              ? 'Mostrando os processos da área selecionada e os processos sem área.'
+                              ? 'Mostrando os processos da área selecionada, os da área Geral (valem para todas as áreas) e os sem área.'
                               : 'Selecione a área para ver os processos dela.'
                           )
-                          : versaoPublicada(processoId)
-                            ? `A revisão deste documento seguirá o fluxo v${versaoPublicada(processoId)} do processo.`
-                            : 'Este processo ainda não tem fluxo publicado. O documento fica vinculado e passa a seguir o fluxo quando ele for publicado.'
+                          : `A revisão deste documento seguirá o fluxo v${versaoPublicada(processoId) || ''} do processo.`
                       }
                       <br />
                       {dadosProcessos.local ? 'Modo de teste: o vínculo fica salvo apenas neste navegador.' : ''}
                     </div>
                   </div>
+
+                  {
+                    processosSemFluxo.length > 0 && (
+                      <div
+                        role="note"
+                        style={{
+                          marginTop: '10px',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #485CC7',
+                          background: '#E8EAF8',
+                          color: '#202A44',
+                          fontSize: '12px',
+                          lineHeight: 1.5
+                        }}
+                      >
+                        <strong>! {processosSemFluxo.length === 1 ? 'Processo indisponível' : `${processosSemFluxo.length} processos indisponíveis`}:</strong>{' '}
+                        {
+                          processosSemFluxo
+                            .map(processo => processo.codigo || processo.nome)
+                            .join(', ')
+                        }
+                        {processosSemFluxo.length === 1 ? ' ainda não tem' : ' ainda não têm'} fluxo publicado e não{' '}
+                        {processosSemFluxo.length === 1 ? 'pode' : 'podem'} ser escolhido{processosSemFluxo.length === 1 ? '' : 's'}.
+                        O processo precisa ser publicado no módulo <strong>Processos</strong> antes de receber documentos.
+                      </div>
+                    )
+                  }
                 </div>
               )
             }

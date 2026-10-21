@@ -115,7 +115,35 @@ Sem CNPJ e sem o link do PNCP (que contém o CNPJ): o link da tarefa leva ao por
 }
 ```
 
-`campos` é opcional. Chaves aceitas: `orgao`, `municipio`, `uf`, `modalidade`, `numero`,
+**Configuração da DGT (lista Licitações 1400660000000168):**
+
+```json
+{
+  "listId": "1400660000000168",
+  "status": "análise",
+  "tags": ["licitação"],
+  "campos": {
+    "orgaoMunicipio": "7a4d5c1b-684b-4d84-b473-b29659eba50e",
+    "valorEstimado": "8797dff0-135a-475d-97bc-287ffbb92e2b",
+    "abertura": "f431fe4d-89d4-4d58-8610-d8f6dad6838a",
+    "encerramento": "b75ef732-05ec-4472-82ae-f3c433bdad5b",
+    "dataPregao": "f60f786d-fa24-4720-8bfa-d477485be8b2",
+    "aderencia": "2f364748-0cb1-4b95-8fa2-6ce502a4ed00",
+    "compatibilidade": "113821ea-9d51-45c3-818f-337e907e5b05",
+    "parecer": "656ebcaa-3ff6-469a-8b66-d2c70c61951a",
+    "resumo": "78f83369-4ac9-443d-a26e-d3eaeaf8c06f"
+  }
+}
+```
+
+Desfecho, Resultado Pregão, Atos ocorridos e Link Sharepoint ficam com o analista e o
+fluxo LIC01.
+
+O campo **ID PNCP** não é preenchido pelo portal: o número de controle do PNCP contém o
+CNPJ do órgão (regra da DGT). A duplicidade é evitada pelo portal (uma tarefa por edital,
+guardada em `dgt_clickuptarefaid`).
+
+`campos` é opcional. Chaves aceitas: `orgaoMunicipio`, `dataPregao` (data), `resumo`, `parecer`, `orgao`, `municipio`, `uf`, `modalidade`, `numero`,
 `valorEstimado` (moeda/número), `abertura` e `encerramento` (data), `compatibilidade` e
 `aderencia` (número), `plataforma`, `linkPortal` (texto/URL). O id de cada campo aparece em
 ClickUp → lista → **Campos personalizados** → "…" do campo → **Copiar ID**.

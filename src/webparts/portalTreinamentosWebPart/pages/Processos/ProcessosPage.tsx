@@ -34,6 +34,12 @@ import {
   useProcessos
 } from '../../hooks/useProcessos';
 
+import TransferirDocumentosModal from './TransferirDocumentosModal';
+
+import {
+  ehAdministrador
+} from '../../services/DocumentoVisibilidade';
+
 import ProcessoFluxoEditor from
   './ProcessoFluxoEditor';
 
@@ -293,6 +299,16 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
   const [erroAcao, setErroAcao] =
     React.useState<string>('');
 
+  // Transferência de documentos entre processos: só administrador
+  // (global ou do módulo Documentos) e só com Dataverse.
+  const podeTransferir =
+    ehAdministrador(contexto) && !!dataverseService && !dados.local;
+
+  const [
+    transferirAberto,
+    setTransferirAberto
+  ] = React.useState(false);
+
   const tratarErro = (
     error: unknown
   ): void => {
@@ -479,7 +495,52 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
             )
             : (
               <section style={estiloCartao}>
-                <div style={estiloBarraSecao}>Documentos deste processo</div>
+                <div style={{ ...estiloBarraSecao, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span>Documentos deste processo</span>
+                  {
+                    podeTransferir && vinculosProcesso.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTransferirAberto(true)}
+                        title="Leva os documentos (e as revisões em andamento, na mesma etapa) para outro processo."
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #FFFFFF',
+                          background: 'transparent',
+                          color: '#FFFFFF',
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          letterSpacing: 0,
+                          textTransform: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ⇄ Transferir documentos para outro processo
+                      </button>
+                    )
+                  }
+                </div>
+
+                {
+                  transferirAberto && dataverseService && (
+                    <TransferirDocumentosModal
+                      dataverseService={dataverseService}
+                      origem={processoSelecionado}
+                      processos={dados.processos}
+                      fluxosPorProcesso={dados.fluxosPorProcesso}
+                      vinculos={dados.vinculos}
+                      documentos={documentos}
+                      usuario={{ id: contexto ? contexto.usuarioId : '', nome: contexto ? contexto.nome : '' }}
+                      onFechar={alterou => {
+                        setTransferirAberto(false);
+                        if (alterou) {
+                          dados.recarregar(true).catch(tratarErro);
+                        }
+                      }}
+                    />
+                  )
+                }
 
                 {
                   podeEditar && (
@@ -489,6 +550,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                         <select
                           id="vincular-documento"
                           value={documentoParaVincular}
+                          disabled={!resumo.publicado}
                           onChange={evento => setDocumentoParaVincular(evento.target.value)}
                           style={estiloEntrada}
                         >
@@ -506,17 +568,41 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                       </div>
                       <button
                         type="button"
-                        disabled={!documentoParaVincular}
+                        disabled={!documentoParaVincular || !resumo.publicado}
                         onClick={() => {
                           setErroAcao('');
+                          // Processo sem fluxo publicado não recebe documentos.
+                          if (!resumo.publicado) {
+                            return;
+                          }
                           dados.vincularDocumento(documentoParaVincular, processoSelecionado.id)
                             .then(() => setDocumentoParaVincular(''))
                             .catch(tratarErro);
                         }}
-                        style={estiloBotao(true, !documentoParaVincular)}
+                        style={estiloBotao(true, !documentoParaVincular || !resumo.publicado)}
                       >
                         Vincular{teste}
                       </button>
+                      {
+                        !resumo.publicado && (
+                          <div
+                            role="alert"
+                            style={{
+                              flexBasis: '100%',
+                              padding: '9px 12px',
+                              borderRadius: '8px',
+                              border: '1px solid #485CC7',
+                              background: '#E8EAF8',
+                              color: '#202A44',
+                              fontSize: '12.5px',
+                              lineHeight: 1.5
+                            }}
+                          >
+                            <strong>! Processo sem fluxo publicado.</strong> Publique o fluxo deste processo
+                            antes de vincular documentos a ele.
+                          </div>
+                        )
+                      }
                     </div>
                   )
                 }

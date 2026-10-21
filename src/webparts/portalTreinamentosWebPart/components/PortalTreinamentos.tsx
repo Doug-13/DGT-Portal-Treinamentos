@@ -1202,7 +1202,28 @@ const gestaoAreas =
                       ],
 
                     imagemUrl:
-                      item?.imagemUrl
+                      item?.imagemUrl,
+
+                    // Revisão em que foi treinado (gravada na
+                    // conclusão) e data de conclusão — a revisão
+                    // vigente é preenchida logo abaixo.
+                    revisaoTreinada:
+                      obterTexto(
+                        a,
+                        [
+                          'dgt_revisaotreinada'
+                        ],
+                        ''
+                      ) || undefined,
+
+                    dataConclusaoIso:
+                      obterTexto(
+                        a,
+                        [
+                          'dgt_dataconclusao'
+                        ],
+                        ''
+                      ) || undefined
                   };
                 }
               );
@@ -1520,6 +1541,67 @@ const gestaoAreas =
               console.warn(
                 '[Treinamentos] Não foi possível calcular o progresso pelos módulos:',
                 erroProgresso
+              );
+            }
+
+            // ==================================================
+            // REVISÃO DO TREINAMENTO NO CARD
+            // ==================================================
+            // Vigente = maior revisão (Rev.00 se nunca revisado).
+            // Concluído sem revisão gravada: a vigente na data da
+            // conclusão (mesma regra do certificado). Se a tabela de
+            // revisões não existir, o card simplesmente não mostra.
+
+            try {
+
+              const revisoesTreinamentos =
+                await new TreinamentoRevisaoService(
+                  dataverseService
+                ).listarPorTreinamento(
+                  treinamentosUsuario.map(
+                    t => t.id
+                  )
+                );
+
+              treinamentosUsuario.forEach(
+                t => {
+
+                  const lista =
+                    revisoesTreinamentos[
+                      t.id
+                        .replace(
+                          /[{}]/g,
+                          ''
+                        )
+                        .toLowerCase()
+                    ] ||
+                    [];
+
+                  t.revisaoAtual =
+                    lista.length > 0
+                      ? lista[0].rotulo
+                      : 'Rev.00';
+
+                  if (
+                    t.status ===
+                      'Concluído' &&
+                    !t.revisaoTreinada
+                  ) {
+                    t.revisaoTreinada =
+                      revisaoNaData(
+                        lista,
+                        t.dataConclusaoIso ||
+                        ''
+                      );
+                  }
+                }
+              );
+
+            } catch (erroRevisoesTreinamentos) {
+
+              console.warn(
+                '[Treinamentos] Revisões do treinamento indisponíveis:',
+                erroRevisoesTreinamentos
               );
             }
 

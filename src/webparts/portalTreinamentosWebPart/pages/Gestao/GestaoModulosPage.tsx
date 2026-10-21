@@ -14,6 +14,42 @@ import PageHeader from
 import FluxoTreinamentoEtapas from
   '../../components/common/FluxoTreinamentoEtapas';
 
+import {
+  SPHttpClient
+} from '@microsoft/sp-http';
+
+import {
+  BIBLIOTECA_MIDIAS,
+  MidiaTreinamentoService,
+  validarArquivoMidia
+} from '../../services/MidiaTreinamentoService';
+
+import {
+  arquivoDoZip,
+  ehZip,
+  lerZip
+} from '../../utils/lerZip';
+
+import {
+  extrairReferenciasMidia,
+  normalizarNomeMidia,
+  substituirReferenciasMidia
+} from '../../utils/midiasImportacao';
+
+import ImagensImportacaoPainel from
+  './ImagensImportacaoPainel';
+
+import MidiasTreinamentoModal from
+  './MidiasTreinamentoModal';
+
+import {
+  MidiaGestaoService
+} from '../../services/MidiaGestaoService';
+
+import {
+  SharePointDocumentoService
+} from '../../services/sharepoint/SharePointDocumentoService';
+
 import ModuloConteudosEditor from
   './ModuloConteudosEditor';
 
@@ -48,6 +84,17 @@ export interface IGestaoModulosPageProps {
   // Opcional: habilita "Configurar pergunta" nas perguntas rápidas.
   dataverseService?:
     DataverseService;
+
+  // Opcionais: habilitam o envio de imagens pelo portal nos
+  // conteúdos do tipo Imagem (biblioteca Midias de Treinamento).
+  spHttpClient?:
+    SPHttpClient;
+
+  siteUrl?:
+    string;
+
+  usuarioEmail?:
+    string;
 
   treinamentos:
     ITreinamentoAdmin[];
@@ -343,6 +390,25 @@ const GestaoModulosPage:
       setConfirmandoImportacao
     ] =
       React.useState(false);
+
+    // Imagens pedidas pelo JSON ("midia:arquivo.png"): arquivos
+    // fornecidos (chave = nome normalizado) e avisos da leitura.
+    const [
+      arquivosMidiaImportacao,
+      setArquivosMidiaImportacao
+    ] =
+      React.useState<Record<string, File>>({});
+
+    const [
+      avisosMidiaImportacao,
+      setAvisosMidiaImportacao
+    ] =
+      React.useState<string[]>([]);
+
+    // Imagens já enviadas nesta importação (se a gravação falhar e o
+    // usuário tentar de novo, não envia a mesma imagem duas vezes).
+    const urlsMidiaEnviadas =
+      React.useRef<Record<string, string>>({});
 
     const [
       erroPreviaImportacao,
@@ -842,6 +908,42 @@ const GestaoModulosPage:
         false
       );
 
+    // Módulos do treinamento para a tela de mídias (lista estável).
+    const modulosParaMidias =
+      React.useMemo(
+        () => props.modulos.map(modulo => ({ id: modulo.id, titulo: modulo.titulo })),
+        [props.modulos]
+      );
+
+    // Envio de imagens pelo portal (só quando há SharePoint e Dataverse).
+    const servicoMidias =
+      React.useMemo(
+        () =>
+          props.dataverseService && props.spHttpClient && props.siteUrl
+            ? new MidiaTreinamentoService(
+              props.dataverseService,
+              new SharePointDocumentoService(props.spHttpClient, props.siteUrl, BIBLIOTECA_MIDIAS)
+            )
+            : undefined,
+        [props.dataverseService, props.spHttpClient, props.siteUrl]
+      );
+
+    // Gestão das imagens do treinamento (tela "Mídias do treinamento").
+    const servicoGestaoMidias =
+      React.useMemo(
+        () =>
+          props.dataverseService && servicoMidias
+            ? new MidiaGestaoService(props.dataverseService, servicoMidias)
+            : undefined,
+        [props.dataverseService, servicoMidias]
+      );
+
+    const [
+      mostrarMidias,
+      setMostrarMidias
+    ] =
+      React.useState(false);
+
     const treinamentoSelecionado =
       React.useMemo(
         () =>
@@ -855,6 +957,21 @@ const GestaoModulosPage:
           props.treinamentoId,
           props.treinamentos
         ]
+      );
+
+    // Objeto estável (a tela de mídias recarrega quando ele muda).
+    const treinamentoParaMidias =
+      React.useMemo(
+        () =>
+          treinamentoSelecionado
+            ? {
+              id: treinamentoSelecionado.id,
+              codigo: treinamentoSelecionado.codigo,
+              nome: treinamentoSelecionado.nome,
+              imagemUrl: treinamentoSelecionado.imagemUrl
+            }
+            : undefined,
+        [treinamentoSelecionado]
       );
 
     const abrirNovo =
@@ -1349,6 +1466,197 @@ const GestaoModulosPage:
       });
     };
 
+    // ==========================================================
+    // IMAGENS DO JSON (midia:arquivo.png)
+    // ==========================================================
+
+    const referenciasMidia =
+      React.useMemo(
+        () => extrairReferenciasMidia(previaImportacao || undefined),
+        [previaImportacao]
+      );
+
+    // Recebe imagens soltas e/ou .zip; guarda só as que o JSON pede.
+    const adicionarArquivosMidia = async (
+      arquivos: File[],
+      referencias = referenciasMidia
+    ): Promise<void> => {
+
+      const pedidas: Record<string, boolean> = {};
+      referencias.forEach(item => { pedidas[item.chave] = true; });
+
+      const novos: Record<string, File> = {};
+      const avisos: string[] = [];
+      const naoUsados: string[] = [];
+
+      const considerar = (arquivo: File): void => {
+
+        const chave = normalizarNomeMidia(arquivo.name);
+
+        if (!pedidas[chave]) {
+          if (!/\.json$/i.test(arquivo.name)) {
+            naoUsados.push(arquivo.name);
+          }
+          return;
+        }
+
+        const invalido = validarArquivoMidia(arquivo);
+
+        if (invalido) {
+          avisos.push(invalido);
+          return;
+        }
+
+        novos[chave] = arquivo;
+      };
+
+      for (const arquivo of arquivos) {
+        if (ehZip(arquivo)) {
+          try {
+            (await lerZip(arquivo)).forEach(item => considerar(arquivoDoZip(item)));
+          } catch (error) {
+            avisos.push(error instanceof Error ? error.message : `Não foi possível abrir "${arquivo.name}".`);
+          }
+        } else {
+          considerar(arquivo);
+        }
+      }
+
+      if (naoUsados.length > 0) {
+        avisos.push(
+          `${naoUsados.length} arquivo(s) não são usados no JSON e foram ignorados: ${naoUsados.slice(0, 5).join(', ')}${naoUsados.length > 5 ? '…' : ''}`
+        );
+      }
+
+      setArquivosMidiaImportacao(atual => ({ ...atual, ...novos }));
+      setAvisosMidiaImportacao(avisos);
+    };
+
+    const removerArquivoMidia = (chave: string): void => {
+      setArquivosMidiaImportacao(atual => {
+        const copia = { ...atual };
+        delete copia[chave];
+        return copia;
+      });
+      delete urlsMidiaEnviadas.current[chave];
+    };
+
+    // Abre o arquivo de importação: .json (como antes) ou .zip com o
+    // JSON e as imagens (as imagens já entram no painel).
+    const abrirArquivoImportacao = async (
+      arquivo: File
+    ): Promise<void> => {
+
+      let arquivoJson = arquivo;
+      let imagensDoZip: File[] = [];
+
+      if (ehZip(arquivo)) {
+
+        const itens = await lerZip(arquivo);
+
+        const jsons =
+          itens.filter(item => /\.json$/i.test(item.nome));
+
+        if (jsons.length === 0) {
+          throw new Error(`"${arquivo.name}" não contém nenhum arquivo .json.`);
+        }
+
+        if (jsons.length > 1) {
+          throw new Error(
+            `"${arquivo.name}" contém ${jsons.length} arquivos .json (${jsons.map(item => item.caminho).join(', ')}). ` +
+            'Deixe um JSON de módulos por zip.'
+          );
+        }
+
+        arquivoJson = arquivoDoZip(jsons[0]);
+
+        imagensDoZip =
+          itens
+            .filter(item => !/\.json$/i.test(item.nome))
+            .map(item => arquivoDoZip(item));
+      }
+
+      const dados =
+        await props.onAnalisarJson(arquivoJson);
+
+      urlsMidiaEnviadas.current = {};
+      setArquivosMidiaImportacao({});
+      setAvisosMidiaImportacao([]);
+      setPreviaImportacao(dados);
+
+      if (imagensDoZip.length > 0) {
+        await adicionarArquivosMidia(imagensDoZip, extrairReferenciasMidia(dados));
+      }
+    };
+
+    // Envia as imagens pedidas e devolve os dados com os endereços
+    // definitivos no lugar de "midia:".
+    const resolverMidiasDaImportacao = async (
+      dados: typeof previaImportacao
+    ): Promise<typeof previaImportacao> => {
+
+      if (!dados) {
+        return dados;
+      }
+
+      const referencias =
+        extrairReferenciasMidia(dados);
+
+      if (referencias.length === 0) {
+        return dados;
+      }
+
+      if (!servicoMidias || !treinamentoSelecionado) {
+        throw new Error(
+          'O JSON usa imagens "midia:", mas o envio de imagens não está disponível nesta tela. ' +
+          'Troque as referências por endereços do SharePoint ou remova os conteúdos de imagem.'
+        );
+      }
+
+      const faltando =
+        referencias.filter(item => !arquivosMidiaImportacao[item.chave]);
+
+      if (faltando.length > 0) {
+        throw new Error(
+          `Faltam ${faltando.length} imagem(ns) pedida(s) pelo JSON: ${faltando.map(item => item.nome).join(', ')}. ` +
+          'Adicione os arquivos no painel "Imagens do JSON". Nada foi gravado.'
+        );
+      }
+
+      const urls: Record<string, string> = {};
+
+      for (const referencia of referencias) {
+
+        const jaEnviada =
+          urlsMidiaEnviadas.current[referencia.chave];
+
+        if (jaEnviada) {
+          urls[referencia.chave] = jaEnviada;
+          continue;
+        }
+
+        try {
+          const midia =
+            await servicoMidias.enviar(
+              arquivosMidiaImportacao[referencia.chave],
+              { id: treinamentoSelecionado.id, codigo: treinamentoSelecionado.codigo },
+              props.usuarioEmail || ''
+            );
+
+          urls[referencia.chave] = midia.url;
+          Object.assign(urlsMidiaEnviadas.current, { [referencia.chave]: midia.url });
+
+        } catch (error) {
+          throw new Error(
+            `Não foi possível enviar a imagem "${referencia.nome}": ${error instanceof Error ? error.message : String(error)} ` +
+            'Os módulos ainda NÃO foram gravados; corrija e confirme de novo (as imagens já enviadas não serão enviadas outra vez).'
+          );
+        }
+      }
+
+      return substituirReferenciasMidia(dados, urls);
+    };
+
     const confirmarImportacao = async (): Promise<void> => {
 
       if (!previaImportacao) { return; }
@@ -1370,10 +1678,25 @@ const GestaoModulosPage:
         const primeiroModuloImportado =
           previaImportacao.modulos[0]?.titulo;
 
-        const mensagem = await props.onConfirmarImportacaoJson(previaImportacao);
+        // Imagens "midia:" são enviadas primeiro; só então os módulos
+        // são gravados, já com os endereços definitivos.
+        const dadosFinais =
+          await resolverMidiasDaImportacao(previaImportacao);
+
+        const mensagem = await props.onConfirmarImportacaoJson(
+          dadosFinais || previaImportacao
+        );
+
+        const quantidadeImagens =
+          Object.keys(urlsMidiaEnviadas.current).length;
+
+        urlsMidiaEnviadas.current = {};
+        setArquivosMidiaImportacao({});
+        setAvisosMidiaImportacao([]);
 
         setMensagemImportacao(
-          `${mensagem} Você já pode adicionar novos itens ao módulo abaixo.`
+          `${mensagem}${quantidadeImagens > 0 ? ` ${quantidadeImagens} imagem(ns) enviada(s) para Midias de Treinamento.` : ''} ` +
+          'Você já pode adicionar novos itens ao módulo abaixo.'
         );
         setErroImportacao('');
         setPreviaImportacao(null);
@@ -1485,6 +1808,19 @@ const GestaoModulosPage:
                 props.dataverseService
               }
 
+              midias={
+                servicoMidias && treinamentoSelecionado
+                  ? {
+                    servico: servicoMidias,
+                    treinamento: {
+                      id: treinamentoSelecionado.id,
+                      codigo: treinamentoSelecionado.codigo
+                    },
+                    enviadoPor: props.usuarioEmail || ''
+                  }
+                  : undefined
+              }
+
               carregando={
                 props.carregandoConteudosModulo
               }
@@ -1560,7 +1896,7 @@ const GestaoModulosPage:
             inputJsonRef
           }
           type="file"
-          accept=".json,application/json"
+          accept=".json,application/json,.zip"
           style={{
             display:
               'none'
@@ -1588,19 +1924,12 @@ const GestaoModulosPage:
               setErroImportacao('');
               setErroPreviaImportacao('');
 
-              void props
-                .onAnalisarJson(
-                  arquivo
-                )
-                .then(
-                  dados => {
-                    // Não grava nada ainda: apenas abre a prévia
-                    // para o usuário revisar e ajustar antes de salvar.
-                    setPreviaImportacao(
-                      dados
-                    );
-                  }
-                )
+              // Não grava nada ainda: apenas abre a prévia para o
+              // usuário revisar e ajustar antes de salvar. Aceita .json
+              // ou .zip (JSON + imagens).
+              void abrirArquivoImportacao(
+                arquivo
+              )
                 .catch(
                   (
                     error:
@@ -1671,7 +2000,45 @@ const GestaoModulosPage:
                 : '⬆ Importar módulos por JSON'
             }
           </button>
+
+          {
+            servicoGestaoMidias && (
+              <button
+                type="button"
+                disabled={!treinamentoSelecionado}
+                onClick={() => setMostrarMidias(true)}
+                title="Imagens do treinamento: onde são usadas, substituir, desativar e trazer imagens antigas para o portal."
+                style={{
+                  ...buttonSecondary,
+                  marginLeft: '8px',
+                  opacity: !treinamentoSelecionado ? .55 : 1
+                }}
+              >
+                🖼 Mídias do treinamento
+              </button>
+            )
+          }
         </div>
+
+        {
+          mostrarMidias &&
+          servicoGestaoMidias &&
+          treinamentoSelecionado && (
+            <MidiasTreinamentoModal
+              servico={servicoGestaoMidias}
+              treinamento={treinamentoParaMidias || { id: treinamentoSelecionado.id, codigo: treinamentoSelecionado.codigo }}
+              modulos={modulosParaMidias}
+              enviadoPor={props.usuarioEmail || ''}
+              onFechar={alterou => {
+                setMostrarMidias(false);
+                if (alterou && props.treinamentoId) {
+                  props.onSelecionarTreinamento(props.treinamentoId)
+                    .catch((error: unknown) => console.error(error));
+                }
+              }}
+            />
+          )
+        }
 
         {
           mensagemImportacao &&
@@ -3233,6 +3600,18 @@ const GestaoModulosPage:
                   {erroPreviaImportacao}
                 </div>
               )}
+
+              <ImagensImportacaoPainel
+                referencias={referenciasMidia}
+                arquivos={arquivosMidiaImportacao}
+                envioDisponivel={!!servicoMidias && !!treinamentoSelecionado}
+                processando={confirmandoImportacao}
+                avisos={avisosMidiaImportacao}
+                onAdicionarArquivos={arquivos => {
+                  adicionarArquivosMidia(arquivos).catch((error: unknown) => console.error(error));
+                }}
+                onRemover={removerArquivoMidia}
+              />
 
               {previaImportacao.modulos.map((modulo, indiceModulo) => (
                 <div

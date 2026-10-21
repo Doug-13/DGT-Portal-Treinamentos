@@ -583,6 +583,108 @@ export class SharePointDocumentoService {
         this.biblioteca
     };
   }
+
+  // ==========================================================
+  // ENVIO GENÉRICO PARA UMA PASTA DA BIBLIOTECA
+  //
+  // Usado pelas mídias de treinamento: cria as pastas que faltarem e
+  // envia o arquivo com o nome informado, SEM sobrescrever (se já
+  // existir um arquivo com o mesmo nome, o SharePoint recusa).
+  // ==========================================================
+
+  public async enviarArquivoEmPasta(
+    pastas: string[],
+    nomeArquivo: string,
+    arquivo: File
+  ): Promise<IUploadDocumentoResultado> {
+
+    if (!arquivo) {
+      throw new Error('Selecione o arquivo.');
+    }
+
+    if (!nomeArquivo.trim()) {
+      throw new Error('Nome do arquivo não informado para o upload.');
+    }
+
+    const root =
+      await this.obterRootFolder();
+
+    let pastaAtual =
+      root;
+
+    for (const pasta of pastas) {
+
+      const segmento =
+        limparSegmento(pasta);
+
+      if (!segmento) {
+        continue;
+      }
+
+      pastaAtual =
+        `${pastaAtual}/${segmento}`;
+
+      await this.garantirPasta(
+        pastaAtual
+      );
+    }
+
+    const nomeSeguro =
+      limparSegmento(nomeArquivo);
+
+    const uploadUrl =
+      `${this.siteUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${escaparOData(pastaAtual)}')` +
+      `/Files/AddUsingPath(decodedurl='${escaparOData(nomeSeguro)}',overwrite=false)`;
+
+    const conteudo =
+      await lerArquivo(
+        arquivo
+      );
+
+    const response: SPHttpClientResponse =
+      await this.client.post(
+        uploadUrl,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            Accept: 'application/json;odata=nometadata',
+            'Content-Type': 'application/octet-stream'
+          },
+          body: conteudo as unknown as string
+        }
+      );
+
+    if (!response.ok) {
+
+      const detalhe =
+        await response.text();
+
+      throw new Error(
+        `Não foi possível enviar o arquivo ao SharePoint. ${response.status}. ${detalhe}`
+      );
+    }
+
+    const enviado =
+      (await response.json()) as IUploadResponse;
+
+    const serverRelativeUrl =
+      enviado.ServerRelativeUrl ||
+      `${pastaAtual}/${nomeSeguro}`;
+
+    // Endereço direto e codificado (espaços viram %20), pronto para
+    // ser usado numa <img>.
+    const arquivoUrl =
+      serverRelativeUrl.indexOf('http') === 0
+        ? serverRelativeUrl
+        : `${this.siteUrl.split('/sites/')[0]}${encodeURI(serverRelativeUrl)}`;
+
+    return {
+      arquivoUrl,
+      serverRelativeUrl,
+      nomeArquivo: enviado.Name || nomeSeguro,
+      biblioteca: this.biblioteca
+    };
+  }
 }
 
 

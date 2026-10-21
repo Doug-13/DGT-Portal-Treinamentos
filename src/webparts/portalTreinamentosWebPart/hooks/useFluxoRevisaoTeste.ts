@@ -36,8 +36,17 @@ import {
   calcularPrazoRevisao,
   calcularProximaRevisao,
   estagioRevisao,
-  obterRevisaoEmAndamento
+  obterRevisaoEmAndamento,
+  obterRevisaoVigente,
+  revisaoCancelada,
+  STATUS_REVISAO_CANCELADA
 } from '../services/DocumentoRevisaoFluxoService';
+
+import {
+  CHAVE_ARQUIVO_ANTERIOR,
+  IResultadoRetorno,
+  retornarUmPasso as simularRetornoUmPasso
+} from '../services/fluxo/FluxoEngine';
 
 import {
   compararRevisoes,
@@ -169,6 +178,11 @@ export interface IUseFluxoRevisaoTeste {
   avisoProcessos: string;
   revisaoAlvo?: IRevisaoAlvoFluxo;
   processos: IProcesso[];
+
+  // Versão publicada do fluxo de cada processo (id → versão). Processo
+  // fora do mapa = sem fluxo publicado = não pode ser escolhido.
+  fluxosPublicados: Record<string, number>;
+
   vinculos: IDocumentoProcessoVinculo[];
   processoAtual?: IProcesso;
   definicao?: IFluxoDefinicao;
@@ -182,6 +196,13 @@ export interface IUseFluxoRevisaoTeste {
   selecionarAtor: (chave: string) => void;
   vincularProcesso: (processoId: string) => Promise<void>;
   escolherPrincipal: (processoId: string) => Promise<void>;
+
+  // ---- Retorno de UM passo (somente administrador) ----
+  // true = o usuário pode voltar a revisão uma etapa.
+  podeRetornar: boolean;
+  // Prévia (simulação, nada gravado) do que o retorno faria.
+  previaRetorno?: IResultadoRetorno;
+  retornarUmPasso: (justificativa: string) => Promise<boolean>;
   executar: (
     acaoChave: string,
     comentario: string,
@@ -308,6 +329,9 @@ export const useFluxoRevisaoTeste = (
   const [vinculos, setVinculos] =
     React.useState<IDocumentoProcessoVinculo[]>([]);
 
+  const [fluxosPublicados, setFluxosPublicados] =
+    React.useState<Record<string, number>>({});
+
   // Autor da revisão = quem a criou (dgt_usuario), ver AutorRevisaoService.
   const [autorId, setAutorId] =
     React.useState<string | undefined>(undefined);
@@ -371,6 +395,7 @@ export const useFluxoRevisaoTeste = (
         if (!local) {
           const ultima =
             (revisoes || [])
+              .filter(item => !revisaoCancelada(item))
               .slice()
               .sort((a, b) => compararRevisoes(b.revisao, a.revisao))[0];
           return ultima
@@ -587,6 +612,13 @@ export const useFluxoRevisaoTeste = (
           acoes.indexOf('removerArquivoRevisao') >= 0 &&
           revisaoEmAndamento.arquivoUrl
         ) {
+          // Guarda o endereço removido no estado do fluxo: se um
+          // administrador voltar um passo, o arquivo é restaurado.
+          Object.assign(
+            novaInstancia.valores,
+            { [CHAVE_ARQUIVO_ANTERIOR]: revisaoEmAndamento.arquivoUrl }
+          );
+
           await dataverseService.atualizarRegistro(
             'dgt_documentorevisao',
             revisaoEmAndamento.id,
@@ -992,12 +1024,87 @@ export const useFluxoRevisaoTeste = (
       await carregar();
     };
 
+  // Versão publicada de cada processo — só quando a aba mostra a
+  // escolha de processo (evita leituras desnecessárias no resto).
+  React.useEffect(
+    () => {
+
+      if (
+        situacao !== 'semProcesso' &&
+        situacao !== 'escolherPrincipal'
+      ) {
+        return;
+      }
+
+      let cancelado = false;
+
+      const mapa: Record<string, number> = {};
+
+      Promise.all(
+        processos.map(
+          async processo => {
+            try {
+              const publicada =
+                await persistencia.catalogo.versaoPublicada(processo.id);
+
+              if (publicada) {
+                mapa[processo.id] = publicada.versao;
+              }
+            } catch (error) {
+              console.error(error);
+            }
+          }
+        )
+      )
+        .then(
+          () => {
+            if (!cancelado) {
+              setFluxosPublicados(mapa);
+            }
+          }
+        )
+        .catch((error: unknown) => console.error(error));
+
+      return () => {
+        cancelado = true;
+      };
+    },
+    [situacao, processos, persistencia]
+  );
+
+  // Só processo com fluxo publicado pode governar a revisão.
+  const exigirFluxoPublicado =
+    async (
+      processoId: string
+    ): Promise<boolean> => {
+
+      const publicada =
+        await persistencia.catalogo.versaoPublicada(processoId);
+
+      if (!publicada) {
+        const processo =
+          processos.find(item => item.id === processoId);
+
+        setErro(
+          `O processo “${processo ? processo.nome : processoId}” ainda não tem fluxo publicado. ` +
+          'Publique o fluxo no módulo Processos antes de vincular documentos a ele.'
+        );
+        return false;
+      }
+
+      return true;
+    };
+
   const vincularProcesso =
     async (
       processoId: string
     ): Promise<void> => {
 
       if (!documento) {
+        return;
+      }
+
+      if (!(await exigirFluxoPublicado(processoId))) {
         return;
       }
 
@@ -1025,6 +1132,10 @@ export const useFluxoRevisaoTeste = (
         return;
       }
 
+      if (!(await exigirFluxoPublicado(processoId))) {
+        return;
+      }
+
       try {
         await persistencia.processos.definirPrincipal(documento.id, processoId, vinculos);
       } catch (error) {
@@ -1033,6 +1144,266 @@ export const useFluxoRevisaoTeste = (
       }
 
       await carregar(true);
+    };
+
+  // ==========================================================
+  // RETORNO DE UM PASSO (somente administrador)
+  // ==========================================================
+
+  const revisaoVigente =
+    React.useMemo(
+      () => obterRevisaoVigente(revisoes || []),
+      [revisoes]
+    );
+
+  const nomeAdministrador =
+    `${contexto?.nome || contexto?.email || 'Administrador'} (Administrador)`;
+
+  const podeRetornar =
+    ehAdministrador(contexto, moduloDoFluxo) &&
+    !!revisaoAlvo &&
+    !revisaoAlvo.somenteConsulta &&
+    !!instancia &&
+    instancia.status === 'emAndamento' &&
+    !!definicao;
+
+  // Cancelar a revisão (voltar para a vigente) só no Dataverse e só
+  // quando existe revisão vigente.
+  const permitirCancelarRevisao =
+    !local &&
+    !!revisaoVigente &&
+    !!revisaoEmAndamento;
+
+  const previaRetorno: IResultadoRetorno | undefined =
+    React.useMemo(
+      () =>
+        podeRetornar && instancia && definicao
+          ? simularRetornoUmPasso(
+            definicao,
+            instancia,
+            {
+              ator: { id: '', nome: nomeAdministrador, papeisTeste: [] },
+              justificativa: 'prévia',
+              permitirCancelarRevisao,
+              revisaoVigente: revisaoVigente ? revisaoVigente.revisao : undefined
+            }
+          )
+          : undefined,
+      [podeRetornar, instancia, definicao, nomeAdministrador, permitirCancelarRevisao, revisaoVigente]
+    );
+
+  const retornarUmPasso =
+    async (
+      justificativa: string
+    ): Promise<boolean> => {
+
+      if (!podeRetornar || !revisaoAlvo || !previaRetorno || !previaRetorno.ok) {
+        setErrosAcao(previaRetorno ? previaRetorno.erros : ['Retorno não disponível.']);
+        return false;
+      }
+
+      setProcessando(true);
+      setErrosAcao([]);
+      setAvisos([]);
+
+      try {
+
+        // Cancelar a revisão exige a opção "Cancelada" em dgt_status.
+        // Confere ANTES de gravar qualquer coisa.
+        if (previaRetorno.modo === 'revisao' && dataverseService) {
+          try {
+            await dataverseService.getChoiceOptionValue(
+              'dgt_documentorevisao',
+              'dgt_status',
+              STATUS_REVISAO_CANCELADA
+            );
+          } catch {
+            setErrosAcao([
+              'Para voltar à revisão vigente, o status "Cancelada" precisa existir na coluna Status da tabela Revisão do Documento. ' +
+              'Rode o script scripts/dataverse/adicionar-status-cancelada-revisao.ps1 e tente novamente. Nada foi alterado.'
+            ]);
+            return false;
+          }
+        }
+
+        // Cancelamento: o status "Cancelada" é gravado ANTES do estado do
+        // fluxo. Se o fluxo não puder ser gravado, o status volta ao que
+        // era — a revisão nunca fica cancelada pela metade.
+        const statusOriginal =
+          (revisaoEmAndamento && revisaoEmAndamento.status) || 'Elaboração';
+
+        const cancelandoRevisao =
+          previaRetorno.modo === 'revisao' &&
+          !local &&
+          !!dataverseService &&
+          !!revisaoEmAndamento;
+
+        const desfazerCancelamento = async (): Promise<void> => {
+          if (cancelandoRevisao && dataverseService && revisaoEmAndamento) {
+            try {
+              await dataverseService.alterarStatusDocumentoRevisao(revisaoEmAndamento.id, statusOriginal);
+            } catch (error) {
+              console.error('Não foi possível desfazer o status Cancelada:', error);
+            }
+          }
+        };
+
+        if (cancelandoRevisao && dataverseService && revisaoEmAndamento) {
+          await dataverseService.alterarStatusDocumentoRevisao(
+            revisaoEmAndamento.id,
+            STATUS_REVISAO_CANCELADA
+          );
+        }
+
+        let resultado: IResultadoRetorno;
+
+        try {
+          resultado =
+          await servico.retornarUmPasso(
+            revisaoAlvo.id,
+            {
+              ator: {
+                id: contexto?.usuarioId || 'usuario-atual',
+                nome: nomeAdministrador,
+                papeisTeste: []
+              },
+              justificativa,
+              // Só cancela se a prévia mostrada ao usuário também era
+              // cancelamento (protege contra mudança no meio-tempo).
+              permitirCancelarRevisao: permitirCancelarRevisao && previaRetorno.modo === 'revisao',
+              revisaoVigente: revisaoVigente ? revisaoVigente.revisao : undefined,
+              modoEsperado: previaRetorno.modo,
+              destinoEsperadoId: previaRetorno.destinoId
+            },
+            contextoExecucao(definicao)
+          );
+        } catch (error) {
+          await desfazerCancelamento();
+          throw error;
+        }
+
+        if (!resultado.ok || !resultado.instancia) {
+          await desfazerCancelamento();
+          setErrosAcao(
+            resultado.erros.length > 0
+              ? resultado.erros
+              : ['Não foi possível voltar a etapa.']
+          );
+          return false;
+        }
+
+        const avisosRetorno: string[] =
+          (resultado.avisos || []).slice();
+
+        if (!local && dataverseService && revisaoEmAndamento && documento) {
+
+          if (resultado.modo !== 'revisao') {
+
+            const alteracoes: Record<string, unknown> = {};
+
+            if (resultado.rotuloRestaurado) {
+              alteracoes.dgt_revisao = resultado.rotuloRestaurado;
+              alteracoes.dgt_name =
+                `${documento.codigo} - ${resultado.rotuloRestaurado}`.substring(0, 100);
+            }
+
+            if (resultado.arquivoRestaurarUrl) {
+              alteracoes.dgt_arquivourl = resultado.arquivoRestaurarUrl;
+            }
+
+            if (Object.keys(alteracoes).length > 0) {
+              try {
+                await dataverseService.atualizarRegistro(
+                  'dgt_documentorevisao',
+                  revisaoEmAndamento.id,
+                  alteracoes
+                );
+              } catch (error) {
+                console.error(error);
+                avisosRetorno.push(
+                  'A etapa foi retornada, mas o número/arquivo da revisão não pôde ser restaurado. Confira a revisão.'
+                );
+              }
+            }
+
+            if (resultado.arquivoRemovidoNoTrecho && !resultado.arquivoRestaurarUrl) {
+              avisosRetorno.push(
+                'O arquivo tinha sido removido pelo evento de revisão e não pôde ser restaurado automaticamente. ' +
+                'Anexe-o novamente (o anterior continua no SharePoint e no Histórico).'
+              );
+            }
+
+            const definicaoAtual =
+              await servico.definicaoDaInstancia(resultado.instancia);
+
+            if (definicaoAtual) {
+              try {
+                await atualizarStatusDocumento(definicaoAtual, resultado.instancia);
+              } catch (error) {
+                console.error(error);
+                avisosRetorno.push('O status do documento não pôde ser atualizado.');
+              }
+            }
+          }
+
+          // Histórico do documento: sempre marcado como alteração do
+          // administrador, com a justificativa.
+          const avisoHistorico =
+            await new DocumentoHistoricoService(dataverseService)
+              .registrarSemInterromper({
+                documentoId: documento.id,
+                tipo: 'OUTRO',
+                titulo:
+                  resultado.modo === 'revisao'
+                    ? `Revisão ${revisaoEmAndamento.revisao} cancelada (alterado por administrador)`
+                    : `Etapa retornada (alterado por administrador)`,
+                descricao:
+                  resultado.modo === 'revisao'
+                    ? `Retorno de "${resultado.etapaOrigem}" para ${resultado.etapaDestino}. ` +
+                      `O documento volta para a revisão vigente. Justificativa: ${justificativa.trim()}`
+                    : `Retorno de "${resultado.etapaOrigem}" para "${resultado.etapaDestino}".` +
+                      (resultado.rotuloRestaurado ? ` Número da revisão: ${resultado.rotuloAnterior} → ${resultado.rotuloRestaurado}.` : '') +
+                      ` Justificativa: ${justificativa.trim()}`,
+                revisao: revisaoEmAndamento,
+                statusAnterior: revisaoEmAndamento.status,
+                statusNovo:
+                  resultado.modo === 'revisao'
+                    ? STATUS_REVISAO_CANCELADA
+                    : (resultado.statusDestino || undefined),
+                motivo: justificativa.trim(),
+                usuarioId: contexto ? contexto.usuarioId : undefined,
+                usuarioNome: nomeAdministrador
+              });
+
+          if (avisoHistorico) {
+            avisosRetorno.push(avisoHistorico);
+          }
+        }
+
+        setInstancia(resultado.instancia);
+        setAvisos(avisosRetorno);
+
+        if (!local && onRevisaoAlterada) {
+          await onRevisaoAlterada();
+        }
+
+        return true;
+
+      } catch (error) {
+
+        console.error(error);
+
+        setErrosAcao([
+          (error as { codigo?: string }).codigo === 'CONFLITO'
+            ? (error as Error).message
+            : `Erro ao voltar a etapa: ${error instanceof Error ? error.message : String(error)}`
+        ]);
+
+        return false;
+
+      } finally {
+        setProcessando(false);
+      }
     };
 
   // Quem pode executar a etapa atual.
@@ -1065,6 +1436,7 @@ export const useFluxoRevisaoTeste = (
     avisoProcessos,
     revisaoAlvo,
     processos,
+    fluxosPublicados,
     vinculos: documento
       ? vinculosDoDocumento(documento.id, vinculos)
       : [],
@@ -1081,6 +1453,9 @@ export const useFluxoRevisaoTeste = (
     },
     vincularProcesso,
     escolherPrincipal,
+    podeRetornar,
+    previaRetorno,
+    retornarUmPasso,
     executar,
     reiniciar,
     recarregar: () => carregar(true),

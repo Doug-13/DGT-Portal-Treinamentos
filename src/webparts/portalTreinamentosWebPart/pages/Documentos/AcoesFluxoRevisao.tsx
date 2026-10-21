@@ -37,6 +37,10 @@ const AcoesFluxoRevisao:
     onIrParaElaboracao: () => void;
     onAbrirPublicar: () => void;
     onAbrirReprovar: () => void;
+    // Quando preenchido, o envio para aprovação fica bloqueado e o
+    // motivo aparece como alerta (ex.: processo sem fluxo publicado).
+    bloqueioEnvio?: string;
+    onAbrirProcesso?: () => void;
   }> = ({
     revisao,
     processando,
@@ -46,7 +50,9 @@ const AcoesFluxoRevisao:
     onEnviarAprovacao,
     onIrParaElaboracao,
     onAbrirPublicar,
-    onAbrirReprovar
+    onAbrirReprovar,
+    bloqueioEnvio,
+    onAbrirProcesso
   }) => {
 
     const estagio =
@@ -63,7 +69,7 @@ const AcoesFluxoRevisao:
           : 'pointer'
     };
 
-    if (estagio === 'vigente') {
+    if (estagio === 'vigente' || estagio === 'cancelada') {
       return null;
     }
 
@@ -102,25 +108,77 @@ const AcoesFluxoRevisao:
 
                   <button
                     type="button"
-                    disabled={processando || semArquivo}
+                    disabled={processando || semArquivo || !!bloqueioEnvio}
                     title={
-                      semArquivo
-                        ? 'Anexe o arquivo da revisão em "Editar revisão" antes de enviar.'
-                        : undefined
+                      bloqueioEnvio
+                        ? bloqueioEnvio
+                        : semArquivo
+                          ? 'Anexe o arquivo da revisão em "Editar revisão" antes de enviar.'
+                          : undefined
                     }
                     style={{
                       ...botaoAcao,
                       border: 0,
-                      background: semArquivo ? '#CBD5E1' : COR_AZUL,
+                      background: semArquivo || bloqueioEnvio ? '#CBD5E1' : COR_AZUL,
                       color: '#FFFFFF',
-                      cursor: processando || semArquivo ? 'not-allowed' : 'pointer'
+                      cursor: processando || semArquivo || bloqueioEnvio ? 'not-allowed' : 'pointer'
                     }}
-                    onClick={onEnviarAprovacao}
+                    onClick={() => {
+                      if (!bloqueioEnvio) {
+                        onEnviarAprovacao();
+                      }
+                    }}
                   >
                     Enviar para aprovação do Gestor →
                   </button>
 
                   {
+                    bloqueioEnvio &&
+                    (
+                      <div
+                        role="alert"
+                        style={{
+                          flexBasis: '100%',
+                          marginTop: '4px',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${COR_INDIGO}`,
+                          background: '#E8EAF8',
+                          color: COR_AZUL,
+                          fontSize: '12.5px',
+                          lineHeight: 1.5
+                        }}
+                      >
+                        <strong>! Envio bloqueado.</strong> {bloqueioEnvio}
+                        {
+                          onAbrirProcesso && (
+                            <>
+                              {' '}
+                              <button
+                                type="button"
+                                onClick={onAbrirProcesso}
+                                style={{
+                                  padding: 0,
+                                  border: 0,
+                                  background: 'transparent',
+                                  color: COR_INDIGO,
+                                  fontWeight: 700,
+                                  textDecoration: 'underline',
+                                  cursor: 'pointer',
+                                  fontSize: '12.5px'
+                                }}
+                              >
+                                Abrir o processo
+                              </button>
+                            </>
+                          )
+                        }
+                      </div>
+                    )
+                  }
+
+                  {
+                    !bloqueioEnvio &&
                     semArquivo &&
                     (
                       <span
