@@ -55,7 +55,7 @@ export interface IBpmnSnapshot {
 // Configuração de negócio de uma etapa (o que não está no desenho).
 export type IConfigElemento = Pick<
   IFluxoElemento,
-  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo'
+  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo' | 'permiteEditarDocumento'
 >;
 
 // Configuração de negócio de uma ligação.
@@ -238,7 +238,8 @@ export const configDoElemento = (
   tipoRevisao: elemento.tipoRevisao,
   retreinamentoAoPublicar: elemento.retreinamentoAoPublicar,
   removerArquivo: elemento.removerArquivo,
-  anexoArquivo: elemento.anexoArquivo
+  anexoArquivo: elemento.anexoArquivo,
+  permiteEditarDocumento: elemento.permiteEditarDocumento
 });
 
 export const configDaTransicao = (
@@ -577,6 +578,7 @@ export const montarDefinicao = (
           tipoRevisao: tipo === 'eventoRevisao' ? (config.tipoRevisao || 'revisao') : undefined,
           removerArquivo: tipo === 'eventoRevisao' && config.removerArquivo ? true : undefined,
           anexoArquivo: humana && config.anexoArquivo && config.anexoArquivo !== 'nao' ? config.anexoArquivo : undefined,
+          permiteEditarDocumento: humana && typeof config.permiteEditarDocumento === 'boolean' ? config.permiteEditarDocumento : undefined,
           posicao: mover({ x: forma.x, y: forma.y, largura: forma.largura, altura: forma.altura }),
           rotuloPosicao: forma.rotulo ? mover(forma.rotulo) : undefined
         };

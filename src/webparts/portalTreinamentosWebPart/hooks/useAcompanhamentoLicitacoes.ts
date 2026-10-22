@@ -48,7 +48,7 @@ export interface IUseAcompanhamentoLicitacoes {
   acompanhar: (item: ILicitacaoResultado) => Promise<IAcompanhamento | undefined>;
   // "Participar": acompanha (se preciso) e cria a tarefa no ClickUp.
   participar: (item: ILicitacaoResultado, contexto: IContextoTarefaClickUp) => Promise<void>;
-  criarTarefaClickUp: (acompanhamento: IAcompanhamento, item: ILicitacaoResultado | undefined, contexto: IContextoTarefaClickUp) => Promise<void>;
+  criarTarefaClickUp: (acompanhamento: IAcompanhamento, item: ILicitacaoResultado | undefined, contexto: IContextoTarefaClickUp, atualizarCampos?: boolean) => Promise<void>;
   parar: (acompanhamento: IAcompanhamento) => Promise<void>;
   marcarLidas: (acompanhamentoId: string) => void;
   verificarAgora: () => Promise<void>;
@@ -198,12 +198,13 @@ export const useAcompanhamentoLicitacoes = (
   const criarTarefaClickUp = React.useCallback(async (
     acomp: IAcompanhamento,
     item: ILicitacaoResultado | undefined,
-    contexto: IContextoTarefaClickUp
+    contexto: IContextoTarefaClickUp,
+    atualizarCampos: boolean = false
   ): Promise<void> => {
     if (!servico) {
       return;
     }
-    if (acomp.clickupUrl) {
+    if (acomp.clickupUrl && !atualizarCampos) {
       setMensagem('Este edital já tem tarefa no ClickUp.');
       return;
     }
@@ -226,8 +227,19 @@ export const useAcompanhamentoLicitacoes = (
     };
     setProcessandoChave(acomp.chaveEdital);
     try {
-      const r = await servico.criarTarefaClickUp(base, acomp, contexto);
-      setMensagem(r.existente ? 'Este edital já tinha tarefa no ClickUp.' : 'Tarefa de acompanhamento criada no ClickUp.');
+      const r = await servico.criarTarefaClickUp(base, acomp, contexto, atualizarCampos);
+      const campos = r.camposPreenchidos !== undefined
+        ? ` ${r.camposPreenchidos} campo(s) preenchido(s).`
+        : '';
+      const falhas = r.camposComErro.length > 0
+        ? ` Não preenchidos: ${r.camposComErro.join(' · ')}.`
+        : '';
+      setMensagem(
+        (atualizarCampos
+          ? 'Campos da tarefa no ClickUp atualizados.'
+          : r.existente ? 'Este edital já tinha tarefa no ClickUp.' : 'Tarefa de acompanhamento criada no ClickUp.') +
+        campos + falhas
+      );
       recarregar();
     } catch (falha) {
       setMensagem(`Não foi possível criar a tarefa no ClickUp: ${extrairMensagem(falha)}`);

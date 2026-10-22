@@ -4,7 +4,8 @@ import {
 
 import {
   EnviarParaIa,
-  IRequisicaoIa
+  IRequisicaoIa,
+  IRespostaIa
 } from './provedoresIa';
 
 // ============================================================
@@ -20,11 +21,12 @@ import {
 export const criarEnviarParaIaDataverse = (
   dataverse: DataverseService
 ): EnviarParaIa =>
-  async (requisicao: IRequisicaoIa): Promise<string> => {
+  async (requisicao: IRequisicaoIa): Promise<IRespostaIa> => {
 
     try {
       const resultado = await dataverse.analisarLicitacaoIa({ ...requisicao });
-      return resultado.texto;
+      // "parada" vem do plugin (pode não existir em versões antigas).
+      return { texto: resultado.texto, parada: (resultado as { parada?: string }).parada };
     } catch (erro) {
       const bruto = erro instanceof Error ? erro.message : String(erro);
 

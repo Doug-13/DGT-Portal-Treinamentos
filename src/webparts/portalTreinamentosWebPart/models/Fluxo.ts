@@ -307,6 +307,13 @@ export interface IFluxoElemento {
   // etapa (ex.: Elaboração). Padrão = 'nao'.
   anexoArquivo?: AnexoArquivoEtapa;
 
+  // tarefaHumana: o arquivo da revisão pode ser ABERTO PARA EDIÇÃO
+  // nesta etapa ("Abrir documento" no Word/Excel online). Fora das
+  // etapas que permitem, só há pré-visualização (somente leitura).
+  // Não definido = padrão: só na etapa de Elaboração (status
+  // "Elaboração" ou a 1ª etapa do fluxo com status automático).
+  permiteEditarDocumento?: boolean;
+
   // tarefaHumana com status 'Vigente': retreinamento na publicação.
   //   'nao' (padrão) · 'sim' · 'etapa:<id>' = sim, se o fluxo passou
   //   por aquela etapa neste ciclo (ex.: "Revisar Treinamento").

@@ -771,6 +771,38 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           </div>
         </div>
 
+        <div style={{ marginTop: '12px' }}>
+          <label htmlFor="prop-editar-documento" style={estiloRotuloPainel}>Edição do documento nesta etapa</label>
+          <select
+            id="prop-editar-documento"
+            value={
+              config.permiteEditarDocumento === true
+                ? 'sim'
+                : config.permiteEditarDocumento === false
+                  ? 'nao'
+                  : 'padrao'
+            }
+            disabled={!editavel}
+            onChange={evento => alterar({
+              permiteEditarDocumento:
+                evento.target.value === 'sim'
+                  ? true
+                  : evento.target.value === 'nao'
+                    ? false
+                    : undefined
+            })}
+            style={estiloEntradaPainel}
+          >
+            <option value="padrao">Padrão (só na etapa de Elaboração)</option>
+            <option value="sim">Permite abrir o documento para edição</option>
+            <option value="nao">Não permite (somente visualização)</option>
+          </select>
+          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+            Controla o botão “Abrir documento” (edição no Office online). Nas etapas sem permissão, o documento
+            só pode ser pré-visualizado, sem edição — por exemplo, durante a aprovação.
+          </div>
+        </div>
+
         {
           config.statusDocumento === 'Vigente' && (
             <div style={{ marginTop: '10px', padding: '10px 12px', background: '#E7F6EC', border: '1px solid #107C10', borderRadius: '6px' }}>

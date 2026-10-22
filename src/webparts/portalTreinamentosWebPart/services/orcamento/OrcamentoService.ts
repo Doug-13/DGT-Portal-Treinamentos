@@ -255,6 +255,9 @@ const executarEmParalelo = async <T>(
 
 const GRAVACOES_SIMULTANEAS = 6;
 
+// Evento gravado quando a planilha recebe as contas novas do plano.
+export const EVENTO_PLANO_SINCRONIZADO = 'Plano 2027 sincronizado';
+
 // Linhas do modelo (Orcamento_DGT_AAAA.xlsx), na ordem da planilha,
 // todas zeradas. Com "grupos", só as contas desses grupos (contas
 // configuradas para a área).
@@ -868,6 +871,56 @@ export class OrcamentoService {
     return linhasDoModelo(planilhaId, gruposNaPlanilha)
       .filter(modelo => PLANO_CONTAS.some(conta => conta.grupo === modelo.grupo && conta.codigo === modelo.codigo && !!conta.pai))
       .filter(modelo => !linhas.some(linha => linha.grupo === modelo.grupo && linha.codigo === modelo.codigo));
+  }
+
+  // Uma vez por planilha: inclui TODAS as contas do plano Orçamento 2027
+  // que faltam (só dos grupos da área, quando configurados) — CSLL, IR,
+  // Lei do Bem, CBS, Amortização de projetos, ajuste do EBITDA,
+  // subitens… Registra o evento "Plano 2027 sincronizado"; depois disso
+  // só os subitens voltam sozinhos (linhas que o gestor remover não
+  // reaparecem).
+  public async sincronizarComPlano(
+    planilha: IPlanilhaOrcamento,
+    linhas: ILinhaOrcamento[],
+    grupos: string[] | undefined,
+    usuarioNome: string,
+    aoProgredir?: (feitas: number, total: number) => void
+  ): Promise<{ incluidas: number; falhas: string[] }> {
+
+    let jaSincronizada = false;
+    try {
+      jaSincronizada = (await this.listarEventos(planilha.id)).some(evento => evento.tipo === EVENTO_PLANO_SINCRONIZADO);
+    } catch {
+      jaSincronizada = false;
+    }
+
+    const novas =
+      jaSincronizada
+        ? this.subitensFaltantes(planilha.id, linhas)
+        : linhasDoModelo(planilha.id, grupos)
+          .filter(modelo => !linhas.some(linha => linha.grupo === modelo.grupo && linha.codigo === modelo.codigo));
+
+    let falhas: string[] = [];
+    if (novas.length > 0) {
+      const resultado =
+        await this.salvarAlteracoes(
+          planilha.id,
+          { novas, alteradas: [], removidas: [], equipeId: planilha.equipeId },
+          aoProgredir
+        );
+      falhas = resultado.falhas;
+    }
+
+    if (!jaSincronizada && falhas.length === 0) {
+      await this.registrarEvento(
+        planilha,
+        EVENTO_PLANO_SINCRONIZADO,
+        `${novas.length} conta(s) do plano Orçamento 2027 incluída(s) automaticamente.`,
+        usuarioNome
+      );
+    }
+
+    return { incluidas: novas.length - falhas.length, falhas };
   }
 
   public async incluirSubitensFaltantes(

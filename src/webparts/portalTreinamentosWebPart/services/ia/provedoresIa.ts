@@ -34,7 +34,9 @@ export interface IProvedorIa {
 }
 
 // Formato que a IA deve devolver (vai no prompt e é validado aqui).
-export const FORMATO_RESPOSTA_IA = `Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
+export const FORMATO_RESPOSTA_IA = `Responda SOMENTE com um JSON válido, sem texto antes ou depois e sem markdown.
+Seja conciso: no máximo 4 itens em cada lista, cada item com até 20 palavras. Use aspas duplas e não use aspas dentro dos textos.
+Formato:
 {
   "recomendacao": "Participar" | "NaoParticipar" | "Avaliar",
   "compatibilidade": número de 0 a 100 (o quanto o edital combina com a DGT: portfólio, critérios e histórico; 0 = nada a ver, 100 = totalmente aderente),
@@ -73,20 +75,80 @@ export const compatibilidadeEstimada = (
     ? confianca
     : Math.max(0, Math.min(100, 100 - confianca));
 
+// ------------------------------------------------------------
+// Leitura tolerante do JSON da IA
+// ------------------------------------------------------------
+// Aceita: ```json ... ```, texto antes/depois, aspas tipográficas,
+// vírgula sobrando e resposta CORTADA (quando o limite de tokens
+// acaba no meio): fecha textos, listas e chaves que ficaram abertos.
+
+const repararJsonCortado = (json: string): string => {
+  const pilha: string[] = [];
+  let emTexto = false;
+  let escape = false;
+
+  for (let i = 0; i < json.length; i++) {
+    const c = json.charAt(i);
+    if (emTexto) {
+      if (escape) { escape = false; } else if (c === '\\') { escape = true; } else if (c === '"') { emTexto = false; }
+      continue;
+    }
+    if (c === '"') { emTexto = true; }
+    else if (c === '{') { pilha.push('}'); }
+    else if (c === '[') { pilha.push(']'); }
+    else if (c === '}' || c === ']') { pilha.pop(); }
+  }
+
+  let reparado = json;
+  if (emTexto) {
+    reparado += '"';
+  }
+  // Remove o que ficou pela metade no fim: vírgula, dois-pontos ou
+  // uma chave sem valor ("campo":).
+  reparado = reparado
+    .replace(/,\s*$/, '')
+    .replace(/,?\s*"[^"]*"\s*:\s*$/, '')
+    .replace(/:\s*$/, ': null');
+
+  return reparado + pilha.reverse().join('');
+};
+
+export const lerJsonTolerante = (texto: string): Record<string, unknown> => {
+
+  const limpo = (texto || '')
+    .replace(/```json|```/gi, '')
+    .replace(/[\u201C\u201D]/g, '"')
+    .trim();
+
+  const inicio = limpo.indexOf('{');
+  if (inicio < 0) {
+    throw new Error('A IA não devolveu um JSON válido.');
+  }
+
+  const fim = limpo.lastIndexOf('}');
+  const candidatos = [
+    fim > inicio ? limpo.substring(inicio, fim + 1) : '',
+    repararJsonCortado(limpo.substring(inicio))
+  ].filter(c => c.length > 0);
+
+  for (const candidato of candidatos) {
+    try {
+      return JSON.parse(candidato.replace(/,\s*([}\]])/g, '$1')) as Record<string, unknown>;
+    } catch {
+      // tenta o próximo
+    }
+  }
+
+  console.warn('[IA Licitações] Resposta da IA não pôde ser lida:', limpo.substring(0, 800));
+  throw new Error('A IA não devolveu um JSON válido.');
+};
+
 // Lê a resposta da IA (aceita JSON cercado por ```json ... ```).
 export const interpretarRespostaIa = (
   texto: string
 ): Pick<IAnaliseIaLicitacao, 'recomendacao' | 'confianca' | 'compatibilidade' | 'resumo' | 'pontosFavoraveis' | 'riscos' | 'justificativaSugerida' | 'semelhantes'> => {
 
-  const limpo = (texto || '').replace(/```json|```/gi, '').trim();
-  const inicio = limpo.indexOf('{');
-  const fim = limpo.lastIndexOf('}');
-
-  if (inicio < 0 || fim <= inicio) {
-    throw new Error('A IA não devolveu um JSON válido.');
-  }
-
-  const dados = JSON.parse(limpo.substring(inicio, fim + 1)) as Record<string, unknown>;
+  const dados = lerJsonTolerante(texto);
   const confianca = Math.round(Number(dados.confianca));
   const recomendacao = recomendacaoValida(dados.recomendacao);
   const confiancaValida = isNaN(confianca) ? 50 : Math.max(0, Math.min(100, confianca));
@@ -213,7 +275,14 @@ export interface IRequisicaoIa {
 
 // Função que envia a requisição ao NOSSO serviço e devolve o texto
 // gerado pela IA. Implementada no web part (AadHttpClient).
-export type EnviarParaIa = (requisicao: IRequisicaoIa) => Promise<string>;
+// Texto gerado e, opcionalmente, o motivo de parada ("max_tokens" =
+// a resposta foi cortada pelo limite de tokens).
+export interface IRespostaIa {
+  texto: string;
+  parada?: string;
+}
+
+export type EnviarParaIa = (requisicao: IRequisicaoIa) => Promise<string | IRespostaIa>;
 
 export class ProvedorIaApi implements IProvedorIa {
 
@@ -229,16 +298,31 @@ export class ProvedorIaApi implements IProvedorIa {
     entrada: IEntradaAnaliseIa
   ): Promise<Omit<IAnaliseIaLicitacao, 'chaveEdital' | 'geradaEm'>> {
 
-    const texto = await this.enviar({
+    const resposta = await this.enviar({
       sistema: entrada.sistema,
       mensagem: entrada.mensagem,
       modelo: entrada.prompt.modeloIa || 'claude-sonnet-5-5',
       temperatura: entrada.prompt.temperatura,
-      maxTokens: entrada.prompt.maxTokens
+      // Mínimo de 2000: respostas menores costumam ser cortadas no meio.
+      maxTokens: Math.max(entrada.prompt.maxTokens || 0, 2000)
     });
 
+    const texto = typeof resposta === 'string' ? resposta : resposta.texto;
+    const parada = typeof resposta === 'string' ? undefined : resposta.parada;
+
+    let lido: ReturnType<typeof interpretarRespostaIa>;
+    try {
+      lido = interpretarRespostaIa(texto);
+    } catch (erro) {
+      throw new Error(
+        parada === 'max_tokens'
+          ? 'A resposta da IA foi cortada pelo limite de tokens. Aumente "Máx. tokens" em Configurar IA (sugestão: 3000).'
+          : erro instanceof Error ? erro.message : String(erro)
+      );
+    }
+
     return {
-      ...interpretarRespostaIa(texto),
+      ...lido,
       provedor: 'api',
       modeloIa: entrada.prompt.modeloIa,
       promptVersao: entrada.prompt.versao

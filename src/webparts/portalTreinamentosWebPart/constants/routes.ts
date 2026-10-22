@@ -26,6 +26,7 @@ export type Pagina =
   | 'catalogoTreinamentos'
   | 'testeTreinamento'
   | 'processos'
+  | 'fluxos'
 
   // Módulo Licitações (PNCP)
   | 'licitacoes'
@@ -69,6 +70,7 @@ export const ROTAS = {
   CATALOGO_TREINAMENTOS: 'catalogoTreinamentos',
   TESTE_TREINAMENTO: 'testeTreinamento',
   PROCESSOS: 'processos',
+  FLUXOS: 'fluxos',
   LICITACOES: 'licitacoes',
   LICITACOES_TESTE: 'licitacoesTeste',
   MEU_PERFIL: 'meuPerfil',

@@ -353,29 +353,30 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
         lista = await servico.carregarLinhas(encontrada.id);
       }
 
-      // Subitens da conta mãe (6.1.1.01.* → 4.1.4.01.01.018) que faltam
-      // em planilhas criadas antes deles: grava zerados.
-      if (
-        (encontrada.status === STATUS_PLANILHA.emPreenchimento || encontrada.status === STATUS_PLANILHA.devolvida) &&
-        servico.subitensFaltantes(encontrada.id, lista).length > 0
-      ) {
-        setProgresso('Incluindo os subitens da conta 4.1.4.01.01.018...');
+      // Contas novas do plano Orçamento 2027 (CSLL, IR, Lei do Bem, CBS,
+      // Amortização, ajuste do EBITDA, subitens da 4.1.4.01.01.018…) que
+      // faltam em planilhas criadas antes delas: grava zeradas, uma vez.
+      if (encontrada.status === STATUS_PLANILHA.emPreenchimento || encontrada.status === STATUS_PLANILHA.devolvida) {
         try {
-          const resultado =
-            await servico.incluirSubitensFaltantes(
+          const sincronizacao =
+            await servico.sincronizarComPlano(
               encontrada,
               lista,
-              (feitas, total) => setProgresso(`Incluindo os subitens da conta 4.1.4.01.01.018 (${feitas} de ${total})...`)
+              gruposDaArea(encontrada.areaId),
+              contexto.nome,
+              (feitas, total) => setProgresso(`Incluindo as contas novas do plano Orçamento 2027 (${feitas} de ${total})...`)
             );
-          if (resultado && resultado.falhas.length > 0) {
+          if (sincronizacao.falhas.length > 0) {
             setAlerta(
-              `${resultado.falhas.length} subitem(ns) não puderam ser incluídos. ` +
+              `${sincronizacao.falhas.length} conta(s) do plano não puderam ser incluídas. ` +
               'Use "+ Adicionar linha" > "Incluir as contas que faltam".'
             );
           }
-          lista = await servico.carregarLinhas(encontrada.id);
+          if (sincronizacao.incluidas > 0) {
+            lista = await servico.carregarLinhas(encontrada.id);
+          }
         } catch (falha) {
-          setAlerta(`Não foi possível incluir os subitens: ${explicarErro(falha)}`);
+          setAlerta(`Não foi possível incluir as contas novas do plano: ${explicarErro(falha)}`);
         }
       }
 

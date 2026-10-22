@@ -20,6 +20,7 @@ import {
 import {
   ITENS_DRE,
   calcularDre,
+  totalAnualDre,
   valoresComSinal
 } from '../../services/orcamento/dreOrcamento';
 
@@ -363,10 +364,11 @@ export const gerarCsvOrcamento = (
 
   const saida: string[] = [cabecalho.join(';')];
 
-  const linhaCsv = (grupo: string, codigo: string, conta: string, valores: number[]): string =>
+  // total: informado nas linhas de % (o % do ano não é a soma dos meses).
+  const linhaCsv = (grupo: string, codigo: string, conta: string, valores: number[], total?: number): string =>
     [CENARIO_ORCADO, grupo, codigo, conta].map(textoCsv)
       .concat(valores.map(numeroCsv))
-      .concat([numeroCsv(somar(valores))])
+      .concat([numeroCsv(total !== undefined ? total : somar(valores))])
       .join(';');
 
   // Na ordem da planilha: grupos (TOTAL + contas), seções, resultados
@@ -400,7 +402,13 @@ export const gerarCsvOrcamento = (
       }
       return;
     }
-    saida.push(linhaCsv(item.nome, '', item.tipo === 'percentual' ? '%' : 'RESULTADO', dre[item.id] || []));
+    saida.push(linhaCsv(
+      item.nome,
+      '',
+      item.tipo === 'percentual' ? '%' : 'RESULTADO',
+      dre[item.id] || [],
+      item.tipo === 'percentual' ? totalAnualDre(item.id, dre) : undefined
+    ));
   });
 
   // Grupos que não existem mais no plano.

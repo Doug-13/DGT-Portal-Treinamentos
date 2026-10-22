@@ -584,9 +584,21 @@ export class DocumentoRevisaoFluxoService {
     usuario: IUsuarioFluxo
   ): Promise<IResultadoFluxo> {
 
-    if (revisao.ativa) {
+    // Protege só a revisão PUBLICADA (status Vigente) e a cancelada.
+    // "ativa" (dgt_ativa) não serve aqui: toda revisão nasce ativa,
+    // inclusive as que estão em elaboração.
+    const estagio =
+      estagioRevisao(revisao.status);
+
+    if (estagio === 'vigente') {
       throw new Error(
         'A revisão vigente não pode ter o arquivo trocado. Crie uma nova revisão.'
+      );
+    }
+
+    if (estagio === 'cancelada') {
+      throw new Error(
+        'Esta revisão foi cancelada e não pode receber arquivo.'
       );
     }
 

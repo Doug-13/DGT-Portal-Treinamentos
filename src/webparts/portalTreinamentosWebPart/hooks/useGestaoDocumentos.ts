@@ -33,6 +33,11 @@ export interface IUseGestaoDocumentos {
   processando: boolean;
   erro: string;
 
+  // Relê a lista de documentos (ex.: depois de excluir um documento,
+  // para o código liberado voltar a ser sugerido).
+  recarregarDocumentos:
+    () => Promise<void>;
+
   selecionarDocumento:
     (documento: IDocumentoAdmin) => Promise<void>;
 
@@ -279,6 +284,14 @@ export const useGestaoDocumentos = (
               'Selecione o arquivo do documento.'
             );
           }
+
+          // 0) Código livre ANTES do arquivo: com sequencial digitado,
+          //    um código repetido sobrescreveria o arquivo de outro
+          //    documento na mesma pasta.
+          await service
+            .garantirCodigoDisponivel(
+              dados.codigo
+            );
 
           // 1) Arquivo PRIMEIRO: se o envio falhar, nada é criado no
           //    Dataverse (antes ficava um documento sem revisão).
@@ -735,6 +748,7 @@ export const useGestaoDocumentos = (
     processando,
     erro,
     selecionarDocumento,
+    recarregarDocumentos: carregarDocumentos,
     criarRevisao,
     enviarRevisaoParaRevisao,
     enviarRevisaoParaAprovacao,

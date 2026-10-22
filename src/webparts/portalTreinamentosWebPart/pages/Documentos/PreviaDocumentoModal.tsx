@@ -30,6 +30,9 @@ export interface IPreviaDocumentoModalProps {
   obsoleta?: boolean;
   // Revisão ainda não vigente → aviso de rascunho.
   rascunho?: boolean;
+  // false = sem "Abrir em nova aba" (revisão publicada ou etapa que
+  // não permite editar). Padrão: true (compatibilidade).
+  permitirAbrir?: boolean;
   onFechar: () => void;
 }
 
@@ -89,11 +92,16 @@ const siteDoArquivo = (
 const urlDaPrevia = (
   url: string,
   modo: ModoPrevia,
-  siteUrl?: string
+  siteUrl?: string,
+  somenteLeitura?: boolean
 ): string => {
 
   if (modo !== 'office') {
-    return url;
+    // PDF somente leitura: esconde a barra do visualizador do
+    // navegador (baixar/imprimir) no Edge e no Chrome.
+    return modo === 'iframe' && somenteLeitura && extensaoArquivo(url) === 'pdf'
+      ? `${url.split('#')[0]}#toolbar=0&navpanes=0`
+      : url;
   }
 
   let caminho = '';
@@ -123,6 +131,7 @@ const PreviaDocumentoModal:
     siteUrl,
     obsoleta,
     rascunho,
+    permitirAbrir = true,
     onFechar
   }) => {
 
@@ -176,7 +185,7 @@ const PreviaDocumentoModal:
       modoDaPrevia(url);
 
     const src =
-      urlDaPrevia(url, modo, siteUrl);
+      urlDaPrevia(url, modo, siteUrl, !permitirAbrir);
 
     const tipo =
       tipoDoArquivo(url);
@@ -250,22 +259,26 @@ const PreviaDocumentoModal:
             </div>
 
             <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-              <a
-                href={urlParaAbrir(url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  padding: '7px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(255,255,255,.6)',
-                  color: '#FFFFFF',
-                  fontSize: '12.5px',
-                  fontWeight: 700,
-                  textDecoration: 'none'
-                }}
-              >
-                Abrir em nova aba ↗
-              </a>
+              {
+                permitirAbrir && (
+                  <a
+                    href={urlParaAbrir(url)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      padding: '7px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255,255,255,.6)',
+                      color: '#FFFFFF',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      textDecoration: 'none'
+                    }}
+                  >
+                    Abrir em nova aba ↗
+                  </a>
+                )
+              }
 
               <button
                 type="button"

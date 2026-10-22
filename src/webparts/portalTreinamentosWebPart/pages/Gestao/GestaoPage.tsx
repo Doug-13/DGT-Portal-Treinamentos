@@ -1333,6 +1333,83 @@ const GestaoPage:
         ]
       );
 
+    // ---------------- Vincular TODOS os que estão fora do fluxo ----
+    // Mesma regra do botão de cada linha (ativo → documento já VIGENTE
+    // na revisão atual; inativo → Rev.00A em Elaboração), de uma vez.
+    const treinamentosForaDoFluxo =
+      controleService && controleCarregado
+        ? props.treinamentos.filter(item => !controleDe(item))
+        : [];
+
+    const [
+      vinculandoTodos,
+      setVinculandoTodos
+    ] =
+      React.useState(false);
+
+    const vincularTodosAoFluxo =
+      async (): Promise<void> => {
+
+        if (!controleService || treinamentosForaDoFluxo.length === 0) {
+          return;
+        }
+
+        const lista =
+          treinamentosForaDoFluxo.slice();
+
+        if (
+          !window.confirm(
+            `Vincular ${lista.length} treinamento(s) ao fluxo de treinamentos?\n\n` +
+            lista.map(item => `• ${item.codigo} — ${item.nome}${item.ativo ? ' (ativo: documento já vigente)' : ' (inativo: Rev.00A em Elaboração)'}`).join('\n')
+          )
+        ) {
+          return;
+        }
+
+        setVinculandoTodos(true);
+
+        const resultados: string[] = [];
+
+        try {
+          await controleService.verificarPreRequisitos();
+
+          for (const treinamento of lista) {
+
+            const revisao =
+              revisaoAtual[chaveTreinamento(treinamento.id)] || 'Rev.00';
+
+            try {
+              const resultado =
+                await controleService.garantirDocumentoControle(
+                  treinamento.id,
+                  { id: props.usuarioId || '', nome: props.usuarioNome || '' },
+                  treinamento.ativo
+                    ? { jaVigenteNaRevisao: revisao, exigirFluxo: true }
+                    : { exigirFluxo: true }
+                );
+
+              resultados.push(
+                `✓ ${treinamento.codigo}: ${resultado.criado ? 'vinculado' : 'vínculo conferido'}` +
+                (resultado.avisos.length > 0 ? ` (${resultado.avisos.join(' ')})` : '')
+              );
+            } catch (erroItem) {
+              resultados.push(
+                `! ${treinamento.codigo}: ${erroItem instanceof Error ? erroItem.message : String(erroItem)}`
+              );
+            }
+          }
+
+          await carregarControles();
+
+        } catch (error) {
+          resultados.push(error instanceof Error ? error.message : 'Não foi possível vincular os treinamentos.');
+        } finally {
+          setVinculandoTodos(false);
+        }
+
+        window.alert(resultados.join('\n'));
+      };
+
     const editarTreinamento =
       (
         treinamento:
@@ -1967,6 +2044,57 @@ const GestaoPage:
               {props.erro}
             </div>
           )}
+
+          {
+            // Aviso de treinamentos fora do fluxo, com vínculo em lote.
+            !props.carregando &&
+            treinamentosForaDoFluxo.length > 0 && (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                  marginBottom: '14px',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #485CC7',
+                  background: '#E8EAF8',
+                  color: DGT.azul,
+                  fontSize: '13px'
+                }}
+              >
+                <span style={{ flexGrow: 1 }}>
+                  <strong>
+                    {treinamentosForaDoFluxo.length} treinamento(s) fora do fluxo de treinamentos:
+                  </strong>{' '}
+                  {treinamentosForaDoFluxo.map(item => item.codigo).join(', ')}.
+                  {' '}Todo treinamento precisa de um documento de controle no fluxo.
+                </span>
+                <button
+                  type="button"
+                  disabled={vinculandoTodos || !!processandoControleId}
+                  onClick={() => {
+                    vincularTodosAoFluxo()
+                      .catch((error: unknown) => console.error(error));
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    border: 0,
+                    background: vinculandoTodos ? '#CBD5E1' : DGT.azul,
+                    color: '#FFFFFF',
+                    fontWeight: 700,
+                    fontSize: '12.5px',
+                    cursor: vinculandoTodos ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {vinculandoTodos ? 'Vinculando...' : `Vincular todos ao fluxo (${treinamentosForaDoFluxo.length})`}
+                </button>
+              </div>
+            )
+          }
 
           {props.carregando ? (
             <div

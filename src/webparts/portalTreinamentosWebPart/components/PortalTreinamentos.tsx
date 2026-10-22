@@ -1905,9 +1905,18 @@ const gestaoAreas =
               error
             );
           }
+
+          // Lista da Gestão (usada para sugerir o próximo código).
+          try {
+            await gestaoDocumentos.recarregarDocumentos();
+          } catch (error) {
+            console.error(error);
+          }
         },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [
-          documentoService
+          documentoService,
+          gestaoDocumentos.recarregarDocumentos
         ]
       );
 
@@ -4167,6 +4176,11 @@ const gestaoAreas =
                       pagina: 'processos',
                       label: 'Processos',
                       icon: 'workflow'
+                    },
+                    {
+                      pagina: 'fluxos',
+                      label: 'Fluxos',
+                      icon: 'settings'
                     }
                   ]}
                   paginaAtual={paginaAtual}

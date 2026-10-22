@@ -17,15 +17,35 @@ export interface INovidadeVersao {
   itens: INovidadeItem[];
 }
 
-export const VERSAO_PORTAL = "1.4.10";
+export const VERSAO_PORTAL = "1.4.12";
 
-export const VERSAO_SOLUCAO = "1.4.10.0";
+export const VERSAO_SOLUCAO = "1.4.12.0";
 
-export const DATA_BUILD = "2026-10-21T16:23:00.856Z";
+export const DATA_BUILD = "2026-10-22T17:51:13.958Z";
 
-export const COMMIT_BUILD = "69df193";
+export const COMMIT_BUILD = "ffb698b";
 
 export const NOVIDADES: INovidadeVersao[] = [
+  {
+    "versao": "1.4.12",
+    "data": "2026-10-22",
+    "itens": [
+      {
+        "tipo": "Melhoria",
+        "texto": "ajustes e correções internas."
+      }
+    ]
+  },
+  {
+    "versao": "1.4.11",
+    "data": "2026-10-21",
+    "itens": [
+      {
+        "tipo": "Melhoria",
+        "texto": "ajustes e correções internas."
+      }
+    ]
+  },
   {
     "versao": "1.4.10",
     "data": "2026-10-21",

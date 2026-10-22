@@ -74,7 +74,7 @@ export const PROMPT_PADRAO_LICITACOES: IPromptIa = {
   provedor: 'simulado',
   modeloIa: '',
   temperatura: 0.2,
-  maxTokens: 1200,
+  maxTokens: 3000,
   qtdHistorico: 15,
   analiseAutomatica: true,
   observacoes: 'Prompt padrão do portal (ainda não salvo no Dataverse).'

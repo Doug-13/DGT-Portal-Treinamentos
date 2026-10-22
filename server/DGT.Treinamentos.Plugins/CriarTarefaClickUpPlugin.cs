@@ -43,7 +43,8 @@ namespace DGT.Treinamentos.Plugins
     //       "aderencia": "...", "plataforma": "...", "linkPortal": "..."
     //     }
     //   }
-    //   Além da descrição, cria o checklist "Etapas da participação".
+    //   Campos personalizados: gravados um a um após criar a tarefa; com
+    //   "atualizarCampos": true, regrava os campos de uma tarefa existente.
     //
     // A descrição chega SEM CNPJ e SEM o link do PNCP; mesmo assim o
     // plugin mascara CNPJ/CPF de novo antes de enviar.
@@ -154,15 +155,27 @@ namespace DGT.Treinamentos.Plugins
                 throw new InvalidPluginExecutionException("Acompanhamento do edital não encontrado.");
             }
 
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+
+            // Valores dos campos personalizados (o que faltar é completado).
+            var valores = payload["campos"] as JObject ?? new JObject();
+            CompletarValores(valores, payload);
+
             var existenteId = acompanhamento.GetAttributeValue<string>("dgt_clickuptarefaid");
             if (!string.IsNullOrEmpty(existenteId))
             {
-                context.OutputParameters["ResultadoJson"] = new JObject
+                // "Atualizar campos": regrava os campos na tarefa que já existe.
+                var resultadoExistente = new JObject
                 {
                     ["id"] = existenteId,
                     ["url"] = acompanhamento.GetAttributeValue<string>("dgt_clickupurl") ?? string.Empty,
                     ["existente"] = true
-                }.ToString(Formatting.None);
+                };
+                if ((bool?)payload["atualizarCampos"] == true)
+                {
+                    PreencherCampos(existenteId, valores, resultadoExistente, tracing);
+                }
+                context.OutputParameters["ResultadoJson"] = resultadoExistente.ToString(Formatting.None);
                 return;
             }
 
@@ -184,38 +197,6 @@ namespace DGT.Treinamentos.Plugins
                 corpo["status"] = _status;
             }
 
-            // Campos personalizados mapeados na configuração.
-            var valores = payload["campos"] as JObject ?? new JObject();
-            CompletarValores(valores, payload);
-            var personalizados = new JArray();
-            foreach (var mapa in _campos.Properties())
-            {
-                var idCampo = ((string)mapa.Value ?? string.Empty).Trim();
-                var valor = valores[mapa.Name];
-                if (idCampo.Length == 0 || valor == null || valor.Type == JTokenType.Null ||
-                    (valor.Type == JTokenType.String && ((string)valor).Length == 0))
-                {
-                    continue;
-                }
-                var campo = new JObject
-                {
-                    ["id"] = idCampo,
-                    ["value"] = valor.Type == JTokenType.String ? (JToken)Mascarar((string)valor) : valor
-                };
-
-                // Campos de data: mostra também a hora.
-                if (mapa.Name == "abertura" || mapa.Name == "encerramento" || mapa.Name == "dataPregao")
-                {
-                    campo["value_options"] = new JObject { ["time"] = true };
-                }
-
-                personalizados.Add(campo);
-            }
-            if (personalizados.Count > 0)
-            {
-                corpo["custom_fields"] = personalizados;
-            }
-
             var dataLimite = (long?)payload["dataLimite"];
             if (dataLimite.HasValue && dataLimite.Value > 0)
             {
@@ -229,7 +210,10 @@ namespace DGT.Treinamentos.Plugins
                 corpo["priority"] = prioridade.Value;
             }
 
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            // Os campos personalizados são gravados UM A UM depois de criar a
+            // tarefa (POST /task/{id}/field/{campo}): o ClickUp ignora em
+            // silêncio campos que recusa na criação, e assim cada falha
+            // aparece com o motivo.
 
             using (var requisicao = new HttpRequestMessage(HttpMethod.Post, $"https://api.clickup.com/api/v2/list/{_listId}/task"))
             {
@@ -270,32 +254,18 @@ namespace DGT.Treinamentos.Plugins
                 var id = (string)tarefa["id"] ?? string.Empty;
                 var url = (string)tarefa["url"] ?? (id.Length > 0 ? $"https://app.clickup.com/t/{id}" : string.Empty);
 
-                // Checklist "Etapas da participação" (falha aqui não desfaz a tarefa).
-                var etapas = (payload["checklist"] as JArray ?? new JArray())
-                    .Select(t => Mascarar(((string)t ?? string.Empty).Trim()))
-                    .Where(t => t.Length > 0)
-                    .Take(20)
-                    .ToList();
-                if (id.Length > 0 && etapas.Count > 0)
+                // (Sem checklist: a DGT não usa checklist nessas tarefas.)
+
+                var resultadoNovo = new JObject
                 {
-                    try
-                    {
-                        var checklist = EnviarJson(HttpMethod.Post, $"https://api.clickup.com/api/v2/task/{id}/checklist",
-                            new JObject { ["name"] = "Etapas da participação" });
-                        var idChecklist = (string)checklist?.SelectToken("checklist.id");
-                        if (!string.IsNullOrEmpty(idChecklist))
-                        {
-                            foreach (var etapa in etapas)
-                            {
-                                EnviarJson(HttpMethod.Post, $"https://api.clickup.com/api/v2/checklist/{idChecklist}/checklist_item",
-                                    new JObject { ["name"] = etapa.Length > 250 ? etapa.Substring(0, 250) : etapa });
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        tracing.Trace("Checklist não criado na tarefa {0}: {1}", id, ex.Message);
-                    }
+                    ["id"] = id,
+                    ["url"] = url,
+                    ["existente"] = false
+                };
+
+                if (id.Length > 0)
+                {
+                    PreencherCampos(id, valores, resultadoNovo, tracing);
                 }
 
                 var atualizacao = new Entity(TabelaAcompanhamento, acompanhamento.Id);
@@ -305,13 +275,70 @@ namespace DGT.Treinamentos.Plugins
 
                 tracing.Trace("Tarefa {0} criada no ClickUp para o acompanhamento {1}.", id, acompanhamento.Id);
 
-                context.OutputParameters["ResultadoJson"] = new JObject
-                {
-                    ["id"] = id,
-                    ["url"] = url,
-                    ["existente"] = false
-                }.ToString(Formatting.None);
+                context.OutputParameters["ResultadoJson"] = resultadoNovo.ToString(Formatting.None);
             }
+        }
+
+        // Grava cada campo mapeado na configuração e devolve, no resultado,
+        // quantos foram preenchidos e quais falharam (com o motivo do ClickUp).
+        private void PreencherCampos(string idTarefa, JObject valores, JObject resultado, ITracingService tracing)
+        {
+            var preenchidos = 0;
+            var erros = new JArray();
+
+            foreach (var mapa in _campos.Properties())
+            {
+                var idCampo = ((string)mapa.Value ?? string.Empty).Trim();
+                var valor = valores[mapa.Name];
+
+                if (idCampo.Length == 0 || valor == null || valor.Type == JTokenType.Null ||
+                    (valor.Type == JTokenType.String && ((string)valor).Trim().Length == 0))
+                {
+                    continue;
+                }
+
+                var corpo = new JObject
+                {
+                    ["value"] = valor.Type == JTokenType.String ? (JToken)Mascarar((string)valor) : valor
+                };
+
+                // Datas com hora.
+                if (mapa.Name == "abertura" || mapa.Name == "encerramento" || mapa.Name == "dataPregao")
+                {
+                    corpo["value_options"] = new JObject { ["time"] = true };
+                }
+
+                try
+                {
+                    using (var requisicao = new HttpRequestMessage(HttpMethod.Post, $"https://api.clickup.com/api/v2/task/{idTarefa}/field/{idCampo}"))
+                    {
+                        requisicao.Headers.TryAddWithoutValidation("Authorization", _token);
+                        requisicao.Content = new StringContent(corpo.ToString(Formatting.None), Encoding.UTF8, "application/json");
+                        using (var resposta = Http.SendAsync(requisicao).GetAwaiter().GetResult())
+                        {
+                            if (resposta.IsSuccessStatusCode)
+                            {
+                                preenchidos++;
+                                continue;
+                            }
+                            var conteudo = resposta.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                            var motivo = string.Empty;
+                            try { motivo = (string)JObject.Parse(conteudo)["err"] ?? string.Empty; }
+                            catch (JsonException) { motivo = conteudo.Length > 150 ? conteudo.Substring(0, 150) : conteudo; }
+                            tracing.Trace("Campo {0} ({1}) recusado: {2} {3}", mapa.Name, idCampo, (int)resposta.StatusCode, motivo);
+                            erros.Add(new JObject { ["campo"] = mapa.Name, ["motivo"] = $"{(int)resposta.StatusCode} {motivo}".Trim() });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    tracing.Trace("Campo {0} não gravado: {1}", mapa.Name, ex.Message);
+                    erros.Add(new JObject { ["campo"] = mapa.Name, ["motivo"] = "falha de rede" });
+                }
+            }
+
+            resultado["camposPreenchidos"] = preenchidos;
+            resultado["camposComErro"] = erros;
         }
 
         // Preenche os campos que o portal não mandou, a partir dos outros

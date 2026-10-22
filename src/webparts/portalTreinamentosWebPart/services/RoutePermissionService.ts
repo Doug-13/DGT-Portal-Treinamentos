@@ -113,6 +113,7 @@ const regras:
     // Módulo Processos (modo de teste). Todos consultam; somente
     // Editor e Administrador alteram fluxos (controlado na tela).
     { rota: 'processos', perfis: TODOS },
+    { rota: 'fluxos', perfis: TODOS },
 
     // Acompanhamento de pessoas (Editor, Gestor e Administrador; o
     // recorte pelas áreas de cada um é aplicado nos dados).

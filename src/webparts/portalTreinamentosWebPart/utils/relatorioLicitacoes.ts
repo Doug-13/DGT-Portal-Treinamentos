@@ -43,7 +43,8 @@ const lista = (
 const MODO: { [modo: string]: string } = {
   '1': 'Assunto exato',
   '2': 'Qualquer palavra do assunto',
-  '3': 'Assunto + palavras relacionadas'
+  '3': 'Assunto + palavras relacionadas',
+  '4': 'Edital específico (número ou nome)'
 };
 
 export const montarHtmlRelatorio = (

@@ -2658,6 +2658,7 @@ export class DataverseService {
     modelo?: string;
     tokensEntrada?: number;
     tokensSaida?: number;
+    parada?: string;
   }> {
 
     const resposta =
@@ -2690,6 +2691,7 @@ export class DataverseService {
       modelo?: string;
       tokensEntrada?: number;
       tokensSaida?: number;
+      parada?: string;
     };
   }
 

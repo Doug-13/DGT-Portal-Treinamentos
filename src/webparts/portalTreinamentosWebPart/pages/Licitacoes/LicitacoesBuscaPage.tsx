@@ -40,6 +40,13 @@ import {
   AnaliseIaBloco
 } from './AnaliseIaLicitacao';
 
+import SugestoesTermos, {
+  SUGESTOES_ASSUNTO,
+  SUGESTOES_EXCLUIR,
+  SUGESTOES_RELACIONADAS,
+  listaDoTexto
+} from './SugestoesTermos';
+
 import ConfigurarIaModal from
   './ConfigurarIaModal';
 
@@ -65,6 +72,13 @@ import {
 
 import AcompanhamentoPainel from
   './AcompanhamentoPainel';
+
+import NaoParticiparPainel from
+  './NaoParticiparPainel';
+
+import {
+  IParecerLicitacao
+} from '../../models/Licitacao';
 
 import {
   converterValor,
@@ -457,7 +471,9 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     contexto ? contexto.nome : ''
   );
 
-  const [aba, setAba] = React.useState<'busca' | 'acompanhamento'>('busca');
+  const [aba, setAba] = React.useState<'busca' | 'acompanhamento' | 'naoParticipar'>('busca');
+
+  const naoParticipar = pareceres.atuais.filter(p => p.decisao === 'NaoParticipar');
 
   // Administrador global ou administrador do módulo Licitações.
   const ehAdministrador = !!contexto && (contexto.perfil === 'Administrador' || (contexto.modulosAdministrados || []).indexOf('licitacoes') >= 0);
@@ -511,6 +527,19 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     valor: IFormulario[K]
   ): void => {
     setForm(atual => ({ ...atual, [chave]: valor }));
+  };
+
+  // "Buscar este edital" (aba Não participar): busca pelo número.
+  const buscarEditalDoParecer = (parecer: IParecerLicitacao): void => {
+    const uf = (parecer.local || '').split('/')[1];
+    setForm(atual => ({
+      ...atual,
+      assunto: parecer.numero && parecer.numero !== '-' ? parecer.numero : parecer.orgao,
+      modoBusca: '4',
+      uf: uf ? uf.trim() : atual.uf
+    }));
+    setAba('busca');
+    window.scrollTo(0, 0);
   };
 
   const alternarModalidade = (codigo: number): void => {
@@ -671,8 +700,9 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       <div role="tablist" style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${COR.cinzaClaro}`, marginBottom: 14 }}>
         {([
           ['busca', 'Buscar editais'],
-          ['acompanhamento', `Acompanhamento${acompanhamento.acompanhamentos.length ? ` (${acompanhamento.acompanhamentos.length})` : ''}`]
-        ] as Array<['busca' | 'acompanhamento', string]>).map(([id, rotulo]) => (
+          ['acompanhamento', `Acompanhamento${acompanhamento.acompanhamentos.length ? ` (${acompanhamento.acompanhamentos.length})` : ''}`],
+          ['naoParticipar', `Não participar${naoParticipar.length ? ` (${naoParticipar.length})` : ''}`]
+        ] as Array<['busca' | 'acompanhamento' | 'naoParticipar', string]>).map(([id, rotulo]) => (
           <button
             key={id}
             type="button"
@@ -709,14 +739,33 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         <AcompanhamentoPainel
           acompanhamento={acompanhamento}
           ehAdministrador={ehAdministrador}
-          onCriarTarefaClickUp={acomp => {
+          onCriarTarefaClickUp={(acomp, atualizar) => {
             const parecer = pareceres.atuais.find(p => p.chaveEdital === acomp.chaveEdital);
             const item = busca.resultados.find(r => acompanhamento.obter(r) === acomp);
+            const estadoIa = item ? ia.estadoDe(item) : undefined;
             acompanhamento.criarTarefaClickUp(acomp, item, {
               justificativa: parecer ? parecer.justificativa : '',
-              responsavel: parecer ? parecer.responsavel : (contexto ? contexto.nome : '')
-            }).catch(() => undefined);
+              responsavel: parecer ? parecer.responsavel : (contexto ? contexto.nome : ''),
+              analiseIa: estadoIa && estadoIa.analise
+                ? {
+                  recomendacao: estadoIa.analise.recomendacao === 'Participar'
+                    ? 'Participar'
+                    : estadoIa.analise.recomendacao === 'NaoParticipar' ? 'Não participar' : 'Avaliar com cuidado',
+                  compatibilidade: estadoIa.analise.compatibilidade,
+                  resumo: estadoIa.analise.resumo
+                }
+                : undefined
+            }, !!atualizar).catch(() => undefined);
           }}
+        />
+      )}
+
+      {aba === 'naoParticipar' && (
+        <NaoParticiparPainel
+          pareceres={naoParticipar}
+          carregando={pareceres.situacao === 'carregando'}
+          historicoDe={pareceres.historicoDe}
+          onBuscarEdital={buscarEditalDoParecer}
         />
       )}
 
@@ -799,6 +848,19 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
               placeholder="Ex.: gestão de documentos, automação de processos, software de workflow"
               disabled={busca.buscando}
             />
+            <SugestoesTermos
+              grupos={SUGESTOES_ASSUNTO}
+              valor={form.assunto}
+              disabled={busca.buscando}
+              onChange={novo => {
+                alterar('assunto', novo);
+                // Mais de um assunto: compara por termo (o "exato"
+                // procuraria a frase inteira, com a vírgula).
+                if (listaDoTexto(novo).length > 1 && form.modoBusca === '1') {
+                  alterar('modoBusca', '3' as ModoBuscaAssunto);
+                }
+              }}
+            />
           </div>
 
           <div>
@@ -813,7 +875,14 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
               <option value="1">Assunto exato</option>
               <option value="2">Qualquer palavra do assunto</option>
               <option value="3">Assunto + palavras relacionadas</option>
+              <option value="4">Edital específico (número ou nome)</option>
             </select>
+            {form.modoBusca === '4' && (
+              <span style={dica}>
+                Digite o número (ex.: 016/2026) ou o nome do edital no Assunto principal.
+                Exclusões e score mínimo não se aplicam. Escolha UF, período e modalidades que incluam o edital.
+              </span>
+            )}
           </div>
 
           <div>
@@ -925,7 +994,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
                 <span style={dica}>Todas devem aparecer no objeto. Separe por vírgula.</span>
               </div>
 
-              <div>
+              <div style={{ gridColumn: '1 / -1' }}>
                 <label style={rotulo} htmlFor="lic-rel">Palavras relacionadas</label>
                 <input
                   id="lic-rel"
@@ -935,10 +1004,16 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
                   placeholder="BPM, software, digitalização"
                   disabled={busca.buscando}
                 />
-                <span style={dica}>Aumentam a aderência (+15 cada).</span>
+                <span style={dica}>Aumentam a aderência (+15 cada). Clique para incluir:</span>
+                <SugestoesTermos
+                  grupos={SUGESTOES_RELACIONADAS}
+                  valor={form.relacionadas}
+                  disabled={busca.buscando}
+                  onChange={novo => alterar('relacionadas', novo)}
+                />
               </div>
 
-              <div>
+              <div style={{ gridColumn: '1 / -1' }}>
                 <label style={rotulo} htmlFor="lic-neg">Palavras para excluir</label>
                 <input
                   id="lic-neg"
@@ -948,7 +1023,15 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
                   placeholder="hospitalar, equipamento"
                   disabled={busca.buscando}
                 />
-                <span style={dica}>Se aparecer no objeto, o resultado é descartado.</span>
+                <span style={dica}>Se aparecer no objeto, o resultado é descartado. Clique para incluir:</span>
+                <SugestoesTermos
+                  grupos={SUGESTOES_EXCLUIR}
+                  valor={form.negativas}
+                  disabled={busca.buscando}
+                  cor="#9B2C1F"
+                  corFundo="#FDECEA"
+                  onChange={novo => alterar('negativas', novo)}
+                />
               </div>
 
               <div>
@@ -1291,6 +1374,21 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
             Experimente aumentar o período, buscar no Brasil inteiro, remover palavras obrigatórias,
             adicionar palavras relacionadas ou reduzir o score mínimo.
           </p>
+          {form.modoBusca !== '4' && /\d/.test(form.assunto) && (
+            <p style={{ ...textoApoio, marginTop: 8 }}>
+              Procurando <strong>um edital específico</strong> pelo número ou nome?{' '}
+              <button
+                type="button"
+                style={botaoSecundario}
+                onClick={() => {
+                  setForm(atual => ({ ...atual, modoBusca: '4' }));
+                  window.scrollTo(0, 0);
+                }}
+              >
+                Usar “Edital específico”
+              </button>
+            </p>
+          )}
         </div>
       )}
 

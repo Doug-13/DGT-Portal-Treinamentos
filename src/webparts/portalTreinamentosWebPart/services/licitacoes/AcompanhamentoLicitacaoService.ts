@@ -105,6 +105,14 @@ export interface IAcompanhamento {
   clickupUrl: string;
 }
 
+export interface IResultadoTarefaClickUp {
+  id: string;
+  url: string;
+  existente: boolean;
+  camposPreenchidos?: number;
+  camposComErro: string[];
+}
+
 // Dados do parecer e da IA que vão para a tarefa do ClickUp.
 export interface IContextoTarefaClickUp {
   justificativa: string;
@@ -428,8 +436,9 @@ export class AcompanhamentoLicitacaoService {
   public async criarTarefaClickUp(
     item: ILicitacaoResultado,
     acompanhamento: IAcompanhamento,
-    contexto: IContextoTarefaClickUp
-  ): Promise<{ id: string; url: string; existente: boolean }> {
+    contexto: IContextoTarefaClickUp,
+    atualizarCampos: boolean = false
+  ): Promise<IResultadoTarefaClickUp> {
 
     const encerramento = item.encerramento ? new Date(item.encerramento) : undefined;
     const prazoValido = !!encerramento && !isNaN(encerramento.getTime());
@@ -620,13 +629,18 @@ export class AcompanhamentoLicitacaoService {
       dataLimite: prazoValido && encerramento ? encerramento.getTime() : null,
       prioridade,
       tags,
-      campos
+      campos,
+      atualizarCampos
     });
 
     return {
       id: String(resultado.id || ''),
       url: String(resultado.url || ''),
-      existente: resultado.existente === true
+      existente: resultado.existente === true,
+      camposPreenchidos: typeof resultado.camposPreenchidos === 'number' ? resultado.camposPreenchidos : undefined,
+      camposComErro: Array.isArray(resultado.camposComErro)
+        ? (resultado.camposComErro as Array<{ campo?: string; motivo?: string }>).map(e => `${e.campo || '?'}: ${e.motivo || 'recusado'}`)
+        : []
     };
   }
 

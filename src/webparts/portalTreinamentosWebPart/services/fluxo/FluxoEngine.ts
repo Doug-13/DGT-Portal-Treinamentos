@@ -1634,6 +1634,70 @@ export const retornarUmPasso = (
 };
 
 // ------------------------------------------------------------
+// EDIÇÃO DO DOCUMENTO POR ETAPA
+//
+// A etapa diz se o arquivo pode ser aberto para edição
+// (permiteEditarDocumento). Sem a opção definida, vale o padrão:
+// só na Elaboração — status "Elaboração" ou, com status automático,
+// a 1ª etapa humana do fluxo.
+// ------------------------------------------------------------
+
+export const primeiraEtapaHumana = (
+  definicao: IFluxoDefinicao
+): IFluxoElemento | undefined => {
+
+  const inicio =
+    definicao.elementos.find(item => item.tipo === 'inicio');
+
+  if (!inicio) {
+    return definicao.elementos.find(item => item.tipo === 'tarefaHumana');
+  }
+
+  const visitados: Record<string, boolean> = {};
+  const fila: string[] = [inicio.id];
+
+  while (fila.length > 0) {
+    const id = fila.shift() as string;
+    if (visitados[id]) {
+      continue;
+    }
+    visitados[id] = true;
+    const elemento = obterElemento(definicao, id);
+    if (elemento && elemento.tipo === 'tarefaHumana') {
+      return elemento;
+    }
+    definicao.transicoes
+      .filter(transicao => transicao.origemId === id)
+      .forEach(transicao => fila.push(transicao.destinoId));
+  }
+
+  return undefined;
+};
+
+export const etapaPermiteEditarDocumento = (
+  definicao: IFluxoDefinicao,
+  elemento: IFluxoElemento | undefined
+): boolean => {
+
+  if (!elemento || elemento.tipo !== 'tarefaHumana') {
+    return false;
+  }
+
+  if (typeof elemento.permiteEditarDocumento === 'boolean') {
+    return elemento.permiteEditarDocumento;
+  }
+
+  if (elemento.statusDocumento) {
+    return elemento.statusDocumento === 'Elaboração';
+  }
+
+  const primeira =
+    primeiraEtapaHumana(definicao);
+
+  return !!primeira && primeira.id === elemento.id;
+};
+
+// ------------------------------------------------------------
 // TRANSFERÊNCIA PARA O FLUXO DE OUTRO PROCESSO (administrador)
 //
 // Usada quando documentos foram criados em processos duplicados e
@@ -1668,7 +1732,12 @@ export interface IDadosTransferenciaFluxo {
   processoNome: string;
   ator: IFluxoAtor;
   justificativa: string;
+  // 'versao' = mesmo processo, versão mais nova do fluxo (atualização);
+  // 'processo' (padrão) = outro processo.
+  tipo?: 'processo' | 'versao';
 }
+
+export const ACAO_ATUALIZACAO_VERSAO = 'atualizacaoVersaoFluxo';
 
 export interface IResultadoTransferencia {
   ok: boolean;
@@ -1744,7 +1813,15 @@ export const transferirInstancia = (
     instanciaOriginal.fluxoId === destino.id &&
     instanciaOriginal.fluxoVersao === destino.versao
   ) {
-    return falha('A revisão já está neste fluxo.');
+    return falha(
+      dados.tipo === 'versao'
+        ? 'A revisão já está na versão publicada.'
+        : 'A revisão já está neste fluxo.'
+    );
+  }
+
+  if (dados.tipo === 'versao' && instanciaOriginal.fluxoVersao > destino.versao) {
+    return falha('A revisão usa uma versão mais nova que a publicada.');
   }
 
   const atual =
@@ -1880,11 +1957,14 @@ export const transferirInstancia = (
     data: agora,
     elementoId: atualDestino.id,
     elementoNome: atualDestino.nome,
-    acaoChave: ACAO_TRANSFERENCIA_ADMINISTRADOR,
+    acaoChave: dados.tipo === 'versao' ? ACAO_ATUALIZACAO_VERSAO : ACAO_TRANSFERENCIA_ADMINISTRADOR,
     acaoRotulo:
-      `Processo alterado — alterado por administrador: ${processoAnterior} (fluxo v${instanciaOriginal.fluxoVersao}) → ` +
-      `${dados.processoNome} (fluxo v${destino.versao}); etapa mantida: ${atualDestino.nome}`,
-    resultado: 'transferido',
+      dados.tipo === 'versao'
+        ? `Fluxo atualizado da versão v${instanciaOriginal.fluxoVersao} para a v${destino.versao} — ` +
+          `etapa mantida: ${atualDestino.nome}`
+        : `Processo alterado — alterado por administrador: ${processoAnterior} (fluxo v${instanciaOriginal.fluxoVersao}) → ` +
+          `${dados.processoNome} (fluxo v${destino.versao}); etapa mantida: ${atualDestino.nome}`,
+    resultado: dados.tipo === 'versao' ? 'atualizado' : 'transferido',
     comentario: (dados.justificativa || '').trim(),
     executadoPorId: dados.ator.id,
     executadoPorNome: dados.ator.nome,

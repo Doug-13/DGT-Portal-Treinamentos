@@ -31,8 +31,9 @@ import {
 export interface IAcompanhamentoPainelProps {
   acompanhamento: IUseAcompanhamentoLicitacoes;
   ehAdministrador: boolean;
-  // Cria a tarefa no ClickUp para um edital que ainda não tem.
-  onCriarTarefaClickUp?: (acompanhamento: IAcompanhamento) => void;
+  // Cria a tarefa no ClickUp (ou, com atualizar = true, regrava os
+  // campos personalizados da tarefa que já existe).
+  onCriarTarefaClickUp?: (acompanhamento: IAcompanhamento, atualizar?: boolean) => void;
 }
 
 type Filtro = 'todos' | 'novidades';
@@ -332,7 +333,20 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
                             ✓ Abrir no ClickUp ↗
                           </a>
                         )
-                        : onCriarTarefaClickUp && (
+                        : null}
+                      {selecionado.clickupUrl && onCriarTarefaClickUp && (
+                        <button
+                          type="button"
+                          style={{ ...botao(false, acompanhamento.processandoChave === selecionado.chaveEdital), background: 'transparent', color: '#ffffff', borderColor: 'rgba(255,255,255,.5)' }}
+                          disabled={acompanhamento.processandoChave === selecionado.chaveEdital}
+                          onClick={() => onCriarTarefaClickUp(selecionado, true)}
+                          title="Grava de novo os campos personalizados (Órgão/Município, datas, valor, parecer, resumo…) na tarefa do ClickUp"
+                        >
+                          ↻ Atualizar campos
+                        </button>
+                      )}
+                      {!selecionado.clickupUrl
+                        && onCriarTarefaClickUp && (
                           <button
                             type="button"
                             style={{ ...botao(true, acompanhamento.processandoChave === selecionado.chaveEdital), background: '#7B68EE' }}

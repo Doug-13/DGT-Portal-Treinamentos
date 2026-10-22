@@ -54,6 +54,12 @@ import PublicarRevisaoModal from
 import ResultadoPublicacaoRevisaoCard from
   '../Gestao/ResultadoPublicacaoRevisaoCard';
 
+import ExcluirDocumentoModal from './ExcluirDocumentoModal';
+
+import {
+  DocumentoExclusaoService
+} from '../../services/DocumentoExclusaoService';
+
 import RevisaoEditorModal, {
   IRevisaoEditorDados
 } from './RevisaoEditorModal';
@@ -174,6 +180,10 @@ export interface IDocumentoDetalhePageProps {
 
   onVoltar:
     () => void;
+
+  // Depois de excluir o documento (recarrega as listas).
+  onDocumentoExcluido?:
+    () => Promise<void> | void;
 }
 
 // ============================================================
@@ -400,7 +410,7 @@ const ProcessoDoDocumento:
           <span>Não vinculado</span>
           <br />
           <button type="button" style={estiloLinkResumo} onClick={onIrParaFluxo}>
-            Vincular a um processo
+            Vincular a um fluxo
           </button>
         </div>
       );
@@ -409,10 +419,10 @@ const ProcessoDoDocumento:
     if (info.situacao === 'variosProcessos') {
       return (
         <div>
-          <span>{info.totalProcessos} processos vinculados</span>
+          <span>{info.totalProcessos} fluxos vinculados</span>
           <br />
           <button type="button" style={estiloLinkResumo} onClick={onIrParaFluxo}>
-            Definir o processo principal
+            Definir o fluxo principal
           </button>
         </div>
       );
@@ -421,7 +431,7 @@ const ProcessoDoDocumento:
     if (info.situacao === 'processoIndisponivel') {
       return (
         <div>
-          <span>Processo inativo ou sem acesso</span>
+          <span>Fluxo inativo ou sem acesso</span>
           <br />
           <button type="button" style={estiloLinkResumo} onClick={onIrParaFluxo}>
             Ver vínculo
@@ -495,7 +505,7 @@ const ProcessoDoDocumento:
               'Publique o fluxo no módulo Processos; a revisão passa a segui-lo automaticamente.'
           }
           : {
-            texto: 'Processo sem fluxo publicado',
+            texto: 'Fluxo sem versão publicada',
             tipo: 'atencao',
             dica: 'Publique o fluxo no módulo Processos para que as revisões o sigam.'
           };
@@ -522,7 +532,7 @@ const ProcessoDoDocumento:
             ? (
               <button
                 type="button"
-                title="Abrir o processo no módulo Processos"
+                title="Abrir o fluxo (Processos → Fluxos)"
                 onClick={() => onAbrirProcesso(info.processoId)}
                 style={{
                   ...estiloLinkResumo,
@@ -675,9 +685,25 @@ const DocumentoDetalhePage:
     onPublicarRevisao,
     onLimparResultadoPublicacao,
     onAbrirProcesso,
-    onVoltar
+    onVoltar,
+    onDocumentoExcluido
 
   }) => {
+
+    // Exclusão do documento (administrador; libera o código).
+    const [
+      mostrarExclusao,
+      setMostrarExclusao
+    ] = React.useState(false);
+
+    const servicoExclusao =
+      React.useMemo(
+        () =>
+          dataverseService
+            ? new DocumentoExclusaoService(dataverseService, sharePointDocumentoService)
+            : undefined,
+        [dataverseService, sharePointDocumentoService]
+      );
 
     const [aba, setAba] =
       React.useState<Aba>('revisoes');
@@ -1087,6 +1113,27 @@ const DocumentoDetalhePage:
         return ok;
       };
 
+    // ==========================================================
+    // ABRIR O ARQUIVO PARA EDIÇÃO
+    // Só a revisão em andamento, na etapa que permite editar:
+    //   • fluxo do processo → opção da etapa (padrão: Elaboração);
+    //   • fluxo padrão      → só em Elaboração.
+    // Vigente, obsoleta e cancelada: só pré-visualização, sem
+    // "Abrir documento" nem "Abrir em nova aba" (não oferece download).
+    // ==========================================================
+    const podeAbrirParaEditar = (
+      revisao: IDocumentoRevisao | undefined
+    ): boolean => {
+
+      if (!revisao || !podeEditar || !revisaoEmAndamento || revisao.id !== revisaoEmAndamento.id) {
+        return false;
+      }
+
+      return segueFluxo.segue
+        ? segueFluxo.permiteEditarDocumento
+        : estagioRevisao(revisao.status) === 'elaboracao';
+    };
+
     // Documento vinculado a processo SEM fluxo publicado: não avança
     // (o processo precisa ser publicado antes).
     const nomeProcessoVinculado =
@@ -1251,14 +1298,64 @@ const DocumentoDetalhePage:
               .join(' · ')
           }
           acao={
-            <button
-              type="button"
-              onClick={onVoltar}
-            >
-              Voltar
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {
+                // Só administrador e só documento que nunca foi
+                // vigente (o modal confere as demais condições).
+                servicoExclusao &&
+                ehAdministrador(contexto) &&
+                !revisoes.some(item => estagioRevisao(item.status) === 'vigente') && (
+                  <button
+                    type="button"
+                    onClick={() => setMostrarExclusao(true)}
+                    title="Excluir este documento criado por engano e liberar o código para reutilização"
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${COR_INDIGO}`,
+                      background: '#FFFFFF',
+                      color: COR_INDIGO,
+                      fontWeight: 700,
+                      fontSize: '12.5px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Excluir documento
+                  </button>
+                )
+              }
+              <button
+                type="button"
+                onClick={onVoltar}
+              >
+                Voltar
+              </button>
+            </div>
           }
         />
+
+        {
+          mostrarExclusao && servicoExclusao && (
+            <ExcluirDocumentoModal
+              servico={servicoExclusao}
+              documento={documento}
+              revisoes={revisoes}
+              usuario={{ id: contexto ? contexto.usuarioId : '', nome: contexto ? contexto.nome : '' }}
+              onCancelar={() => setMostrarExclusao(false)}
+              onExcluido={resultado => {
+                setMostrarExclusao(false);
+                window.alert(
+                  `Documento excluído. O código ${resultado.codigoLiberado} está livre para um novo documento.` +
+                  (resultado.avisos.length > 0 ? `\n\nAtenção:\n- ${resultado.avisos.join('\n- ')}` : '')
+                );
+                Promise.resolve(onDocumentoExcluido ? onDocumentoExcluido() : undefined)
+                  .catch((error: unknown) => console.error(error))
+                  .then(() => onVoltar())
+                  .catch((error: unknown) => console.error(error));
+              }}
+            />
+          )
+        }
 
         {/* RESUMO — uma linha com o essencial */}
 
@@ -1381,7 +1478,7 @@ const DocumentoDetalhePage:
                   // fluxo em que ele está (com ou sem revisão aberta).
                   FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE &&
                   (
-                    <ItemResumo titulo="Processo vinculado">
+                    <ItemResumo titulo="Fluxo de revisão">
                       <ProcessoDoDocumento
                         info={segueFluxo}
                         revisaoEmAndamento={revisaoEmAndamento ? revisaoEmAndamento.revisao : ''}
@@ -2201,27 +2298,48 @@ const DocumentoDetalhePage:
                                       👁 Pré-visualizar
                                     </button>
 
-                                    <a
-                                      href={urlParaAbrir(revisao.arquivoUrl)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      style={{
-                                        display: 'inline-block',
-                                        padding: '9px 14px',
-                                        background: substituida ? '#64748B' : COR_INDIGO,
-                                        color: '#ffffff',
-                                        borderRadius: '8px',
-                                        textDecoration: 'none',
-                                        fontWeight: 600,
-                                        fontSize: '13px'
-                                      }}
-                                    >
-                                      {
-                                        substituida
-                                          ? 'Abrir documento (obsoleto)'
-                                          : 'Abrir documento'
-                                      }
-                                    </a>
+                                    {
+                                      podeAbrirParaEditar(revisao)
+                                        ? (
+                                          <a
+                                            href={urlParaAbrir(revisao.arquivoUrl)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title="Abre o arquivo no Office online para edição (permitido nesta etapa)"
+                                            style={{
+                                              display: 'inline-block',
+                                              padding: '9px 14px',
+                                              background: COR_INDIGO,
+                                              color: '#ffffff',
+                                              borderRadius: '8px',
+                                              textDecoration: 'none',
+                                              fontWeight: 600,
+                                              fontSize: '13px'
+                                            }}
+                                          >
+                                            ✎ Abrir documento para edição
+                                          </a>
+                                        )
+                                        : (
+                                          <span
+                                            title={
+                                              emAndamento
+                                                ? 'A etapa atual não permite editar o documento: apenas visualização.'
+                                                : 'Revisão publicada: apenas visualização, sem download.'
+                                            }
+                                            style={{
+                                              color: '#64748B',
+                                              fontSize: '12px'
+                                            }}
+                                          >
+                                            {
+                                              emAndamento
+                                                ? 'Edição não permitida nesta etapa · somente visualização'
+                                                : 'Somente visualização'
+                                            }
+                                          </span>
+                                        )
+                                    }
                                     </>
                                   )
                                   : (
@@ -2310,6 +2428,7 @@ const DocumentoDetalhePage:
 
         <PreviaDocumentoModal
           aberto={!!revisaoEmPrevia}
+          permitirAbrir={podeAbrirParaEditar(revisaoEmPrevia)}
           url={revisaoEmPrevia?.arquivoUrl || ''}
           titulo={`${documento.codigo} - ${documento.titulo}`}
           revisao={revisaoEmPrevia ? `Revisão ${revisaoEmPrevia.revisao}` : ''}

@@ -288,6 +288,189 @@ export class TransferenciaProcessoService {
   }
 
   // ----------------------------------------------------------
+  // ATUALIZAR PARA A VERSÃO PUBLICADA (mesmo processo)
+  //
+  // Revisões em andamento do processo que estão numa versão ANTIGA
+  // do fluxo passam para a versão publicada, na mesma etapa. A partir
+  // daí seguem o fluxo novo: novas etapas DEPOIS da atual passam a
+  // fazer parte do caminho; responsáveis e opções da etapa atual são
+  // os da versão nova. Nada é feito nos vínculos.
+  // ----------------------------------------------------------
+
+  public async analisarAtualizacao(
+    processo: IProcesso,
+    vinculos: IDocumentoProcessoVinculo[],
+    documentos: IDocumento[]
+  ): Promise<{ definicaoDestino?: IFluxoDefinicao; itens: IItemTransferencia[]; atualizadas: number }> {
+
+    const servico =
+      this.persistencia.servico;
+
+    const definicaoDestino =
+      await servico.definicaoPublicada(processo.id);
+
+    if (!definicaoDestino) {
+      return { itens: [], atualizadas: 0 };
+    }
+
+    const emAndamento =
+      await this.revisoesEmAndamento();
+
+    const itens: IItemTransferencia[] = [];
+
+    let atualizadas = 0;
+
+    const doProcesso =
+      vinculos.filter(item => item.processoId === guid(processo.id));
+
+    for (const vinculo of doProcesso) {
+
+      const documento =
+        documentos.find(item => guid(item.id) === vinculo.documentoId);
+
+      const registro =
+        documento ? emAndamento[guid(documento.id)] : undefined;
+
+      if (!documento || !registro) {
+        continue;
+      }
+
+      const revisaoId =
+        guid(registro.dgt_documentorevisaoid);
+
+      const instancia =
+        await servico.obter(revisaoId);
+
+      // Sem fluxo iniciado (começa na versão publicada), encerrado ou
+      // de outro processo: nada a fazer.
+      if (
+        !instancia ||
+        instancia.status !== 'emAndamento' ||
+        guid(instancia.processoId) !== guid(processo.id)
+      ) {
+        continue;
+      }
+
+      if (instancia.fluxoVersao >= definicaoDestino.versao) {
+        atualizadas++;
+        continue;
+      }
+
+      const base = {
+        documento,
+        vinculo,
+        revisaoId,
+        revisao: texto(registro, 'dgt_revisao'),
+        statusRevisao: texto(registro, 'dgt_status@OData.Community.Display.V1.FormattedValue')
+      };
+
+      const previa =
+        await servico.transferirParaProcesso(
+          revisaoId,
+          definicaoDestino,
+          {
+            processoId: guid(processo.id),
+            processoNome: processo.nome,
+            ator: this.ator('', ''),
+            justificativa: '',
+            tipo: 'versao'
+          },
+          false
+        );
+
+      itens.push({
+        ...base,
+        situacao: previa.ok ? 'transferivel' : 'bloqueado',
+        etapaOrigem: previa.etapaOrigem ? `${previa.etapaOrigem} (v${instancia.fluxoVersao})` : undefined,
+        etapaDestino: previa.etapaDestino,
+        detalhe: previa.ok
+          ? `Passa para a v${definicaoDestino.versao} na etapa "${previa.etapaDestino}".`
+          : `${previa.erros.join(' ')} Continua na v${instancia.fluxoVersao} até concluir.`,
+        avisos: previa.avisos,
+        mapeamento: previa.mapeamento
+      });
+    }
+
+    return { definicaoDestino, itens, atualizadas };
+  }
+
+  public async atualizarVersao(
+    itens: IItemTransferencia[],
+    processo: IProcesso,
+    definicaoDestino: IFluxoDefinicao,
+    usuario: { id: string; nome: string }
+  ): Promise<IResultadoItemTransferencia[]> {
+
+    const persistencia =
+      this.persistencia;
+
+    const vinculosUsuarios =
+      await carregarVinculosPortal(this.dataverse);
+
+    const ator: IFluxoAtor = {
+      id: usuario.id || 'usuario',
+      nome: usuario.nome || 'Usuário',
+      papeisTeste: []
+    };
+
+    const resultados: IResultadoItemTransferencia[] = [];
+
+    for (const item of itens) {
+
+      if (item.situacao !== 'transferivel' || !item.revisaoId) {
+        resultados.push({ documento: item.documento, ok: false, mensagem: item.detalhe });
+        continue;
+      }
+
+      try {
+        const autor =
+          await obterAutorDaRevisao(this.dataverse, item.revisaoId);
+
+        const resultado =
+          await persistencia.servico.transferirParaProcesso(
+            item.revisaoId,
+            definicaoDestino,
+            {
+              processoId: guid(processo.id),
+              processoNome: processo.nome,
+              ator,
+              justificativa: `Atualização para a versão ${definicaoDestino.versao} do fluxo.`,
+              tipo: 'versao'
+            },
+            true,
+            {
+              rotuloRevisao: `${item.documento.codigo} ${item.revisao || ''}`.trim(),
+              resolverResponsaveis: (responsaveis: IFluxoResponsavel[]) =>
+                resolverResponsaveis(
+                  responsaveis,
+                  { revisaoResponsavelId: autor, documentoAreaId: item.documento.areaId },
+                  vinculosUsuarios
+                )
+            }
+          );
+
+        resultados.push({
+          documento: item.documento,
+          ok: resultado.ok,
+          mensagem: resultado.ok
+            ? `Atualizado para a v${definicaoDestino.versao}, etapa "${resultado.etapaDestino}".`
+            : resultado.erros.join(' ')
+        });
+
+      } catch (error) {
+        console.error(error);
+        resultados.push({
+          documento: item.documento,
+          ok: false,
+          mensagem: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    return resultados;
+  }
+
+  // ----------------------------------------------------------
   // EXECUÇÃO
   // ----------------------------------------------------------
 

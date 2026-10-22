@@ -585,6 +585,67 @@ export class SharePointDocumentoService {
   }
 
   // ==========================================================
+  // RENOMEAR A PASTA DE UM DOCUMENTO (área/CÓDIGO → área/NOVO)
+  //
+  // Usado na exclusão de documento: a pasta do código liberado ganha
+  // outro nome, para o novo documento com o mesmo código não
+  // sobrescrever os arquivos do excluído. Devolve os caminhos
+  // (server-relative) antigo e novo, ou undefined se não houver pasta.
+  // ==========================================================
+
+  public async renomearPastaDocumento(
+    area: string,
+    codigoAtual: string,
+    codigoNovo: string
+  ): Promise<{ antigo: string; novo: string } | undefined> {
+
+    const root =
+      await this.obterRootFolder();
+
+    const pastaArea =
+      `${root}/${limparSegmento(area)}`;
+
+    const antigo =
+      `${pastaArea}/${limparSegmento(codigoAtual.toUpperCase())}`;
+
+    const novo =
+      `${pastaArea}/${limparSegmento(codigoNovo.toUpperCase())}`;
+
+    const existe =
+      await this.client.get(
+        `${this.siteUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${escaparOData(antigo)}')?$select=Exists`,
+        SPHttpClient.configurations.v1,
+        { headers: { Accept: 'application/json;odata=nometadata' } }
+      );
+
+    if (!existe.ok) {
+      return undefined;
+    }
+
+    const dados =
+      (await existe.json()) as { Exists?: boolean };
+
+    if (dados.Exists === false) {
+      return undefined;
+    }
+
+    const resposta: SPHttpClientResponse =
+      await this.client.post(
+        `${this.siteUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${escaparOData(antigo)}')` +
+        `/MoveTo(newUrl='${escaparOData(novo)}')`,
+        SPHttpClient.configurations.v1,
+        { headers: { Accept: 'application/json;odata=nometadata' } }
+      );
+
+    if (!resposta.ok) {
+      const detalhe = await resposta.text();
+      throw new Error(`Não foi possível renomear a pasta do documento no SharePoint. ${resposta.status}. ${detalhe}`);
+    }
+
+    return { antigo, novo };
+  }
+
+  // ==========================================================
   // ENVIO GENÉRICO PARA UMA PASTA DA BIBLIOTECA
   //
   // Usado pelas mídias de treinamento: cria as pastas que faltarem e

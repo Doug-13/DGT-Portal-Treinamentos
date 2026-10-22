@@ -66,7 +66,7 @@ namespace DGT.Treinamentos.Plugins
             _apiKey = LerChave(secureConfig);
 
             _modelos = new[] { "claude-sonnet-5-5", "claude-haiku-5-5" };
-            _maxTokens = 2000;
+            _maxTokens = 4000;
 
             if (!string.IsNullOrWhiteSpace(unsecureConfig))
             {
@@ -149,7 +149,7 @@ namespace DGT.Treinamentos.Plugins
             var pedido = (string)payload["modelo"];
             var modelo = _modelos.Contains(pedido) ? pedido : _modelos[0];
 
-            var maxTokens = Math.Max(200, Math.Min((int?)payload["maxTokens"] ?? 1200, _maxTokens));
+            var maxTokens = Math.Max(200, Math.Min((int?)payload["maxTokens"] ?? 3000, _maxTokens));
 
             var corpo = new JObject
             {
@@ -238,7 +238,10 @@ namespace DGT.Treinamentos.Plugins
                 var entrada = (int?)resultado.SelectToken("usage.input_tokens") ?? 0;
                 var saida = (int?)resultado.SelectToken("usage.output_tokens") ?? 0;
 
-                tracing.Trace("Análise ok · modelo {0} · tokens {1}/{2}", modelo, entrada, saida);
+                // "max_tokens" = resposta cortada pelo limite de tokens.
+                var parada = (string)resultado["stop_reason"] ?? string.Empty;
+
+                tracing.Trace("Análise ok · modelo {0} · tokens {1}/{2} · parada {3}", modelo, entrada, saida, parada);
 
                 context.OutputParameters["ResultadoJson"] =
                     JsonConvert.SerializeObject(new
@@ -246,7 +249,8 @@ namespace DGT.Treinamentos.Plugins
                         texto,
                         modelo,
                         tokensEntrada = entrada,
-                        tokensSaida = saida
+                        tokensSaida = saida,
+                        parada
                     });
             }
         }

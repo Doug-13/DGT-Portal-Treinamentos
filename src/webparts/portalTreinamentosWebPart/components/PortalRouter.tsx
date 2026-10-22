@@ -86,6 +86,9 @@ import NovoDocumentoPage from
 import ProcessosPage from
   '../pages/Processos/ProcessosPage';
 
+import ProcessosNegocioPage from
+  '../pages/Processos/ProcessosNegocioPage';
+
 import {
   solicitarAberturaProcesso
 } from '../services/processos/ProcessoService';
@@ -1716,6 +1719,12 @@ const PortalRouter:
               props.primeiroNome
             }
 
+            usuarioAtual={
+              props.contextoAcesso
+                ? { id: props.contextoAcesso.usuarioId, nome: props.contextoAcesso.nome }
+                : undefined
+            }
+
             areas={
               props.areasAdministrativas
             }
@@ -1832,6 +1841,10 @@ const PortalRouter:
 
         return (
           <DocumentoDetalhePage
+
+            onDocumentoExcluido={
+              props.recarregarDocumentos
+            }
             documento={
               props.documentoSelecionado
             }
@@ -1906,7 +1919,7 @@ const PortalRouter:
 
             onAbrirProcesso={processoId => {
               solicitarAberturaProcesso(processoId);
-              props.navegar('processos');
+              props.navegar('fluxos');
             }}
 
             onVoltar={() =>
@@ -1922,6 +1935,38 @@ const PortalRouter:
       // ========================================================
 
       case 'processos':
+
+        // Processos de negócio: Área → Processo → documentos.
+        return (
+          <ProcessosNegocioPage
+            documentos={
+              props.documentos
+            }
+
+            areas={
+              props.areasAdministrativas
+            }
+
+            contexto={
+              props.contextoAcesso
+            }
+
+            dataverseService={
+              props.dataverseService
+            }
+
+            onAbrirDocumento={
+              props.abrirDocumento
+            }
+
+            onIrParaFluxos={() =>
+              props.navegar('fluxos')
+            }
+          />
+        );
+
+      // Fluxos (caminhos de aprovação, com versões) — antes "Processos".
+      case 'fluxos':
 
         return (
           <ProcessosPage
@@ -2208,7 +2253,7 @@ const PortalRouter:
 
             onAbrirProcesso={processoId => {
               solicitarAberturaProcesso(processoId);
-              props.navegar('processos');
+              props.navegar('fluxos');
             }}
 
             analiseInicialTreinamentoId={

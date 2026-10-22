@@ -227,10 +227,90 @@ const obterObjeto = (
   registro.objeto ||
   '';
 
+// ------------------------------------------------------------
+// MODO 4: edital específico
+// ------------------------------------------------------------
+// Procura pelo NÚMERO do edital (ex.: "016/2026", "Nº 16/2026") no
+// número da compra e no processo; sem número, exige todas as
+// palavras significativas no objeto, número, processo, órgão e
+// informação complementar. Palavras genéricas ("edital", "aviso",
+// "licitação"…) são ignoradas. Não aplica exclusões nem score mínimo.
+
+const GENERICAS_EDITAL: { [p: string]: boolean } = {
+  edital: true, aviso: true, licitacao: true, processo: true, numero: true,
+  no: true, n: true, nr: true, de: true, da: true, do: true, das: true, dos: true
+};
+
+const semZeros = (valor: string): string => valor.replace(/^0+(?=\d)/, '');
+
+const textoCompletoRegistro = (registro: IRegistroPncp): string =>
+  normalizarTexto([
+    obterObjeto(registro),
+    registro.numeroCompra,
+    registro.anoCompra,
+    registro.processo,
+    registro.informacaoComplementar,
+    registro.modalidadeNome,
+    registro.orgaoEntidade ? registro.orgaoEntidade.razaoSocial : '',
+    registro.unidadeOrgao ? registro.unidadeOrgao.nomeUnidade : ''
+  ].filter(Boolean).join(' '));
+
+export const correspondeEditalEspecifico = (
+  registro: IRegistroPncp,
+  consulta: string
+): boolean => {
+
+  const normal = normalizarTexto(consulta);
+
+  // Números no formato 016/2026 (ou 016-2026) e números soltos.
+  const comAno = normal.match(/\d+\s*[/-]\s*\d{4}/g) || [];
+  const soltos = (normal.replace(/\d+\s*[/-]\s*\d{4}/g, ' ').match(/\d+/g) || [])
+    .filter(n => n.length < 4 || !/^(19|20)\d{2}$/.test(n));
+
+  const numeroCompra = semZeros((registro.numeroCompra || '').replace(/\D+/g, ''));
+  const processo = normalizarTexto(registro.processo || '').replace(/\s+/g, '');
+
+  if (comAno.length > 0 || soltos.length > 0) {
+    const bateNumero = comAno.some(par => {
+      const m = /(\d+)\s*[/-]\s*(\d{4})/.exec(par);
+      if (!m) {
+        return false;
+      }
+      const num = semZeros(m[1]);
+      const ano = m[2];
+      const anoRegistro = String(registro.anoCompra || '');
+      return (numeroCompra === num && (!anoRegistro || anoRegistro === ano)) ||
+        processo.indexOf(`${m[1]}/${ano}`) >= 0 ||
+        processo.indexOf(`${num}/${ano}`) >= 0;
+    }) || soltos.some(n => numeroCompra === semZeros(n));
+
+    if (bateNumero) {
+      return true;
+    }
+    // Número informado e não bateu: não é este edital.
+    return false;
+  }
+
+  const palavras = (normal.match(/[a-z0-9]+/g) || [])
+    .filter(p => p.length >= 3 && !GENERICAS_EDITAL[p] && !STOPWORDS[p]);
+
+  if (palavras.length === 0) {
+    return false;
+  }
+
+  const texto = textoCompletoRegistro(registro);
+  return palavras.every(p => contem(texto, p));
+};
+
 export const atendePreFiltro = (
   registro: IRegistroPncp,
   filtros: IFiltrosLicitacao
 ): boolean => {
+
+  // Edital específico: só o número/nome importam.
+  if (filtros.modoBusca === '4') {
+    return correspondeEditalEspecifico(registro, filtros.assunto);
+  }
 
   const texto = normalizarTexto(obterObjeto(registro));
   const assuntoNormalizado = normalizarTexto(filtros.assunto);
@@ -490,9 +570,11 @@ export const processarRegistro = (
     return undefined;
   }
 
-  const analise = calcularScore(registro, filtros);
+  const analise = filtros.modoBusca === '4'
+    ? { score: 100, motivos: [`Edital específico: ${filtros.assunto}`] }
+    : calcularScore(registro, filtros);
 
-  if (analise.score < filtros.scoreMinimo) {
+  if (filtros.modoBusca !== '4' && analise.score < filtros.scoreMinimo) {
     return undefined;
   }
 

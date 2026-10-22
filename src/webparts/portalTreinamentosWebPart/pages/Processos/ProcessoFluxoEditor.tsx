@@ -105,6 +105,10 @@ export interface IProcessoFluxoEditorProps {
 
   // Fluxos de outros processos que podem ser copiados para este.
   fontesCopia?: IFonteCopiaFluxo[];
+
+  // Chamado depois de publicar uma versão (para oferecer a
+  // atualização das revisões em andamento).
+  onPublicado?: (versao: number) => void;
 }
 
 const COR_AZUL = '#202A44';
@@ -256,7 +260,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   areas,
   usuarios,
   gravandoMetadados,
-  fontesCopia
+  fontesCopia,
+  onPublicado
 }) => {
 
   const editorRef =
@@ -526,7 +531,10 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
 
     if (
       publicar &&
-      !window.confirm(`Publicar a versão ${definicao.versao}? Revisões novas passarão a usar esta versão.`)
+      !window.confirm(
+        `Publicar a versão ${definicao.versao}? Revisões novas passarão a usar esta versão. ` +
+        'Em seguida você poderá atualizar as revisões em andamento para ela.'
+      )
     ) {
       return;
     }
@@ -554,6 +562,10 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
 
     if (ok) {
       setAlterado(false);
+    }
+
+    if (ok && publicar && onPublicado) {
+      onPublicado(definicao.versao);
     }
   };
 

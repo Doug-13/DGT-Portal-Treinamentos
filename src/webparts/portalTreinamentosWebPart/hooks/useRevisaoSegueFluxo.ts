@@ -31,6 +31,7 @@ import {
 } from '../services/DocumentoRevisaoFluxoService';
 
 import {
+  etapaPermiteEditarDocumento,
   iniciarInstancia
 } from '../services/fluxo/FluxoEngine';
 
@@ -121,6 +122,10 @@ export interface IRevisaoSegueFluxo {
   // Revisão vigente: quando o fluxo terminou e qual foi a última etapa.
   concluidoEm: string;
   ultimaEtapa: string;
+
+  // A etapa atual permite abrir o documento para edição (opção da
+  // etapa no fluxo; padrão = só na Elaboração).
+  permiteEditarDocumento: boolean;
 }
 
 const VAZIO: IRevisaoSegueFluxo = {
@@ -135,7 +140,8 @@ const VAZIO: IRevisaoSegueFluxo = {
   situacao: '',
   fluxoVersao: undefined,
   concluidoEm: '',
-  ultimaEtapa: ''
+  ultimaEtapa: '',
+  permiteEditarDocumento: false
 };
 
 const limpar = (
@@ -324,6 +330,25 @@ export const useRevisaoSegueFluxo = (
               const responsaveis =
                 tarefa ? await descrever(tarefa.responsaveis) : [];
 
+              // Edição do documento na etapa atual (definição exata da
+              // versão do fluxo que a revisão usa).
+              let permiteEditar = false;
+
+              if (tarefa) {
+                try {
+                  const definicaoAtual =
+                    await persistencia.servico.definicaoDaInstancia(instancia);
+                  permiteEditar =
+                    !!definicaoAtual &&
+                    etapaPermiteEditarDocumento(
+                      definicaoAtual,
+                      definicaoAtual.elementos.find(item => item.id === instancia.elementoAtualId)
+                    );
+                } catch (error) {
+                  console.error(error);
+                }
+              }
+
               // A revisão "congela" o processo com que o fluxo começou.
               const processoInstancia =
                 instancia.processoId && dados
@@ -341,7 +366,8 @@ export const useRevisaoSegueFluxo = (
                   fluxoVersao: instancia.fluxoVersao,
                   verificando: false,
                   etapaAtual: tarefa ? tarefa.elementoNome : '',
-                  responsaveisAtuais: responsaveis
+                  responsaveisAtuais: responsaveis,
+                  permiteEditarDocumento: permiteEditar
                 });
               }
               return;
@@ -406,7 +432,13 @@ export const useRevisaoSegueFluxo = (
                 fluxoVersao: publicada.versao,
                 verificando: false,
                 etapaAtual: primeira ? primeira.elementoNome : '',
-                responsaveisAtuais: responsaveis
+                responsaveisAtuais: responsaveis,
+                permiteEditarDocumento:
+                  !!primeira &&
+                  etapaPermiteEditarDocumento(
+                    publicada,
+                    publicada.elementos.find(item => item.id === primeira.elementoId)
+                  )
               });
             }
             return;
