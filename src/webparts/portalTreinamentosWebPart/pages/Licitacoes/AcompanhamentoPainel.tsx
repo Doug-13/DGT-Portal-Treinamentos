@@ -34,6 +34,10 @@ export interface IAcompanhamentoPainelProps {
   // Cria a tarefa no ClickUp (ou, com atualizar = true, regrava os
   // campos personalizados da tarefa que já existe).
   onCriarTarefaClickUp?: (acompanhamento: IAcompanhamento, atualizar?: boolean) => void;
+  // Baixa os documentos do PNCP para a pasta (só quando o edital está
+  // na busca atual; sem ele, o botão não aparece).
+  onBaixarDocumentos?: (acompanhamento: IAcompanhamento) => void;
+  podeBaixarDocumentos?: (acompanhamento: IAcompanhamento) => boolean;
 }
 
 type Filtro = 'todos' | 'novidades';
@@ -142,7 +146,9 @@ const ItemLinhaTempo: React.FC<{ alteracao: IAlteracaoLicitacao }> = ({ alteraca
 const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
   acompanhamento,
   ehAdministrador,
-  onCriarTarefaClickUp
+  onCriarTarefaClickUp,
+  onBaixarDocumentos,
+  podeBaixarDocumentos
 }) => {
 
   const [selecionadoId, setSelecionadoId] = React.useState<string>('');
@@ -321,6 +327,44 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      {selecionado.pastaUrl
+                        ? (
+                          <a
+                            href={selecionado.pastaUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ ...botao(true), background: '#0F6CBD', textDecoration: 'none' }}
+                            title="Pasta do edital no SharePoint (DGT - Comercial)"
+                          >
+                            📁 Pasta no SharePoint ↗
+                          </a>
+                        )
+                        : null}
+                      {selecionado.pastaUrl && onBaixarDocumentos && (
+                        <button
+                          type="button"
+                          style={{ ...botao(false, acompanhamento.processandoChave !== '' || !(podeBaixarDocumentos && podeBaixarDocumentos(selecionado))), background: 'transparent', color: '#ffffff', borderColor: 'rgba(255,255,255,.5)' }}
+                          disabled={acompanhamento.processandoChave !== '' || !(podeBaixarDocumentos && podeBaixarDocumentos(selecionado))}
+                          onClick={() => onBaixarDocumentos(selecionado)}
+                          title={podeBaixarDocumentos && podeBaixarDocumentos(selecionado)
+                            ? 'Baixa do PNCP os documentos do edital para a pasta (não sobrescreve os que já estão lá)'
+                            : 'Aguarde a busca em andamento terminar'}
+                        >
+                          ⬇ Baixar documentos para a pasta
+                        </button>
+                      )}
+                      {!selecionado.pastaUrl
+                        && (
+                          <button
+                            type="button"
+                            style={{ ...botao(true, acompanhamento.processandoChave === selecionado.chaveEdital), background: '#0F6CBD' }}
+                            disabled={acompanhamento.processandoChave === selecionado.chaveEdital}
+                            onClick={() => { acompanhamento.criarPasta(selecionado).catch(() => undefined); }}
+                            title="Cria General/{Estado}/Público/Clientes/{Cidade}/{Ano}/Edital no site DGT - Comercial"
+                          >
+                            📁 Criar pasta no SharePoint
+                          </button>
+                        )}
                       {selecionado.clickupUrl
                         ? (
                           <a

@@ -576,23 +576,6 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   const alterarDescricao = React.useCallback((chave: string, descricao: string): void =>
     alterarLinha(chave, linha => ({ ...linha, descricao })), [alterarLinha]);
 
-  const removerLinha = React.useCallback((chave: string): void => {
-    const linha = linhasRef.current.filter(item => item.chave === chave)[0];
-    if (!linha) {
-      return;
-    }
-    if (
-      totalLinha(linha) !== 0 &&
-      !window.confirm(`Remover a linha "${linha.codigo} ${linha.conta}"? Ela some da planilha ao salvar (o registro fica no histórico).`)
-    ) {
-      return;
-    }
-    setLinhas(atual => recalcular(atual.filter(item => item.chave !== chave)));
-    if (linha.id) {
-      setRemovidas(atual => atual.concat([linha]));
-    }
-    setAviso('');
-  }, [recalcular]);
 
   const descartar = (): void => {
     if (pendenciasRef.current > 0 && !window.confirm('Descartar as alterações não salvas?')) {
@@ -938,14 +921,15 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   // Resumo no formato da planilha (valores com sinal).
   const dreResumo = calcularDre(linhas);
   const receitaAno = totalAnualDre('RECEITA BRUTA', dreResumo);
-  const ebitdaAno = totalAnualDre('EBITDA', dreResumo);
-  const pctEbitda = totalAnualDre('PCT_EBITDA', dreResumo);
   const custosAno =
     arredondar(
       linhas
         .filter(linha => sinalDaConta(linha.codigo) < 0)
         .reduce((soma, linha) => soma + valoresComSinal(linha).reduce((parcial, valor) => parcial + valor, 0), 0)
     );
+  // Total do ano = receitas − deduções, custos e despesas (o mesmo
+  // "Saldo do ano" da lista do Administrador).
+  const totalAno = arredondar(receitaAno + custosAno);
   const prazo = planilha.status === STATUS_PLANILHA.devolvida ? situacaoPrazo(planilha.prazoAjuste, planilha.dataDevolucao) : undefined;
   const qtdDestacadas = Object.keys(destacadas).length;
 
@@ -986,7 +970,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
         <CartaoNumero titulo="Receita bruta (ano)" valor={formatarMoeda(receitaAno)} detalhe={`${linhas.filter(linha => totalLinha(linha) !== 0).length} de ${linhas.length} linha(s) com valor`} />
         <CartaoNumero titulo="Deduções, custos e despesas (ano)" valor={formatarMoeda(custosAno)} detalhe={`Média mensal ${formatarMoeda(arredondar(custosAno / 12))}`} />
-        <CartaoNumero titulo="EBITDA (ano)" valor={formatarMoeda(ebitdaAno)} detalhe={receitaAno ? `${pctEbitda.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% sobre a receita` : 'Sem receita lançada'} />
+        <CartaoNumero titulo="Total do ano" valor={formatarMoeda(totalAno)} detalhe="Receitas − deduções, custos e despesas" />
         <div style={{ ...cartao, marginBottom: 0, flex: '1 1 180px', minWidth: '180px' }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px' }}>Situação</div>
           <div style={{ marginTop: '8px' }}><SeloStatus status={planilha.status} /></div>
@@ -1175,7 +1159,6 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
               onColarValores={colarValores}
               onAlterarDescricao={alterarDescricao}
               onRepetirJaneiro={repetirJaneiro}
-              onRemover={removerLinha}
             />
           )}
         </>

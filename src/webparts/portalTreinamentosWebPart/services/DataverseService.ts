@@ -1707,6 +1707,38 @@ export class DataverseService {
     return `/${entitySet}(${String(id).replace(/[{}]/g, '').trim()})`;
   }
 
+  // Retira o valor de um lookup (DELETE .../navegacao/$ref).
+  // Usado, por exemplo, para desvincular o processo de um documento.
+  public async limparLookup(
+    logicalName: string,
+    id: string,
+    navegacao: string
+  ): Promise<void> {
+
+    const entitySet =
+      await this.getEntitySetName(logicalName);
+
+    const response: AadHttpClientResponse =
+      await this.client.fetch(
+        `${this.apiUrl}/${entitySet}(${String(id).replace(/[{}]/g, '').trim()})/${navegacao}/$ref`,
+        AadHttpClient.configurations.v1,
+        {
+          method: 'DELETE',
+          headers: {
+            Accept: 'application/json',
+            'OData-MaxVersion': '4.0',
+            'OData-Version': '4.0'
+          }
+        }
+      );
+
+    // 404/204 = já estava vazio ou foi limpo.
+    if (!response.ok && response.status !== 404) {
+      const detalhe = await response.text();
+      throw new Error(`Não foi possível limpar ${navegacao} (${response.status}). ${detalhe.substring(0, 300)}`);
+    }
+  }
+
   // Lê todas as páginas da consulta (segue @odata.nextLink).
   public async listarRegistros(
     logicalName: string,

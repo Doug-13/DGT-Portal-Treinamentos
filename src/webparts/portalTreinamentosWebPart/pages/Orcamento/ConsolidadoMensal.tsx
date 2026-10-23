@@ -24,7 +24,9 @@ import {
   consolidarLinhas,
   formatarMoeda,
   gerarCsvOrcamento,
-  nomeArquivoSeguro
+  nomeArquivoSeguro,
+  somar,
+  somarComSinal
 } from './orcamentoComum';
 
 import {
@@ -78,7 +80,8 @@ const ConsolidadoMensal: React.FC<IConsolidadoMensalProps> = (props) => {
   // Valores com sinal (como na planilha).
   const dre = calcularDre(consolidadas);
   const receita = totalAnualDre('RECEITA BRUTA', dre);
-  const ebitda = totalAnualDre('EBITDA', dre);
+  // Total = receitas − deduções, custos e despesas.
+  const totalAno = Math.round(consolidadas.reduce((soma, linha) => soma + somar(somarComSinal([linha])), 0) * 100) / 100;
   const lucroLiquido = totalAnualDre('LL', dre);
 
   // Áreas que aparecem nas planilhas (inclui "Geral").
@@ -145,7 +148,7 @@ const ConsolidadoMensal: React.FC<IConsolidadoMensalProps> = (props) => {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
         <CartaoNumero titulo="Receita bruta (ano)" valor={formatarMoeda(receita)} detalhe={`${consolidadas.length} conta(s) com valor`} />
-        <CartaoNumero titulo="EBITDA (ano)" valor={formatarMoeda(ebitda)} detalhe={receita ? `${totalAnualDre('PCT_EBITDA', dre).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% sobre a receita` : undefined} />
+        <CartaoNumero titulo="Total do ano" valor={formatarMoeda(totalAno)} detalhe="Receitas − deduções, custos e despesas" />
         <CartaoNumero titulo="Lucro líquido (ano)" valor={formatarMoeda(lucroLiquido)} />
         <CartaoNumero
           titulo="Planilhas consideradas"

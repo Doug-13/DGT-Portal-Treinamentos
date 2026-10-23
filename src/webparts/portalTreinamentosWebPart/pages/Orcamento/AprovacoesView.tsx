@@ -239,7 +239,7 @@ const AprovacoesView: React.FC<IAprovacoesViewProps> = (props) => {
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
           <CartaoNumero titulo="Receita bruta (ano)" valor={formatarMoeda(totalAnualDre('RECEITA BRUTA', calcularDre(linhas)))} detalhe={`${comValor.length} linha(s) com valor`} />
-          <CartaoNumero titulo="EBITDA (ano)" valor={formatarMoeda(totalAnualDre('EBITDA', calcularDre(linhas)))} detalhe={`Saldo do ano ${formatarMoeda(somar(somarComSinal(linhas)))}`} />
+          <CartaoNumero titulo="Total do ano" valor={formatarMoeda(somar(somarComSinal(linhas)))} detalhe="Receitas − deduções, custos e despesas" />
           {aberta.planilha.dataDevolucao && (
             <CartaoNumero titulo="Alteradas após a devolução" valor={String(qtdDestacadas)} detalhe={`Devolvida em ${formatarDataHora(aberta.planilha.dataDevolucao)}`} />
           )}

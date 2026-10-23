@@ -385,6 +385,18 @@ const CartaoLicitacao: React.FC<{
             )
         )}
 
+        {acompanhamento && acompanhamento.pastaUrl && (
+          <a
+            href={acompanhamento.pastaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Pasta do edital no SharePoint"
+            style={{ fontSize: 12, fontWeight: 700, color: '#0F6CBD', textDecoration: 'none', whiteSpace: 'nowrap' }}
+          >
+            📁 Pasta ↗
+          </a>
+        )}
+
         {acompanhamento && acompanhamento.clickupUrl && (
           <a
             href={acompanhamento.clickupUrl}
@@ -619,6 +631,78 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     }
   };
 
+  // ---------------- Baixar documentos sem buscar antes ----------------
+  // O download precisa do identificador do PNCP, que só existe no
+  // resultado de uma busca. Se o edital acompanhado não está na busca
+  // atual, o portal busca ESTE edital (modo Edital específico) e, ao
+  // encontrá-lo, baixa os documentos sozinho.
+  const [downloadPendente, setDownloadPendente] =
+    React.useState<{ chave: string; pastaUrl: string } | undefined>(undefined);
+  const [avisoDownload, setAvisoDownload] = React.useState<string>('');
+
+  const baixarDocumentosDoAcompanhamento = (acomp: IAcompanhamento): void => {
+
+    if (!acomp.pastaUrl) {
+      return;
+    }
+
+    const item = busca.resultados.find(r => {
+      const a = acompanhamento.obter(r);
+      return !!a && a.chaveEdital === acomp.chaveEdital && !!r.idPncp;
+    });
+
+    if (item) {
+      setAvisoDownload('');
+      acompanhamento.baixarDocumentos(item, acomp.pastaUrl).catch(() => undefined);
+      return;
+    }
+
+    const uf = (acomp.local || '').split('/')[1];
+    const codigoModalidade = Object.keys(MODALIDADES_PNCP)
+      .map(Number)
+      .find(codigo => MODALIDADES_PNCP[codigo] === acomp.modalidade);
+
+    const filtros: IFiltrosLicitacao = {
+      assunto: acomp.numero && acomp.numero !== '-' ? acomp.numero : acomp.orgao,
+      uf: uf ? uf.trim() : undefined,
+      diasBusca: 180,
+      modalidades: codigoModalidade ? [codigoModalidade] : Object.keys(MODALIDADES_PNCP).map(Number),
+      modoBusca: '4',
+      palavrasObrigatorias: [],
+      palavrasRelacionadas: [],
+      palavrasNegativas: [],
+      scoreMinimo: 0
+    };
+
+    setForm(atual => ({ ...atual, assunto: filtros.assunto, modoBusca: '4', uf: filtros.uf || atual.uf }));
+    setDownloadPendente({ chave: acomp.chaveEdital, pastaUrl: acomp.pastaUrl });
+    setAvisoDownload(`Procurando o edital ${acomp.numero || ''} no PNCP para baixar os documentos…`);
+    setFiltroLista('');
+    busca.iniciar(filtros);
+  };
+
+  React.useEffect(() => {
+    if (!downloadPendente) {
+      return;
+    }
+    const item = busca.resultados.find(r => {
+      const a = acompanhamento.obter(r);
+      return !!a && a.chaveEdital === downloadPendente.chave && !!r.idPncp;
+    });
+    if (item) {
+      const pasta = downloadPendente.pastaUrl;
+      setDownloadPendente(undefined);
+      setAvisoDownload('');
+      busca.cancelar();
+      acompanhamento.baixarDocumentos(item, pasta).catch(() => undefined);
+      return;
+    }
+    if (!busca.buscando && busca.resumo) {
+      setDownloadPendente(undefined);
+      setAvisoDownload('O edital não foi encontrado na busca automática (últimos 180 dias). Busque-o manualmente e clique de novo em "Baixar documentos".');
+    }
+  }, [busca.resultados, busca.buscando, busca.resumo, downloadPendente]);
+
   const aoTeclar = (evento: React.KeyboardEvent<HTMLInputElement>): void => {
     if (evento.key === 'Enter' && !busca.buscando) {
       iniciarBusca();
@@ -735,10 +819,18 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         ))}
       </div>
 
+      {avisoDownload && (
+        <div role="status" style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: '#FFF4E5', color: COR.azul, fontSize: 13 }}>
+          {downloadPendente ? '⏳ ' : ''}{avisoDownload}
+        </div>
+      )}
+
       {aba === 'acompanhamento' && (
         <AcompanhamentoPainel
           acompanhamento={acompanhamento}
           ehAdministrador={ehAdministrador}
+          podeBaixarDocumentos={() => !busca.buscando}
+          onBaixarDocumentos={baixarDocumentosDoAcompanhamento}
           onCriarTarefaClickUp={(acomp, atualizar) => {
             const parecer = pareceres.atuais.find(p => p.chaveEdital === acomp.chaveEdital);
             const item = busca.resultados.find(r => acompanhamento.obter(r) === acomp);
@@ -771,6 +863,24 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
 
       {/* A busca continua montada (escondida) para não perder os resultados. */}
       <div style={{ display: aba === 'busca' ? 'block' : 'none' }}>
+
+      {/* Andamento do "Participar" (pasta, documentos, ClickUp) também na busca. */}
+      {acompanhamento.mensagem && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 12,
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: /não foi possível|não baixados|sem permissão|sem acesso/i.test(acompanhamento.mensagem) ? '#FDECEA' : COR.cianoClaro,
+            color: COR.azul,
+            fontSize: 13,
+            lineHeight: 1.5
+          }}
+        >
+          {acompanhamento.processandoChave ? '⏳ ' : ''}{acompanhamento.mensagem}
+        </div>
+      )}
 
       {/* ======================================================
           FORMULÁRIO

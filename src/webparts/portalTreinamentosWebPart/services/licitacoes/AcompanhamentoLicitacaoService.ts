@@ -103,6 +103,8 @@ export interface IAcompanhamento {
   // Tarefa de acompanhamento no ClickUp (criada ao "Participar").
   clickupTarefaId: string;
   clickupUrl: string;
+  // Pasta do edital no SharePoint (site DGT - Comercial).
+  pastaUrl: string;
 }
 
 export interface IResultadoTarefaClickUp {
@@ -173,7 +175,8 @@ const mapearAcompanhamento = (r: IDataverseRecord): IAcompanhamento => ({
   responsavel: texto(r, A.responsavel),
   criadoEm: texto(r, 'createdon'),
   clickupTarefaId: texto(r, 'dgt_clickuptarefaid'),
-  clickupUrl: texto(r, 'dgt_clickupurl')
+  clickupUrl: texto(r, 'dgt_clickupurl'),
+  pastaUrl: texto(r, 'dgt_pastasharepointurl')
 });
 
 const mapearAlteracao = (r: IDataverseRecord): IAlteracaoLicitacao => ({
@@ -570,6 +573,10 @@ export class AcompanhamentoLicitacaoService {
       );
     }
 
+    if (acompanhamento.pastaUrl) {
+      linhas.push('', '## Documentos da DGT', `📁 [Pasta do edital no SharePoint](${acompanhamento.pastaUrl})`);
+    }
+
     linhas.push(
       '',
       '## Acompanhamento',
@@ -618,7 +625,9 @@ export class AcompanhamentoLicitacaoService {
       parecer: `Participar — ${contexto.responsavel || 'equipe DGT'} em ${new Date().toLocaleDateString('pt-BR')}: ` +
         (limpo(contexto.justificativa) || '—').substring(0, 1800),
       plataforma: detalhe && detalhe.sistemaOrigem ? limpo(detalhe.sistemaOrigem) : '',
-      linkPortal: portal
+      linkPortal: portal,
+      // Campo "Link Sharepoint": a pasta do edital (se já criada).
+      linkSharepoint: acompanhamento.pastaUrl || null
     };
 
     const resultado = await this.dataverse.chamarCustomApiJson('dgt_CriarTarefaClickUp', {
@@ -642,6 +651,40 @@ export class AcompanhamentoLicitacaoService {
         ? (resultado.camposComErro as Array<{ campo?: string; motivo?: string }>).map(e => `${e.campo || '?'}: ${e.motivo || 'recusado'}`)
         : []
     };
+  }
+
+  // Baixa um arquivo do PNCP PELO SERVIDOR (Custom API
+  // dgt_BaixarArquivoPncp). Necessário porque o PNCP devolve um
+  // cabeçalho CORS duplicado ("*, *") e o navegador recusa o arquivo.
+  public async baixarArquivoPeloServidor(url: string): Promise<{ blob: Blob; nome: string }> {
+    const r = await this.dataverse.chamarCustomApiJson('dgt_BaixarArquivoPncp', { url });
+    const base64 = String(r.base64 || '');
+    if (!base64) {
+      throw new Error('O servidor não devolveu o arquivo.');
+    }
+    const binario = atob(base64);
+    const bytes = new Uint8Array(binario.length);
+    for (let i = 0; i < binario.length; i++) {
+      bytes[i] = binario.charCodeAt(i);
+    }
+    return {
+      blob: new Blob([bytes], { type: String(r.tipo || 'application/octet-stream') }),
+      nome: String(r.nome || '')
+    };
+  }
+
+  // Guarda o link da pasta do edital no acompanhamento.
+  // (Coluna dgt_pastasharepointurl: script criar-coluna-pasta-licitacao.ps1.)
+  public async salvarPasta(acompanhamentoId: string, url: string): Promise<boolean> {
+    try {
+      await this.dataverse.atualizarRegistro(TABELA_ACOMPANHAMENTO, acompanhamentoId, {
+        dgt_pastasharepointurl: url.substring(0, 2000)
+      });
+      return true;
+    } catch (erro) {
+      console.warn('[Acompanhamento] Link da pasta não gravado (coluna criada?):', erro);
+      return false;
+    }
   }
 
   public async marcarLidas(alteracoes: IAlteracaoLicitacao[]): Promise<void> {

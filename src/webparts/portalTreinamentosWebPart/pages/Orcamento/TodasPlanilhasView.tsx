@@ -561,7 +561,8 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
   // Valores com sinal, como na planilha.
   const dreConsolidada = calcularDre(linhasVisiveis);
   const receitaConsolidada = totalAnualDre('RECEITA BRUTA', dreConsolidada);
-  const ebitdaConsolidado = totalAnualDre('EBITDA', dreConsolidada);
+  // Total = receitas − deduções, custos e despesas (soma do "Saldo do ano").
+  const totalConsolidado = somar(somarComSinal(linhasVisiveis));
   const enviadas = visiveis.filter(item => statusEntregue(item.status)).length;
   const emAprovacao = visiveis.filter(item => item.status === STATUS_PLANILHA.emAprovacao).length;
   const aprovadas = visiveis.filter(item => item.status === STATUS_PLANILHA.aprovada).length;
@@ -602,7 +603,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
         )}
         <CartaoNumero titulo="Em preenchimento" valor={String(visiveis.length - enviadas - devolvidas.length)} />
         <CartaoNumero titulo="Devolvidas para ajuste" valor={String(devolvidas.length)} detalhe={atrasadas > 0 ? `${atrasadas} com prazo vencido` : 'Nenhuma atrasada'} />
-        <CartaoNumero titulo="EBITDA consolidado" valor={formatarMoeda(ebitdaConsolidado)} detalhe={`Receita bruta ${formatarMoeda(receitaConsolidada)} · ano ${ano}`} />
+        <CartaoNumero titulo="Total consolidado" valor={formatarMoeda(totalConsolidado)} detalhe={`Receita bruta ${formatarMoeda(receitaConsolidada)} · ano ${ano}`} />
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>

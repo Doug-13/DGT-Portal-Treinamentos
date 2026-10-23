@@ -20,6 +20,41 @@ import {
   gerarChaveEdital
 } from '../services/LicitacaoParecerService';
 
+import {
+  PastaSharePointLicitacaoService,
+  caminhoDaUrl
+} from '../services/licitacoes/PastaSharePointLicitacaoService';
+
+import {
+  baixarBlobEdital,
+  carregarDocumentosEdital,
+  detectarTipo
+} from '../services/PncpEditalService';
+
+import {
+  IDocumentoEdital
+} from '../models/Licitacao';
+
+// Nome do arquivo na pasta: título do PNCP + extensão (pelo tipo
+// detectado, quando o título não tem). Sem CNPJ/CPF no nome.
+const EXTENSOES: Record<string, string> = { pdf: '.pdf', compactado: '.zip', texto: '.txt' };
+
+const nomeDoArquivo = (doc: IDocumentoEdital, tipo: string, blob: Blob): string => {
+  const titulo = (doc.titulo || `Documento ${doc.sequencial}`)
+    .replace(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/g, '')
+    .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, '')
+    .trim();
+  if (/\.[a-z0-9]{2,5}$/i.test(titulo)) {
+    return titulo;
+  }
+  const mime = (blob.type || '').toLowerCase();
+  const extensao = EXTENSOES[tipo] ||
+    (mime.indexOf('png') >= 0 ? '.png' : mime.indexOf('jpeg') >= 0 || mime.indexOf('jpg') >= 0 ? '.jpg'
+      : mime.indexOf('wordprocessingml') >= 0 ? '.docx' : mime.indexOf('spreadsheetml') >= 0 ? '.xlsx'
+        : mime.indexOf('msword') >= 0 ? '.doc' : mime.indexOf('rar') >= 0 ? '.rar' : '');
+  return `${titulo}${extensao}`;
+};
+
 // ============================================================
 // LICITAÇÕES — ESTADO DO ACOMPANHAMENTO
 //
@@ -49,6 +84,11 @@ export interface IUseAcompanhamentoLicitacoes {
   // "Participar": acompanha (se preciso) e cria a tarefa no ClickUp.
   participar: (item: ILicitacaoResultado, contexto: IContextoTarefaClickUp) => Promise<void>;
   criarTarefaClickUp: (acompanhamento: IAcompanhamento, item: ILicitacaoResultado | undefined, contexto: IContextoTarefaClickUp, atualizarCampos?: boolean) => Promise<void>;
+  // Cria (ou reaproveita) a pasta do edital no SharePoint e devolve o link.
+  criarPasta: (acompanhamento: IAcompanhamento) => Promise<string | undefined>;
+  // Baixa os documentos do PNCP para a pasta do edital (precisa do
+  // edital da busca atual: o identificador do PNCP só existe nela).
+  baixarDocumentos: (item: ILicitacaoResultado, pastaUrl: string) => Promise<void>;
   parar: (acompanhamento: IAcompanhamento) => Promise<void>;
   marcarLidas: (acompanhamentoId: string) => void;
   verificarAgora: () => Promise<void>;
@@ -248,15 +288,124 @@ export const useAcompanhamentoLicitacoes = (
     }
   }, [servico, recarregar]);
 
+  const pastas = React.useMemo(() => new PastaSharePointLicitacaoService(), []);
+
+  const criarPasta = React.useCallback(async (acomp: IAcompanhamento): Promise<string | undefined> => {
+    if (!servico) {
+      return undefined;
+    }
+    if (acomp.pastaUrl) {
+      return acomp.pastaUrl;
+    }
+    setProcessandoChave(acomp.chaveEdital);
+    try {
+      const pasta = await pastas.garantirPasta({
+        local: acomp.local,
+        orgao: acomp.orgao,
+        numero: acomp.numero,
+        publicacao: acomp.criadoEm
+      });
+      await servico.salvarPasta(acomp.id, pasta.url);
+      setMensagem(pasta.criada
+        ? `Pasta criada no SharePoint: ${pasta.caminho.split('/Shared Documents/')[1] || pasta.caminho}`
+        : 'A pasta do edital já existia no SharePoint e foi vinculada.');
+      recarregar();
+      return pasta.url;
+    } catch (falha) {
+      setMensagem(`Não foi possível criar a pasta no SharePoint: ${falha instanceof Error ? falha.message : String(falha)}`);
+      return undefined;
+    } finally {
+      setProcessandoChave('');
+    }
+  }, [servico, pastas, recarregar]);
+
+  const baixarDocumentos = React.useCallback(async (
+    item: ILicitacaoResultado,
+    pastaUrl: string
+  ): Promise<void> => {
+    const caminho = caminhoDaUrl(pastaUrl);
+    if (!item.idPncp || !caminho) {
+      setMensagem('Para baixar os documentos, abra o edital pela busca (o PNCP precisa do identificador do edital).');
+      return;
+    }
+    const chave = gerarChaveEdital(item);
+    setProcessandoChave(chave);
+    try {
+      const documentos = await carregarDocumentosEdital(item.idPncp);
+      if (documentos.length === 0) {
+        setMensagem('O PNCP não tem documentos publicados para este edital.');
+        return;
+      }
+      let enviados = 0;
+      let existentes = 0;
+      const falhas: string[] = [];
+      for (let i = 0; i < documentos.length; i++) {
+        const doc = documentos[i];
+        setMensagem(`Baixando documentos do edital para a pasta: ${i + 1} de ${documentos.length}…`);
+        try {
+          // 1º pelo navegador; se o PNCP bloquear (CORS), pelo servidor.
+          let blob: Blob;
+          let tipo: string;
+          try {
+            const direto = await baixarBlobEdital(doc.url);
+            blob = direto.blob;
+            tipo = direto.tipo;
+          } catch (erroDireto) {
+            if (!servico) {
+              throw erroDireto;
+            }
+            const pelaApi = await servico.baixarArquivoPeloServidor(doc.url);
+            blob = pelaApi.blob;
+            tipo = await detectarTipo(blob);
+          }
+          const resultado = await pastas.enviarArquivo(caminho, nomeDoArquivo(doc, tipo, blob), blob);
+          if (resultado === 'enviado') {
+            enviados++;
+          } else {
+            existentes++;
+          }
+        } catch (falha) {
+          const motivo = falha instanceof Error ? falha.message : String(falha);
+          console.warn(`[Licitações] Documento "${doc.titulo}" não foi para a pasta:`, falha);
+          falhas.push(`${doc.titulo}: ${/failed to fetch|networkerror|load failed/i.test(motivo)
+            ? 'o navegador não conseguiu baixar o arquivo do PNCP (bloqueio de acesso entre sites)'
+            : motivo}`);
+        }
+      }
+      setMensagem(
+        `Documentos na pasta do edital: ${enviados} baixado(s)` +
+        `${existentes ? `, ${existentes} já estava(m) lá` : ''}` +
+        `${falhas.length ? `. Não baixados: ${falhas.join(' · ')}` : '.'}`
+      );
+    } catch (falha) {
+      console.warn('[Licitações] Falha ao baixar os documentos para a pasta:', falha);
+      setMensagem(`Não foi possível baixar os documentos: ${falha instanceof Error ? falha.message : String(falha)}`);
+    } finally {
+      setProcessandoChave('');
+    }
+  }, [pastas, servico]);
+
+  // "Participar": acompanha → cria a pasta no SharePoint → baixa os
+  // documentos do edital para a pasta → cria a tarefa no ClickUp (já
+  // com o link da pasta).
   const participar = React.useCallback(async (
     item: ILicitacaoResultado,
     contexto: IContextoTarefaClickUp
   ): Promise<void> => {
     const acomp = porChave[gerarChaveEdital(item)] || await acompanhar(item);
-    if (acomp && !acomp.clickupUrl) {
-      await criarTarefaClickUp(acomp, item, contexto);
+    if (!acomp) {
+      return;
     }
-  }, [porChave, acompanhar, criarTarefaClickUp]);
+    const novaPasta = !acomp.pastaUrl;
+    const pastaUrl = acomp.pastaUrl || await criarPasta({ ...acomp, local: item.local || acomp.local, numero: item.numero || acomp.numero, criadoEm: item.publicacao || acomp.criadoEm });
+    if (!acomp.clickupUrl) {
+      await criarTarefaClickUp({ ...acomp, pastaUrl: pastaUrl || acomp.pastaUrl }, item, contexto);
+    }
+    // Por último (pode demorar): os documentos vão para a pasta.
+    if (pastaUrl && novaPasta) {
+      await baixarDocumentos(item, pastaUrl);
+    }
+  }, [porChave, acompanhar, criarPasta, criarTarefaClickUp, baixarDocumentos]);
 
   const parar = React.useCallback(async (acomp: IAcompanhamento): Promise<void> => {
     if (!servico) {
@@ -318,6 +467,8 @@ export const useAcompanhamentoLicitacoes = (
     acompanhar,
     participar,
     criarTarefaClickUp,
+    criarPasta,
+    baixarDocumentos,
     parar,
     marcarLidas,
     verificarAgora,

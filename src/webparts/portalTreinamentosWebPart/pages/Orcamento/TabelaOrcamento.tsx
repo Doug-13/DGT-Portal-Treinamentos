@@ -51,6 +51,8 @@ import {
 // • Rola dentro da caixa (cabeçalho, coluna da conta e rodapé fixos).
 // • Colar uma linha do Excel (valores com TAB) preenche os meses.
 // • Linhas calculadas por REGRA (ex.: impostos) ficam bloqueadas.
+// • Linhas NÃO podem ser removidas (o plano de contas é fixo; sem valor,
+//   a linha fica zerada).
 // ============================================================
 
 export type PeriodoTabela = 'sem1' | 'sem2' | 'ano';
@@ -83,7 +85,6 @@ export interface ITabelaOrcamentoProps {
   onColarValores?: (chave: string, mesInicial: number, valores: number[]) => void;
   onAlterarDescricao?: (chave: string, descricao: string) => void;
   onRepetirJaneiro?: (chave: string) => void;
-  onRemover?: (chave: string) => void;
 }
 
 const LARGURA_CONTA = 340;
@@ -292,7 +293,6 @@ interface ILinhaTabelaProps {
   onColarValores?: (chave: string, mesInicial: number, valores: number[]) => void;
   onAlterarDescricao?: (chave: string, descricao: string) => void;
   onRepetirJaneiro?: (chave: string) => void;
-  onRemover?: (chave: string) => void;
 }
 
 function LinhaTabelaBase(props: ILinhaTabelaProps): JSX.Element {
@@ -329,15 +329,6 @@ function LinhaTabelaBase(props: ILinhaTabelaProps): JSX.Element {
                   ⇉
                 </button>
               )}
-              <button
-                type="button"
-                title="Remover esta linha"
-                aria-label={`Remover ${linha.conta}`}
-                onClick={() => props.onRemover && props.onRemover(linha.chave)}
-                style={botaoLinha(COR.perigo, '#F3C1C1')}
-              >
-                ✕
-              </button>
             </div>
           )}
         </div>
@@ -591,7 +582,6 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
             onColarValores={props.onColarValores}
             onAlterarDescricao={props.onAlterarDescricao}
             onRepetirJaneiro={props.onRepetirJaneiro}
-            onRemover={props.onRemover}
           />
         );
       }
