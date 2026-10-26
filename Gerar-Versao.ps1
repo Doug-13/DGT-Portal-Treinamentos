@@ -151,7 +151,8 @@ Copy-Item $Origem $Arquivo -Force -ErrorAction Stop
 if ($Git) {
     Write-Host '== Git' -ForegroundColor White
 
-    git add -- $Arquivos
+    # versao.ts é gerado a cada build e fica no .gitignore: não entra no commit
+    git add -- ($Arquivos | Where-Object { $_ -notlike '*constants\versao.ts' })
     git commit -m "Versão $versao" | Out-Null
 
     if ($LASTEXITCODE -eq 0) {

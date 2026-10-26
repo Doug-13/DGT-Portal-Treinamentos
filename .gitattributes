@@ -1,0 +1,17 @@
+# Padroniza fim de linha para todos (evita conflitos falsos entre PCs)
+* text=auto eol=lf
+
+# Scripts do Windows mantem CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Arquivos binarios: nunca converter
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.sppkg binary
+*.docx binary
+*.xlsx binary
