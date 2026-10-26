@@ -219,6 +219,14 @@ export interface IGestaoModulosPageProps {
         IModuloConteudoAdmin
     ) => Promise<void>;
 
+  onReposicionarConteudoModulo?:
+    (
+      itemId:
+        string,
+      novaPosicao:
+        number
+    ) => Promise<void>;
+
   modoFluxo?:
     boolean;
 
@@ -233,6 +241,16 @@ export interface IGestaoModulosPageProps {
 
   onConfirmarImportacaoJson:
     (
+      dados:
+        IModuloImportJson
+    ) => Promise<string>;
+
+  // Etapa de edição dos módulos: substitui os dados e os conteúdos de
+  // UM módulo pelos de um JSON.
+  onAtualizarModuloJson?:
+    (
+      moduloId:
+        string,
       dados:
         IModuloImportJson
     ) => Promise<string>;
@@ -349,6 +367,18 @@ const GestaoModulosPage:
   > = (
     props
   ) => {
+
+  // Atualização de UM módulo por JSON (etapa de edição dos módulos).
+  const [
+    moduloAtualizandoJson,
+    setModuloAtualizandoJson
+  ] =
+    React.useState<IModuloAdmin | null>(null);
+
+  // Atualizar e excluir módulo só na etapa de edição dos módulos
+  // (assistente Treinamento → Módulos → Avaliação).
+  const edicaoDeModulos =
+    !!props.modoFluxo;
 
   const inputJsonRef =
     React.useRef<
@@ -1683,9 +1713,24 @@ const GestaoModulosPage:
         const dadosFinais =
           await resolverMidiasDaImportacao(previaImportacao);
 
-        const mensagem = await props.onConfirmarImportacaoJson(
-          dadosFinais || previaImportacao
-        );
+        const atualizando =
+          moduloAtualizandoJson;
+
+        if (atualizando && (dadosFinais || previaImportacao).modulos.length !== 1) {
+          throw new Error('Para atualizar o módulo, a prévia deve ter exatamente 1 módulo.');
+        }
+
+        const mensagem =
+          atualizando && props.onAtualizarModuloJson
+            ? await props.onAtualizarModuloJson(
+              atualizando.id,
+              dadosFinais || previaImportacao
+            )
+            : await props.onConfirmarImportacaoJson(
+              dadosFinais || previaImportacao
+            );
+
+        setModuloAtualizandoJson(null);
 
         const quantidadeImagens =
           Object.keys(urlsMidiaEnviadas.current).length;
@@ -1856,6 +1901,10 @@ const GestaoModulosPage:
               onMoverAbaixo={
                 props.onMoverConteudoModuloAbaixo
               }
+
+              onReposicionar={
+                props.onReposicionarConteudoModulo
+              }
             />
           )
           : null;
@@ -1941,6 +1990,8 @@ const GestaoModulosPage:
                         ? error.message
                         : 'Erro ao ler o arquivo JSON.'
                     );
+
+                    setModuloAtualizandoJson(null);
                   }
                 )
                 .then(
@@ -1980,10 +2031,12 @@ const GestaoModulosPage:
               !props.treinamentoId ||
               importandoJson
             }
-            onClick={() =>
+            onClick={() => {
+              // Importação de módulos NOVOS (não é atualização).
+              setModuloAtualizandoJson(null);
               inputJsonRef.current
-                ?.click()
-            }
+                ?.click();
+            }}
             style={{
               ...buttonSecondary,
 
@@ -2837,12 +2890,37 @@ const GestaoModulosPage:
                         },
 
                         ...(
+                          edicaoDeModulos &&
+                          props.onAtualizarModuloJson
+                            ? [
+                              {
+                                rotulo:
+                                  'Atualizar por JSON',
+
+                                titulo:
+                                  'Substituir os dados e os conteúdos deste módulo pelos de um arquivo JSON (ou .zip com imagens)',
+
+                                onClick: () => {
+                                  setModuloAtualizandoJson(
+                                    modulo
+                                  );
+                                  if (inputJsonRef.current) {
+                                    inputJsonRef.current.click();
+                                  }
+                                }
+                              }
+                            ]
+                            : []
+                        ),
+
+                        ...(
+                          edicaoDeModulos &&
                           props.onAnalisarRemocaoModulo &&
                           props.onRemoverModulo
                             ? [
                               {
                                 rotulo:
-                                  'Remover',
+                                  'Excluir módulo',
 
                                 perigo:
                                   true,
@@ -3577,8 +3655,24 @@ const GestaoModulosPage:
               }}
             >
               <h2 style={{ marginBottom: '6px', color: '#0B2D4D' }}>
-                Revisar importação por JSON
+                {moduloAtualizandoJson
+                  ? `Atualizar o módulo "${moduloAtualizandoJson.titulo}" por JSON`
+                  : 'Revisar importação por JSON'}
               </h2>
+
+              {moduloAtualizandoJson && (
+                <div style={{ background: '#FFF4E5', border: '1px solid #F5D7A8', color: '#7C2D12', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', fontSize: '13.5px', lineHeight: 1.5 }}>
+                  <strong>Atualização do módulo.</strong> Título, descrição, duração e obrigatoriedade serão
+                  substituídos pelos do JSON, e os <strong>conteúdos atuais serão trocados</strong> pelos conteúdos abaixo.
+                  A ordem e a situação (ativo) do módulo são mantidas. Conteúdos cuja pergunta rápida já tem respostas de
+                  colaboradores são desativados, não apagados (histórico preservado).
+                  {previaImportacao && previaImportacao.modulos.length !== 1 && (
+                    <div style={{ marginTop: '6px', color: '#B42318', fontWeight: 700 }}>
+                      O JSON tem {previaImportacao.modulos.length} módulos: deixe apenas 1 (use "Remover módulo" na prévia).
+                    </div>
+                  )}
+                </div>
+              )}
 
               <p style={{ marginTop: 0, marginBottom: '18px', color: '#64748B', lineHeight: 1.5 }}>
                 Nada foi gravado ainda. Ajuste títulos, descrições e
@@ -3853,10 +3947,10 @@ const GestaoModulosPage:
                 <button
                   type="button"
                   disabled={confirmandoImportacao}
-                  onClick={() => setPreviaImportacao(null)}
+                  onClick={() => { setPreviaImportacao(null); setModuloAtualizandoJson(null); }}
                   style={{ ...buttonSecondary, opacity: confirmandoImportacao ? 0.55 : 1 }}
                 >
-                  Cancelar importação
+                  {moduloAtualizandoJson ? 'Cancelar atualização' : 'Cancelar importação'}
                 </button>
 
                 <button
@@ -3867,7 +3961,11 @@ const GestaoModulosPage:
                   }}
                   style={{ ...buttonPrimary, opacity: confirmandoImportacao ? 0.55 : 1 }}
                 >
-                  {confirmandoImportacao ? 'Salvando...' : 'Confirmar e importar'}
+                  {confirmandoImportacao
+                    ? 'Salvando...'
+                    : moduloAtualizandoJson
+                      ? 'Confirmar e atualizar o módulo'
+                      : 'Confirmar e importar'}
                 </button>
               </div>
             </div>

@@ -67,6 +67,15 @@ export interface IUseGestaoModuloConteudos {
       item:
         IModuloConteudoAdmin
     ) => Promise<void>;
+
+  // Arrastar e soltar: leva o conteúdo para a posição (0 = primeiro).
+  reposicionar:
+    (
+      itemId:
+        string,
+      novaPosicao:
+        number
+    ) => Promise<void>;
 }
 
 export const useGestaoModuloConteudos =
@@ -325,6 +334,79 @@ export const useGestaoModuloConteudos =
         ]
       );
 
+    // Sequência exibida: por ordem (empate: posição original).
+    const sequenciaAtual =
+      React.useCallback(
+        (): IModuloConteudoAdmin[] =>
+          conteudos
+            .map((item, indice) => ({ item, indice }))
+            .sort((a, b) => a.item.ordem - b.item.ordem || a.indice - b.indice)
+            .map(par => par.item),
+        [
+          conteudos
+        ]
+      );
+
+    // Leva o conteúdo para a posição informada e renumera todos
+    // (1, 2, 3…) — funciona também com ordens repetidas.
+    const reposicionar =
+      React.useCallback(
+        async (
+          itemId:
+            string,
+          novaPosicao:
+            number
+        ): Promise<void> => {
+
+          const sequencia =
+            sequenciaAtual();
+
+          const indice =
+            sequencia.findIndex(
+              atual =>
+                atual.id ===
+                itemId
+            );
+
+          if (indice < 0) {
+            return;
+          }
+
+          const destino =
+            Math.max(
+              0,
+              Math.min(
+                sequencia.length - 1,
+                novaPosicao
+              )
+            );
+
+          const [movido] =
+            sequencia.splice(
+              indice,
+              1
+            );
+
+          sequencia.splice(
+            destino,
+            0,
+            movido
+          );
+
+          await executar(
+            () =>
+              service.reordenar(
+                sequencia
+              )
+          );
+        },
+        [
+          sequenciaAtual,
+          executar,
+          service
+        ]
+      );
+
     const mover =
       React.useCallback(
         async (
@@ -335,45 +417,25 @@ export const useGestaoModuloConteudos =
         ): Promise<void> => {
 
           const indice =
-            conteudos
+            sequenciaAtual()
               .findIndex(
                 atual =>
                   atual.id ===
                   item.id
               );
 
-          const outroIndice =
-            indice +
-            deslocamento;
-
-          if (
-            indice <
-              0 ||
-            outroIndice <
-              0 ||
-            outroIndice >=
-              conteudos.length
-          ) {
+          if (indice < 0) {
             return;
           }
 
-          const outro =
-            conteudos[
-              outroIndice
-            ];
-
-          await executar(
-            () =>
-              service.mover(
-                item,
-                outro
-              )
+          await reposicionar(
+            item.id,
+            indice + deslocamento
           );
         },
         [
-          conteudos,
-          executar,
-          service
+          sequenciaAtual,
+          reposicionar
         ]
       );
 
@@ -419,6 +481,7 @@ export const useGestaoModuloConteudos =
       editar,
       definirAtivo,
       moverAcima,
-      moverAbaixo
+      moverAbaixo,
+      reposicionar
     };
   };

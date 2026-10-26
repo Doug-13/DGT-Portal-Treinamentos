@@ -197,7 +197,9 @@ const ACOES_SISTEMA: Array<{ valor: '' | AcaoSistemaFluxo; rotulo: string }> = [
   { valor: 'publicarSemRetreinamento', rotulo: 'Publicar a revisão sem retreinamento' }
 ];
 
-type ModoCampo = 'oculto' | 'editavel' | 'obrigatorio' | 'leitura' | 'condicional';
+// condicional          = obrigatório e visível só quando a condição é atendida
+// opcionalCondicional  = opcional e visível só quando a condição é atendida
+type ModoCampo = 'oculto' | 'editavel' | 'obrigatorio' | 'leitura' | 'condicional' | 'opcionalCondicional';
 
 const modoDoCampo = (
   campo: IFluxoCampo | undefined
@@ -213,6 +215,10 @@ const modoDoCampo = (
 
   if (campo.obrigatorioQuando) {
     return 'condicional';
+  }
+
+  if (campo.mostrarQuando) {
+    return 'opcionalCondicional';
   }
 
   return campo.obrigatorio ? 'obrigatorio' : 'editavel';
@@ -666,14 +672,29 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
       validarNosResultados: atual ? atual.validarNosResultados : undefined
     };
 
+    // Condição atual (ou uma sugerida: o primeiro campo Sim/Não do
+    // processo, valor "Não" — ex.: justificativa quando não exige).
+    const condicaoAtual =
+      atual ? (atual.obrigatorioQuando || atual.mostrarQuando) : undefined;
+
+    const campoSugerido =
+      metadados.find(item => item.chave !== metadado.chave && item.tipo === 'simNao') ||
+      metadados.find(item => item.chave !== metadado.chave);
+
+    const condicao =
+      condicaoAtual ||
+      (campoSugerido ? { campo: campoSugerido.chave, valor: campoSugerido.tipo === 'simNao' ? 'nao' : '' } : undefined);
+
     const novo: IFluxoCampo =
-      modo === 'condicional' && atual
-        ? atual
-        : {
-          ...base,
-          obrigatorio: modo === 'obrigatorio',
-          somenteLeitura: modo === 'leitura' ? true : undefined
-        };
+      modo === 'condicional'
+        ? { ...base, obrigatorioQuando: condicao }
+        : modo === 'opcionalCondicional'
+          ? { ...base, mostrarQuando: condicao }
+          : {
+            ...base,
+            obrigatorio: modo === 'obrigatorio',
+            somenteLeitura: modo === 'leitura' ? true : undefined
+          };
 
     // Mantém a ordem dos metadados.
     const campos =
@@ -682,6 +703,23 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         .filter((campo): campo is IFluxoCampo => campo !== undefined);
 
     alterar({ campos });
+  };
+
+  // Altera a condição (campo e valor) de um campo condicional.
+  const alterarCondicaoCampo = (
+    chave: string,
+    condicao: { campo: string; valor: string }
+  ): void => {
+    alterar({
+      campos: config.campos.map(item => {
+        if (item.chave !== chave) {
+          return item;
+        }
+        return item.obrigatorioQuando
+          ? { ...item, obrigatorioQuando: condicao }
+          : { ...item, mostrarQuando: condicao };
+      })
+    });
   };
 
   return (
@@ -1176,26 +1214,90 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                 const modo =
                   modoDoCampo(campo);
 
+                const condicao =
+                  campo ? (campo.obrigatorioQuando || campo.mostrarQuando) : undefined;
+
+                const campoCondicao =
+                  condicao ? metadados.find(item => item.chave === condicao.campo) : undefined;
+
                 return (
-                  <div key={metadado.chave} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 150px', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px' }}>{metadado.rotulo}</span>
-                    <select
-                      aria-label={`Uso do campo ${metadado.rotulo}`}
-                      value={modo}
-                      disabled={!editavel}
-                      onChange={evento => alterarModoCampo(metadado, evento.target.value as ModoCampo)}
-                      style={{ ...estiloEntradaPainel, minHeight: '32px', fontSize: '12.5px' }}
-                    >
-                      <option value="oculto">Não exibir</option>
-                      <option value="editavel">Opcional</option>
-                      <option value="obrigatorio">Obrigatório</option>
-                      <option value="leitura">Somente leitura</option>
-                      {
-                        modo === 'condicional' && (
-                          <option value="condicional">Obrigatório com condição (modelo)</option>
-                        )
-                      }
-                    </select>
+                  <div key={metadado.chave} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 190px', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '13px' }}>{metadado.rotulo}</span>
+                      <select
+                        aria-label={`Uso do campo ${metadado.rotulo}`}
+                        value={modo}
+                        disabled={!editavel}
+                        onChange={evento => alterarModoCampo(metadado, evento.target.value as ModoCampo)}
+                        style={{ ...estiloEntradaPainel, minHeight: '32px', fontSize: '12.5px' }}
+                      >
+                        <option value="oculto">Não exibir</option>
+                        <option value="editavel">Opcional</option>
+                        <option value="obrigatorio">Obrigatório</option>
+                        <option value="leitura">Somente leitura</option>
+                        {metadados.length > 1 && <option value="condicional">Obrigatório quando…</option>}
+                        {metadados.length > 1 && <option value="opcionalCondicional">Opcional quando…</option>}
+                      </select>
+                    </div>
+
+                    {/* Regra: o campo só aparece quando outro campo tem o valor indicado. */}
+                    {condicao && (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', fontSize: '12px', background: '#F5F7FA', borderRadius: '6px', padding: '6px 8px' }}>
+                        <span>Mostrar quando</span>
+                        <select
+                          aria-label={`Campo da condição de ${metadado.rotulo}`}
+                          value={condicao.campo}
+                          disabled={!editavel}
+                          onChange={evento => {
+                            const outro = metadados.find(item => item.chave === evento.target.value);
+                            alterarCondicaoCampo(metadado.chave, {
+                              campo: evento.target.value,
+                              valor: outro && outro.tipo === 'simNao' ? 'nao' : outro && outro.tipo === 'lista' && outro.opcoes && outro.opcoes.length ? outro.opcoes[0] : ''
+                            });
+                          }}
+                          style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px', width: 'auto', maxWidth: '200px' }}
+                        >
+                          {metadados.filter(item => item.chave !== metadado.chave).map(item => (
+                            <option key={item.chave} value={item.chave}>{item.rotulo}</option>
+                          ))}
+                        </select>
+                        <span>for</span>
+                        {campoCondicao && campoCondicao.tipo === 'simNao'
+                          ? (
+                            <select
+                              aria-label={`Valor da condição de ${metadado.rotulo}`}
+                              value={condicao.valor}
+                              disabled={!editavel}
+                              onChange={evento => alterarCondicaoCampo(metadado.chave, { campo: condicao.campo, valor: evento.target.value })}
+                              style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px', width: 'auto' }}
+                            >
+                              <option value="sim">Sim</option>
+                              <option value="nao">Não</option>
+                            </select>
+                          )
+                          : campoCondicao && campoCondicao.tipo === 'lista'
+                            ? (
+                              <select
+                                aria-label={`Valor da condição de ${metadado.rotulo}`}
+                                value={condicao.valor}
+                                disabled={!editavel}
+                                onChange={evento => alterarCondicaoCampo(metadado.chave, { campo: condicao.campo, valor: evento.target.value })}
+                                style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px', width: 'auto' }}
+                              >
+                                {(campoCondicao.opcoes || []).map(opcao => <option key={opcao} value={opcao}>{opcao}</option>)}
+                              </select>
+                            )
+                            : (
+                              <input
+                                aria-label={`Valor da condição de ${metadado.rotulo}`}
+                                value={condicao.valor}
+                                disabled={!editavel}
+                                onChange={evento => alterarCondicaoCampo(metadado.chave, { campo: condicao.campo, valor: evento.target.value })}
+                                style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px', width: '120px' }}
+                              />
+                            )}
+                      </div>
+                    )}
                   </div>
                 );
               }

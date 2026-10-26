@@ -146,6 +146,46 @@ export const noEscopoDeConteudo = (
   return !!alvo && areasConteudo.some(id => guid(id) === alvo);
 };
 
+// Catálogo de treinamentos: quais áreas o usuário enxerga.
+//   undefined → todas (Administrador, administrador de Treinamentos,
+//                Editor sem recorte de área);
+//   lista     → áreas de Editor + Gestor + Administrador da área. Se o
+//               Gestor não tiver área de gestão cadastrada, usa as
+//               áreas em que ele está vinculado.
+export const areasCatalogo = (
+  contexto: {
+    perfil: string;
+    areasConteudo?: string[];
+    areasGestor?: string[];
+    areasAdministrador?: string[];
+    vinculosArea?: Array<{ areaId: string }>;
+  } | undefined
+): string[] | undefined => {
+
+  if (!contexto) {
+    return [];
+  }
+
+  if (contexto.perfil === 'Administrador' || contexto.areasConteudo === undefined) {
+    return undefined;
+  }
+
+  const unir = (lista: string[]): string[] =>
+    lista.filter((id, i) => !!id && lista.map(guid).indexOf(guid(id)) === i);
+
+  const areas = unir([
+    ...(contexto.areasConteudo || []),
+    ...(contexto.areasGestor || []),
+    ...(contexto.areasAdministrador || [])
+  ]);
+
+  if (areas.length > 0) {
+    return areas;
+  }
+
+  return unir((contexto.vinculosArea || []).map(v => v.areaId));
+};
+
 export const calcularRegrasAcesso = (
   perfil: PerfilGlobal | string,
   vinculosAtivos: IVinculoRegra[],

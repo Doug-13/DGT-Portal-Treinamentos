@@ -908,6 +908,16 @@ export interface IPortalRouterProps {
   limparAnaliseTreinamento?:
     () => void;
 
+  // Catálogo: treinamentos no escopo do usuário (Gestor: áreas dele).
+  treinamentosCatalogo?:
+    ITreinamentoAdmin[];
+
+  catalogoRecortado?:
+    boolean;
+
+  areasCatalogoNomes?:
+    string[];
+
   documentos:
   IDocumento[];
 
@@ -1134,6 +1144,15 @@ export interface IPortalRouterProps {
       IModuloImportJson
   ) => Promise<string>;
 
+  // Etapa de edição dos módulos: atualiza UM módulo por JSON.
+  atualizarModuloJson?:
+  (
+    moduloId:
+      string,
+    dados:
+      IModuloImportJson
+  ) => Promise<string>;
+
   moduloConteudoSelecionadoId:
   string;
 
@@ -1188,6 +1207,15 @@ export interface IPortalRouterProps {
   (
     item:
       IModuloConteudoAdmin
+  ) => Promise<void>;
+
+  // Arrastar e soltar os conteúdos do módulo.
+  reposicionarConteudoModulo?:
+  (
+    itemId:
+      string,
+    novaPosicao:
+      number
   ) => Promise<void>;
 }
 
@@ -2023,7 +2051,14 @@ const PortalRouter:
         return (
           <CatalogoTreinamentosPage
             treinamentos={
+              props.treinamentosCatalogo ||
               props.treinamentosAdministrativos
+            }
+            recortado={
+              !!props.catalogoRecortado
+            }
+            areasNomes={
+              props.areasCatalogoNomes
             }
             carregando={
               props.carregandoGestaoTreinamentos
@@ -2048,7 +2083,7 @@ const PortalRouter:
       case 'testeTreinamento': {
 
         const emTeste =
-          props.treinamentosAdministrativos
+          (props.treinamentosCatalogo || props.treinamentosAdministrativos)
             .find(
               item =>
                 item.id ===
@@ -2062,7 +2097,14 @@ const PortalRouter:
           return (
             <CatalogoTreinamentosPage
               treinamentos={
+                props.treinamentosCatalogo ||
                 props.treinamentosAdministrativos
+              }
+              recortado={
+                !!props.catalogoRecortado
+              }
+              areasNomes={
+                props.areasCatalogoNomes
               }
               carregando={
                 props.carregandoGestaoTreinamentos
@@ -2827,19 +2869,26 @@ const PortalRouter:
                 .reordenarModulos
             }
 
-            // Remover módulo: somente Administrador.
+            // Excluir módulo: só na etapa de edição dos módulos (o
+            // assistente do treinamento) ou pelo Administrador. A
+            // tela mostra a opção apenas na etapa de edição; o serviço
+            // bloqueia módulos com progresso ou respostas.
             onAnalisarRemocaoModulo={
-              props.contextoAcesso?.perfil ===
-              'Administrador'
+              props.contextoAcesso?.perfil === 'Administrador' ||
+              !!props.fluxoCriacaoTreinamentoId
                 ? props.analisarRemocaoModulo
                 : undefined
             }
 
             onRemoverModulo={
-              props.contextoAcesso?.perfil ===
-              'Administrador'
+              props.contextoAcesso?.perfil === 'Administrador' ||
+              !!props.fluxoCriacaoTreinamentoId
                 ? props.removerModulo
                 : undefined
+            }
+
+            onAtualizarModuloJson={
+              props.atualizarModuloJson
             }
 
             onAnalisarJson={
@@ -2915,6 +2964,11 @@ const PortalRouter:
             onMoverConteudoModuloAbaixo={
               props
                 .moverConteudoModuloAbaixo
+            }
+
+            onReposicionarConteudoModulo={
+              props
+                .reposicionarConteudoModulo
             }
           />
         );
@@ -3315,6 +3369,8 @@ const PortalRouter:
           <ArquiteturaPage
             dataverseService={props.dataverseService}
             contexto={props.contextoAcesso}
+            spHttpClient={props.spHttpClient}
+            siteUrl={props.siteUrl}
           />
         );
 

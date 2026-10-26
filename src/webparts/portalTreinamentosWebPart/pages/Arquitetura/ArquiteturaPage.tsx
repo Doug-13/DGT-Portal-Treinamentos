@@ -1,4 +1,8 @@
 import * as React from 'react';
+
+import {
+  SPHttpClient
+} from '@microsoft/sp-http';
 import * as ReactDOM from 'react-dom';
 
 import {
@@ -64,6 +68,9 @@ import {
 export interface IArquiteturaPageProps {
   dataverseService?: DataverseService;
   contexto?: IContextoAcesso;
+  // Anexos do Go/No-Go (SharePoint).
+  spHttpClient?: SPHttpClient;
+  siteUrl?: string;
 }
 
 type Filtro = 'todos' | 'demandaGo' | 'bloqueados' | 'kit' | 'hhPronto' | 'enviados';
@@ -208,7 +215,7 @@ const CabecalhoBom: React.FC<{
   const meta = [
     ETAPAS[etapa].texto,
     demanda.canal,
-    demanda.tipoEntrega ? demanda.tipoEntrega.split(' ')[0] : '',
+    demanda.modalidade,
     bom.responsavelNome ? `Resp.: ${bom.responsavelNome}` : '',
     demanda.prazoEntrega ? `Prazo ${formatarData(demanda.prazoEntrega)}` : ''
   ].filter(Boolean).join(' · ');
@@ -452,7 +459,9 @@ const NovoBomModal: React.FC<{
 
 const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
   dataverseService,
-  contexto
+  contexto,
+  spHttpClient,
+  siteUrl
 }) => {
 
   const servico = React.useMemo(() => (dataverseService ? new BomService(dataverseService) : undefined), [dataverseService]);
@@ -640,6 +649,9 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                     salvando={salvando}
                     bomCriadoEm={bom.criadoEm}
                     bomResponsavel={bom.responsavelNome}
+                    numeroBom={bom.numero}
+                    spHttpClient={spHttpClient}
+                    siteUrl={siteUrl}
                     onRegistrar={async (notas, justificativas, parecer) => {
                       if (!contexto || !contexto.usuarioId) {
                         setErro('Não foi possível identificar o seu usuário para registrar a análise.');
@@ -880,7 +892,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                       <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COR.borda}` }}>
                         <strong style={{ fontSize: '13px' }}>{l.demanda ? l.demanda.nome : '—'}</strong>
                         <div style={{ fontSize: '11.5px', color: COR.texto2 }}>
-                          {l.demanda && l.demanda.cliente ? `${l.demanda.cliente} · ` : ''}{l.demanda ? (l.demanda.canal || 'Canal a definir') : ''}{l.demanda && l.demanda.tipoEntrega ? ` · ${l.demanda.tipoEntrega.split(' ')[0]}` : ''}
+                          {l.demanda && l.demanda.cliente ? `${l.demanda.cliente} · ` : ''}{l.demanda ? (l.demanda.canal || 'Canal a definir') : ''}{l.demanda && l.demanda.modalidade ? ` · ${l.demanda.modalidade}` : ''}
                         </div>
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COR.borda}`, fontSize: '13px' }}>{l.bom.responsavelNome}</td>

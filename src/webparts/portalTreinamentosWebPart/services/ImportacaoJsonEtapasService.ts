@@ -561,10 +561,16 @@ export class ImportacaoJsonEtapasService {
   private readonly avaliacaoService:
     AvaliacaoAdminService;
 
+  private readonly dataverse:
+    DataverseService;
+
   public constructor(
     dataverse:
       DataverseService
   ) {
+
+    this.dataverse =
+      dataverse;
 
     this.moduloService =
       new ModuloAdminService(
@@ -954,6 +960,42 @@ export class ImportacaoJsonEtapasService {
         );
       }
 
+      const criados =
+        await this.criarConteudosDoModulo(
+          moduloCriado.id,
+          modulo
+        );
+
+      quantidadeConteudos +=
+        criados.conteudos;
+
+      quantidadePerguntas +=
+        criados.perguntas;
+    }
+
+    return (
+      `${quantidadeModulos} módulo(s), ` +
+      `${quantidadeConteudos} conteúdo(s) e ` +
+      `${quantidadePerguntas} pergunta(s) rápida(s) importados.`
+    );
+  }
+
+  // Cria os conteúdos (e perguntas rápidas) de um módulo a partir do
+  // JSON. Usado na importação (módulo novo) e na ATUALIZAÇÃO por JSON
+  // (módulo existente).
+  private async criarConteudosDoModulo(
+    moduloId:
+      string,
+    modulo:
+      IModuloJson
+  ): Promise<{ conteudos: number; perguntas: number }> {
+
+    let quantidadeConteudos =
+      0;
+
+    let quantidadePerguntas =
+      0;
+
       for (
         let indiceConteudo = 0;
         indiceConteudo <
@@ -975,7 +1017,7 @@ export class ImportacaoJsonEtapasService {
         await this.conteudoService
           .criar({
             moduloId:
-              moduloCriado.id,
+              moduloId,
 
             tipo:
               mapearTipoConteudo(
@@ -1056,7 +1098,7 @@ export class ImportacaoJsonEtapasService {
           const conteudosAtuais =
             await this.conteudoService
               .listar(
-                moduloCriado.id
+                moduloId
               );
 
           const blocoCriado =
@@ -1124,12 +1166,127 @@ export class ImportacaoJsonEtapasService {
             1;
         }
       }
+
+    return {
+      conteudos: quantidadeConteudos,
+      perguntas: quantidadePerguntas
+    };
+  }
+
+  // ==========================================================
+  // ATUALIZAR UM MÓDULO EXISTENTE POR JSON
+  //
+  // O JSON deve trazer UM módulo. Os dados do módulo (título,
+  // descrição, duração, obrigatório) são atualizados e os conteúdos
+  // são SUBSTITUÍDOS pelos do JSON. Mantém id, ordem e ativo do
+  // módulo (vínculos e progresso continuam apontando para ele).
+  //
+  // Histórico: conteúdo cuja pergunta rápida já tem respostas de
+  // colaboradores NÃO é apagado — é desativado (fica fora do módulo,
+  // mas o registro permanece). Os demais são excluídos.
+  // ==========================================================
+
+  public async atualizarModuloDados(
+    treinamentoId:
+      string,
+    moduloId:
+      string,
+    dados:
+      IModuloImportJson
+  ): Promise<string> {
+
+    if (!treinamentoId || !moduloId) {
+      throw new Error('Módulo não selecionado.');
     }
 
+    if (!Array.isArray(dados.modulos) || dados.modulos.length !== 1) {
+      throw new Error(
+        `Para atualizar um módulo, o JSON deve conter exatamente 1 módulo (este tem ${Array.isArray(dados.modulos) ? dados.modulos.length : 0}).`
+      );
+    }
+
+    const modulo =
+      dados.modulos[0];
+
+    textoObrigatorio(
+      modulo.titulo,
+      'Módulo: titulo'
+    );
+
+    if (!Array.isArray(modulo.conteudos)) {
+      throw new Error('Módulo: "conteudos" deve ser uma lista.');
+    }
+
+    // Valida TUDO antes de alterar qualquer registro.
+    modulo.conteudos.forEach((conteudo, indice) =>
+      validarConteudoModuloJson(modulo, conteudo, indice));
+
+    const existente =
+      (await this.moduloService.listarPorTreinamento(treinamentoId))
+        .find(item => item.id === moduloId);
+
+    if (!existente) {
+      throw new Error('O módulo não foi encontrado neste treinamento.');
+    }
+
+    // 1) Conteúdos atuais: exclui (ou desativa, se houver respostas).
+    const conteudosAtuais =
+      await this.conteudoService.listar(moduloId);
+
+    let excluidos = 0;
+    let desativados = 0;
+
+    for (const conteudo of conteudosAtuais) {
+
+      const perguntasDoConteudo =
+        await this.dataverse.listarIdsPorLookup('dgt_modulopergunta', 'dgt_moduloconteudo', [conteudo.id]);
+
+      const respostas =
+        perguntasDoConteudo.length
+          ? await this.dataverse.listarIdsPorLookup('dgt_moduloperguntaresposta', 'dgt_modulopergunta', perguntasDoConteudo)
+          : [];
+
+      if (respostas.length > 0) {
+        if (conteudo.ativo) {
+          await this.dataverse.atualizarConteudoModulo(conteudo.id, { dgt_ativo: false });
+        }
+        desativados += 1;
+        continue;
+      }
+
+      const alternativas =
+        perguntasDoConteudo.length
+          ? await this.dataverse.listarIdsPorLookup('dgt_moduloperguntaalternativa', 'dgt_modulopergunta', perguntasDoConteudo)
+          : [];
+
+      for (const id of alternativas) {
+        await this.dataverse.excluirRegistro('dgt_moduloperguntaalternativa', id);
+      }
+      for (const id of perguntasDoConteudo) {
+        await this.dataverse.excluirRegistro('dgt_modulopergunta', id);
+      }
+      await this.dataverse.excluirRegistro('dgt_moduloconteudo', conteudo.id);
+      excluidos += 1;
+    }
+
+    // 2) Dados do módulo.
+    await this.moduloService.editar({
+      ...existente,
+      treinamentoId,
+      titulo: modulo.titulo.trim(),
+      descricao: modulo.descricao?.trim() || existente.descricao || '',
+      duracaoMin: Number(modulo.duracaoMin || existente.duracaoMin || 0),
+      obrigatorio: modulo.obrigatorio ?? existente.obrigatorio
+    });
+
+    // 3) Conteúdos do JSON.
+    const criados =
+      await this.criarConteudosDoModulo(moduloId, modulo);
+
     return (
-      `${quantidadeModulos} módulo(s), ` +
-      `${quantidadeConteudos} conteúdo(s) e ` +
-      `${quantidadePerguntas} pergunta(s) rápida(s) importados.`
+      `Módulo "${modulo.titulo.trim()}" atualizado: ${criados.conteudos} conteúdo(s) e ${criados.perguntas} pergunta(s) rápida(s) do JSON. ` +
+      `${excluidos} conteúdo(s) anterior(es) excluído(s)` +
+      (desativados ? `; ${desativados} desativado(s) por já terem respostas de colaboradores (histórico preservado).` : '.')
     );
   }
 

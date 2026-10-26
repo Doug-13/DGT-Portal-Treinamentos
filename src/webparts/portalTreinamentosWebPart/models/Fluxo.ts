@@ -242,7 +242,15 @@ export interface IFluxoCampo {
 
   // Só exige este campo quando outro campo tiver o valor indicado.
   // Ex.: justificativa obrigatória apenas quando retreinamento = 'nao'.
+  // O campo também só APARECE quando a condição é atendida.
   obrigatorioQuando?: {
+    campo: string;
+    valor: string;
+  };
+
+  // Só MOSTRA este campo (opcional) quando outro campo tiver o valor
+  // indicado. Ex.: observação opcional apenas quando houver = 'sim'.
+  mostrarQuando?: {
     campo: string;
     valor: string;
   };

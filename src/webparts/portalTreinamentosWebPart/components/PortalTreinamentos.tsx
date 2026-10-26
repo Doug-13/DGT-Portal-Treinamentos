@@ -38,7 +38,7 @@ import PortalRouter from './PortalRouter';
 import { Pagina } from '../constants/routes';
 import { descreverPerfil, podeAdministrarAcessos } from '../services/AutorizacaoService';
 import { calcularResumoConformidade } from '../services/ConformidadeService';
-import { montarEscopoPessoas, noEscopoDeConteudo, pessoaNoEscopo } from '../utils/regrasAcesso';
+import { areasCatalogo, montarEscopoPessoas, noEscopoDeConteudo, pessoaNoEscopo } from '../utils/regrasAcesso';
 import { podeAcessarRota } from '../services/RoutePermissionService';
 import {
   obterModuloPagina,
@@ -1839,6 +1839,58 @@ const gestaoAreas =
         ]
       );
 
+    // Catálogo: Gestor vê só os treinamentos das áreas dele (sem isso
+    // ele não sabe quais cursos existem na área). Admin/Editor global:
+    // todos.
+    const escopoCatalogo =
+      React.useMemo(
+        () =>
+          areasCatalogo(
+            autorizacao.contexto
+          ),
+        [
+          autorizacao.contexto
+        ]
+      );
+
+    const treinamentosCatalogo =
+      React.useMemo(
+        () =>
+          gestaoTreinamentos.treinamentos.filter(
+            treinamento =>
+              noEscopoDeConteudo(
+                escopoCatalogo,
+                treinamento.areaId
+              )
+          ),
+        [
+          gestaoTreinamentos.treinamentos,
+          escopoCatalogo
+        ]
+      );
+
+    // Nomes das áreas do recorte (aviso no topo do catálogo).
+    const areasCatalogoNomes =
+      React.useMemo(
+        (): string[] => {
+          if (!escopoCatalogo) {
+            return [];
+          }
+          const nomes: string[] = [];
+          (autorizacao.contexto?.vinculosArea || []).forEach(v => {
+            const igual = escopoCatalogo.some(id => id.replace(/[{}]/g, '').toLowerCase() === v.areaId.replace(/[{}]/g, '').toLowerCase());
+            if (igual && v.areaNome && nomes.indexOf(v.areaNome) < 0) {
+              nomes.push(v.areaNome);
+            }
+          });
+          return nomes;
+        },
+        [
+          escopoCatalogo,
+          autorizacao.contexto
+        ]
+      );
+
     // Documentos de controle dos treinamentos (tipo TRN): ficam FORA
     // do módulo Documentos — a gestão deles é feita na Gestão de
     // treinamentos (fluxo de revisão, pendências e análise).
@@ -2170,6 +2222,45 @@ const gestaoAreas =
             await importacaoJsonEtapasService
               .importarModulosDados(
                 gestaoModulos.treinamentoId,
+                dados
+              );
+
+          await gestaoModulos
+            .selecionarTreinamento(
+              gestaoModulos.treinamentoId
+            );
+
+          return mensagem;
+        },
+        [
+          gestaoModulos,
+          importacaoJsonEtapasService
+        ]
+      );
+
+    // Etapa de edição dos módulos: atualiza UM módulo por JSON.
+    const atualizarModuloJson =
+      React.useCallback(
+        async (
+          moduloId:
+            string,
+          dados:
+            IModuloImportJson
+        ): Promise<string> => {
+
+          if (
+            !gestaoModulos.treinamentoId
+          ) {
+            throw new Error(
+              'Treinamento não selecionado.'
+            );
+          }
+
+          const mensagem =
+            await importacaoJsonEtapasService
+              .atualizarModuloDados(
+                gestaoModulos.treinamentoId,
+                moduloId,
                 dados
               );
 
@@ -4664,6 +4755,18 @@ const gestaoAreas =
                   treinamentosNoEscopo
                 }
 
+                treinamentosCatalogo={
+                  treinamentosCatalogo
+                }
+
+                catalogoRecortado={
+                  !!escopoCatalogo
+                }
+
+                areasCatalogoNomes={
+                  areasCatalogoNomes
+                }
+
                 carregandoGestaoTreinamentos={
                   gestaoTreinamentos.carregando
                 }
@@ -4801,6 +4904,10 @@ const gestaoAreas =
                   confirmarImportacaoModulosJson
                 }
 
+                atualizarModuloJson={
+                  atualizarModuloJson
+                }
+
                 moduloConteudoSelecionadoId={
                   gestaoModuloConteudos.moduloId
                 }
@@ -4847,6 +4954,10 @@ const gestaoAreas =
 
                 moverConteudoModuloAbaixo={
                   gestaoModuloConteudos.moverAbaixo
+                }
+
+                reposicionarConteudoModulo={
+                  gestaoModuloConteudos.reposicionar
                 }
 
                 avaliacoesAdministrativas={

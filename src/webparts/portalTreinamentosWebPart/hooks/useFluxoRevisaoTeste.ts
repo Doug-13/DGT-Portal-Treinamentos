@@ -45,6 +45,7 @@ import {
 import {
   CHAVE_ARQUIVO_ANTERIOR,
   IResultadoRetorno,
+  publicacaoPendente,
   retornarUmPasso as simularRetornoUmPasso
 } from '../services/fluxo/FluxoEngine';
 
@@ -169,6 +170,12 @@ export interface IUseFluxoRevisaoTeste {
   // pela etapa atual: pode executá-la mesmo assim (registrado no
   // histórico como "Nome (Administrador)").
   atuandoComoAdministrador: boolean;
+
+  // A revisão está parada numa etapa de publicação (status "Vigente")
+  // sem ter sido publicada — ex.: depois de troca de processo ou de
+  // versão do fluxo. concluirPublicacao() publica como o fluxo faria.
+  publicacaoPendente: boolean;
+  concluirPublicacao: () => Promise<boolean>;
 
   situacao: SituacaoFluxoRevisao;
   processando: boolean;
@@ -936,6 +943,63 @@ export const useFluxoRevisaoTeste = (
     [documento?.id, revisaoAlvo?.id, persistencia]
   );
 
+  const pendenteDePublicacao =
+    !local && publicacaoPendente(definicao, instancia);
+
+  const concluirPublicacao =
+    async (): Promise<boolean> => {
+
+      if (!revisaoAlvo || !atorSelecionado) {
+        return false;
+      }
+
+      setProcessando(true);
+      setErrosAcao([]);
+      setAvisos([]);
+
+      try {
+        const resultado =
+          await servico.concluirPublicacaoPendente(
+            revisaoAlvo.id,
+            atorSelecionado.ator,
+            contextoExecucao(definicao)
+          );
+
+        if (!resultado.ok || !resultado.instancia) {
+          setErrosAcao(resultado.erros);
+          return false;
+        }
+
+        setInstancia(resultado.instancia);
+        setAvisos(resultado.avisos || []);
+
+        const definicaoAtual =
+          await servico.definicaoDaInstancia(resultado.instancia);
+
+        if (definicaoAtual) {
+          setDefinicao(definicaoAtual);
+          try {
+            await atualizarStatusDocumento(definicaoAtual, resultado.instancia);
+          } catch (error) {
+            console.error(error);
+            setAvisos(atual => atual.concat('O status do documento não pôde ser atualizado.'));
+          }
+        }
+
+        if (onRevisaoAlterada) {
+          await onRevisaoAlterada();
+        }
+
+        return true;
+      } catch (error) {
+        console.error(error);
+        setErrosAcao([`Erro ao concluir a publicação: ${error instanceof Error ? error.message : String(error)}`]);
+        return false;
+      } finally {
+        setProcessando(false);
+      }
+    };
+
   const executar =
     async (
       acaoChave: string,
@@ -1446,6 +1510,8 @@ export const useFluxoRevisaoTeste = (
     atores,
     atorSelecionado,
     atuandoComoAdministrador,
+    publicacaoPendente: pendenteDePublicacao,
+    concluirPublicacao,
     responsaveisEtapaAtual,
     selecionarAtor: (chave: string) => {
       setAtorChave(chave);

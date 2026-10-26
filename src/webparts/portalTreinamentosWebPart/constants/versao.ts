@@ -17,15 +17,77 @@ export interface INovidadeVersao {
   itens: INovidadeItem[];
 }
 
-export const VERSAO_PORTAL = "1.4.13";
+export const VERSAO_PORTAL = "1.4.14";
 
-export const VERSAO_SOLUCAO = "1.4.13.0";
+export const VERSAO_SOLUCAO = "1.4.14.0";
 
-export const DATA_BUILD = "2026-10-23T17:38:42.941Z";
+export const DATA_BUILD = "2026-10-26T12:36:33.861Z";
 
-export const COMMIT_BUILD = "ba87c69";
+export const COMMIT_BUILD = "104f88c";
 
 export const NOVIDADES: INovidadeVersao[] = [
+  {
+    "versao": "1.4.14",
+    "data": "2026-10-26",
+    "itens": [
+      {
+        "tipo": "Correção",
+        "texto": "revisão que ficou parada numa etapa de publicação (status \"Vigente\") depois de troca de processo ou de versão do fluxo agora mostra \"Publicação pendente\" com o botão \"Concluir publicação\", que publica a revisão (documento vigente, anterior obsoleta, retreinamento conforme o fluxo). A troca de fluxo também avisa quando a revisão cai numa etapa de publicação."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "na etapa de edição dos módulos (assistente do treinamento), \"Atualizar por JSON\" no menu do módulo substitui título, descrição, duração, obrigatoriedade e conteúdos pelos do JSON (com prévia e imagens), mantendo ordem, situação e vínculos do módulo. Conteúdos com respostas de colaboradores são desativados, não apagados."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "\"Excluir módulo\" passa a aparecer só na etapa de edição dos módulos, para quem está editando o treinamento (não só o Administrador); continua bloqueado para módulos já iniciados ou com respostas."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "conteúdos do módulo podem ser reposicionados arrastando e soltando (linha ciano indica onde o conteúdo vai cair); os botões ↑ ↓ continuam."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "reposicionar conteúdos funciona mesmo com ordens repetidas ou com buracos — a ordem é renumerada (1, 2, 3…) a cada movimento, e o número exibido (#) é a posição real."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "Arquitetura de Soluções — Modalidade com Dispensa de Licitação, Inexigibilidade e MIP; \"Proposta direta\" passa a \"Proposta Técnica\". A modalidade depende do canal: Público com as modalidades de proposta, Privado só com Proposta Comercial (preenchida automaticamente). Requer scripts/dataverse/atualizar-opcoes-bom.ps1."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "Tipo de projeto com \"Locação 48 meses\"."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "anexos na Matriz Go/No-Go (SharePoint, biblioteca \"Arquitetura de Soluções\", pasta Go-No-Go/<B.O.M.>)."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "removidos os campos \"Tipo de entrega\" e \"Pontos estimados\" dos Dados da demanda (os valores já gravados são mantidos); a Modalidade passa a ser obrigatória para concluir a etapa."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "regra de exibição dos campos no editor de fluxo — \"Obrigatório quando…\" e \"Opcional quando…\", com \"Mostrar quando [campo] for [valor]\" editável (ex.: a justificativa da dispensa só aparece quando \"Esta revisão exige treinamento?\" = Não)."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "em Documentos recentes, a coluna \"Etapa atual\" mostra em que atividade do fluxo cada documento está (destacada quando aguarda você, com o prazo ao passar o mouse)."
+      },
+      {
+        "tipo": "Correção",
+        "texto": "a coluna Responsável passa a mostrar o responsável pela etapa atual do fluxo (como na tela do documento); o responsável do cadastro aparece ao passar o mouse. A coluna Revisão mostra a revisão em andamento (ex.: Rev.00 após a renumeração)."
+      },
+      {
+        "tipo": "Melhoria",
+        "texto": "removida a coluna lateral da tela de Documentos (\"Meus documentos favoritos\" e \"Links úteis\"); a lista passa a ocupar a largura toda."
+      },
+      {
+        "tipo": "Novo",
+        "texto": "o Catálogo de treinamentos passa a aparecer para o Gestor, mostrando só os treinamentos das áreas dele (áreas de gestão; sem elas, as áreas em que está vinculado). O topo indica as áreas exibidas. O Gestor também pode usar \"Testar como colaborador\"."
+      }
+    ]
+  },
   {
     "versao": "1.4.13",
     "data": "2026-10-23",
@@ -363,16 +425,6 @@ export const NOVIDADES: INovidadeVersao[] = [
       {
         "tipo": "Correção",
         "texto": "a publicação do fluxo é bloqueada quando uma etapa \"Vigente\" leva a outra etapa \"Vigente\"."
-      }
-    ]
-  },
-  {
-    "versao": "1.2.0",
-    "data": "2026-10-05",
-    "itens": [
-      {
-        "tipo": "Melhoria",
-        "texto": "ajustes e correções internas."
       }
     ]
   }

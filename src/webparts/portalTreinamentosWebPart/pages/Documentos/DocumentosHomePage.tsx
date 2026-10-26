@@ -35,6 +35,10 @@ import {
   useDocumentosPendencias
 } from '../../hooks/useDocumentosPendencias';
 
+import {
+  useEtapasFluxoDocumentos
+} from '../../hooks/useEtapasFluxoDocumentos';
+
 import MinhasPendenciasDocumentos from
   './MinhasPendenciasDocumentos';
 
@@ -388,6 +392,9 @@ const NomeDocumentoCelula:
     );
   };
 
+// Lista vazia estável (evita recarregar os hooks a cada render).
+const SEM_VINCULOS: IUsuarioAreaAdmin[] = [];
+
 const DocumentosHomePage:
   React.FC<
     IDocumentosHomePageProps
@@ -399,7 +406,7 @@ const DocumentosHomePage:
     primeiroNome,
     contexto,
     areas: areasCadastradas = [],
-    usuariosAreas = [],
+    usuariosAreas = SEM_VINCULOS,
     dataverseService
   }) => {
 
@@ -464,6 +471,16 @@ const DocumentosHomePage:
           usuariosAreas,
           idsPendentes
         ]
+      );
+
+    // Onde cada documento está no fluxo: revisão real, etapa atual e
+    // o responsável PELA ETAPA (não o responsável do cadastro).
+    const fluxoDocumentos =
+      useEtapasFluxoDocumentos(
+        dataverseService,
+        documentosVisiveis,
+        contexto,
+        usuariosAreas
       );
 
     // Arquivo atual (revisão vigente) de cada documento: define o ícone
@@ -1029,7 +1046,7 @@ const DocumentosHomePage:
               'grid',
 
             gridTemplateColumns:
-              'minmax(0,1fr) 230px',
+              'minmax(0,1fr)',
 
             gap:
               '12px',
@@ -1220,6 +1237,13 @@ const DocumentosHomePage:
                               </th>
 
                               <th style={th}>
+                                Etapa atual
+                              </th>
+
+                              <th
+                                style={th}
+                                title="Responsável pela etapa atual do fluxo (ou pelo documento, quando não há revisão em andamento)"
+                              >
                                 Responsável
                               </th>
 
@@ -1290,23 +1314,82 @@ const DocumentosHomePage:
                                       }
                                     </td>
 
-                                    <td style={td}>
-                                      <ResponsavelCelula
-                                        nome={documento.responsavel}
-                                        souEu={
-                                          !!contexto?.usuarioId &&
-                                          guidTela(documento.responsavelId) ===
-                                          guidTela(contexto.usuarioId)
-                                        }
-                                      />
-                                    </td>
+                                    {
+                                      (() => {
+                                        const situacao =
+                                          fluxoDocumentos.situacoes[
+                                            guidTela(documento.id)
+                                          ];
+                                        const etapa =
+                                          situacao
+                                            ? situacao.etapa
+                                            : undefined;
+                                        const nomeResponsavel =
+                                          etapa && etapa.responsaveis.length > 0
+                                            ? etapa.responsaveis.join(' · ')
+                                            : documento.responsavel;
+                                        const souEu =
+                                          etapa
+                                            ? etapa.aguardandoVoce
+                                            : !!contexto?.usuarioId &&
+                                              guidTela(documento.responsavelId) ===
+                                              guidTela(contexto.usuarioId);
 
-                                    <td style={td}>
-                                      {
-                                        documento.revisaoAtual ||
-                                        '-'
-                                      }
-                                    </td>
+                                        return (
+                                          <>
+                                            <td style={td}>
+                                              {
+                                                situacao && situacao.emAndamento
+                                                  ? (
+                                                    <span
+                                                      title={etapa && etapa.prazo ? `Prazo da etapa: ${formatarDataCurta(etapa.prazo)}` : undefined}
+                                                      style={{
+                                                        display: 'inline-block',
+                                                        padding: '4px 10px',
+                                                        borderRadius: '999px',
+                                                        background: etapa && etapa.aguardandoVoce ? '#E6F9FC' : '#EEF2F6',
+                                                        color: '#202A44',
+                                                        fontWeight: 700,
+                                                        fontSize: '12px',
+                                                        border: etapa && etapa.aguardandoVoce ? '1px solid #05C3DD' : '1px solid transparent'
+                                                      }}
+                                                    >
+                                                      {etapa ? etapa.etapa : 'Carregando...'}
+                                                    </span>
+                                                  )
+                                                  : (
+                                                    <span style={{ color: '#66788A', fontSize: '12px' }}>
+                                                      {statusEhVigente(documento.status) ? 'Publicado' : '-'}
+                                                    </span>
+                                                  )
+                                              }
+                                            </td>
+
+                                            <td
+                                              style={td}
+                                              title={
+                                                etapa && documento.responsavel
+                                                  ? `Responsável pelo documento: ${documento.responsavel}`
+                                                  : undefined
+                                              }
+                                            >
+                                              <ResponsavelCelula
+                                                nome={nomeResponsavel}
+                                                souEu={souEu}
+                                              />
+                                            </td>
+
+                                            <td style={td}>
+                                              {
+                                                (situacao && situacao.revisao) ||
+                                                documento.revisaoAtual ||
+                                                '-'
+                                              }
+                                            </td>
+                                          </>
+                                        );
+                                      })()
+                                    }
 
                                     <td style={td}>
                                       {formatarDataCurta(documento.criadoEm)}
@@ -1601,217 +1684,7 @@ const DocumentosHomePage:
 
           </div>
 
-          {/* LATERAL */}
-
-          <aside
-            style={{
-              display:
-                'grid',
-
-              gap:
-                '12px'
-            }}
-          >
-
-            <article
-              style={{
-                padding:
-                  '13px',
-
-                border:
-                  `1px solid ${C.borda}`,
-
-                borderRadius:
-                  '12px',
-
-                background:
-                  C.branco
-              }}
-            >
-              <strong
-                style={{
-                  display:
-                    'block',
-
-                  marginBottom:
-                    '7px',
-
-                  color:
-                    C.azulEscuro,
-
-                  fontSize:
-                    '13px'
-                }}
-              >
-                ⭐ Meus documentos favoritos
-              </strong>
-
-              {
-                documentosVisiveis
-                  .slice(
-                    0,
-                    3
-                  )
-                  .map(
-                    item => (
-                      <button
-                        key={
-                          item.id
-                        }
-                        type="button"
-                        onClick={() => {
-
-                          if (
-                            onAbrirDocumento
-                          ) {
-                            onAbrirDocumento(
-                              item
-                            );
-                          }
-
-                        }}
-                        style={{
-                          width:
-                            '100%',
-
-                          padding:
-                            '10px 0',
-
-                          border:
-                            0,
-
-                          borderBottom:
-                            '1px solid #EDF1F5',
-
-                          background:
-                            'transparent',
-
-                          textAlign:
-                            'left',
-
-                          cursor:
-                            onAbrirDocumento
-                              ? 'pointer'
-                              : 'default'
-                        }}
-                      >
-                        <strong
-                          style={{
-                            display:
-                              'block',
-
-                            color:
-                              C.azulEscuro,
-
-                            fontSize:
-                              '12px',
-
-                            lineHeight:
-                              1.3
-                          }}
-                        >
-                          {
-                            item.titulo
-                          }
-                        </strong>
-
-                        <small
-                          style={{
-                            display:
-                              'block',
-
-                            marginTop:
-                              '3px',
-
-                            color:
-                              C.secundario,
-
-                            fontSize:
-                              '10px'
-                          }}
-                        >
-                          {
-                            item.codigo
-                          } · {
-                            item.revisaoAtual ||
-                            '-'
-                          }
-                        </small>
-                      </button>
-                    )
-                  )
-              }
-            </article>
-
-            <article
-              style={{
-                padding:
-                  '13px',
-
-                border:
-                  `1px solid ${C.borda}`,
-
-                borderRadius:
-                  '12px',
-
-                background:
-                  C.branco
-              }}
-            >
-              <strong
-                style={{
-                  display:
-                    'block',
-
-                  color:
-                    C.azulEscuro,
-
-                  fontSize:
-                    '13px'
-                }}
-              >
-                🔗 Links úteis
-              </strong>
-
-              {
-                [
-                  'Biblioteca de Templates',
-                  'Formulários e Modelos',
-                  'Normas e Legislações',
-                  'Solicitar nova revisão'
-                ].map(
-                  item => (
-                    <div
-                      key={
-                        item
-                      }
-                      style={{
-                        padding:
-                          '9px 0',
-
-                        borderBottom:
-                          '1px solid #EDF1F5',
-
-                        color:
-                          '#38536D',
-
-                        fontSize:
-                          '11px',
-
-                        lineHeight:
-                          1.3
-                      }}
-                    >
-                      {
-                        item
-                      }
-                    </div>
-                  )
-                )
-              }
-            </article>
-
-          </aside>
+          {/* Coluna lateral (favoritos e links úteis) removida: a lista ocupa a largura toda. */}
         </div>
 
       </section>

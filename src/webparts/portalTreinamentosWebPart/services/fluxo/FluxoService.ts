@@ -1,5 +1,6 @@
 import {
   AcaoSistemaFluxo,
+  IFluxoAtor,
   IFluxoDefinicao,
   IFluxoInstancia,
   IFluxoResponsavel,
@@ -20,6 +21,7 @@ import {
 } from '../processos/MetadadosProcessoService';
 
 import {
+  concluirPublicacaoPendente,
   executarAcao,
   IDadosInicioFluxo,
   IDadosRetornoFluxo,
@@ -258,6 +260,62 @@ export class FluxoService {
             erros: [
               `A ação não foi concluída porque a tarefa automática falhou: ${error instanceof Error ? error.message : String(error)}`
             ],
+            acoesSistema: []
+          };
+        }
+      }
+
+      this.preencherResponsaveis(resultado.instancia, contexto);
+
+      resultado.avisos =
+        await this.repositorio.salvar(
+          resultado.instancia,
+          this.contextoGravacao(definicao, resultado.instancia, contexto)
+        );
+    }
+
+    return resultado;
+  }
+
+  // Revisão parada numa etapa de publicação (status "Vigente") sem
+  // ter sido publicada — ex.: depois de troca de processo/versão.
+  // Executa a publicação como o fluxo faria ao chegar na etapa.
+  public async concluirPublicacaoPendente(
+    revisaoId: string,
+    ator: IFluxoAtor,
+    contexto?: IContextoExecucaoFluxo
+  ): Promise<IResultadoExecucao> {
+
+    const instancia =
+      await this.repositorio.obter(revisaoId);
+
+    if (!instancia) {
+      return { ok: false, erros: ['O fluxo desta revisão ainda não foi iniciado.'], acoesSistema: [] };
+    }
+
+    const definicao =
+      await this.definicaoDaInstancia(instancia);
+
+    if (!definicao) {
+      return { ok: false, erros: [`A versão ${instancia.fluxoVersao} do fluxo usada por esta revisão não foi encontrada.`], acoesSistema: [] };
+    }
+
+    const resultado =
+      concluirPublicacaoPendente(definicao, instancia, ator);
+
+    if (resultado.ok && resultado.instancia) {
+
+      if (contexto && contexto.executarAcoesSistema) {
+        try {
+          await contexto.executarAcoesSistema(resultado.acoesSistema, resultado.instancia);
+          if (this.repositorio.renovarVersao) {
+            await this.repositorio.renovarVersao(revisaoId);
+          }
+        } catch (error) {
+          console.error(error);
+          return {
+            ok: false,
+            erros: [`A publicação não foi concluída: ${error instanceof Error ? error.message : String(error)}`],
             acoesSistema: []
           };
         }

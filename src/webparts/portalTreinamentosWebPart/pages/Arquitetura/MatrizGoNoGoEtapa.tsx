@@ -1,6 +1,12 @@
 import * as React from 'react';
 
 import {
+  SPHttpClient
+} from '@microsoft/sp-http';
+
+import AnexosGoNoGo from './AnexosGoNoGo';
+
+import {
   IAnaliseGoNoGo,
   ICriterioGoNoGo
 } from '../../services/bom/BomService';
@@ -39,6 +45,11 @@ export interface IMatrizGoNoGoEtapaProps {
   // Para o histórico do B.O.M. (opcionais)
   bomCriadoEm?: string;
   bomResponsavel?: string;
+
+  // Anexos da análise (SharePoint).
+  numeroBom?: string;
+  spHttpClient?: SPHttpClient;
+  siteUrl?: string;
   onRegistrar: (
     notas: { [criterioId: string]: number },
     justificativas: { [criterioId: string]: string },
@@ -83,6 +94,9 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
   salvando,
   bomCriadoEm,
   bomResponsavel,
+  numeroBom,
+  spHttpClient,
+  siteUrl,
   onRegistrar
 }) => {
 
@@ -295,6 +309,14 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
               value={parecer}
               onChange={e => setParecer(e.target.value)}
             />
+
+            {numeroBom && (
+              <AnexosGoNoGo
+                numeroBom={numeroBom}
+                spHttpClient={spHttpClient}
+                siteUrl={siteUrl}
+              />
+            )}
 
             <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '10px', fontSize: '12.5px', fontWeight: 600, background: libera ? '#E6F6EF' : exigeParecer ? '#FEF1E8' : '#FDECEC', color: libera ? '#0E7C56' : exigeParecer ? '#B45309' : '#B42318' }}>
               {

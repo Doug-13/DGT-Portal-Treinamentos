@@ -142,9 +142,10 @@ const regras:
     { rota: 'gestaoDocumentos', perfis: CONTEUDO },
 
     // Catálogo e modo de teste (visão do colaborador, sem registros).
-    // Para liberar só ao Administrador, troque CONTEUDO por SOMENTE_ADMIN.
-    { rota: 'catalogoTreinamentos', perfis: CONTEUDO },
-    { rota: 'testeTreinamento', perfis: CONTEUDO },
+    // Gestor: só os treinamentos das áreas dele (recorte nos dados —
+    // regrasAcesso.areasCatalogo). Editor: as áreas de conteúdo.
+    { rota: 'catalogoTreinamentos', perfis: ACOMPANHAR_PESSOAS },
+    { rota: 'testeTreinamento', perfis: ACOMPANHAR_PESSOAS },
 
     // Somente Administrador
     // (antes não havia regra para esta rota, o que a tornava pública)

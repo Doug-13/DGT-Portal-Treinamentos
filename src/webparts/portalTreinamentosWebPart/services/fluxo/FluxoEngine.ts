@@ -1881,6 +1881,12 @@ export const transferirInstancia = (
     );
   }
 
+  if (atualDestino.tipo === 'tarefaHumana' && atualDestino.statusDocumento === 'Vigente') {
+    avisos.push(
+      `A revisão fica na etapa de publicação "${atualDestino.nome}": abra o documento e use "Concluir publicação" para torná-la vigente.`
+    );
+  }
+
   const porNome =
     mapeamento.filter(item => item.criterio === 'nome');
 
@@ -1980,6 +1986,118 @@ export const transferirInstancia = (
     etapaOrigem: atual.nome,
     etapaDestino: atualDestino.nome,
     mapeamento
+  };
+};
+
+// ------------------------------------------------------------
+// PUBLICAÇÃO PENDENTE
+//
+// Normalmente, ao CHEGAR numa etapa com status "Vigente" a revisão é
+// publicada na hora (avancar). Mas a revisão pode ficar PARADA nessa
+// etapa sem ter sido publicada — ex.: troca de processo ou
+// atualização de versão do fluxo, que mantêm a revisão "na mesma
+// etapa" e só recriam a pendência. Estas funções detectam o caso e
+// concluem a publicação como o fluxo faria.
+// ------------------------------------------------------------
+
+export const publicacaoPendente = (
+  definicao: IFluxoDefinicao | undefined,
+  instancia: IFluxoInstancia | undefined
+): boolean => {
+
+  if (!definicao || !instancia || instancia.status !== 'emAndamento') {
+    return false;
+  }
+
+  const atual =
+    obterElementoAtual(definicao, instancia);
+
+  return !!atual &&
+    atual.tipo === 'tarefaHumana' &&
+    atual.statusDocumento === 'Vigente';
+};
+
+export const concluirPublicacaoPendente = (
+  definicao: IFluxoDefinicao,
+  instanciaOriginal: IFluxoInstancia,
+  ator: IFluxoAtor
+): IResultadoExecucao => {
+
+  if (!publicacaoPendente(definicao, instanciaOriginal)) {
+    return {
+      ok: false,
+      erros: ['Esta revisão não está parada numa etapa de publicação.'],
+      acoesSistema: []
+    };
+  }
+
+  const agora =
+    agoraIso();
+
+  const instancia =
+    copiarInstancia(instanciaOriginal);
+
+  const destino =
+    obterElementoAtual(definicao, instancia) as IFluxoElemento;
+
+  // A pendência da etapa de publicação é encerrada (a etapa não tem
+  // botões: publicar é automático).
+  instancia.tarefas =
+    instancia.tarefas.map(
+      tarefa =>
+        tarefa.status === 'pendente'
+          ? { ...tarefa, status: 'concluida', concluidaEm: agora, concluidaPorNome: ator.nome }
+          : tarefa
+    );
+
+  const comRetreinamento =
+    retreinamentoDecididoNoFluxo(
+      definicao,
+      instancia,
+      destino.id
+    );
+
+  const acao: AcaoSistemaFluxo =
+    comRetreinamento
+      ? 'publicarComRetreinamento'
+      : 'publicarSemRetreinamento';
+
+  instancia.revisao =
+    revisaoInteira(instancia.revisao);
+
+  instancia.historico.unshift({
+    revisao: instancia.revisao,
+    id: gerarId('hist'),
+    data: agora,
+    elementoId: destino.id,
+    elementoNome: destino.nome,
+    acaoChave: acao,
+    acaoRotulo:
+      `Revisão ${instancia.revisao} publicada — vigente ` +
+      (comRetreinamento ? '(com retreinamento)' : '(sem retreinamento)') +
+      ' — publicação concluída após mudança de fluxo',
+    resultado: 'publicado',
+    executadoPorId: ator.id || 'sistema',
+    executadoPorNome: ator.nome || 'Sistema',
+    sistema: true
+  });
+
+  instancia.status =
+    'concluido';
+
+  instancia.concluidoEm =
+    agora;
+
+  limparTransicoesOrfas(
+    definicao,
+    instancia
+  );
+
+  return {
+    ok: true,
+    erros: [],
+    instancia,
+    acoesSistema: [acao]
   };
 };
 

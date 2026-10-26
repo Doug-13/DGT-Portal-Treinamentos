@@ -714,11 +714,15 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       ...valores
     };
 
-    // Campo condicional só aparece quando a condição é atendida.
+    // Campo condicional só aparece quando a condição é atendida
+    // (obrigatório ou opcional com condição).
+    const condicao =
+      campo.obrigatorioQuando || campo.mostrarQuando;
+
     if (
-      campo.obrigatorioQuando &&
-      (valoresVisiveis[campo.obrigatorioQuando.campo] || '') !==
-        campo.obrigatorioQuando.valor
+      condicao &&
+      (valoresVisiveis[condicao.campo] || '') !==
+        condicao.valor
     ) {
       return undefined;
     }
@@ -1259,6 +1263,57 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                   }
 
                   {
+                    fluxo.publicacaoPendente && (
+                      <div
+                        role="alert"
+                        style={{
+                          border: '1px solid #0E7C56',
+                          background: '#E6F6EF',
+                          color: '#0B4F37',
+                          borderRadius: '6px',
+                          padding: '12px 14px',
+                          fontSize: '13.5px',
+                          lineHeight: 1.5
+                        }}
+                      >
+                        <strong>Publicação pendente.</strong> A revisão está na etapa de publicação
+                        “{elementoAtual.nome}”, mas ainda não foi publicada — isso acontece quando o fluxo ou o
+                        processo é trocado com a revisão nesta etapa. Ao concluir, a revisão {instancia.revisao} fica
+                        <strong> vigente</strong>, a anterior vira obsoleta e o retreinamento segue o que foi decidido no fluxo.
+                        <div style={{ marginTop: '10px' }}>
+                          {podeAgir
+                            ? (
+                              <button
+                                type="button"
+                                disabled={fluxo.processando}
+                                onClick={() => {
+                                  fluxo.concluirPublicacao().catch(erro => console.error(erro));
+                                }}
+                                style={{
+                                  border: 0,
+                                  borderRadius: '6px',
+                                  padding: '9px 16px',
+                                  background: '#0E7C56',
+                                  color: '#FFFFFF',
+                                  fontWeight: 700,
+                                  cursor: fluxo.processando ? 'wait' : 'pointer',
+                                  opacity: fluxo.processando ? 0.6 : 1
+                                }}
+                              >
+                                {fluxo.processando ? 'Publicando...' : 'Concluir publicação'}
+                              </button>
+                            )
+                            : (
+                              <span style={{ fontSize: '12.5px' }}>
+                                Aguardando o responsável pela etapa (ou um Administrador) concluir a publicação.
+                              </span>
+                            )}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  {
                     podeAgir &&
                     fluxo.atuandoComoAdministrador && (
                       <div
@@ -1432,6 +1487,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                     {
                       (podeAgir || fluxo.local) &&
                       elementoAtual.acoes
+                        .filter(() => !fluxo.publicacaoPendente)
                         .filter(acao => !somenteAcao || acao.chave === somenteAcao || !elementoAtual.acoes.some(item => item.chave === somenteAcao))
                         .map(
                         acao => {

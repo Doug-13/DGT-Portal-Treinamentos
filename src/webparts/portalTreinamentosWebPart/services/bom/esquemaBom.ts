@@ -110,14 +110,52 @@ const opcoes = <T extends string>(textos: T[]): Record<T, number> =>
     {} as Record<T, number>
   );
 
+// Modalidades por canal: Privado só tem Proposta Comercial; Público,
+// as demais.
+export const MODALIDADE_PRIVADO = 'Proposta Comercial';
+
+export const modalidadesDoCanal = (canal: string): string[] =>
+  canal === 'Privado'
+    ? [MODALIDADE_PRIVADO]
+    : [
+      'Edital / licitação',
+      'Adesão a ata',
+      'Dispensa de Licitação',
+      'Inexigibilidade',
+      'MIP',
+      'Proposta Técnica',
+      'POC / demonstração',
+      'Aditivo de contrato'
+    ];
+
 export const OPCOES_BOM = {
   uf: opcoes(['RS', 'SC', 'PR', 'SP', 'Outro']),
   canal: opcoes(['Público', 'Privado']),
-  modalidade: opcoes(['Edital / licitação', 'Adesão a ata', 'Proposta direta', 'POC / demonstração', 'Aditivo de contrato']),
+  // Valores FIXOS (não pela posição): a ordem de exibição mudou e
+  // "Proposta direta" (100000002) passou a ser "Proposta Técnica".
+  // Novas opções: scripts/dataverse/atualizar-opcoes-bom.ps1.
+  modalidade: {
+    'Edital / licitação': 100000000,
+    'Adesão a ata': 100000001,
+    'Dispensa de Licitação': 100000005,
+    'Inexigibilidade': 100000006,
+    'MIP': 100000007,
+    'Proposta Técnica': 100000002,
+    'POC / demonstração': 100000003,
+    'Aditivo de contrato': 100000004,
+    'Proposta Comercial': 100000008
+  } as Record<string, number>,
   statusDemanda: opcoes(['Lead qualificado', 'Na fila', 'Em andamento', 'Concluído']),
   tipoEntrega: opcoes(['POC — Prova de conceito', 'AT — Análise técnica', 'PT — Proposta técnica', 'BOM — Bill of Materials']),
   solucoesInteresse: opcoes(['Safe City', 'Smart Detect', 'Face Detect', 'Safe Way', 'Bridgefy Data', 'Bridgefy Go', 'Crime Report']),
-  tipoProjeto: opcoes(['Aquisição', 'Locação 12 meses', 'Locação 24 meses', 'Locação 36 meses', 'Locação 60 meses']),
+  tipoProjeto: {
+    'Aquisição': 100000000,
+    'Locação 12 meses': 100000001,
+    'Locação 24 meses': 100000002,
+    'Locação 36 meses': 100000003,
+    'Locação 48 meses': 100000005,
+    'Locação 60 meses': 100000004
+  } as Record<string, number>,
   origem: opcoes(['Portal', 'Planilha Go/No-Go', 'Licitações (PNCP)']),
   etapa: opcoes(['Dados da demanda', 'Go/No-Go pendente', 'Bloqueado no Go/No-Go', 'Seleção de kit', 'Cálculo de HH', 'B.O.M. pronto', 'Enviado para aprovação']),
   decisao: opcoes(['GO', 'GO com restrição', 'NO-GO'])

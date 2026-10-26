@@ -5,7 +5,9 @@ import {
 } from '../../services/bom/BomService';
 
 import {
-  OPCOES_BOM
+  MODALIDADE_PRIVADO,
+  OPCOES_BOM,
+  modalidadesDoCanal
 } from '../../services/bom/esquemaBom';
 
 import {
@@ -48,14 +50,14 @@ export interface IDadosDemandaEtapaProps {
 const chaves = (mapa: Record<string, number>): string[] => Object.keys(mapa);
 
 type ErroCampo =
-  | 'nome' | 'cliente' | 'canal' | 'tipoEntrega' | 'dataEntrada'
+  | 'nome' | 'cliente' | 'canal' | 'modalidade' | 'dataEntrada'
   | 'prazoEntrega' | 'responsaveis' | 'solucoes' | 'prazoOrdem';
 
 const NOME_ERRO: Record<ErroCampo, string> = {
   nome: 'Projeto/demanda',
   cliente: 'Cliente',
   canal: 'Canal',
-  tipoEntrega: 'Tipo de entrega',
+  modalidade: 'Modalidade',
   dataEntrada: 'Data de entrada',
   prazoEntrega: 'Prazo de entrega',
   responsaveis: 'Responsáveis',
@@ -108,7 +110,7 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
     if (!d.nome.trim() || d.nome === 'Nova demanda (sem título)') lista.push('nome');
     if (!d.cliente.trim()) lista.push('cliente');
     if (!d.canal) lista.push('canal');
-    if (!d.tipoEntrega) lista.push('tipoEntrega');
+    if (!d.modalidade || modalidadesDoCanal(d.canal).indexOf(d.modalidade) < 0) lista.push('modalidade');
     if (!d.dataEntrada) lista.push('dataEntrada');
     if (!d.prazoEntrega) lista.push('prazoEntrega');
     if (d.dataEntrada && d.prazoEntrega && d.prazoEntrega < d.dataEntrada) lista.push('prazoOrdem');
@@ -129,8 +131,11 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
     }
     const principalFinal =
       responsaveis.indexOf(principal) >= 0 ? principal : (responsaveis[0] || '');
+    // Canal Privado: a modalidade é sempre Proposta Comercial.
+    const modalidade =
+      d.canal === 'Privado' ? MODALIDADE_PRIVADO : d.modalidade;
     onSalvar(
-      { ...d, cadastroCompleto: concluir ? true : d.cadastroCompleto },
+      { ...d, modalidade, cadastroCompleto: concluir ? true : d.cadastroCompleto },
       responsaveis,
       principalFinal,
       concluir
@@ -153,16 +158,27 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
       })
       .filter(item => membrosArea.length === 0 || membrosArea.indexOf(item.id) >= 0 || responsaveis.indexOf(item.id) >= 0);
 
-  const Escolha: React.FC<{ chave: keyof IDemandaBom; mapa: Record<string, number>; travado?: boolean; erroCampo?: ErroCampo }> = ({ chave, mapa, travado, erroCampo }) => (
+  // Troca de canal: ajusta a modalidade às opções do novo canal.
+  const alterarCanal = (canal: string): void =>
+    setD(atual => ({
+      ...atual,
+      canal,
+      modalidade:
+        canal === 'Privado'
+          ? MODALIDADE_PRIVADO
+          : modalidadesDoCanal(canal).indexOf(atual.modalidade) >= 0 ? atual.modalidade : ''
+    }));
+
+  const Escolha: React.FC<{ chave: keyof IDemandaBom; mapa: Record<string, number>; travado?: boolean; erroCampo?: ErroCampo; somente?: string[]; aoEscolher?: (opcao: string) => void }> = ({ chave, mapa, travado, erroCampo, somente, aoEscolher }) => (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
       {
-        chaves(mapa).map(opcao => (
+        chaves(mapa).filter(opcao => !somente || somente.indexOf(opcao) >= 0).map(opcao => (
           <button
             key={opcao}
             type="button"
             disabled={travado || salvando}
             aria-pressed={d[chave] === opcao}
-            onClick={() => alterar(chave, opcao as never)}
+            onClick={() => (aoEscolher ? aoEscolher(opcao) : alterar(chave, opcao as never))}
             style={{ ...chip(d[chave] === opcao), ...(erroCampo ? erro(erroCampo) : {}), opacity: travado ? 0.6 : 1 }}
           >
             {d[chave] === opcao ? '✓ ' : ''}{opcao}
@@ -176,7 +192,7 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
     <div>
       <p style={{ margin: '0 0 14px', fontSize: '13px', color: COR.texto2 }}>
         Preencha as informações da demanda antes da análise Go/No-Go. Campos com <strong>*</strong> são obrigatórios
-        para concluir a etapa. Canal e soluções de interesse serão usados na seleção de kit.
+        para concluir a etapa. Canal e soluções de interesse serão usados na seleção de kit. A modalidade depende do canal: no privado, é sempre Proposta Comercial.
       </p>
 
       {
@@ -219,7 +235,7 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
         <Grade>
           <div>
             <span style={rotulo}>Canal *</span>
-            <Escolha chave="canal" mapa={OPCOES_BOM.canal} travado={canalTravado} erroCampo="canal" />
+            <Escolha chave="canal" mapa={OPCOES_BOM.canal} travado={canalTravado} erroCampo="canal" aoEscolher={alterarCanal} />
             {canalTravado && <span style={{ fontSize: '11px', color: COR.texto2 }}>Travado: a demanda já tem análise Go/No-Go.</span>}
           </div>
           <div>
@@ -231,8 +247,13 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
           </div>
         </Grade>
         <div>
-          <span style={rotulo}>Modalidade</span>
-          <Escolha chave="modalidade" mapa={OPCOES_BOM.modalidade} />
+          <span style={rotulo}>Modalidade *</span>
+          {d.canal
+            ? <Escolha chave="modalidade" mapa={OPCOES_BOM.modalidade} somente={modalidadesDoCanal(d.canal)} erroCampo="modalidade" travado={d.canal === 'Privado'} />
+            : <span style={{ fontSize: '12.5px', color: COR.texto2 }}>Escolha o canal primeiro.</span>}
+          {d.canal === 'Privado' && (
+            <span style={{ fontSize: '11px', color: COR.texto2 }}>Canal privado: a modalidade é sempre Proposta Comercial.</span>
+          )}
         </div>
       </Secao>
 
@@ -282,10 +303,6 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
 
       <Secao titulo="Escopo">
         <div style={{ marginBottom: '12px' }}>
-          <span style={rotulo}>Tipo de entrega *</span>
-          <Escolha chave="tipoEntrega" mapa={OPCOES_BOM.tipoEntrega} erroCampo="tipoEntrega" />
-        </div>
-        <div style={{ marginBottom: '12px' }}>
           <span style={rotulo}>Soluções de interesse *</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
             {
@@ -305,10 +322,6 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
           <Escolha chave="tipoProjeto" mapa={OPCOES_BOM.tipoProjeto} />
         </div>
         <Grade>
-          <div>
-            <label style={rotulo} htmlFor="dm-pontos">Pontos estimados</label>
-            <input id="dm-pontos" type="number" min={0} style={campo} value={d.pontosEstimados === undefined ? '' : d.pontosEstimados} onChange={e => alterar('pontosEstimados', e.target.value === '' ? undefined : Number(e.target.value))} />
-          </div>
           <div>
             <label style={rotulo} htmlFor="dm-link">Link do edital ou termo de referência</label>
             <input id="dm-link" type="url" style={campo} value={d.linkEdital} placeholder="https://… (SharePoint ou site do órgão)" onChange={e => alterar('linkEdital', e.target.value)} />
