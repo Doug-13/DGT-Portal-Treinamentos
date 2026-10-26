@@ -24,6 +24,14 @@ import {
   IDocumentoRevisao
 } from '../models/Documento';
 
+import {
+  TreinamentoDocumentoControleService
+} from '../services/TreinamentoDocumentoControleService';
+
+import {
+  controleDocumentalHabilitado
+} from '../constants/controleDocumental';
+
 export interface IUseDocumentoRevisaoFluxo {
   processando: boolean;
   erro: string;
@@ -57,6 +65,14 @@ export interface IUseDocumentoRevisaoFluxo {
   reprovar: (
     revisao: IDocumentoRevisao,
     motivo: string
+  ) => Promise<boolean>;
+
+  // Anexa/substitui o arquivo da revisão em andamento, na etapa do
+  // fluxo com "Arquivo da revisão" = Opcional/Obrigatório.
+  // O arquivo anterior não é apagado do SharePoint.
+  anexarArquivo: (
+    revisao: IDocumentoRevisao,
+    arquivo: File
   ) => Promise<boolean>;
 
   registrarPublicacao: (
@@ -287,6 +303,28 @@ export const useDocumentoRevisaoFluxo = (
       ]
     );
 
+  const anexarArquivo =
+    React.useCallback(
+      (
+        revisao: IDocumentoRevisao,
+        arquivo: File
+      ): Promise<boolean> =>
+        executar(
+          (fluxo, doc) =>
+            fluxo.anexarArquivo(
+              doc,
+              revisao,
+              arquivo,
+              usuario
+            ),
+          'Erro ao anexar o arquivo da revisão.'
+        ),
+      [
+        executar,
+        usuario
+      ]
+    );
+
   const enviarParaAprovacao =
     React.useCallback(
       (
@@ -354,7 +392,33 @@ export const useDocumentoRevisaoFluxo = (
               usuario
             );
 
-          setAviso(retorno.aviso);
+          // Documento de controle de TREINAMENTO: ativa o treinamento
+          // na primeira publicação e registra a revisão no histórico.
+          let avisoTreinamento = '';
+
+          if (dataverse && controleDocumentalHabilitado()) {
+            try {
+              avisoTreinamento =
+                await new TreinamentoDocumentoControleService(dataverse)
+                  .aoPublicarRevisao(
+                    documento.id,
+                    revisao.id,
+                    resultado,
+                    usuario.nome
+                  );
+            } catch (e) {
+              console.error(e);
+              avisoTreinamento =
+                'A revisão foi publicada, mas o treinamento vinculado não foi atualizado: ' +
+                mensagemErro(e, 'erro desconhecido');
+            }
+          }
+
+          setAviso(
+            [retorno.aviso, avisoTreinamento]
+              .filter(item => !!item)
+              .join(' ')
+          );
 
           await onRecarregarRevisoes();
         } catch (e) {
@@ -368,6 +432,7 @@ export const useDocumentoRevisaoFluxo = (
       },
       [
         service,
+        dataverse,
         documento,
         revisoes,
         usuario,
@@ -395,6 +460,7 @@ export const useDocumentoRevisaoFluxo = (
     editarRevisao,
     enviarParaAprovacao,
     reprovar,
+    anexarArquivo,
     registrarPublicacao,
     recarregarHistorico,
     limparMensagens

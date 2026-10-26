@@ -12,6 +12,12 @@ import {
   IUsuarioAreaAdmin
 } from '../AreaAdminService';
 
+import {
+  alvosDaHierarquia,
+  pessoasComCargo,
+  rotuloNivel
+} from './hierarquiaArea';
+
 // ============================================================
 // RESPONSÁVEIS REAIS DAS ETAPAS
 //
@@ -35,7 +41,9 @@ export const TIPOS_RESOLVIDOS: string[] = [
   'autorRevisao',
   'gestorArea',
   'area',
-  'usuario'
+  'usuario',
+  'cargoArea',
+  'nivelHierarquico'
 ];
 
 export const tipoResolvido = (
@@ -76,17 +84,69 @@ export const resolverResponsavel = (
     case 'usuario':
       return { ...base, usuarioId: guid(responsavel.referenciaId) || undefined };
 
+    case 'cargoArea':
+    case 'nivelHierarquico': {
+      const hierarquia: IResponsavelResolvido =
+        responsavel.tipo === 'cargoArea'
+          ? { ...base, cargo: responsavel.cargo || 'Diretor' }
+          : { ...base, nivel: responsavel.nivel !== undefined ? responsavel.nivel : 1 };
+      // Área fixa → área de quem criou → área do documento.
+      if (guid(responsavel.referenciaId)) {
+        return { ...hierarquia, areaId: guid(responsavel.referenciaId) };
+      }
+      if (responsavel.origemArea === 'autor') {
+        return {
+          ...hierarquia,
+          autorId: guid(dados.revisaoResponsavelId) || undefined,
+          areaPreferidaId: guid(dados.documentoAreaId) || undefined
+        };
+      }
+      return { ...hierarquia, areaId: guid(dados.documentoAreaId) || undefined };
+    }
+
     default:
       // grupo, função, setor: ainda sem vínculo com usuários.
       return base;
   }
 };
 
+// Responsável por hierarquia (cargo ou nível)?
+export const ehHierarquico = (
+  resolvido: IResponsavelResolvido
+): boolean =>
+  resolvido.cargo !== undefined || resolvido.nivel !== undefined;
+
+// Vínculos das pessoas que respondem por um responsável hierárquico,
+// com os cargos ATUAIS (trocar o Head vale para pendências abertas).
+export const pessoasDaHierarquia = (
+  resolvido: IResponsavelResolvido,
+  vinculos: IUsuarioAreaAdmin[]
+): IUsuarioAreaAdmin[] => {
+  const lista: IUsuarioAreaAdmin[] = [];
+  alvosDaHierarquia(resolvido, vinculos).forEach(alvo => {
+    pessoasComCargo(alvo.areaId, alvo.cargo, vinculos).forEach(vinculo => {
+      if (!lista.some(item => guid(item.usuarioId) === guid(vinculo.usuarioId))) {
+        lista.push(vinculo);
+      }
+    });
+  });
+  return lista;
+};
+
 export const resolverResponsaveis = (
   responsaveis: IFluxoResponsavel[],
-  dados: IDadosRevisaoResponsaveis
+  dados: IDadosRevisaoResponsaveis,
+  // Com os vínculos, os responsáveis por hierarquia já saem com as
+  // pessoas do momento (usuariosIds) — usado nos avisos (Power
+  // Automate). Quem pode agir continua sendo conferido na hora.
+  vinculos?: IUsuarioAreaAdmin[]
 ): IResponsavelResolvido[] =>
-  responsaveis.map(responsavel => resolverResponsavel(responsavel, dados));
+  responsaveis.map(responsavel => {
+    const resolvido = resolverResponsavel(responsavel, dados);
+    return vinculos && ehHierarquico(resolvido)
+      ? { ...resolvido, usuariosIds: pessoasDaHierarquia(resolvido, vinculos).map(vinculo => guid(vinculo.usuarioId)) }
+      : resolvido;
+  });
 
 // O usuário atende a um responsável resolvido?
 export const usuarioAtende = (
@@ -100,6 +160,13 @@ export const usuarioAtende = (
 
   if (!eu) {
     return false;
+  }
+
+  // Hierarquia: tem o cargo (ou o cargo do nível) na área — da área
+  // fixa, do documento ou de quem criou.
+  if (ehHierarquico(resolvido)) {
+    return pessoasDaHierarquia(resolvido, vinculos)
+      .some(vinculo => guid(vinculo.usuarioId) === eu);
   }
 
   if (resolvido.usuarioId) {
@@ -167,10 +234,41 @@ export const papeisDoUsuario = (
 // Na área, QUALQUER membro ativo pode executar a etapa (ver
 // usuarioAtende); no gestor, só Gestor/Administrador da área.
 export const descreverResolvido = (
-  resolvido: IResponsavelResolvido,
+  resolvidoOriginal: IResponsavelResolvido,
   vinculos: IUsuarioAreaAdmin[],
   usuarios: Array<{ id: string; nome: string }> = []
 ): string => {
+
+  const resolvido = resolvidoOriginal;
+
+  // Hierarquia: "Head da área PROCESSOS: Hugo" /
+  // "2º nível da hierarquia (Head) da área de quem criou (PROCESSOS): Hugo".
+  if (ehHierarquico(resolvido)) {
+    const nomeDe = (areaId: string): string =>
+      (vinculos.find(vinculo => guid(vinculo.areaId) === guid(areaId)) || { areaNome: '' }).areaNome || 'Área';
+    const deQuem = resolvido.autorId ? 'de quem criou' : resolvido.areaId ? '' : 'do documento';
+    const alvos = alvosDaHierarquia(resolvido, vinculos);
+    const titulo = (cargo?: string, areaId?: string): string => {
+      const area = areaId ? (deQuem === 'de quem criou' ? `da área de quem criou (${nomeDe(areaId)})` : `da área ${nomeDe(areaId)}`) : `da área ${deQuem}`;
+      return resolvido.nivel !== undefined && !resolvido.cargo
+        ? `${rotuloNivel(resolvido.nivel)}${cargo ? ` (${cargo})` : ''} ${area}`
+        : `${resolvido.cargo} ${area}`;
+    };
+    if (alvos.length === 0) {
+      return `${titulo(undefined, resolvido.areaId)} (ninguém cadastrado em RH → Estrutura por área)`;
+    }
+    return alvos
+      .map(alvo => {
+        const nomes =
+          pessoasComCargo(alvo.areaId, alvo.cargo, vinculos)
+            .map(vinculo => vinculo.usuarioNome)
+            .filter((nome, indice, lista) => !!nome && lista.indexOf(nome) === indice);
+        return nomes.length > 0
+          ? `${titulo(alvo.cargo, alvo.areaId)}: ${nomes.slice(0, 4).join(', ')}${nomes.length > 4 ? ` e mais ${nomes.length - 4}` : ''}`
+          : `${titulo(alvo.cargo, alvo.areaId)} (ninguém cadastrado em RH → Estrutura por área)`;
+      })
+      .join(' · ');
+  }
 
   const ehCriador =
     (resolvido.papelTeste || '').indexOf('autorRevisao') === 0 ||
@@ -333,7 +431,19 @@ export const usuariosElegiveis = (
   const lista: IUsuarioAreaAdmin[] = [];
 
   resolverResponsaveis(responsaveis, dados).forEach(
-    resolvido => {
+    resolvidoOriginal => {
+
+      const resolvido = resolvidoOriginal;
+
+      // Hierarquia: usa a lista COMPLETA de vínculos (cadeia da área).
+      if (ehHierarquico(resolvido)) {
+        pessoasDaHierarquia(resolvido, vinculos).forEach(vinculo => {
+          if (!lista.some(item => guid(item.usuarioId) === guid(vinculo.usuarioId))) {
+            lista.push(vinculo);
+          }
+        });
+        return;
+      }
 
       if (!resolvido.usuarioId && !resolvido.areaId) {
         return;

@@ -64,7 +64,9 @@ export const obterModuloPagina =
 
     if (
       pagina ===
-      'processos'
+      'processos' ||
+      pagina ===
+      'fluxos'
     ) {
       return 'processos';
     }

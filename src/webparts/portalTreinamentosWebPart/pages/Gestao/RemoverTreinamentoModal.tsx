@@ -5,14 +5,17 @@ import {
 } from '../../services/TreinamentoAdminService';
 
 import {
-  IImpactoRemocao
+  IImpactoRemocao,
+  IOpcoesRemocao
 } from '../../services/TreinamentoRemocaoService';
 
 // ============================================================
 // REMOVER TREINAMENTO (modal)
 //
 // 1. Analisa o impacto (o que será excluído e se há bloqueios).
-// 2. Bloqueia se houver atribuições ou trilhas.
+// 2. Bloqueia se houver atribuições ou trilhas — exceto na REMOÇÃO
+//    FORÇADA (o modal só abre para o Administrador): com motivo
+//    obrigatório, apaga também o histórico dos colaboradores.
 // 3. Exige digitar o código do treinamento para confirmar.
 // ============================================================
 
@@ -21,7 +24,8 @@ export interface IRemoverTreinamentoModalProps {
   onAnalisar: (treinamento: ITreinamentoAdmin) => Promise<IImpactoRemocao>;
   onRemover: (
     treinamento: ITreinamentoAdmin,
-    aoProgredir: (mensagem: string) => void
+    aoProgredir: (mensagem: string) => void,
+    opcoes?: IOpcoesRemocao
   ) => Promise<void>;
   onFechar: () => void;
 }
@@ -60,6 +64,8 @@ const RemoverTreinamentoModal: React.FC<IRemoverTreinamentoModalProps> = (
   const [progresso, setProgresso] = React.useState('');
   const [erro, setErro] = React.useState('');
   const [confirmacao, setConfirmacao] = React.useState('');
+  const [forcar, setForcar] = React.useState(false);
+  const [motivo, setMotivo] = React.useState('');
 
   const treinamento = props.treinamento;
 
@@ -69,6 +75,8 @@ const RemoverTreinamentoModal: React.FC<IRemoverTreinamentoModalProps> = (
       setErro('');
       setConfirmacao('');
       setProgresso('');
+      setForcar(false);
+      setMotivo('');
 
       if (!treinamento) {
         return;
@@ -100,7 +108,11 @@ const RemoverTreinamentoModal: React.FC<IRemoverTreinamentoModalProps> = (
     setErro('');
 
     try {
-      await props.onRemover(treinamento, setProgresso);
+      await props.onRemover(
+        treinamento,
+        setProgresso,
+        forcar ? { forcar: true, motivo: motivo.trim() } : undefined
+      );
       props.onFechar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível remover o treinamento.');
@@ -122,6 +134,11 @@ const RemoverTreinamentoModal: React.FC<IRemoverTreinamentoModalProps> = (
       ['Regras de atribuição por área', impacto.regrasArea]
     ]
     : [];
+
+  const textoDocumento =
+    impacto && impacto.documentoControle
+      ? `O documento de controle ${impacto.documentoControle} e o fluxo de revisão também são excluídos.`
+      : '';
 
   return (
     <div
@@ -173,10 +190,82 @@ const RemoverTreinamentoModal: React.FC<IRemoverTreinamentoModalProps> = (
           </div>
         )}
 
-        {impacto && !impacto.podeRemover && (
+        {impacto && !impacto.podeRemover && !forcar && (
           <div style={{ padding: '14px', borderRadius: '8px', background: C.ambarClaro, color: C.ambar, fontSize: '13px', lineHeight: 1.5 }}>
             <strong>Remoção bloqueada.</strong> {impacto.motivoBloqueio}
+            {impacto.podeForcar && (
+              <div style={{ marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setForcar(true)}
+                  style={{ ...botao, border: `1px solid ${C.vermelho}`, color: C.vermelho }}
+                >
+                  Remover mesmo assim (Administrador)
+                </button>
+              </div>
+            )}
           </div>
+        )}
+
+        {impacto && forcar && (
+          <>
+            <div style={{ padding: '12px 14px', borderRadius: '8px', background: C.vermelhoClaro, color: C.vermelho, fontSize: '13px', lineHeight: 1.5, marginBottom: '12px' }}>
+              <strong>Remoção forçada — apaga o histórico dos colaboradores.</strong> Além da estrutura do
+              treinamento, serão excluídos definitivamente as atribuições, notas, tentativas e certificados.
+              Use só para treinamentos criados por engano ou de teste; para treinamentos reais, prefira <strong>Desativar</strong>.
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', marginBottom: '14px' }}>
+              <tbody>
+                {([
+                  ['Atribuições (colaboradores)', impacto.atribuicoes],
+                  ['Tentativas de avaliação', impacto.tentativas],
+                  ['Certificados (registros)', impacto.certificados],
+                  ['Progresso nos módulos', impacto.progressos],
+                  ['Vínculos com trilhas', impacto.trilhas],
+                  ...itens
+                ] as Array<[string, number]>).map(([rotulo, quantidade]) => (
+                  <tr key={rotulo} style={{ borderTop: `1px solid ${C.borda}` }}>
+                    <td style={{ padding: '6px 4px' }}>{rotulo}</td>
+                    <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 700 }}>{quantidade}</td>
+                  </tr>
+                ))}
+                {impacto.documentoControle && (
+                  <tr style={{ borderTop: `1px solid ${C.borda}` }}>
+                    <td style={{ padding: '6px 4px' }}>Documento de controle e fluxo de revisão</td>
+                    <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 700 }}>{impacto.documentoControle}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <label style={{ fontSize: '13px', fontWeight: 600 }}>
+              Motivo da remoção (fica no histórico de auditoria) *
+            </label>
+            <textarea
+              value={motivo}
+              disabled={removendo}
+              rows={3}
+              onChange={e => setMotivo(e.target.value)}
+              placeholder="Ex.: treinamento de teste criado por engano"
+              style={{ width: '100%', boxSizing: 'border-box', marginTop: '6px', marginBottom: '12px', padding: '10px 12px', border: `1px solid ${C.borda}`, borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', resize: 'vertical' }}
+            />
+
+            <div style={{ fontSize: '12px', color: C.secundario, marginBottom: '10px' }}>
+              Os PDFs de certificado no SharePoint não são apagados por aqui.
+            </div>
+
+            <label style={{ fontSize: '13px', fontWeight: 600 }}>
+              Para confirmar, digite o código <strong>{codigoConfirmacao}</strong>:
+            </label>
+            <input
+              value={confirmacao}
+              disabled={removendo}
+              onChange={e => setConfirmacao(e.target.value)}
+              placeholder={codigoConfirmacao}
+              style={{ width: '100%', boxSizing: 'border-box', marginTop: '6px', padding: '10px 12px', border: `1px solid ${C.borda}`, borderRadius: '8px', fontSize: '14px' }}
+            />
+          </>
         )}
 
         {impacto && impacto.podeRemover && (
@@ -197,7 +286,7 @@ const RemoverTreinamentoModal: React.FC<IRemoverTreinamentoModalProps> = (
             </table>
 
             <div style={{ padding: '10px 12px', borderRadius: '8px', background: C.fundo, fontSize: '12px', color: C.secundario, marginBottom: '14px', lineHeight: 1.5 }}>
-              Os documentos em si não são excluídos, apenas o vínculo com este treinamento.
+              Os documentos em si não são excluídos, apenas o vínculo com este treinamento. {textoDocumento}
               A remoção fica registrada no histórico de auditoria. <strong>Esta ação não pode ser desfeita.</strong>
             </div>
 
@@ -236,23 +325,23 @@ const RemoverTreinamentoModal: React.FC<IRemoverTreinamentoModalProps> = (
             onClick={props.onFechar}
             style={{ ...botao, opacity: removendo ? 0.6 : 1 }}
           >
-            {impacto && !impacto.podeRemover ? 'Fechar' : 'Cancelar'}
+            {impacto && !impacto.podeRemover && !forcar ? 'Fechar' : 'Cancelar'}
           </button>
 
-          {impacto && impacto.podeRemover && (
+          {impacto && (impacto.podeRemover || forcar) && (
             <button
               type="button"
-              disabled={!confirmado || removendo}
+              disabled={!confirmado || removendo || (forcar && !motivo.trim())}
               onClick={() => { void remover(); }}
               style={{
                 ...botao,
                 border: 'none',
                 background: C.vermelho,
                 color: C.branco,
-                opacity: !confirmado || removendo ? 0.5 : 1
+                opacity: !confirmado || removendo || (forcar && !motivo.trim()) ? 0.5 : 1
               }}
             >
-              {removendo ? 'Removendo...' : 'Remover definitivamente'}
+              {removendo ? 'Removendo...' : forcar ? 'Remover com histórico' : 'Remover definitivamente'}
             </button>
           )}
         </div>

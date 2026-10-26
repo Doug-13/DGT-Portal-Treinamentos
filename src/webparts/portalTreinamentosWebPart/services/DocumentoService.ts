@@ -3,6 +3,10 @@ import {
 } from '../utils/numeracaoRevisao';
 
 import {
+  CONTROLE_DOCUMENTAL
+} from '../constants/controleDocumental';
+
+import {
   DataverseService,
   IDataverseRecord
 } from './DataverseService';
@@ -594,6 +598,13 @@ export class DocumentoService {
             true
           )
       }))
+      // O documento de controle do próprio treinamento (controle
+      // documental) não é material de estudo: fica fora da lista.
+      .filter(
+        item =>
+          item.observacao !==
+          CONTROLE_DOCUMENTAL.OBSERVACAO_VINCULO
+      )
       .sort(
         (a, b) =>
           a.ordem -

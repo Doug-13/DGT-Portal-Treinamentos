@@ -1,6 +1,26 @@
 import * as React from 'react';
 
 import {
+  fluxoDoProcessoParaTipo,
+  IProcessoNegocio,
+  ProcessoNegocioService
+} from '../../services/processos/ProcessoNegocioService';
+
+import {
+  TIPOS_DOCUMENTO
+} from '../../constants/tiposDocumento';
+
+import {
+  DocumentoHistoricoService
+} from '../../services/DocumentoHistoricoService';
+
+import {
+  ehNomeAreaGeral,
+  idsAreasGerais,
+  limparIdArea
+} from '../../utils/areaGeral';
+
+import {
   IAreaAdmin,
   IUsuarioAreaAdmin
 } from '../../services/AreaAdminService';
@@ -48,6 +68,13 @@ export interface INovoDocumentoPageProps {
   documentosExistentes:
     IDocumentoAdmin[];
 
+  // Quem está criando (para registrar no histórico quando o
+  // sequencial do código é alterado manualmente).
+  usuarioAtual?: {
+    id: string;
+    nome: string;
+  };
+
   // Leitura de processos (modo de teste do fluxo por processo).
   dataverseService?:
     DataverseService;
@@ -76,34 +103,7 @@ export interface INovoDocumentoPageProps {
     ) => Promise<void>;
 }
 
-interface ITipoDocumento {
-  sigla: string;
-  nome: string;
-  descricao: string;
-}
-
-const TIPOS_DOCUMENTO:
-  ITipoDocumento[] = [
-    { sigla: 'MAP', nome: 'Mapeamento de Processos (As IS)', descricao: 'Documento base do mapeamento macro do processo: fluxo geral, escopo e limites.' },
-    { sigla: 'BPM', nome: 'Mapeamento BPM (To Be)', descricao: 'Modelagem do processo em notação BPMN.' },
-    { sigla: 'LIP', nome: 'Levantamento Inicial do Processo', descricao: 'Registro do levantamento inicial realizado com o dono do processo.' },
-    { sigla: 'RAC', nome: 'Matriz RACI', descricao: 'Matriz de responsabilidades: Aprovador, Aprovador, Consultado e Informado.' },
-    { sigla: 'RMF', nome: 'Relatório de Mapeamento Final', descricao: 'Consolidação final do mapeamento, pronta para validação do dono do processo.' },
-    { sigla: 'DDN', nome: 'Descrição de Negócios', descricao: 'Descrição do contexto de negócio em que o processo está inserido.' },
-    { sigla: 'DPC', nome: 'Definição dos Processos Críticos', descricao: 'Identificação e justificativa dos processos críticos da área.' },
-    { sigla: 'TOR', nome: 'Termo de Referência de Reunião', descricao: 'Registro formal de pauta, participantes e decisões da reunião de mapeamento.' },
-    { sigla: 'PDA', nome: 'Plano de Ação', descricao: 'Plano de ação corretiva ou de melhoria, por exemplo 5W2H.' },
-    { sigla: 'PIV', nome: 'Priorização de ICs e IVs', descricao: 'Priorização de indicadores críticos e indicadores de valor.' },
-    { sigla: 'AES', nome: 'Acompanhamento da Estratégia', descricao: 'Painel de acompanhamento dos objetivos e metas estratégicas.' },
-    { sigla: 'POP', nome: 'Procedimento Operacional Padrão', descricao: 'Passo a passo padronizado de execução de um processo.' },
-    { sigla: 'RNC', nome: 'Relatório de Não Conformidade', descricao: 'Registro de não conformidades identificadas em auditoria de processos.' },
-    { sigla: 'FAC', nome: 'Ferramentas de Análise de Causa', descricao: 'Aplicação de ferramentas de análise de causa raiz.' },
-    { sigla: 'PDC', nome: 'Controle de Ciclos de Melhoria', descricao: 'Acompanhamento de ciclos PDCA de melhoria contínua.' },
-    { sigla: 'MNS', nome: 'Manual de Nomenclatura e Simbologia', descricao: 'Define regras de nomenclatura, áreas, tipos de documento e pastas de processo.' },
-    { sigla: 'LMP', nome: 'Lista Mestra de Processos', descricao: 'Controla sequenciais, nomes de processos e respectivas pastas.' },
-    { sigla: 'LMD', nome: 'Lista Mestra de Documentos', descricao: 'Controla sequencial, revisão e status dos documentos controlados.' },
-    { sigla: 'LD', nome: 'Lista de Documentos do Processo', descricao: 'Relação consolidada dos documentos produzidos em cada processo.' }
-  ];
+// Tipos de documento: constants/tiposDocumento.ts (compartilhado com Processos).
 
 const C = {
   azul: '#0B67D1',
@@ -347,14 +347,10 @@ const NovoDocumentoPage:
     ] =
       React.useState('');
 
-    const [
-      revisaoInicial,
-      setRevisaoInicial
-    ] =
-      React.useState(
-        // Documento nasce em trabalho: Rev.00A (vira Rev.00 na aprovação).
-        'Rev.00A'
-      );
+    // Documento nasce em trabalho: Rev.00A (vira Rev.00 na aprovação).
+    // Fixa: a numeração das revisões é controlada pelo fluxo.
+    const revisaoInicial =
+      'Rev.00A';
 
     // O status inicial NUNCA é escolhido pelo usuário: todo documento
     // novo nasce "Em elaboração" e só chega a "Vigente" passando pelo
@@ -491,25 +487,110 @@ const NovoDocumentoPage:
     ] =
       React.useState('');
 
+    // --------------------------------------------------------
+    // PROCESSO DE NEGÓCIO (Área → Processo → documentos)
+    // Com as tabelas de processos criadas, escolhe-se o PROCESSO e o
+    // fluxo vem da configuração dele (padrão ou exceção do tipo).
+    // Sem elas, a tela continua escolhendo o fluxo direto (modo antigo).
+    // --------------------------------------------------------
+
+    const [
+      processosNegocio,
+      setProcessosNegocio
+    ] =
+      React.useState<IProcessoNegocio[] | undefined>(undefined);
+
+    const [
+      processoNegocioId,
+      setProcessoNegocioId
+    ] =
+      React.useState('');
+
+    React.useEffect(
+      () => {
+        if (!usarProcessos || !props.dataverseService) {
+          return;
+        }
+        let cancelado = false;
+        new ProcessoNegocioService(props.dataverseService)
+          .listar()
+          .then(lista => { if (!cancelado) { setProcessosNegocio(lista.filter(item => item.ativo)); } })
+          .catch((error: unknown) => {
+            // Tabelas ainda não criadas: mantém o modo antigo.
+            console.warn('[Novo documento] Processos de negócio indisponíveis:', error);
+          });
+        return () => { cancelado = true; };
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [
+        props.dataverseService
+      ]
+    );
+
+    const modoNegocio =
+      !!processosNegocio;
+
     // Processos da área escolhida + processos ainda sem área.
+    // Áreas "Geral": os processos delas valem para todas as áreas.
+    const areasGerais =
+      React.useMemo(
+        () => idsAreasGerais(props.areas),
+        [
+          props.areas
+        ]
+      );
+
+    const processoDaAreaGeral = (
+      processo: { areaId?: string; areaNome?: string }
+    ): boolean =>
+      areasGerais.indexOf(limparIdArea(processo.areaId)) >= 0 ||
+      ehNomeAreaGeral(processo.areaNome);
+
+    // Processos oferecidos para a área escolhida: os da própria área,
+    // os da área Geral e os sem área. Ordem: própria área primeiro.
     const processosDisponiveis =
       React.useMemo(
-        () =>
-          dadosProcessos.processos.filter(
-            processo =>
-              !processo.areaId ||
-              !areaId ||
-              processo.areaId === areaId
-          ),
+        () => {
+
+          const area =
+            limparIdArea(areaId);
+
+          const peso = (
+            processo: { areaId?: string; areaNome?: string }
+          ): number =>
+            area && limparIdArea(processo.areaId) === area
+              ? 0
+              : processoDaAreaGeral(processo)
+                ? 1
+                : 2;
+
+          return dadosProcessos.processos
+            .filter(
+              processo =>
+                !processo.areaId ||
+                !area ||
+                limparIdArea(processo.areaId) === area ||
+                processoDaAreaGeral(processo)
+            )
+            .slice()
+            .sort(
+              (a, b) =>
+                peso(a) - peso(b) ||
+                (a.codigo || a.nome).localeCompare(b.codigo || b.nome, 'pt-BR')
+            );
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [
           dadosProcessos.processos,
-          areaId
+          areaId,
+          areasGerais
         ]
       );
 
     React.useEffect(
       () => {
         if (
+          !modoNegocio &&
           processoId &&
           !processosDisponiveis.some(
             processo => processo.id === processoId
@@ -520,7 +601,8 @@ const NovoDocumentoPage:
       },
       [
         processosDisponiveis,
-        processoId
+        processoId,
+        modoNegocio
       ]
     );
 
@@ -536,6 +618,103 @@ const NovoDocumentoPage:
         ? publicada.versao
         : undefined;
     };
+
+    // Processos de negócio oferecidos: os da área escolhida e os da
+    // área Geral (valem para todas).
+    const processosNegocioDisponiveis =
+      (processosNegocio || [])
+        .filter(
+          processo =>
+            !!areaId &&
+            (
+              limparIdArea(processo.areaId) === limparIdArea(areaId) ||
+              areasGerais.indexOf(limparIdArea(processo.areaId)) >= 0
+            )
+        )
+        .sort(
+          (a, b) =>
+            (limparIdArea(a.areaId) === limparIdArea(areaId) ? 0 : 1) -
+            (limparIdArea(b.areaId) === limparIdArea(areaId) ? 0 : 1) ||
+            a.codigo.localeCompare(b.codigo, 'pt-BR')
+        );
+
+    const processoNegocioSelecionado =
+      processosNegocioDisponiveis.find(item => item.id === processoNegocioId);
+
+    // Fluxo que o documento vai seguir, definido pelo processo.
+    const fluxoDoProcessoEscolhido =
+      processoNegocioSelecionado
+        ? fluxoDoProcessoParaTipo(processoNegocioSelecionado, tipo)
+        : '';
+
+    const nomeDoFluxo = (
+      id: string
+    ): string => {
+      const fluxo = dadosProcessos.processos.find(item => limparIdArea(item.id) === limparIdArea(id));
+      return fluxo ? `${fluxo.codigo ? `${fluxo.codigo} — ` : ''}${fluxo.nome}` : 'fluxo não encontrado';
+    };
+
+    // Área/tipo trocados: o processo escolhido pode não valer mais.
+    React.useEffect(
+      () => {
+        if (
+          modoNegocio &&
+          processoNegocioId &&
+          !processosNegocioDisponiveis.some(item => item.id === processoNegocioId)
+        ) {
+          setProcessoNegocioId('');
+        }
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [
+        modoNegocio,
+        areaId,
+        processosNegocio
+      ]
+    );
+
+    // No modo negócio, o fluxo (processoId) segue o processo escolhido.
+    React.useEffect(
+      () => {
+        if (modoNegocio) {
+          setProcessoId(fluxoDoProcessoEscolhido);
+        }
+      },
+      [
+        modoNegocio,
+        fluxoDoProcessoEscolhido
+      ]
+    );
+
+    // Processos da lista que ainda não têm fluxo publicado: aparecem,
+    // mas não podem ser escolhidos (o documento não teria fluxo para
+    // seguir).
+    const processosSemFluxo =
+      dadosProcessos.carregando
+        ? []
+        : processosDisponiveis.filter(
+          processo => !versaoPublicada(processo.id)
+        );
+
+    // Segurança: se o processo escolhido perdeu o fluxo publicado
+    // (ex.: recarga dos dados), desfaz a escolha.
+    React.useEffect(
+      () => {
+        if (
+          processoId &&
+          !dadosProcessos.carregando &&
+          !versaoPublicada(processoId)
+        ) {
+          setProcessoId('');
+        }
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [
+        processoId,
+        dadosProcessos.carregando,
+        dadosProcessos.fluxosPorProcesso
+      ]
+    );
 
     // --------------------------------------------------------
     // Gestor da área: é o responsável pelo documento (dono). Quem
@@ -620,6 +799,62 @@ const NovoDocumentoPage:
         ]
       );
 
+    // ==========================================================
+    // SEQUENCIAL DO CÓDIGO (editável por quem cria o documento)
+    // O sistema sugere o próximo livre; quem cria pode trocar o
+    // número. A troca fica registrada no histórico (quem e quando).
+    // ==========================================================
+
+    const [
+      sequencialEditado,
+      setSequencialEditado
+    ] =
+      React.useState('');
+
+    // Trocou área ou tipo: volta para o sequencial sugerido.
+    React.useEffect(
+      () => setSequencialEditado(''),
+      [
+        areaSelecionada,
+        tipo
+      ]
+    );
+
+    const prefixoCodigo =
+      codigoGerado
+        ? codigoGerado.substring(0, codigoGerado.length - 3)
+        : '';
+
+    const sequencialSugerido =
+      codigoGerado
+        ? codigoGerado.substring(codigoGerado.length - 3)
+        : '';
+
+    const sequencialManual =
+      !!sequencialEditado &&
+      formatarSequencial(Number(sequencialEditado)) !== sequencialSugerido;
+
+    const codigoFinal =
+      codigoGerado && sequencialEditado
+        ? `${prefixoCodigo}${formatarSequencial(Number(sequencialEditado))}`
+        : codigoGerado;
+
+    const codigoJaExiste =
+      !!codigoFinal &&
+      props.documentosExistentes.some(
+        documento =>
+          String(documento.codigo || '').trim().toUpperCase() === codigoFinal.toUpperCase()
+      );
+
+    const erroSequencial =
+      !sequencialEditado
+        ? ''
+        : !/^\d{1,3}$/.test(sequencialEditado) || Number(sequencialEditado) < 1
+          ? 'Use um número de 1 a 999.'
+          : codigoJaExiste
+            ? `O código ${codigoFinal} já existe.`
+            : '';
+
     const salvar =
       async (): Promise<void> => {
         setErroLocal('');
@@ -639,6 +874,16 @@ const NovoDocumentoPage:
         ) {
           setErroLocal(
             'Não foi possível gerar o código do documento. Verifique a sigla da área.'
+          );
+
+          return;
+        }
+
+        if (
+          erroSequencial
+        ) {
+          setErroLocal(
+            `Sequencial do código: ${erroSequencial}`
           );
 
           return;
@@ -675,6 +920,22 @@ const NovoDocumentoPage:
         }
 
         if (
+          usarProcessos &&
+          processoId &&
+          !versaoPublicada(processoId)
+        ) {
+          const processo =
+            processosDisponiveis.find(item => item.id === processoId);
+
+          setErroLocal(
+            `O processo "${processo ? `${processo.codigo ? `${processo.codigo} — ` : ''}${processo.nome}` : processoId}" ainda não tem fluxo publicado. ` +
+            'Publique o fluxo no módulo Processos ou escolha "Nenhum (vincular depois)".'
+          );
+
+          return;
+        }
+
+        if (
           !aprovadorSelecionado
         ) {
           setErroLocal(
@@ -691,7 +952,7 @@ const NovoDocumentoPage:
             await props
             .onSalvar({
               codigo:
-                codigoGerado,
+                codigoFinal,
               titulo:
                 titulo.trim(),
               descricao:
@@ -722,7 +983,7 @@ const NovoDocumentoPage:
               await obterPersistenciaFluxo(props.dataverseService)
                 .processos
                 .vincularDocumentoPorCodigo(
-                  codigoGerado,
+                  codigoFinal,
                   processoId
                 );
             } catch (erroVinculo) {
@@ -742,6 +1003,53 @@ const NovoDocumentoPage:
                 .carregar(true, []);
             } catch (erroReleitura) {
               console.error(erroReleitura);
+            }
+          }
+
+          // Processo de negócio do documento (um só).
+          if (
+            modoNegocio &&
+            processoNegocioId &&
+            documentoId &&
+            props.dataverseService
+          ) {
+            try {
+              await new ProcessoNegocioService(props.dataverseService)
+                .definirProcessoDoDocumento(documentoId, processoNegocioId);
+            } catch (erroProcesso) {
+              console.error(erroProcesso);
+              window.alert(
+                'O documento foi criado, mas não foi possível gravar o processo dele. ' +
+                'Adicione-o ao processo em Processos → “+ Documentos”.'
+              );
+            }
+          }
+
+          // Sequencial alterado à mão: registra no histórico do
+          // documento quem trocou e qual era o sugerido.
+          if (
+            sequencialManual &&
+            documentoId &&
+            props.dataverseService
+          ) {
+            const aviso =
+              await new DocumentoHistoricoService(props.dataverseService)
+                .registrarSemInterromper({
+                  documentoId,
+                  tipo: 'OUTRO',
+                  titulo: 'Código definido manualmente',
+                  descricao:
+                    `Sequencial alterado manualmente na criação: sugerido ${codigoGerado}, ` +
+                    `definido ${codigoFinal}` +
+                    (props.usuarioAtual && props.usuarioAtual.nome ? ` por ${props.usuarioAtual.nome}.` : '.'),
+                  motivo: 'Sequencial do código alterado manualmente',
+                  dadosAnteriores: { codigoSugerido: codigoGerado },
+                  usuarioId: props.usuarioAtual ? props.usuarioAtual.id : undefined,
+                  usuarioNome: props.usuarioAtual ? props.usuarioAtual.nome : undefined
+                });
+
+            if (aviso) {
+              console.warn(aviso);
             }
           }
 
@@ -874,7 +1182,7 @@ const NovoDocumentoPage:
               style={{
                 display: 'grid',
                 gridTemplateColumns:
-                  '180px minmax(0,1fr)',
+                  '230px minmax(0,1fr)',
                 gap: '14px'
               }}
             >
@@ -883,16 +1191,95 @@ const NovoDocumentoPage:
                   Código
                 </label>
 
-                <input
-                  value={
-                    codigoExibicao
-                  }
-                  readOnly
-                  aria-readonly="true"
-                  style={
-                    inputSomenteLeitura
-                  }
-                />
+                {
+                  codigoGerado
+                    ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'stretch',
+                          gap: 0
+                        }}
+                      >
+                        <span
+                          style={{
+                            ...inputSomenteLeitura,
+                            width: 'auto',
+                            flexShrink: 0,
+                            borderTopRightRadius: 0,
+                            borderBottomRightRadius: 0,
+                            borderRight: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {prefixoCodigo}
+                        </span>
+                        <input
+                          aria-label="Sequencial do código"
+                          inputMode="numeric"
+                          maxLength={3}
+                          value={sequencialEditado || sequencialSugerido}
+                          onChange={evento => setSequencialEditado(evento.target.value.replace(/\D/g, '').substring(0, 3))}
+                          onBlur={() => {
+                            if (sequencialEditado && /^\d{1,3}$/.test(sequencialEditado)) {
+                              setSequencialEditado(formatarSequencial(Number(sequencialEditado)));
+                            }
+                          }}
+                          style={{
+                            ...inputSomenteLeitura,
+                            background: '#FFFFFF',
+                            width: '70px',
+                            minWidth: 0,
+                            borderTopLeftRadius: 0,
+                            borderBottomLeftRadius: 0,
+                            borderColor: erroSequencial ? '#485CC7' : sequencialManual ? '#05C3DD' : undefined,
+                            fontWeight: 700
+                          }}
+                        />
+                      </div>
+                    )
+                    : (
+                      <input
+                        value={
+                          codigoExibicao
+                        }
+                        readOnly
+                        aria-readonly="true"
+                        style={
+                          inputSomenteLeitura
+                        }
+                      />
+                    )
+                }
+
+                {
+                  codigoGerado && (sequencialManual || erroSequencial) && (
+                    <div
+                      style={{
+                        marginTop: '5px',
+                        fontSize: '11px',
+                        lineHeight: 1.45,
+                        color: erroSequencial ? '#485CC7' : '#202A44',
+                        fontWeight: 600
+                      }}
+                    >
+                      {
+                        erroSequencial ||
+                        `Alterado manualmente (sugerido: ${sequencialSugerido}). Ficará registrado no histórico.`
+                      }
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={() => setSequencialEditado('')}
+                        style={{ padding: 0, border: 0, background: 'transparent', color: '#485CC7', textDecoration: 'underline', cursor: 'pointer', fontSize: '11px' }}
+                      >
+                        usar o sugerido
+                      </button>
+                    </div>
+                  )
+                }
 
                 <div
                   style={{
@@ -904,7 +1291,7 @@ const NovoDocumentoPage:
                 >
                   {
                     areaSelecionada
-                      ? 'Código gerado automaticamente e atualizado conforme a área e o tipo selecionados.'
+                      ? 'Sequencial sugerido automaticamente; você pode alterar o número.'
                       : 'Pré-visualização do código. Selecione a área para gerar o código final.'
                   }
                 </div>
@@ -1215,7 +1602,83 @@ const NovoDocumentoPage:
             </div>
 
             {
-              usarProcessos && (
+              usarProcessos && modoNegocio && (
+                <div
+                  style={{
+                    marginTop: '14px',
+                    padding: '12px 14px',
+                    border: `1px dashed ${C.borda}`,
+                    borderRadius: '10px',
+                    background: '#F8FAFC'
+                  }}
+                >
+                  <label
+                    htmlFor="novo-documento-processo-negocio"
+                    style={label}
+                  >
+                    Processo
+                  </label>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                      gap: '14px',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <select
+                      id="novo-documento-processo-negocio"
+                      value={processoNegocioId}
+                      disabled={!areaId}
+                      onChange={event => setProcessoNegocioId(event.target.value)}
+                      style={input}
+                    >
+                      <option value="">
+                        {areaId ? 'Nenhum (definir depois)' : 'Selecione a área primeiro'}
+                      </option>
+                      {
+                        processosNegocioDisponiveis.map(
+                          processo => {
+                            const fluxo = fluxoDoProcessoParaTipo(processo, tipo);
+                            const versao = fluxo ? versaoPublicada(fluxo) : undefined;
+                            const geral = limparIdArea(processo.areaId) !== limparIdArea(areaId);
+                            return (
+                              <option key={processo.id} value={processo.id} disabled={!versao}>
+                                {processo.codigo} — {processo.nome}
+                                {geral ? ' · Geral' : ''}
+                                {versao ? ` · fluxo ${nomeDoFluxo(fluxo)} v${versao}` : ' · fluxo sem versão publicada (indisponível)'}
+                              </option>
+                            );
+                          }
+                        )
+                      }
+                    </select>
+
+                    <div style={{ fontSize: '12px', color: C.secundario, lineHeight: 1.45 }}>
+                      {
+                        processoNegocioSelecionado
+                          ? (
+                            <>
+                              Fluxo definido pelo processo para <strong>{tipo}</strong>:{' '}
+                              <strong>{nomeDoFluxo(fluxoDoProcessoEscolhido)}</strong>
+                              {versaoPublicada(fluxoDoProcessoEscolhido) ? ` · v${versaoPublicada(fluxoDoProcessoEscolhido)}` : ''}
+                            </>
+                          )
+                          : areaId
+                            ? (processosNegocioDisponiveis.length === 0
+                              ? 'Nenhum processo cadastrado nesta área (Processos → Novo processo).'
+                              : 'O fluxo de revisão vem do processo escolhido.')
+                            : 'Selecione a área para ver os processos dela.'
+                      }
+                    </div>
+                  </div>
+                </div>
+              )
+            }
+
+            {
+              usarProcessos && !modoNegocio && (
                 <div
                   style={{
                     marginTop: '14px',
@@ -1269,10 +1732,24 @@ const NovoDocumentoPage:
                               <option
                                 key={processo.id}
                                 value={processo.id}
+                                // Sem fluxo publicado: aparece, mas não
+                                // pode ser escolhido.
+                                disabled={!versao}
+                                title={
+                                  versao
+                                    ? undefined
+                                    : 'Publique o fluxo deste processo no módulo Processos para poder escolhê-lo.'
+                                }
                               >
                                 {processo.codigo ? `${processo.codigo} — ` : ''}
                                 {processo.nome}
-                                {versao ? ` · fluxo v${versao}` : ' · sem fluxo publicado'}
+                                {
+                                  // Indica de onde vem o processo quando não é da área escolhida.
+                                  areaId && limparIdArea(processo.areaId) !== limparIdArea(areaId)
+                                    ? (processoDaAreaGeral(processo) ? ' · Geral' : !processo.areaId ? ' · sem área' : '')
+                                    : ''
+                                }
+                                {versao ? ` · fluxo v${versao}` : ' · sem fluxo publicado (indisponível)'}
                               </option>
                             );
                           }
@@ -1291,17 +1768,43 @@ const NovoDocumentoPage:
                         !processoId
                           ? (
                             areaId
-                              ? 'Mostrando os processos da área selecionada e os processos sem área.'
+                              ? 'Mostrando os processos da área selecionada, os da área Geral (valem para todas as áreas) e os sem área.'
                               : 'Selecione a área para ver os processos dela.'
                           )
-                          : versaoPublicada(processoId)
-                            ? `A revisão deste documento seguirá o fluxo v${versaoPublicada(processoId)} do processo.`
-                            : 'Este processo ainda não tem fluxo publicado. O documento fica vinculado e passa a seguir o fluxo quando ele for publicado.'
+                          : `A revisão deste documento seguirá o fluxo v${versaoPublicada(processoId) || ''} do processo.`
                       }
                       <br />
                       {dadosProcessos.local ? 'Modo de teste: o vínculo fica salvo apenas neste navegador.' : ''}
                     </div>
                   </div>
+
+                  {
+                    processosSemFluxo.length > 0 && (
+                      <div
+                        role="note"
+                        style={{
+                          marginTop: '10px',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #485CC7',
+                          background: '#E8EAF8',
+                          color: '#202A44',
+                          fontSize: '12px',
+                          lineHeight: 1.5
+                        }}
+                      >
+                        <strong>! {processosSemFluxo.length === 1 ? 'Processo indisponível' : `${processosSemFluxo.length} processos indisponíveis`}:</strong>{' '}
+                        {
+                          processosSemFluxo
+                            .map(processo => processo.codigo || processo.nome)
+                            .join(', ')
+                        }
+                        {processosSemFluxo.length === 1 ? ' ainda não tem' : ' ainda não têm'} fluxo publicado e não{' '}
+                        {processosSemFluxo.length === 1 ? 'pode' : 'podem'} ser escolhido{processosSemFluxo.length === 1 ? '' : 's'}.
+                        O processo precisa ser publicado no módulo <strong>Processos</strong> antes de receber documentos.
+                      </div>
+                    )
+                  }
                 </div>
               )
             }
@@ -1324,16 +1827,24 @@ const NovoDocumentoPage:
                   value={
                     revisaoInicial
                   }
-                  onChange={
-                    event =>
-                      setRevisaoInicial(
-                        event.target.value
-                      )
-                  }
+                  readOnly
+                  aria-readonly="true"
+                  title="Todo documento começa na Rev.00A; a numeração é controlada pelo fluxo de revisão."
                   style={
-                    input
+                    inputSomenteLeitura
                   }
                 />
+
+                <div
+                  style={{
+                    marginTop: '5px',
+                    color: C.secundario,
+                    fontSize: '11px',
+                    lineHeight: 1.4
+                  }}
+                >
+                  Definida pelo sistema. Vira <strong>Rev.00</strong> quando o documento é aprovado.
+                </div>
               </div>
 
               <div>

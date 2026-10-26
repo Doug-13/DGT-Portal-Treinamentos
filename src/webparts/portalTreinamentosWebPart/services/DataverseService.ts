@@ -1707,6 +1707,38 @@ export class DataverseService {
     return `/${entitySet}(${String(id).replace(/[{}]/g, '').trim()})`;
   }
 
+  // Retira o valor de um lookup (DELETE .../navegacao/$ref).
+  // Usado, por exemplo, para desvincular o processo de um documento.
+  public async limparLookup(
+    logicalName: string,
+    id: string,
+    navegacao: string
+  ): Promise<void> {
+
+    const entitySet =
+      await this.getEntitySetName(logicalName);
+
+    const response: AadHttpClientResponse =
+      await this.client.fetch(
+        `${this.apiUrl}/${entitySet}(${String(id).replace(/[{}]/g, '').trim()})/${navegacao}/$ref`,
+        AadHttpClient.configurations.v1,
+        {
+          method: 'DELETE',
+          headers: {
+            Accept: 'application/json',
+            'OData-MaxVersion': '4.0',
+            'OData-Version': '4.0'
+          }
+        }
+      );
+
+    // 404/204 = já estava vazio ou foi limpo.
+    if (!response.ok && response.status !== 404) {
+      const detalhe = await response.text();
+      throw new Error(`Não foi possível limpar ${navegacao} (${response.status}). ${detalhe.substring(0, 300)}`);
+    }
+  }
+
   // Lê todas as páginas da consulta (segue @odata.nextLink).
   public async listarRegistros(
     logicalName: string,
@@ -2613,6 +2645,87 @@ export class DataverseService {
   // ============================================================
   // ATRIBUIÇÃO CENTRALIZADA
   // ============================================================
+
+  // ==========================================================
+  // CUSTOM API GENÉRICA: { PayloadJson } → { ResultadoJson }
+  // (ex.: dgt_AcompanharLicitacao, dgt_AtualizarAcompanhamentos)
+  // ==========================================================
+
+  public async chamarCustomApiJson(
+    nome: string,
+    payload: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+
+    const resposta =
+      await this.postObject(
+        nome,
+        {
+          PayloadJson:
+            JSON.stringify(
+              payload
+            )
+        }
+      );
+
+    const json =
+      String(
+        resposta.ResultadoJson ||
+        ''
+      );
+
+    return json
+      ? JSON.parse(json) as Record<string, unknown>
+      : {};
+  }
+
+  // ==========================================================
+  // IA DAS LICITAÇÕES (Custom API → plugin → Claude)
+  // ==========================================================
+
+  public async analisarLicitacaoIa(
+    requisicao:
+      Record<string, unknown>
+  ): Promise<{
+    texto: string;
+    modelo?: string;
+    tokensEntrada?: number;
+    tokensSaida?: number;
+    parada?: string;
+  }> {
+
+    const resposta =
+      await this.postObject(
+        'dgt_AnalisarLicitacaoIa',
+        {
+          PayloadJson:
+            JSON.stringify(
+              requisicao
+            )
+        }
+      );
+
+    const resultadoJson =
+      String(
+        resposta.ResultadoJson ||
+        ''
+      );
+
+    if (!resultadoJson) {
+      throw new Error(
+        'A IA não retornou resposta.'
+      );
+    }
+
+    return JSON.parse(
+      resultadoJson
+    ) as {
+      texto: string;
+      modelo?: string;
+      tokensEntrada?: number;
+      tokensSaida?: number;
+      parada?: string;
+    };
+  }
 
   public async processarAtribuicao(
     payload:
@@ -4290,6 +4403,24 @@ export class DataverseService {
         'Vigente'
       );
 
+    // Revisões canceladas (retorno pelo administrador) não são
+    // pendências. A opção "Cancelada" pode ainda não existir no
+    // ambiente: nesse caso o filtro simplesmente não é aplicado.
+    let filtroCancelada = '';
+
+    try {
+      const cancelada =
+        await this.getChoiceOptionValue(
+          'dgt_documentorevisao',
+          'dgt_status',
+          'Cancelada'
+        );
+
+      filtroCancelada = ` and dgt_status ne ${cancelada}`;
+    } catch {
+      filtroCancelada = '';
+    }
+
     return this.get(
       `${entitySet}?$select=` +
       [
@@ -4304,7 +4435,7 @@ export class DataverseService {
         '_dgt_documento_value',
         '_dgt_responsavel_value'
       ].join(',') +
-      `&$filter=dgt_status ne ${vigente} or dgt_status eq null` +
+      `&$filter=(dgt_status ne ${vigente}${filtroCancelada}) or dgt_status eq null` +
       '&$orderby=modifiedon asc' +
       '&$top=500'
     );

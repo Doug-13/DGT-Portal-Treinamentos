@@ -1,5 +1,6 @@
 import {
   AcaoSistemaFluxo,
+  IFluxoAtor,
   IFluxoDefinicao,
   IFluxoInstancia,
   IFluxoResponsavel,
@@ -20,11 +21,18 @@ import {
 } from '../processos/MetadadosProcessoService';
 
 import {
+  concluirPublicacaoPendente,
   executarAcao,
   IDadosInicioFluxo,
+  IDadosRetornoFluxo,
   IExecucaoAcao,
   iniciarInstancia,
-  IResultadoExecucao
+  IResultadoExecucao,
+  IDadosTransferenciaFluxo,
+  IResultadoRetorno,
+  IResultadoTransferencia,
+  retornarUmPasso,
+  transferirInstancia
 } from './FluxoEngine';
 
 import {
@@ -264,6 +272,169 @@ export class FluxoService {
           resultado.instancia,
           this.contextoGravacao(definicao, resultado.instancia, contexto)
         );
+    }
+
+    return resultado;
+  }
+
+  // Revisão parada numa etapa de publicação (status "Vigente") sem
+  // ter sido publicada — ex.: depois de troca de processo/versão.
+  // Executa a publicação como o fluxo faria ao chegar na etapa.
+  public async concluirPublicacaoPendente(
+    revisaoId: string,
+    ator: IFluxoAtor,
+    contexto?: IContextoExecucaoFluxo
+  ): Promise<IResultadoExecucao> {
+
+    const instancia =
+      await this.repositorio.obter(revisaoId);
+
+    if (!instancia) {
+      return { ok: false, erros: ['O fluxo desta revisão ainda não foi iniciado.'], acoesSistema: [] };
+    }
+
+    const definicao =
+      await this.definicaoDaInstancia(instancia);
+
+    if (!definicao) {
+      return { ok: false, erros: [`A versão ${instancia.fluxoVersao} do fluxo usada por esta revisão não foi encontrada.`], acoesSistema: [] };
+    }
+
+    const resultado =
+      concluirPublicacaoPendente(definicao, instancia, ator);
+
+    if (resultado.ok && resultado.instancia) {
+
+      if (contexto && contexto.executarAcoesSistema) {
+        try {
+          await contexto.executarAcoesSistema(resultado.acoesSistema, resultado.instancia);
+          if (this.repositorio.renovarVersao) {
+            await this.repositorio.renovarVersao(revisaoId);
+          }
+        } catch (error) {
+          console.error(error);
+          return {
+            ok: false,
+            erros: [`A publicação não foi concluída: ${error instanceof Error ? error.message : String(error)}`],
+            acoesSistema: []
+          };
+        }
+      }
+
+      this.preencherResponsaveis(resultado.instancia, contexto);
+
+      resultado.avisos =
+        await this.repositorio.salvar(
+          resultado.instancia,
+          this.contextoGravacao(definicao, resultado.instancia, contexto)
+        );
+    }
+
+    return resultado;
+  }
+
+  // Retorno de UM passo (administrador). Relê o estado antes de agir:
+  // se alguém avançou a revisão nesse meio-tempo, a regra é aplicada
+  // sobre o estado atual (e a gravação usa a ETag, como nas ações).
+  public async retornarUmPasso(
+    revisaoId: string,
+    dados: IDadosRetornoFluxo,
+    contexto?: IContextoExecucaoFluxo
+  ): Promise<IResultadoRetorno> {
+
+    const instancia =
+      await this.repositorio.obter(revisaoId);
+
+    if (!instancia) {
+      return {
+        ok: false,
+        erros: ['O fluxo desta revisão ainda não foi iniciado.']
+      };
+    }
+
+    const definicao =
+      await this.definicaoDaInstancia(instancia);
+
+    if (!definicao) {
+      return {
+        ok: false,
+        erros: [`A versão ${instancia.fluxoVersao} do fluxo usada por esta revisão não foi encontrada.`]
+      };
+    }
+
+    const resultado =
+      retornarUmPasso(definicao, instancia, dados);
+
+    if (resultado.ok && resultado.instancia) {
+
+      this.preencherResponsaveis(resultado.instancia, contexto);
+
+      resultado.avisos =
+        await this.repositorio.salvar(
+          resultado.instancia,
+          this.contextoGravacao(definicao, resultado.instancia, contexto)
+        );
+    }
+
+    return resultado;
+  }
+
+  // Versão publicada do fluxo de um processo, com os metadados dele.
+  public async definicaoPublicada(
+    processoId: string
+  ): Promise<IFluxoDefinicao | undefined> {
+
+    const publicada =
+      await this.catalogo.versaoPublicada(processoId);
+
+    return publicada
+      ? aplicarMetadadosNaDefinicao(publicada, await this.metadados.listar(processoId))
+      : undefined;
+  }
+
+  // Leva a revisão em andamento para o fluxo publicado de outro
+  // processo, mantendo a etapa. gravar = false só simula (prévia).
+  public async transferirParaProcesso(
+    revisaoId: string,
+    destino: IFluxoDefinicao,
+    dados: IDadosTransferenciaFluxo,
+    gravar: boolean,
+    contexto?: IContextoExecucaoFluxo
+  ): Promise<IResultadoTransferencia> {
+
+    const instancia =
+      await this.repositorio.obter(revisaoId);
+
+    if (!instancia) {
+      return { ok: false, erros: ['O fluxo desta revisão ainda não foi iniciado.'], avisos: [], mapeamento: [] };
+    }
+
+    const origem =
+      await this.definicaoDaInstancia(instancia);
+
+    if (!origem) {
+      return {
+        ok: false,
+        erros: [`A versão ${instancia.fluxoVersao} do fluxo de origem não foi encontrada.`],
+        avisos: [],
+        mapeamento: []
+      };
+    }
+
+    const resultado =
+      transferirInstancia(origem, destino, instancia, dados);
+
+    if (gravar && resultado.ok && resultado.instancia) {
+
+      this.preencherResponsaveis(resultado.instancia, contexto);
+
+      const avisosGravacao =
+        await this.repositorio.salvar(
+          resultado.instancia,
+          this.contextoGravacao(destino, resultado.instancia, contexto)
+        );
+
+      resultado.avisos = resultado.avisos.concat(avisosGravacao || []);
     }
 
     return resultado;

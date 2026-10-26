@@ -26,6 +26,7 @@ export type Pagina =
   | 'catalogoTreinamentos'
   | 'testeTreinamento'
   | 'processos'
+  | 'fluxos'
 
   // Módulo Licitações (PNCP)
   | 'licitacoes'
@@ -35,7 +36,11 @@ export type Pagina =
   | 'usuariosAcessos'
   // Arquitetura de Soluções (B.O.M.)
   | 'arquitetura'
-  | 'arquiteturaROs';
+  | 'arquiteturaROs'
+  // RH e Pessoas (por enquanto: certificados dos colaboradores)
+  | 'rhPessoas'
+  // Planejamento orçamentário (Gestor e Administrador)
+  | 'planejamentoOrcamentario';
 
 export const ROTAS = {
   INICIO: 'inicio',
@@ -65,12 +70,15 @@ export const ROTAS = {
   CATALOGO_TREINAMENTOS: 'catalogoTreinamentos',
   TESTE_TREINAMENTO: 'testeTreinamento',
   PROCESSOS: 'processos',
+  FLUXOS: 'fluxos',
   LICITACOES: 'licitacoes',
   LICITACOES_TESTE: 'licitacoesTeste',
   MEU_PERFIL: 'meuPerfil',
   USUARIOS_ACESSOS: 'usuariosAcessos',
   ARQUITETURA: 'arquitetura',
   ARQUITETURA_ROS: 'arquiteturaROs',
+  RH_PESSOAS: 'rhPessoas',
+  PLANEJAMENTO_ORCAMENTARIO: 'planejamentoOrcamentario',
 } as const;
 
 

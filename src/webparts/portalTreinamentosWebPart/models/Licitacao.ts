@@ -56,7 +56,9 @@ export const UFS_BRASIL: string[] = [
 ];
 
 // 1 = assunto exato · 2 = qualquer palavra · 3 = assunto + relacionadas
-export type ModoBuscaAssunto = '1' | '2' | '3';
+// 1 = assunto exato · 2 = qualquer palavra · 3 = assunto + relacionadas
+// 4 = edital específico (pelo número e/ou nome do edital)
+export type ModoBuscaAssunto = '1' | '2' | '3' | '4';
 
 export interface IFiltrosLicitacao {
   assunto: string;

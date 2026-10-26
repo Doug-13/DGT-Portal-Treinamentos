@@ -7,6 +7,7 @@ import {
 
 import {
   AcaoSistemaFluxo,
+  AnexoArquivoEtapa,
   IFluxoAcao,
   IFluxoCampo,
   IFluxoMetadado,
@@ -25,6 +26,11 @@ import {
 import {
   IElementoSelecionadoBpmn
 } from '../../components/fluxo/bpmn/IModelerFluxo';
+
+import {
+  CARGOS_HIERARQUIA,
+  rotuloNivel
+} from '../../services/fluxo/hierarquiaArea';
 
 import CaminhosSaida, {
   FormCondicaoLigacao,
@@ -145,8 +151,26 @@ const TIPOS_RESPONSAVEL: Array<{ valor: TipoResponsavelFluxo; rotulo: string }> 
   { valor: 'autorRevisao', rotulo: 'Autor da revisão' },
   { valor: 'gestorArea', rotulo: 'Gestor da área do documento' },
   { valor: 'area', rotulo: 'Área específica' },
-  { valor: 'usuario', rotulo: 'Usuário específico' }
+  { valor: 'usuario', rotulo: 'Usuário específico' },
+  { valor: 'cargoArea', rotulo: 'Hierarquia — cargo (ex.: Head, Diretor)' },
+  { valor: 'nivelHierarquico', rotulo: 'Hierarquia — nível (1º, 2º, 3º, topo)' }
 ];
+
+// Níveis oferecidos para "Nível da hierarquia" (0 = topo).
+const NIVEIS_HIERARQUIA: number[] = [1, 2, 3, 4, 0];
+
+// Descrição automática dos responsáveis por hierarquia.
+const descricaoHierarquia = (
+  responsavel: Pick<IFluxoResponsavel, 'tipo' | 'cargo' | 'nivel' | 'referenciaNome' | 'origemArea'>
+): string => {
+  const area =
+    responsavel.referenciaNome
+      ? `da área ${responsavel.referenciaNome}`
+      : responsavel.origemArea === 'autor' ? 'da área de quem criou' : 'da área do documento';
+  return responsavel.tipo === 'cargoArea'
+    ? `${responsavel.cargo || 'Diretor'} ${area}`
+    : `${rotuloNivel(responsavel.nivel)} ${area}`;
+};
 
 const DESCRICAO_PADRAO_RESPONSAVEL: Record<TipoResponsavelFluxo, string> = {
   autorRevisao: 'Autor da revisão',
@@ -155,7 +179,9 @@ const DESCRICAO_PADRAO_RESPONSAVEL: Record<TipoResponsavelFluxo, string> = {
   grupo: 'Grupo',
   funcao: 'Função',
   setor: 'Setor',
-  usuario: 'Usuário'
+  usuario: 'Usuário',
+  cargoArea: 'Head da área de quem criou',
+  nivelHierarquico: '1º nível da hierarquia da área de quem criou'
 };
 
 const STATUS_DOCUMENTO: Array<{ valor: StatusDocumentoEtapa; rotulo: string }> = [
@@ -171,7 +197,9 @@ const ACOES_SISTEMA: Array<{ valor: '' | AcaoSistemaFluxo; rotulo: string }> = [
   { valor: 'publicarSemRetreinamento', rotulo: 'Publicar a revisão sem retreinamento' }
 ];
 
-type ModoCampo = 'oculto' | 'editavel' | 'obrigatorio' | 'leitura' | 'condicional';
+// condicional          = obrigatório e visível só quando a condição é atendida
+// opcionalCondicional  = opcional e visível só quando a condição é atendida
+type ModoCampo = 'oculto' | 'editavel' | 'obrigatorio' | 'leitura' | 'condicional' | 'opcionalCondicional';
 
 const modoDoCampo = (
   campo: IFluxoCampo | undefined
@@ -189,15 +217,21 @@ const modoDoCampo = (
     return 'condicional';
   }
 
+  if (campo.mostrarQuando) {
+    return 'opcionalCondicional';
+  }
+
   return campo.obrigatorio ? 'obrigatorio' : 'editavel';
 };
 
 // Identifica o responsável no motor. Área/usuário entram pelo id
 // (dois responsáveis iguais têm o mesmo papel).
 const papelTesteDe = (
-  responsavel: Pick<IFluxoResponsavel, 'tipo' | 'descricao' | 'referenciaId' | 'somenteGestores'>
+  responsavel: Pick<IFluxoResponsavel, 'tipo' | 'descricao' | 'referenciaId' | 'somenteGestores' | 'cargo' | 'nivel' | 'origemArea'>
 ): string =>
-  responsavel.referenciaId
+  responsavel.tipo === 'cargoArea' || responsavel.tipo === 'nivelHierarquico'
+    ? `${responsavel.tipo}:${responsavel.tipo === 'cargoArea' ? gerarChave(responsavel.cargo || '') : String(responsavel.nivel !== undefined ? responsavel.nivel : 1)}:${responsavel.referenciaId || (responsavel.origemArea === 'autor' ? 'autor' : 'documento')}`
+    : responsavel.referenciaId
     ? `${responsavel.tipo}:${responsavel.referenciaId}${responsavel.somenteGestores ? ':gestores' : ''}`
     : `${responsavel.tipo}:${gerarChave(responsavel.descricao)}`;
 
@@ -507,6 +541,27 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           </div>
         </fieldset>
 
+        <fieldset style={estiloGrupo}>
+          <legend style={estiloLegenda}>Arquivo da revisão</legend>
+          <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '13.5px', cursor: editavel ? 'pointer' : 'default' }}>
+            <input
+              type="checkbox"
+              checked={!!config.removerArquivo}
+              disabled={!editavel}
+              onChange={evento => alterar({ removerArquivo: evento.target.checked || undefined })}
+              style={{ marginTop: '3px' }}
+            />
+            <span>
+              Remover o arquivo ao passar por este evento
+              <span style={{ display: 'block', fontSize: '12px', lineHeight: '17px', marginTop: '2px' }}>
+                A nova revisão começa <strong>sem arquivo</strong> e o responsável anexa o novo numa etapa
+                seguinte (ex.: Elaboração com "Arquivo da revisão" = Obrigatório). O arquivo anterior
+                <strong> não é apagado</strong>: continua no SharePoint e no histórico.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
         <div style={{ fontSize: '12px', lineHeight: '17px' }}>
           Regra geral: revisão em trabalho sempre tem letra (o documento nasce Rev.00A) e revisão
           aprovada/publicada nunca tem letra. O evento não tem responsável e tem
@@ -540,6 +595,20 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
             novo.referenciaId = undefined;
             novo.referenciaNome = undefined;
             novo.somenteGestores = parcial.tipo === 'area' ? true : undefined;
+            novo.cargo = parcial.tipo === 'cargoArea' ? 'Head' : undefined;
+            novo.nivel = parcial.tipo === 'nivelHierarquico' ? 1 : undefined;
+            // Padrão: a hierarquia de QUEM CRIOU (ex.: criador de
+            // Processos → Head de Processos).
+            novo.origemArea =
+              parcial.tipo === 'cargoArea' || parcial.tipo === 'nivelHierarquico' ? 'autor' : undefined;
+          }
+
+          // Hierarquia: descrição automática ao trocar cargo/nível/área.
+          if (
+            (novo.tipo === 'cargoArea' || novo.tipo === 'nivelHierarquico') &&
+            (parcial.tipo !== undefined || parcial.cargo !== undefined || parcial.nivel !== undefined || parcial.referenciaId !== undefined || 'origemArea' in parcial)
+          ) {
+            novo.descricao = descricaoHierarquia(novo);
           }
 
           // Descrição automática ao escolher área/usuário.
@@ -603,14 +672,29 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
       validarNosResultados: atual ? atual.validarNosResultados : undefined
     };
 
+    // Condição atual (ou uma sugerida: o primeiro campo Sim/Não do
+    // processo, valor "Não" — ex.: justificativa quando não exige).
+    const condicaoAtual =
+      atual ? (atual.obrigatorioQuando || atual.mostrarQuando) : undefined;
+
+    const campoSugerido =
+      metadados.find(item => item.chave !== metadado.chave && item.tipo === 'simNao') ||
+      metadados.find(item => item.chave !== metadado.chave);
+
+    const condicao =
+      condicaoAtual ||
+      (campoSugerido ? { campo: campoSugerido.chave, valor: campoSugerido.tipo === 'simNao' ? 'nao' : '' } : undefined);
+
     const novo: IFluxoCampo =
-      modo === 'condicional' && atual
-        ? atual
-        : {
-          ...base,
-          obrigatorio: modo === 'obrigatorio',
-          somenteLeitura: modo === 'leitura' ? true : undefined
-        };
+      modo === 'condicional'
+        ? { ...base, obrigatorioQuando: condicao }
+        : modo === 'opcionalCondicional'
+          ? { ...base, mostrarQuando: condicao }
+          : {
+            ...base,
+            obrigatorio: modo === 'obrigatorio',
+            somenteLeitura: modo === 'leitura' ? true : undefined
+          };
 
     // Mantém a ordem dos metadados.
     const campos =
@@ -619,6 +703,23 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         .filter((campo): campo is IFluxoCampo => campo !== undefined);
 
     alterar({ campos });
+  };
+
+  // Altera a condição (campo e valor) de um campo condicional.
+  const alterarCondicaoCampo = (
+    chave: string,
+    condicao: { campo: string; valor: string }
+  ): void => {
+    alterar({
+      campos: config.campos.map(item => {
+        if (item.chave !== chave) {
+          return item;
+        }
+        return item.obrigatorioQuando
+          ? { ...item, obrigatorioQuando: condicao }
+          : { ...item, mostrarQuando: condicao };
+      })
+    });
   };
 
   return (
@@ -687,6 +788,57 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         </select>
         <div style={{ fontSize: '12px', marginTop: '4px' }}>
           É o status que aparece na lista de documentos e nos indicadores enquanto a revisão está nesta etapa.
+        </div>
+
+        <div style={{ marginTop: '12px' }}>
+          <label htmlFor="prop-anexo-arquivo" style={estiloRotuloPainel}>Arquivo da revisão nesta etapa</label>
+          <select
+            id="prop-anexo-arquivo"
+            value={config.anexoArquivo || 'nao'}
+            disabled={!editavel}
+            onChange={evento => alterar({ anexoArquivo: evento.target.value === 'nao' ? undefined : evento.target.value as AnexoArquivoEtapa })}
+            style={estiloEntradaPainel}
+          >
+            <option value="nao">Não pede o arquivo</option>
+            <option value="opcional">Permite anexar ou substituir (opcional)</option>
+            <option value="obrigatorio">Exige o arquivo para concluir a etapa</option>
+          </select>
+          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+            Mostra ao responsável o campo para anexar o arquivo da revisão. Com “Exige”, as ações da etapa
+            só são liberadas com o arquivo anexado (ações que dispensam campos, como “Reprovar”, continuam liberadas).
+          </div>
+        </div>
+
+        <div style={{ marginTop: '12px' }}>
+          <label htmlFor="prop-editar-documento" style={estiloRotuloPainel}>Edição do documento nesta etapa</label>
+          <select
+            id="prop-editar-documento"
+            value={
+              config.permiteEditarDocumento === true
+                ? 'sim'
+                : config.permiteEditarDocumento === false
+                  ? 'nao'
+                  : 'padrao'
+            }
+            disabled={!editavel}
+            onChange={evento => alterar({
+              permiteEditarDocumento:
+                evento.target.value === 'sim'
+                  ? true
+                  : evento.target.value === 'nao'
+                    ? false
+                    : undefined
+            })}
+            style={estiloEntradaPainel}
+          >
+            <option value="padrao">Padrão (só na etapa de Elaboração)</option>
+            <option value="sim">Permite abrir o documento para edição</option>
+            <option value="nao">Não permite (somente visualização)</option>
+          </select>
+          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+            Controla o botão “Abrir documento” (edição no Office online). Nas etapas sem permissão, o documento
+            só pode ser pré-visualizado, sem edição — por exemplo, durante a aprovação.
+          </div>
         </div>
 
         {
@@ -783,6 +935,70 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                 }
 
                 {
+                  (responsavel.tipo === 'cargoArea' || responsavel.tipo === 'nivelHierarquico') && (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {
+                        responsavel.tipo === 'cargoArea'
+                          ? (
+                            <select
+                              aria-label={`Cargo do responsável ${indice + 1}`}
+                              value={responsavel.cargo || 'Head'}
+                              disabled={!editavel}
+                              onChange={evento => alterarResponsavel(indice, { cargo: evento.target.value })}
+                              style={{ ...estiloEntradaPainel, flex: '1 1 140px' }}
+                            >
+                              {CARGOS_HIERARQUIA.map(cargo => <option key={cargo} value={cargo}>{cargo}</option>)}
+                            </select>
+                          )
+                          : (
+                            <select
+                              aria-label={`Nível do responsável ${indice + 1}`}
+                              value={String(responsavel.nivel !== undefined ? responsavel.nivel : 1)}
+                              disabled={!editavel}
+                              onChange={evento => alterarResponsavel(indice, { nivel: Number(evento.target.value) })}
+                              style={{ ...estiloEntradaPainel, flex: '1 1 140px' }}
+                            >
+                              {NIVEIS_HIERARQUIA.map(nivel => <option key={nivel} value={String(nivel)}>{rotuloNivel(nivel)}</option>)}
+                            </select>
+                          )
+                      }
+                      <select
+                        aria-label={`Área do responsável ${indice + 1}`}
+                        value={responsavel.referenciaId || (responsavel.origemArea === 'autor' ? '__autor__' : '')}
+                        disabled={!editavel}
+                        onChange={evento => {
+                          const valor = evento.target.value;
+                          if (valor === '__autor__') {
+                            alterarResponsavel(indice, { origemArea: 'autor', referenciaId: '', referenciaNome: undefined });
+                            return;
+                          }
+                          const area = areas.find(item => item.id === valor);
+                          alterarResponsavel(indice, {
+                            origemArea: area ? undefined : 'documento',
+                            referenciaId: area ? area.id : '',
+                            referenciaNome: area ? area.nome : undefined
+                          });
+                        }}
+                        style={{ ...estiloEntradaPainel, flex: '1 1 200px' }}
+                      >
+                        <option value="__autor__">Área de quem criou (automático)</option>
+                        <option value="">Área do documento / planilha</option>
+                        {
+                          areas.map(
+                            area => <option key={area.id} value={area.id}>{area.sigla ? `${area.sigla} — ` : ''}{area.nome}</option>
+                          )
+                        }
+                      </select>
+                      <div style={{ flexBasis: '100%', fontSize: '11.5px', color: '#64748B' }}>
+                        {responsavel.tipo === 'cargoArea'
+                          ? 'Quem tem este cargo na área (RH e Pessoas → Estrutura por área). Ex.: quem criou é de Processos → a pendência vai para o Head de Processos.'
+                          : 'A cadeia da área sai dos cargos cadastrados (ex.: Coordenador → Head → Diretor). Se a área tiver menos níveis, vale o topo.'}
+                      </div>
+                    </div>
+                  )
+                }
+
+                {
                   responsavel.tipo === 'usuario' && (
                     <select
                       aria-label={`Usuário responsável ${indice + 1}`}
@@ -858,6 +1074,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         }
 
         <div style={{ fontSize: '12px', lineHeight: '17px' }}>
+          <strong>Hierarquia</strong>: o cargo (ex.: Head, Diretor) ou o nível da hierarquia da área de quem criou, do documento ou de uma área fixa — cadastrados em RH e Pessoas → Estrutura por área; a pendência vai automaticamente para a pessoa certa.{' '}
           <strong>Autor da revisão</strong>: quem criou a revisão (no primeiro cadastro, quem criou o documento).{' '}
           <strong>Gestor da área do documento</strong>: os Gestores da área do documento (Áreas e acessos).{' '}
           <strong>Área específica</strong>: membros (ou só gestores) da área escolhida.{' '}
@@ -997,26 +1214,90 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                 const modo =
                   modoDoCampo(campo);
 
+                const condicao =
+                  campo ? (campo.obrigatorioQuando || campo.mostrarQuando) : undefined;
+
+                const campoCondicao =
+                  condicao ? metadados.find(item => item.chave === condicao.campo) : undefined;
+
                 return (
-                  <div key={metadado.chave} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 150px', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px' }}>{metadado.rotulo}</span>
-                    <select
-                      aria-label={`Uso do campo ${metadado.rotulo}`}
-                      value={modo}
-                      disabled={!editavel}
-                      onChange={evento => alterarModoCampo(metadado, evento.target.value as ModoCampo)}
-                      style={{ ...estiloEntradaPainel, minHeight: '32px', fontSize: '12.5px' }}
-                    >
-                      <option value="oculto">Não exibir</option>
-                      <option value="editavel">Opcional</option>
-                      <option value="obrigatorio">Obrigatório</option>
-                      <option value="leitura">Somente leitura</option>
-                      {
-                        modo === 'condicional' && (
-                          <option value="condicional">Obrigatório com condição (modelo)</option>
-                        )
-                      }
-                    </select>
+                  <div key={metadado.chave} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 190px', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '13px' }}>{metadado.rotulo}</span>
+                      <select
+                        aria-label={`Uso do campo ${metadado.rotulo}`}
+                        value={modo}
+                        disabled={!editavel}
+                        onChange={evento => alterarModoCampo(metadado, evento.target.value as ModoCampo)}
+                        style={{ ...estiloEntradaPainel, minHeight: '32px', fontSize: '12.5px' }}
+                      >
+                        <option value="oculto">Não exibir</option>
+                        <option value="editavel">Opcional</option>
+                        <option value="obrigatorio">Obrigatório</option>
+                        <option value="leitura">Somente leitura</option>
+                        {metadados.length > 1 && <option value="condicional">Obrigatório quando…</option>}
+                        {metadados.length > 1 && <option value="opcionalCondicional">Opcional quando…</option>}
+                      </select>
+                    </div>
+
+                    {/* Regra: o campo só aparece quando outro campo tem o valor indicado. */}
+                    {condicao && (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', fontSize: '12px', background: '#F5F7FA', borderRadius: '6px', padding: '6px 8px' }}>
+                        <span>Mostrar quando</span>
+                        <select
+                          aria-label={`Campo da condição de ${metadado.rotulo}`}
+                          value={condicao.campo}
+                          disabled={!editavel}
+                          onChange={evento => {
+                            const outro = metadados.find(item => item.chave === evento.target.value);
+                            alterarCondicaoCampo(metadado.chave, {
+                              campo: evento.target.value,
+                              valor: outro && outro.tipo === 'simNao' ? 'nao' : outro && outro.tipo === 'lista' && outro.opcoes && outro.opcoes.length ? outro.opcoes[0] : ''
+                            });
+                          }}
+                          style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px', width: 'auto', maxWidth: '200px' }}
+                        >
+                          {metadados.filter(item => item.chave !== metadado.chave).map(item => (
+                            <option key={item.chave} value={item.chave}>{item.rotulo}</option>
+                          ))}
+                        </select>
+                        <span>for</span>
+                        {campoCondicao && campoCondicao.tipo === 'simNao'
+                          ? (
+                            <select
+                              aria-label={`Valor da condição de ${metadado.rotulo}`}
+                              value={condicao.valor}
+                              disabled={!editavel}
+                              onChange={evento => alterarCondicaoCampo(metadado.chave, { campo: condicao.campo, valor: evento.target.value })}
+                              style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px', width: 'auto' }}
+                            >
+                              <option value="sim">Sim</option>
+                              <option value="nao">Não</option>
+                            </select>
+                          )
+                          : campoCondicao && campoCondicao.tipo === 'lista'
+                            ? (
+                              <select
+                                aria-label={`Valor da condição de ${metadado.rotulo}`}
+                                value={condicao.valor}
+                                disabled={!editavel}
+                                onChange={evento => alterarCondicaoCampo(metadado.chave, { campo: condicao.campo, valor: evento.target.value })}
+                                style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px', width: 'auto' }}
+                              >
+                                {(campoCondicao.opcoes || []).map(opcao => <option key={opcao} value={opcao}>{opcao}</option>)}
+                              </select>
+                            )
+                            : (
+                              <input
+                                aria-label={`Valor da condição de ${metadado.rotulo}`}
+                                value={condicao.valor}
+                                disabled={!editavel}
+                                onChange={evento => alterarCondicaoCampo(metadado.chave, { campo: condicao.campo, valor: evento.target.value })}
+                                style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px', width: '120px' }}
+                              />
+                            )}
+                      </div>
+                    )}
                   </div>
                 );
               }

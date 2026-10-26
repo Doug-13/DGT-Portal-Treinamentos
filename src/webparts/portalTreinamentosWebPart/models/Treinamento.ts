@@ -22,6 +22,12 @@ export interface ITreinamento {
   ativo: boolean;
   imagem: string;
   imagemUrl?: string;
+
+  // Revisão vigente do treinamento (Rev.00 se nunca foi revisado) e,
+  // quando concluído, a revisão em que a pessoa foi treinada.
+  revisaoAtual?: string;
+  revisaoTreinada?: string;
+  dataConclusaoIso?: string;
 }
 
 export interface IHistorico {

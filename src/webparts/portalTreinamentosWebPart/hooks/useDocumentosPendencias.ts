@@ -1,6 +1,10 @@
 import * as React from 'react';
 
 import {
+  estagioRevisao
+} from '../services/DocumentoRevisaoFluxoService';
+
+import {
   DataverseService,
   IDataverseRecord
 } from '../services/DataverseService';
@@ -189,22 +193,29 @@ export const useDocumentosPendencias = (
         // Descobre quais revisões seguem o fluxo de um processo.
         const carregarGovernadas = async (
           lidos: IDataverseRecord[]
-        ): Promise<void> => {
+        ): Promise<{
+          comFluxo: string[];
+          iniciais: Record<string, { etapa: string; responsaveis: IResponsavelResolvido[] }>;
+        }> => {
 
+          // Só fluxos EM ANDAMENTO governam a revisão (concluído ou
+          // cancelado não geram pendência).
           const comFluxo =
             (await dataverse.listarRegistros(
               'dgt_documentorevisao',
               '$select=dgt_documentorevisaoid,dgt_situacaofluxo&$filter=dgt_situacaofluxo ne null'
-            )).map(registro => guid(texto(registro, 'dgt_documentorevisaoid')));
-
-          setRevisoesComFluxo(comFluxo);
+            ))
+              .filter(registro => {
+                const situacao = texto(registro, 'dgt_situacaofluxo').trim().toLowerCase();
+                return !!situacao && situacao !== 'concluido' && situacao !== 'cancelado';
+              })
+              .map(registro => guid(texto(registro, 'dgt_documentorevisaoid')));
 
           const semFluxo =
             lidos.filter(registro => comFluxo.indexOf(guid(texto(registro, 'dgt_documentorevisaoid'))) < 0);
 
           if (semFluxo.length === 0) {
-            setEtapasIniciais({});
-            return;
+            return { comFluxo, iniciais: {} };
           }
 
           const persistencia =
@@ -218,6 +229,18 @@ export const useDocumentosPendencias = (
           const iniciais: Record<string, { etapa: string; responsaveis: IResponsavelResolvido[] }> = {};
 
           for (const registro of semFluxo) {
+
+            // Revisão que já saiu da Elaboração pelo fluxo padrão segue
+            // nele até o fim: a pendência continua sendo a do fluxo
+            // padrão (ex.: aprovação do Gestor), não a 1ª etapa do
+            // fluxo do processo publicado depois.
+            if (
+              estagioRevisao(
+                texto(registro, 'dgt_status@OData.Community.Display.V1.FormattedValue')
+              ) !== 'elaboracao'
+            ) {
+              continue;
+            }
 
             const documentoId =
               guid(texto(registro, '_dgt_documento_value'));
@@ -276,14 +299,21 @@ export const useDocumentosPendencias = (
             };
           }
 
-          setEtapasIniciais(iniciais);
+          return { comFluxo, iniciais };
         };
 
         try {
           const registrosLidos =
             await dataverse.getDocumentoRevisoesEmAndamento();
 
-          setRegistros(registrosLidos);
+          // Tudo é lido primeiro e gravado no estado DE UMA VEZ no fim.
+          // Antes, as revisões apareciam como pendência pela regra antiga
+          // e, segundos depois, sumiam quando chegavam os dados do fluxo.
+          let tarefasFinal: IDataverseRecord[] = [];
+          let autoresFinal: Record<string, string> = {};
+          let comFluxoFinal: string[] = [];
+          let iniciaisFinal: Record<string, { etapa: string; responsaveis: IResponsavelResolvido[] }> = {};
+          let tarefasDisponiveis = true;
 
           if (FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE && fluxoNoDataverse()) {
             try {
@@ -294,7 +324,7 @@ export const useDocumentosPendencias = (
                   `&$filter=${TAREFA.situacao} eq 'pendente'`
                 );
 
-              setTarefas(tarefasLidas);
+              tarefasFinal = tarefasLidas;
 
               // Autor = quem criou a revisão (resolvido sempre na hora,
               // inclusive para pendências gravadas antes desta regra).
@@ -317,21 +347,75 @@ export const useDocumentosPendencias = (
                 )
               );
 
-              setAutores(mapa);
+              autoresFinal = mapa;
             } catch (erroTarefas) {
               // Tabela ainda não criada: segue só com as pendências antigas.
               console.error(erroTarefas);
-              setTarefas([]);
+              tarefasFinal = [];
+              tarefasDisponiveis = false;
             }
 
             try {
-              await carregarGovernadas(registrosLidos);
+              const governadas = await carregarGovernadas(registrosLidos);
+              comFluxoFinal = governadas.comFluxo;
+              iniciaisFinal = governadas.iniciais;
             } catch (erroFluxo) {
               console.error(erroFluxo);
-              setRevisoesComFluxo([]);
-              setEtapasIniciais({});
+              comFluxoFinal = [];
+              iniciaisFinal = {};
+            }
+
+            // Fluxo "em andamento" sem nenhuma etapa pendente gravada é
+            // um estado inconsistente: em vez de a revisão sumir das
+            // pendências de todos, ela volta para a regra antiga.
+            if (tarefasDisponiveis) {
+
+              const comTarefa =
+                tarefasFinal.map(tarefa => guid(texto(tarefa, TAREFA.revisaoValor)));
+
+              const orfas =
+                comFluxoFinal.filter(id => comTarefa.indexOf(id) < 0);
+
+              if (orfas.length > 0) {
+                console.warn(
+                  '[Pendências] Revisões com fluxo em andamento mas sem etapa pendente (tratadas pela regra antiga):',
+                  orfas
+                );
+                comFluxoFinal = comFluxoFinal.filter(id => comTarefa.indexOf(id) >= 0);
+              }
             }
           }
+
+          // Diagnóstico (F12 → Console): revisões cuja pendência vem do
+          // fluxo do processo, com a etapa e os responsáveis gravados.
+          const diagnostico =
+            registrosLidos
+              .map(registro => {
+                const id = guid(texto(registro, 'dgt_documentorevisaoid'));
+                const etapas = tarefasFinal
+                  .filter(tarefa => guid(texto(tarefa, TAREFA.revisaoValor)) === id)
+                  .map(tarefa => `${texto(tarefa, TAREFA.etapaNome)} → ${texto(tarefa, TAREFA.responsaveisJson)}`);
+                const inicial = iniciaisFinal[id];
+                return etapas.length > 0 || inicial
+                  ? {
+                    revisao: `${texto(registro, '_dgt_documento_value@OData.Community.Display.V1.FormattedValue')} ${texto(registro, 'dgt_revisao')}`,
+                    status: texto(registro, 'dgt_status@OData.Community.Display.V1.FormattedValue'),
+                    etapas: etapas.length > 0 ? etapas : [`${inicial.etapa} (fluxo ainda não iniciado)`]
+                  }
+                  : undefined;
+              })
+              .filter(item => !!item);
+
+          if (diagnostico.length > 0) {
+            console.info('[Pendências] Revisões que seguem o fluxo do processo:', diagnostico);
+          }
+
+          setRegistros(registrosLidos);
+          setTarefas(tarefasFinal);
+          setAutores(autoresFinal);
+          setRevisoesComFluxo(comFluxoFinal);
+          setEtapasIniciais(iniciaisFinal);
+
         } catch (e) {
           console.error(e);
           setErro(

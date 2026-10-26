@@ -25,6 +25,11 @@ import {
   PREFIXO_ARMAZENAMENTO_TESTE
 } from '../../utils/armazenamentoLocal';
 
+import {
+  OpcaoResponsaveisCopia,
+  prepararCopiaFluxo
+} from './copiaFluxo';
+
 // ============================================================
 // CATÁLOGO DE FLUXOS POR PROCESSO (modo de teste)
 //
@@ -54,6 +59,10 @@ export interface IFluxoCatalogo {
   obterVersao(fluxoId: string, versao: number): Promise<IFluxoDefinicao | undefined>;
 
   criarAPartirDoModelo(processo: IProcesso, modeloId: string): Promise<IResultadoCatalogo>;
+
+  // Copia o fluxo de OUTRO processo como rascunho deste (v1 se ainda
+  // não houver fluxo; senão, a próxima versão). Ver copiaFluxo.ts.
+  criarCopia(processo: IProcesso, origem: IFluxoDefinicao, opcao: OpcaoResponsaveisCopia): Promise<IResultadoCatalogo>;
 
   salvarRascunho(definicao: IFluxoDefinicao): Promise<IResultadoCatalogo>;
 
@@ -118,6 +127,37 @@ export { validarDefinicao };
 
 export class FluxoCatalogoLocal
   implements IFluxoCatalogo {
+
+  public async criarCopia(
+    processo: IProcesso,
+    origem: IFluxoDefinicao,
+    opcao: OpcaoResponsaveisCopia
+  ): Promise<IResultadoCatalogo> {
+
+    const versoes =
+      ler(processo.id);
+
+    if (versoes.some(item => item.status === 'rascunho')) {
+      return {
+        ok: false,
+        erros: ['Este processo já tem um rascunho. Publique ou descarte antes de copiar outro fluxo.']
+      };
+    }
+
+    const nova =
+      prepararCopiaFluxo(
+        origem,
+        processo,
+        versoes.reduce((maior, item) => Math.max(maior, item.versao), 0) + 1,
+        opcao
+      );
+
+    versoes.push(nova);
+
+    gravar(processo.id, versoes);
+
+    return { ok: true, erros: [], definicao: nova };
+  }
 
   public readonly local: boolean =
     true;

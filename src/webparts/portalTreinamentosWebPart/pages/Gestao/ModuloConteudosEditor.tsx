@@ -12,6 +12,10 @@ import {
   DataverseService
 } from '../../services/DataverseService';
 
+import SeletorMidiaImagem, {
+  IContextoMidiasEditor
+} from './SeletorMidiaImagem';
+
 import PerguntaRapidaConfigModal from
   './PerguntaRapidaConfigModal';
 
@@ -76,10 +80,26 @@ export interface IModuloConteudosEditorProps {
         IModuloConteudoAdmin
     ) => Promise<void>;
 
+  // Arrastar e soltar: leva o conteúdo para a posição (0 = primeiro).
+  // Sem esta função, só os botões ↑ ↓ ficam disponíveis.
+  onReposicionar?:
+    (
+      itemId:
+        string,
+      novaPosicao:
+        number
+    ) => Promise<void>;
+
   // Opcional: habilita o botão "Configurar pergunta" (Exigir acerto,
   // feedback) nos conteúdos do tipo Pergunta rápida.
   dataverseService?:
     DataverseService;
+
+  // Opcional: habilita "Enviar imagem do computador" / "Escolher
+  // imagem já enviada" nos conteúdos do tipo Imagem (biblioteca
+  // Midias de Treinamento + tabela dgt_midia).
+  midias?:
+    IContextoMidiasEditor;
 }
 
 const tipos:
@@ -256,6 +276,63 @@ const ModuloConteudosEditor:
   > = (
     props
   ) => {
+
+    // ---------------- Arrastar e soltar ----------------
+
+    const [
+      arrastandoId,
+      setArrastandoId
+    ] =
+      React.useState('');
+
+    // Posição de inserção (0 = antes do primeiro; n = depois do último).
+    const [
+      alvoIndice,
+      setAlvoIndice
+    ] =
+      React.useState(-1);
+
+    // Mesma sequência da tela: por ordem (empate: posição original).
+    const conteudosOrdenados =
+      props.conteudos
+        .map((item, indice) => ({ item, indice }))
+        .sort((a, b) => a.item.ordem - b.item.ordem || a.indice - b.indice)
+        .map(par => par.item);
+
+    const podeArrastar =
+      !!props.onReposicionar &&
+      !props.processando;
+
+    const encerrarArraste = (): void => {
+      setArrastandoId('');
+      setAlvoIndice(-1);
+    };
+
+    const soltarEm = (posicao: number): void => {
+
+      const origem =
+        conteudosOrdenados.findIndex(item => item.id === arrastandoId);
+
+      const id =
+        arrastandoId;
+
+      encerrarArraste();
+
+      if (origem < 0 || !props.onReposicionar) {
+        return;
+      }
+
+      // Remover o item antes da inserção desloca as posições seguintes.
+      const destino =
+        posicao > origem ? posicao - 1 : posicao;
+
+      if (destino === origem) {
+        return;
+      }
+
+      props.onReposicionar(id, destino)
+        .catch((error: unknown) => console.error('Erro ao reposicionar o conteúdo:', error));
+    };
 
     const [
       formulario,
@@ -1246,7 +1323,13 @@ const ModuloConteudosEditor:
                   )
                 }
 
-                {props.conteudos.map(
+                {podeArrastar && conteudosOrdenados.length > 1 && (
+                  <div style={{ fontSize: '12px', color: '#64748B', marginTop: '-2px' }}>
+                    ⠿ Arraste um conteúdo para reposicioná-lo, ou use ↑ ↓.
+                  </div>
+                )}
+
+                {conteudosOrdenados.map(
                   (
                     item,
                     indice
@@ -1256,12 +1339,67 @@ const ModuloConteudosEditor:
                       key={
                         item.id
                       }
+                      draggable={
+                        podeArrastar
+                      }
+                      onDragStart={evento => {
+                        if (!podeArrastar) {
+                          return;
+                        }
+                        evento.dataTransfer.effectAllowed = 'move';
+                        evento.dataTransfer.setData('text/plain', item.id);
+                        setArrastandoId(item.id);
+                      }}
+                      onDragOver={evento => {
+                        if (!arrastandoId) {
+                          return;
+                        }
+                        evento.preventDefault();
+                        evento.dataTransfer.dropEffect = 'move';
+                        const caixa = evento.currentTarget.getBoundingClientRect();
+                        const depois = evento.clientY > caixa.top + caixa.height / 2;
+                        const posicao = indice + (depois ? 1 : 0);
+                        if (posicao !== alvoIndice) {
+                          setAlvoIndice(posicao);
+                        }
+                      }}
+                      onDrop={evento => {
+                        if (!arrastandoId) {
+                          return;
+                        }
+                        evento.preventDefault();
+                        soltarEm(alvoIndice >= 0 ? alvoIndice : indice);
+                      }}
+                      onDragEnd={
+                        encerrarArraste
+                      }
+                      title={
+                        podeArrastar
+                          ? 'Arraste para reposicionar'
+                          : undefined
+                      }
                       style={{
+                        cursor:
+                          podeArrastar
+                            ? 'grab'
+                            : undefined,
+
+                        // Linha de inserção (onde o conteúdo vai cair).
+                        boxShadow:
+                          arrastandoId && alvoIndice === indice
+                            ? 'inset 0 3px 0 #05C3DD'
+                            : arrastandoId && alvoIndice === indice + 1 && indice === conteudosOrdenados.length - 1
+                              ? 'inset 0 -3px 0 #05C3DD'
+                              : undefined,
+
+                        transition:
+                          'box-shadow .08s',
+
                         display:
                           'grid',
 
                         gridTemplateColumns:
-                          '52px 120px minmax(220px, 1fr) auto',
+                          '68px 120px minmax(220px, 1fr) auto',
 
                         gap:
                           '12px',
@@ -1286,15 +1424,31 @@ const ModuloConteudosEditor:
                             : '#F8FAFC',
 
                         opacity:
-                          item.ativo
-                            ? 1
-                            : 0.7
+                          arrastandoId === item.id
+                            ? 0.4
+                            : item.ativo
+                              ? 1
+                              : 0.7
                       }}
                     >
 
-                      <strong>
+                      <strong
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        {podeArrastar && (
+                          <span
+                            aria-hidden="true"
+                            style={{ color: '#94A3B8', fontSize: '16px', cursor: 'grab' }}
+                          >
+                            ⠿
+                          </span>
+                        )}
                         #{
-                          item.ordem
+                          indice + 1
                         }
                       </strong>
 
@@ -1405,7 +1559,7 @@ const ModuloConteudosEditor:
                           type="button"
                           disabled={
                             indice ===
-                              props.conteudos.length -
+                              conteudosOrdenados.length -
                                 1 ||
                             props.processando
                           }
@@ -1824,6 +1978,20 @@ const ModuloConteudosEditor:
                             '6px'
                         }}
                       />
+
+                      {
+                        tipo ===
+                          'Imagem' &&
+                        props.midias &&
+                        (
+                          <SeletorMidiaImagem
+                            contexto={props.midias}
+                            urlAtual={url}
+                            desabilitado={props.processando}
+                            onSelecionar={novaUrl => setUrl(novaUrl)}
+                          />
+                        )
+                      }
 
                       {
                         tipo ===

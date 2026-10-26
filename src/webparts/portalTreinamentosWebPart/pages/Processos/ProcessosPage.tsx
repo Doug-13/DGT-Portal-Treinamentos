@@ -34,6 +34,14 @@ import {
   useProcessos
 } from '../../hooks/useProcessos';
 
+import TransferirDocumentosModal from './TransferirDocumentosModal';
+
+import AtualizarDocumentosFluxoModal from './AtualizarDocumentosFluxoModal';
+
+import {
+  ehAdministrador
+} from '../../services/DocumentoVisibilidade';
+
 import ProcessoFluxoEditor from
   './ProcessoFluxoEditor';
 
@@ -293,6 +301,26 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
   const [erroAcao, setErroAcao] =
     React.useState<string>('');
 
+  // Transferência de documentos entre processos: só administrador
+  // (global ou do módulo Documentos) e só com Dataverse.
+  const podeTransferir =
+    ehAdministrador(contexto) && !!dataverseService && !dados.local;
+
+  const [
+    transferirAberto,
+    setTransferirAberto
+  ] = React.useState(false);
+
+  // Atualizar as revisões em andamento para a versão publicada
+  // (abre sozinho depois de publicar; também pelo botão).
+  const [
+    atualizacaoVersao,
+    setAtualizacaoVersao
+  ] = React.useState<{ aposPublicar: boolean } | undefined>(undefined);
+
+  const podeAtualizarDocumentos =
+    podeEditar && !!dataverseService && !dados.local;
+
   const tratarErro = (
     error: unknown
   ): void => {
@@ -383,6 +411,20 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
 
+        {
+          atualizacaoVersao && dataverseService && (
+            <AtualizarDocumentosFluxoModal
+              dataverseService={dataverseService}
+              processo={processoSelecionado}
+              vinculos={dados.vinculos}
+              documentos={documentos}
+              usuario={{ id: contexto ? contexto.usuarioId : '', nome: contexto ? contexto.nome : '' }}
+              aposPublicar={atualizacaoVersao.aposPublicar}
+              onFechar={() => setAtualizacaoVersao(undefined)}
+            />
+          )
+        }
+
         <div>
           <button
             type="button"
@@ -398,7 +440,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
         <section style={{ ...estiloCartao, padding: '16px 20px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flexGrow: 1, minWidth: '260px' }}>
             <div style={{ fontSize: '13px', fontWeight: 600, color: COR_INDIGO }}>
-              Processos › {processoSelecionado.codigo || 'sem código'}
+              Fluxos › {processoSelecionado.codigo || 'sem código'}
             </div>
             <h2 style={{ margin: '2px 0 4px', fontSize: '24px', lineHeight: '30px' }}>
               {processoSelecionado.nome}
@@ -444,6 +486,20 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 areas={areasAtivas}
                 usuarios={usuarios}
                 gravandoMetadados={dados.gravandoMetadados}
+                onPublicado={() => {
+                  if (podeAtualizarDocumentos && vinculosProcesso.length > 0) {
+                    setAtualizacaoVersao({ aposPublicar: true });
+                  }
+                }}
+                fontesCopia={
+                  dados.processos.map(
+                    item => ({
+                      processo: item,
+                      versoes: dados.fluxosPorProcesso[item.id] || [],
+                      metadados: dados.metadadosPorProcesso[item.id] || []
+                    })
+                  )
+                }
               />
             )
             : aba === 'metadados'
@@ -470,7 +526,76 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
             )
             : (
               <section style={estiloCartao}>
-                <div style={estiloBarraSecao}>Documentos deste processo</div>
+                <div style={{ ...estiloBarraSecao, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span>Documentos deste processo</span>
+                  {
+                    podeAtualizarDocumentos && resumo.publicado && vinculosProcesso.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAtualizacaoVersao({ aposPublicar: false })}
+                        title="Leva as revisões em andamento que estão numa versão antiga para a versão publicada, na mesma etapa."
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #FFFFFF',
+                          background: 'transparent',
+                          color: '#FFFFFF',
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          letterSpacing: 0,
+                          textTransform: 'none',
+                          cursor: 'pointer',
+                          marginLeft: 'auto'
+                        }}
+                      >
+                        ↻ Atualizar para a versão publicada
+                      </button>
+                    )
+                  }
+                  {
+                    podeTransferir && vinculosProcesso.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTransferirAberto(true)}
+                        title="Leva os documentos (e as revisões em andamento, na mesma etapa) para outro processo."
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #FFFFFF',
+                          background: 'transparent',
+                          color: '#FFFFFF',
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          letterSpacing: 0,
+                          textTransform: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ⇄ Transferir documentos para outro processo
+                      </button>
+                    )
+                  }
+                </div>
+
+                {
+                  transferirAberto && dataverseService && (
+                    <TransferirDocumentosModal
+                      dataverseService={dataverseService}
+                      origem={processoSelecionado}
+                      processos={dados.processos}
+                      fluxosPorProcesso={dados.fluxosPorProcesso}
+                      vinculos={dados.vinculos}
+                      documentos={documentos}
+                      usuario={{ id: contexto ? contexto.usuarioId : '', nome: contexto ? contexto.nome : '' }}
+                      onFechar={alterou => {
+                        setTransferirAberto(false);
+                        if (alterou) {
+                          dados.recarregar(true).catch(tratarErro);
+                        }
+                      }}
+                    />
+                  )
+                }
 
                 {
                   podeEditar && (
@@ -480,6 +605,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                         <select
                           id="vincular-documento"
                           value={documentoParaVincular}
+                          disabled={!resumo.publicado}
                           onChange={evento => setDocumentoParaVincular(evento.target.value)}
                           style={estiloEntrada}
                         >
@@ -497,17 +623,41 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                       </div>
                       <button
                         type="button"
-                        disabled={!documentoParaVincular}
+                        disabled={!documentoParaVincular || !resumo.publicado}
                         onClick={() => {
                           setErroAcao('');
+                          // Processo sem fluxo publicado não recebe documentos.
+                          if (!resumo.publicado) {
+                            return;
+                          }
                           dados.vincularDocumento(documentoParaVincular, processoSelecionado.id)
                             .then(() => setDocumentoParaVincular(''))
                             .catch(tratarErro);
                         }}
-                        style={estiloBotao(true, !documentoParaVincular)}
+                        style={estiloBotao(true, !documentoParaVincular || !resumo.publicado)}
                       >
                         Vincular{teste}
                       </button>
+                      {
+                        !resumo.publicado && (
+                          <div
+                            role="alert"
+                            style={{
+                              flexBasis: '100%',
+                              padding: '9px 12px',
+                              borderRadius: '8px',
+                              border: '1px solid #485CC7',
+                              background: '#E8EAF8',
+                              color: '#202A44',
+                              fontSize: '12.5px',
+                              lineHeight: 1.5
+                            }}
+                          >
+                            <strong>! Processo sem fluxo publicado.</strong> Publique o fluxo deste processo
+                            antes de vincular documentos a ele.
+                          </div>
+                        )
+                      }
                     </div>
                   )
                 }
@@ -665,7 +815,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
         </div>
 
         <span style={{ fontSize: '13px' }}>
-          {visiveis.length} de {dados.processos.length} processo(s)
+          {visiveis.length} de {dados.processos.length} fluxo(s)
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px' }}>
@@ -690,7 +840,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 }}
                 style={estiloBotao(true, false)}
               >
-                Novo processo{teste}
+                Novo fluxo{teste}
               </button>
             )
           }
@@ -700,7 +850,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
       {
         novoAberto && (
           <section style={estiloCartao}>
-            <div style={estiloBarraSecao}>{dados.local ? 'Novo processo (somente neste navegador)' : 'Novo processo'}</div>
+            <div style={estiloBarraSecao}>{dados.local ? 'Novo fluxo (somente neste navegador)' : 'Novo fluxo'}</div>
             <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 200px) minmax(0, 1fr) minmax(200px, 320px)', gap: '12px' }}>
                 <div>
@@ -814,9 +964,9 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
               {
                 dados.processos.length === 0
                   ? (dados.local
-                    ? 'Nenhum processo encontrado. No modo de teste você pode criar processos locais em “Novo processo (teste)”.'
-                    : 'Nenhum processo cadastrado. Crie o primeiro em “Novo processo”.')
-                  : 'Nenhum processo corresponde à busca.'
+                    ? 'Nenhum fluxo encontrado. No modo de teste você pode criar fluxos locais em “Novo fluxo (teste)”.'
+                    : 'Nenhum fluxo cadastrado. Crie o primeiro em “Novo fluxo”.')
+                  : 'Nenhum fluxo corresponde à busca.'
               }
             </section>
           )

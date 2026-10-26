@@ -126,8 +126,10 @@ Envie o `.sppkg` ao Catálogo de Aplicativos e abra o portal com **Ctrl+F5**.
 ### Fluxo A — "Nova pendência do fluxo"
 
 - Gatilho: **Dataverse – Quando uma linha é adicionada** · tabela *Pendências do Fluxo* · escopo *Organização*.
-- **Analisar JSON** de `dgt_responsaveisjson` (lista de `{ descricao, usuarioId?, areaId?, somenteGestores? }`).
+- **Analisar JSON** de `dgt_responsaveisjson` (lista de `{ descricao, usuarioId?, areaId?, somenteGestores?, cargo?, nivel?, usuariosIds? }`).
 - Para cada item:
+  - com `usuariosIds` (responsável por **hierarquia**, ex.: Head da área de quem criou) → para cada id,
+    *Obter linha* em **Usuários (dgt_usuario)** → e-mail (as pessoas já vêm resolvidas pelo portal);
   - com `usuarioId` → *Obter linha* em **Usuários (dgt_usuario)** → e-mail;
   - com `areaId` → *Listar linhas* em **dgt_usuarioarea** filtrando a área
     (e perfil Gestor quando `somenteGestores` = true) → e-mails dos usuários.

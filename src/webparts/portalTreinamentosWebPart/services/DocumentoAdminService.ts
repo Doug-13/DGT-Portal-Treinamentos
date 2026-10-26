@@ -611,6 +611,33 @@ export class DocumentoAdminService {
         }
       );
   }
+  // Código único (o sequencial pode ser digitado por quem cria):
+  // confere no Dataverse, inclusive documentos inativos.
+  public async garantirCodigoDisponivel(
+    codigo: string
+  ): Promise<void> {
+
+    const codigoNovo =
+      codigo
+        .trim()
+        .toUpperCase();
+
+    const mesmoCodigo =
+      await this.dataverse
+        .listarRegistros(
+          'dgt_documento',
+          `$select=dgt_documentoid&$filter=dgt_codigo eq '${codigoNovo.replace(/'/g, "''")}'&$top=1`
+        );
+
+    if (
+      mesmoCodigo.length > 0
+    ) {
+      throw new Error(
+        `Já existe um documento com o código ${codigoNovo}. Escolha outro sequencial.`
+      );
+    }
+  }
+
   public async criarDocumento(
     dados:
       INovoDocumentoAdmin
@@ -639,6 +666,10 @@ export class DocumentoAdminService {
         'Informe o aprovador do documento.'
       );
     }
+
+    await this.garantirCodigoDisponivel(
+      dados.codigo
+    );
 
     const areaRegistro =
       await this.dataverse

@@ -18,6 +18,10 @@ export interface ICatalogoTreinamentosPageProps {
   carregando: boolean;
   erro: string;
   onTestar: (treinamento: ITreinamentoAdmin) => void;
+
+  // Gestor/Editor por área: só os treinamentos das áreas dele.
+  recortado?: boolean;
+  areasNomes?: string[];
 }
 
 type Filtro = 'ativos' | 'inativos' | 'todos';
@@ -129,7 +133,10 @@ const CatalogoTreinamentosPage: React.FC<ICatalogoTreinamentosPageProps> = (
           Catálogo de treinamentos
         </h1>
         <p style={{ margin: 0, color: C.secundario, fontSize: '14px' }}>
-          Todos os treinamentos criados. Use <strong>Testar</strong> para percorrer o treinamento
+          {props.recortado
+            ? <>Treinamentos das suas áreas{props.areasNomes && props.areasNomes.length > 0 ? <> (<strong>{props.areasNomes.join(', ')}</strong>)</> : ''}.</>
+            : 'Todos os treinamentos criados.'}
+          {' '}Use <strong>Testar</strong> para percorrer o treinamento
           e a avaliação como um colaborador — sem gerar registros nem certificado.
         </p>
       </div>

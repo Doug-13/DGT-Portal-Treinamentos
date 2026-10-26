@@ -6,6 +6,74 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.14] - 2026-10-26
+
+- Novo: "⟳ Atualizar todos os módulos por JSON" na etapa de edição dos módulos — um JSON com todos os módulos atualiza cada módulo existente correspondente (sugestão pelo título e, depois, pela posição, ajustável na prévia em "Atualiza") e cria os que não têm correspondência; módulos fora do JSON ficam como estão.
+
+- Correção: revisão que ficou parada numa etapa de publicação (status "Vigente") depois de troca de processo ou de versão do fluxo agora mostra "Publicação pendente" com o botão "Concluir publicação", que publica a revisão (documento vigente, anterior obsoleta, retreinamento conforme o fluxo). A troca de fluxo também avisa quando a revisão cai numa etapa de publicação.
+
+- Novo: na etapa de edição dos módulos (assistente do treinamento), "Atualizar por JSON" no menu do módulo substitui título, descrição, duração, obrigatoriedade e conteúdos pelos do JSON (com prévia e imagens), mantendo ordem, situação e vínculos do módulo. Conteúdos com respostas de colaboradores são desativados, não apagados.
+- Melhoria: "Excluir módulo" passa a aparecer só na etapa de edição dos módulos, para quem está editando o treinamento (não só o Administrador); continua bloqueado para módulos já iniciados ou com respostas.
+
+- Novo: conteúdos do módulo podem ser reposicionados arrastando e soltando (linha ciano indica onde o conteúdo vai cair); os botões ↑ ↓ continuam.
+- Correção: reposicionar conteúdos funciona mesmo com ordens repetidas ou com buracos — a ordem é renumerada (1, 2, 3…) a cada movimento, e o número exibido (#) é a posição real.
+
+- Novo: Arquitetura de Soluções — Modalidade com Dispensa de Licitação, Inexigibilidade e MIP; "Proposta direta" passa a "Proposta Técnica". A modalidade depende do canal: Público com as modalidades de proposta, Privado só com Proposta Comercial (preenchida automaticamente). Requer scripts/dataverse/atualizar-opcoes-bom.ps1.
+- Novo: Tipo de projeto com "Locação 48 meses".
+- Novo: anexos na Matriz Go/No-Go (SharePoint, biblioteca "Arquitetura de Soluções", pasta Go-No-Go/<B.O.M.>).
+- Melhoria: removidos os campos "Tipo de entrega" e "Pontos estimados" dos Dados da demanda (os valores já gravados são mantidos); a Modalidade passa a ser obrigatória para concluir a etapa.
+
+- Novo: regra de exibição dos campos no editor de fluxo — "Obrigatório quando…" e "Opcional quando…", com "Mostrar quando [campo] for [valor]" editável (ex.: a justificativa da dispensa só aparece quando "Esta revisão exige treinamento?" = Não).
+
+- Novo: em Documentos recentes, a coluna "Etapa atual" mostra em que atividade do fluxo cada documento está (destacada quando aguarda você, com o prazo ao passar o mouse).
+- Correção: a coluna Responsável passa a mostrar o responsável pela etapa atual do fluxo (como na tela do documento); o responsável do cadastro aparece ao passar o mouse. A coluna Revisão mostra a revisão em andamento (ex.: Rev.00 após a renumeração).
+- Melhoria: removida a coluna lateral da tela de Documentos ("Meus documentos favoritos" e "Links úteis"); a lista passa a ocupar a largura toda.
+
+- Novo: o Catálogo de treinamentos passa a aparecer para o Gestor, mostrando só os treinamentos das áreas dele (áreas de gestão; sem elas, as áreas em que está vinculado). O topo indica as áreas exibidas. O Gestor também pode usar "Testar como colaborador".
+
+## [1.4.13] - 2026-10-23
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.12] - 2026-10-22
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.11] - 2026-10-21
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.10] - 2026-10-21
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.9] - 2026-10-21
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.8] - 2026-10-21
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.7] - 2026-10-19
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.6] - 2026-10-19
+
+- Novo: Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir.
+- Novo: visão "Todas as planilhas" para o Administrador, com consolidado por grupo, consulta de cada planilha, reabertura e exportação CSV no layout da planilha de orçamento.
+- Novo: aprovação das planilhas do Planejamento orçamentário pelo fluxo CONT-001, com a tela Aprovações e o painel do fluxo na planilha.
+- Novo: etapas do fluxo de aprovação exibidas no Planejamento orçamentário, mostrando em que ponto está cada planilha.
+- Novo: painel de Acompanhamento de licitações, com o registro das licitações acompanhadas e um retrato (snapshot) do edital no momento do acompanhamento.
+- Novo: aba Estrutura da área em RH e Pessoas, com a hierarquia das áreas e o cargo de cada pessoa na área.
+- Novo: scripts criar-tabelas-acompanhamento-licitacoes.ps1 e criar-coluna-cargo-area.ps1 para o Dataverse.
+- Melhoria: os responsáveis das etapas do fluxo passam a considerar a hierarquia das áreas.
+- Melhoria: análise por IA das licitações ajustada (provedores e montagem da análise).
+- Correção: todo treinamento passa a nascer obrigatoriamente vinculado ao fluxo de treinamentos. Antes de criar, o portal confere o tipo TRN, o processo TRE-001 e o fluxo publicado; se o vínculo falhar, a criação é desfeita e nada fica gravado.
+- Correção: treinamento fora do fluxo não pode ser ativado nem editado: a lista mostra "⚠ Fora do fluxo de treinamentos" e o botão "Vincular ao fluxo" no lugar de Editar.
+- Correção: ajustes na remoção de treinamento na Gestão.
+
 ## [1.4.4] - 2026-10-09
 
 - Melhoria: ajustes e correções internas.
@@ -128,4 +196,3 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Novo: aba Catálogo e modo de teste do treinamento (visão do colaborador, sem registros).
 - Correção: editar um treinamento não cria mais uma cópia.
 - Correção: validação do tamanho e conversão automática do link da imagem do SharePoint.
-

@@ -17,6 +17,13 @@ import {
 //
 // O Administrador sempre acessa todos os módulos.
 //
+// ADMINISTRADOR DO MÓDULO: na mesma lista, entradas "admin:<módulo>"
+// (ex.: ["treinamentos","documentos","admin:treinamentos"]). Quem
+// administra um módulo tem, SÓ nele, os poderes do Administrador
+// global (todas as áreas, aprovações, telas de administração). Usuários
+// e acessos, Áreas e configurações do portal continuam só com o
+// Administrador global. Listas antigas (sem "admin:") continuam valendo.
+//
 // ESTA é a única regra de módulo do portal: o menu, as rotas
 // (RoutePermissionService), "Meu perfil" e "Usuários e acessos"
 // usam modulosEfetivos/moduloLiberado daqui.
@@ -28,7 +35,9 @@ export type ChaveModuloPortal =
   | 'processos'
   | 'licitacoes'
   | 'arquitetura'
-  | 'indicadores';
+  | 'indicadores'
+  | 'orcamento'
+  | 'rh';
 
 export interface IModuloPortal {
   chave: ChaveModuloPortal;
@@ -45,7 +54,9 @@ export const MODULOS_PORTAL: IModuloPortal[] = [
   { chave: 'processos', nome: 'Processos', descricao: 'Mapeamento de processos e fluxos de revisão.', padrao: true },
   { chave: 'licitacoes', nome: 'Licitações', descricao: 'Busca de oportunidades no PNCP. Liberar só para quem trabalha com licitações.', padrao: false },
   { chave: 'arquitetura', nome: 'Arquitetura de Soluções', descricao: 'Demandas, Matriz Go/No-Go e B.O.M. Liberar para a equipe de Arquitetura.', padrao: false },
-  { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI). Dados sensíveis: Colaborador e Editor só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] }
+  { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI). Dados sensíveis: Colaborador e Editor só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] },
+  { chave: 'orcamento', nome: 'Planejamento orçamentário', descricao: 'Planilha de orçamento anual. Cada um vê só a sua; o Administrador vê todas. Padrão para Gestor; demais só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] },
+  { chave: 'rh', nome: 'RH e Pessoas', descricao: 'Certificados e validades de todos os colaboradores. Liberar só para o RH.', padrao: false, padraoPerfis: ['Administrador'] }
 ];
 
 // Módulo a que uma página pertence (undefined = página geral, sempre
@@ -56,6 +67,14 @@ export const moduloDaPagina = (
 
   if (pagina === 'indicadores') {
     return 'indicadores';
+  }
+
+  if (pagina === 'planejamentoOrcamentario') {
+    return 'orcamento';
+  }
+
+  if (pagina === 'rhPessoas') {
+    return 'rh';
   }
 
   const modulo =
@@ -89,6 +108,39 @@ export const lerModulosAcesso = (
     return undefined;
   }
 };
+
+export const PREFIXO_ADMIN_MODULO = 'admin:';
+
+// Módulos que o usuário ADMINISTRA (entradas "admin:<módulo>").
+export const lerModulosAdministrados = (
+  valor: unknown
+): ChaveModuloPortal[] => {
+  if (valor === undefined || valor === null || String(valor).trim() === '') {
+    return [];
+  }
+  try {
+    const lista = JSON.parse(String(valor));
+    if (!Array.isArray(lista)) {
+      return [];
+    }
+    const validas = MODULOS_PORTAL.map(item => item.chave as string);
+    return lista
+      .map(item => String(item))
+      .filter(item => item.indexOf(PREFIXO_ADMIN_MODULO) === 0)
+      .map(item => item.substring(PREFIXO_ADMIN_MODULO.length))
+      .filter((item, indice, todos) => validas.indexOf(item) >= 0 && todos.indexOf(item) === indice) as ChaveModuloPortal[];
+  } catch {
+    return [];
+  }
+};
+
+// Administrador global ou administrador deste módulo?
+export const administraModulo = (
+  perfil: string | undefined,
+  administrados: ChaveModuloPortal[] | undefined,
+  chave: ChaveModuloPortal
+): boolean =>
+  perfil === 'Administrador' || (administrados || []).indexOf(chave) >= 0;
 
 export const MODULOS_PADRAO: ChaveModuloPortal[] =
   MODULOS_PORTAL.filter(item => item.padrao).map(item => item.chave);
@@ -124,8 +176,22 @@ export const moduloLiberado = (
 
 // Igual ao padrão → grava vazio (segue o padrão se ele mudar).
 export const gravarModulosAcesso = (
-  modulos: ChaveModuloPortal[] | undefined
-): string =>
-  modulos && modulos.length > 0 && !mesmoConjunto(modulos, MODULOS_PADRAO)
+  modulos: ChaveModuloPortal[] | undefined,
+  // Módulos que o usuário administra (ficam como "admin:<módulo>" e o
+  // módulo também entra na lista de liberados).
+  administrados?: ChaveModuloPortal[]
+): string => {
+  const admins = (administrados || []).filter((item, indice, lista) => lista.indexOf(item) === indice);
+  if (admins.length > 0) {
+    const liberados = (modulos && modulos.length > 0 ? modulos : MODULOS_PADRAO).slice();
+    admins.forEach(chave => {
+      if (liberados.indexOf(chave) < 0) {
+        liberados.push(chave);
+      }
+    });
+    return JSON.stringify((liberados as string[]).concat(admins.map(chave => `${PREFIXO_ADMIN_MODULO}${chave}`)));
+  }
+  return modulos && modulos.length > 0 && !mesmoConjunto(modulos, MODULOS_PADRAO)
     ? JSON.stringify(modulos)
     : '';
+};

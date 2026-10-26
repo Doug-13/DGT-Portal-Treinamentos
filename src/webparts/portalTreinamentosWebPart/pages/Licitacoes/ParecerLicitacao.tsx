@@ -428,6 +428,8 @@ const MOTIVOS_RAPIDOS: { [decisao: string]: string[] } = {
 export interface IRegistrarParecerDialogProps {
   item?: ILicitacaoResultado;
   decisaoInicial?: DecisaoParecer;
+  // Texto sugerido (ex.: pela análise da IA); a pessoa revisa.
+  justificativaInicial?: string;
   parecerAtual?: ISituacaoParecer;
   onCancelar: () => void;
   onSalvar: (decisao: DecisaoParecer, justificativa: string) => Promise<void>;
@@ -436,6 +438,7 @@ export interface IRegistrarParecerDialogProps {
 export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
   item,
   decisaoInicial,
+  justificativaInicial,
   parecerAtual,
   onCancelar,
   onSalvar
@@ -451,7 +454,7 @@ export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
   // Abre / troca de edital: reinicia.
   React.useEffect(() => {
     setDecisao(decisaoInicial);
-    setJustificativa('');
+    setJustificativa(justificativaInicial || '');
     setErro('');
     setSalvando(false);
     if (item) {
@@ -461,7 +464,7 @@ export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
         }
       }, 50);
     }
-  }, [item, decisaoInicial]);
+  }, [item, decisaoInicial, justificativaInicial]);
 
   if (!item) {
     return null;

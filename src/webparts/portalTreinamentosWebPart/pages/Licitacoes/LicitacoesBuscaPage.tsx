@@ -37,6 +37,50 @@ import {
 } from './ParecerLicitacao';
 
 import {
+  AnaliseIaBloco
+} from './AnaliseIaLicitacao';
+
+import SugestoesTermos, {
+  SUGESTOES_ASSUNTO,
+  SUGESTOES_EXCLUIR,
+  SUGESTOES_RELACIONADAS,
+  listaDoTexto
+} from './SugestoesTermos';
+
+import ConfigurarIaModal from
+  './ConfigurarIaModal';
+
+import {
+  useAnaliseIaLicitacoes
+} from '../../hooks/useAnaliseIaLicitacoes';
+
+import {
+  IEstadoAnaliseIa
+} from '../../models/LicitacaoIa';
+
+import {
+  EnviarParaIa
+} from '../../services/ia/provedoresIa';
+
+import {
+  useAcompanhamentoLicitacoes
+} from '../../hooks/useAcompanhamentoLicitacoes';
+
+import {
+  IAcompanhamento
+} from '../../services/licitacoes/AcompanhamentoLicitacaoService';
+
+import AcompanhamentoPainel from
+  './AcompanhamentoPainel';
+
+import NaoParticiparPainel from
+  './NaoParticiparPainel';
+
+import {
+  IParecerLicitacao
+} from '../../models/Licitacao';
+
+import {
   converterValor,
   formatarDataPncp,
   formatarMoeda,
@@ -93,11 +137,16 @@ export interface ILicitacoesBuscaPageProps {
   // Opcionais: sem eles a busca funciona, só sem pareceres.
   dataverseService?: DataverseService;
   contexto?: IContextoAcesso;
+  // Chamada à API de IA (ver services/ia/provedoresIa.ts). Sem ela,
+  // a análise roda no modo simulado (histórico de pareceres).
+  enviarParaIa?: EnviarParaIa;
 }
 
 interface IDialogoParecer {
   item: ILicitacaoResultado;
   decisao?: DecisaoParecer;
+  // Texto sugerido pela IA ("Usar sugestão").
+  justificativa?: string;
 }
 
 const FILTROS_PARECER: Array<{ id: FiltroParecer; rotulo: string }> = [
@@ -217,13 +266,26 @@ const CartaoLicitacao: React.FC<{
   onPrevisualizar: (item: ILicitacaoResultado) => void;
   parecer?: ISituacaoParecer;
   situacaoPareceres: SituacaoPareceres;
-  onRegistrarParecer: (item: ILicitacaoResultado, decisao?: DecisaoParecer) => void;
-}> = ({ item, onPrevisualizar, parecer, situacaoPareceres, onRegistrarParecer }) => (
+  onRegistrarParecer: (item: ILicitacaoResultado, decisao?: DecisaoParecer, justificativa?: string) => void;
+  estadoIa: IEstadoAnaliseIa;
+  onAnalisarIa: (item: ILicitacaoResultado) => void;
+  acompanhamento?: IAcompanhamento;
+  novidades: number;
+  acompanhamentoDisponivel: boolean;
+  processandoAcompanhamento: boolean;
+  onAcompanhar: (item: ILicitacaoResultado) => void;
+  onVerAcompanhamento: () => void;
+}> = ({
+  item, onPrevisualizar, parecer, situacaoPareceres, onRegistrarParecer, estadoIa, onAnalisarIa,
+  acompanhamento, novidades, acompanhamentoDisponivel, processandoAcompanhamento, onAcompanhar, onVerAcompanhamento
+}) => (
   <div
     style={{
       ...cartao,
-      borderLeft: `4px solid ${item.score >= 50 ? COR.ciano : COR.indigo}`,
-      marginBottom: 12
+      borderLeft: `4px solid ${parecer && parecer.atual.decisao === 'NaoParticipar' ? '#C0392B' : item.score >= 50 ? COR.ciano : COR.indigo}`,
+      marginBottom: 12,
+      // Edital já descartado: fica visível, mas em segundo plano.
+      opacity: parecer && parecer.atual.decisao === 'NaoParticipar' ? 0.72 : 1
     }}
   >
     <div
@@ -267,6 +329,15 @@ const CartaoLicitacao: React.FC<{
       <Dado titulo="Encerramento das propostas" valor={formatarDataPncp(item.encerramento)} />
     </div>
 
+    {/* Sem parecer: a IA sugere. Com parecer: vale a decisão da DGT. */}
+    {!parecer && (
+      <AnaliseIaBloco
+        estado={estadoIa}
+        onAnalisar={() => onAnalisarIa(item)}
+        onUsarSugestao={(decisao, justificativa) => onRegistrarParecer(item, decisao, justificativa)}
+      />
+    )}
+
     <ParecerCartao
       parecer={parecer}
       situacao={situacaoPareceres}
@@ -289,6 +360,55 @@ const CartaoLicitacao: React.FC<{
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        {acompanhamentoDisponivel && (
+          acompanhamento
+            ? (
+              <button
+                type="button"
+                onClick={onVerAcompanhamento}
+                title="Ver a linha do tempo das alterações deste edital"
+                style={{ ...botaoSecundario, padding: '5px 10px', fontSize: 12, borderColor: '#B45309', color: '#B45309' }}
+              >
+                ★ Acompanhando{novidades > 0 ? ` · ${novidades} nova(s)` : ''}
+              </button>
+            )
+            : (
+              <button
+                type="button"
+                disabled={processandoAcompanhamento}
+                onClick={() => onAcompanhar(item)}
+                title="Acompanhar as alterações deste edital (situação, datas, documentos, itens)"
+                style={{ ...botaoSecundario, padding: '5px 10px', fontSize: 12, opacity: processandoAcompanhamento ? 0.5 : 1 }}
+              >
+                {processandoAcompanhamento ? 'Acompanhando…' : '☆ Acompanhar'}
+              </button>
+            )
+        )}
+
+        {acompanhamento && acompanhamento.pastaUrl && (
+          <a
+            href={acompanhamento.pastaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Pasta do edital no SharePoint"
+            style={{ fontSize: 12, fontWeight: 700, color: '#0F6CBD', textDecoration: 'none', whiteSpace: 'nowrap' }}
+          >
+            📁 Pasta ↗
+          </a>
+        )}
+
+        {acompanhamento && acompanhamento.clickupUrl && (
+          <a
+            href={acompanhamento.clickupUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Tarefa de acompanhamento no ClickUp"
+            style={{ fontSize: 12, fontWeight: 700, color: '#7B68EE', textDecoration: 'none', whiteSpace: 'nowrap' }}
+          >
+            ClickUp ↗
+          </a>
+        )}
+
         <a
           href={item.url}
           target="_blank"
@@ -322,7 +442,8 @@ const CartaoLicitacao: React.FC<{
 const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
   onIrParaTeste,
   dataverseService,
-  contexto
+  contexto,
+  enviarParaIa
 }) => {
 
   const busca = useBuscaLicitacoes();
@@ -337,11 +458,37 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
   const [avisoParecer, setAvisoParecer] = React.useState<string>('');
 
   const abrirDialogoParecer = React.useCallback(
-    (item: ILicitacaoResultado, decisao?: DecisaoParecer): void => {
-      setDialogo({ item, decisao });
+    (item: ILicitacaoResultado, decisao?: DecisaoParecer, justificativa?: string): void => {
+      setDialogo({ item, decisao, justificativa });
     },
     []
   );
+
+  // Análise por IA (só para editais sem parecer).
+  const ia = useAnaliseIaLicitacoes(
+    dataverseService,
+    busca.resultados,
+    pareceres.obter,
+    pareceres.atuais,
+    pareceres.situacao !== 'carregando',
+    enviarParaIa
+  );
+
+  const [configIaAberta, setConfigIaAberta] = React.useState<boolean>(false);
+
+  // Acompanhamento das alterações dos editais (aba "Acompanhamento").
+  const acompanhamento = useAcompanhamentoLicitacoes(
+    dataverseService,
+    busca.resultados,
+    contexto ? contexto.nome : ''
+  );
+
+  const [aba, setAba] = React.useState<'busca' | 'acompanhamento' | 'naoParticipar'>('busca');
+
+  const naoParticipar = pareceres.atuais.filter(p => p.decisao === 'NaoParticipar');
+
+  // Administrador global ou administrador do módulo Licitações.
+  const ehAdministrador = !!contexto && (contexto.perfil === 'Administrador' || (contexto.modulosAdministrados || []).indexOf('licitacoes') >= 0);
 
   const fecharDialogoParecer = React.useCallback(
     (): void => setDialogo(undefined),
@@ -356,6 +503,23 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       return;
     }
     await pareceres.registrar(dialogo.item, decisao, justificativa);
+    // "Participar": acompanha o edital e cria a tarefa no ClickUp.
+    if (decisao === 'Participar' && acompanhamento.situacao === 'ok') {
+      const estadoIa = ia.estadoDe(dialogo.item);
+      acompanhamento.participar(dialogo.item, {
+        justificativa,
+        responsavel: contexto ? contexto.nome : '',
+        analiseIa: estadoIa.analise
+          ? {
+            recomendacao: estadoIa.analise.recomendacao === 'Participar'
+              ? 'Participar'
+              : estadoIa.analise.recomendacao === 'NaoParticipar' ? 'Não participar' : 'Avaliar com cuidado',
+            compatibilidade: estadoIa.analise.compatibilidade,
+            resumo: estadoIa.analise.resumo
+          }
+          : undefined
+      }).catch(() => undefined);
+    }
     setDialogo(undefined);
     setAvisoParecer(`Parecer registrado: ${dialogo.item.orgao}.`);
     window.setTimeout(() => setAvisoParecer(''), 5000);
@@ -375,6 +539,19 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     valor: IFormulario[K]
   ): void => {
     setForm(atual => ({ ...atual, [chave]: valor }));
+  };
+
+  // "Buscar este edital" (aba Não participar): busca pelo número.
+  const buscarEditalDoParecer = (parecer: IParecerLicitacao): void => {
+    const uf = (parecer.local || '').split('/')[1];
+    setForm(atual => ({
+      ...atual,
+      assunto: parecer.numero && parecer.numero !== '-' ? parecer.numero : parecer.orgao,
+      modoBusca: '4',
+      uf: uf ? uf.trim() : atual.uf
+    }));
+    setAba('busca');
+    window.scrollTo(0, 0);
   };
 
   const alternarModalidade = (codigo: number): void => {
@@ -454,6 +631,78 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     }
   };
 
+  // ---------------- Baixar documentos sem buscar antes ----------------
+  // O download precisa do identificador do PNCP, que só existe no
+  // resultado de uma busca. Se o edital acompanhado não está na busca
+  // atual, o portal busca ESTE edital (modo Edital específico) e, ao
+  // encontrá-lo, baixa os documentos sozinho.
+  const [downloadPendente, setDownloadPendente] =
+    React.useState<{ chave: string; pastaUrl: string } | undefined>(undefined);
+  const [avisoDownload, setAvisoDownload] = React.useState<string>('');
+
+  const baixarDocumentosDoAcompanhamento = (acomp: IAcompanhamento): void => {
+
+    if (!acomp.pastaUrl) {
+      return;
+    }
+
+    const item = busca.resultados.find(r => {
+      const a = acompanhamento.obter(r);
+      return !!a && a.chaveEdital === acomp.chaveEdital && !!r.idPncp;
+    });
+
+    if (item) {
+      setAvisoDownload('');
+      acompanhamento.baixarDocumentos(item, acomp.pastaUrl).catch(() => undefined);
+      return;
+    }
+
+    const uf = (acomp.local || '').split('/')[1];
+    const codigoModalidade = Object.keys(MODALIDADES_PNCP)
+      .map(Number)
+      .find(codigo => MODALIDADES_PNCP[codigo] === acomp.modalidade);
+
+    const filtros: IFiltrosLicitacao = {
+      assunto: acomp.numero && acomp.numero !== '-' ? acomp.numero : acomp.orgao,
+      uf: uf ? uf.trim() : undefined,
+      diasBusca: 180,
+      modalidades: codigoModalidade ? [codigoModalidade] : Object.keys(MODALIDADES_PNCP).map(Number),
+      modoBusca: '4',
+      palavrasObrigatorias: [],
+      palavrasRelacionadas: [],
+      palavrasNegativas: [],
+      scoreMinimo: 0
+    };
+
+    setForm(atual => ({ ...atual, assunto: filtros.assunto, modoBusca: '4', uf: filtros.uf || atual.uf }));
+    setDownloadPendente({ chave: acomp.chaveEdital, pastaUrl: acomp.pastaUrl });
+    setAvisoDownload(`Procurando o edital ${acomp.numero || ''} no PNCP para baixar os documentos…`);
+    setFiltroLista('');
+    busca.iniciar(filtros);
+  };
+
+  React.useEffect(() => {
+    if (!downloadPendente) {
+      return;
+    }
+    const item = busca.resultados.find(r => {
+      const a = acompanhamento.obter(r);
+      return !!a && a.chaveEdital === downloadPendente.chave && !!r.idPncp;
+    });
+    if (item) {
+      const pasta = downloadPendente.pastaUrl;
+      setDownloadPendente(undefined);
+      setAvisoDownload('');
+      busca.cancelar();
+      acompanhamento.baixarDocumentos(item, pasta).catch(() => undefined);
+      return;
+    }
+    if (!busca.buscando && busca.resumo) {
+      setDownloadPendente(undefined);
+      setAvisoDownload('O edital não foi encontrado na busca automática (últimos 180 dias). Busque-o manualmente e clique de novo em "Baixar documentos".');
+    }
+  }, [busca.resultados, busca.buscando, busca.resumo, downloadPendente]);
+
   const aoTeclar = (evento: React.KeyboardEvent<HTMLInputElement>): void => {
     if (evento.key === 'Enter' && !busca.buscando) {
       iniciarBusca();
@@ -530,6 +779,110 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     <section style={{ fontFamily: FONTE }}>
 
       {/* ======================================================
+          ABAS: busca × acompanhamento
+          ====================================================== */}
+      <div role="tablist" style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${COR.cinzaClaro}`, marginBottom: 14 }}>
+        {([
+          ['busca', 'Buscar editais'],
+          ['acompanhamento', `Acompanhamento${acompanhamento.acompanhamentos.length ? ` (${acompanhamento.acompanhamentos.length})` : ''}`],
+          ['naoParticipar', `Não participar${naoParticipar.length ? ` (${naoParticipar.length})` : ''}`]
+        ] as Array<['busca' | 'acompanhamento' | 'naoParticipar', string]>).map(([id, rotulo]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={aba === id}
+            onClick={() => setAba(id)}
+            style={{
+              padding: '9px 14px',
+              border: 0,
+              borderBottom: `3px solid ${aba === id ? COR.ciano : 'transparent'}`,
+              background: 'transparent',
+              color: aba === id ? COR.azul : COR.textoSecundario,
+              fontWeight: 700,
+              fontSize: 13.5,
+              fontFamily: FONTE,
+              cursor: 'pointer',
+              marginBottom: -1,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            {rotulo}
+            {id === 'acompanhamento' && acompanhamento.totalNaoLidas > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 800, color: '#ffffff', background: '#C0392B', borderRadius: 999, padding: '1px 7px' }}>
+                {acompanhamento.totalNaoLidas}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {avisoDownload && (
+        <div role="status" style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: '#FFF4E5', color: COR.azul, fontSize: 13 }}>
+          {downloadPendente ? '⏳ ' : ''}{avisoDownload}
+        </div>
+      )}
+
+      {aba === 'acompanhamento' && (
+        <AcompanhamentoPainel
+          acompanhamento={acompanhamento}
+          ehAdministrador={ehAdministrador}
+          podeBaixarDocumentos={() => !busca.buscando}
+          onBaixarDocumentos={baixarDocumentosDoAcompanhamento}
+          onCriarTarefaClickUp={(acomp, atualizar) => {
+            const parecer = pareceres.atuais.find(p => p.chaveEdital === acomp.chaveEdital);
+            const item = busca.resultados.find(r => acompanhamento.obter(r) === acomp);
+            const estadoIa = item ? ia.estadoDe(item) : undefined;
+            acompanhamento.criarTarefaClickUp(acomp, item, {
+              justificativa: parecer ? parecer.justificativa : '',
+              responsavel: parecer ? parecer.responsavel : (contexto ? contexto.nome : ''),
+              analiseIa: estadoIa && estadoIa.analise
+                ? {
+                  recomendacao: estadoIa.analise.recomendacao === 'Participar'
+                    ? 'Participar'
+                    : estadoIa.analise.recomendacao === 'NaoParticipar' ? 'Não participar' : 'Avaliar com cuidado',
+                  compatibilidade: estadoIa.analise.compatibilidade,
+                  resumo: estadoIa.analise.resumo
+                }
+                : undefined
+            }, !!atualizar).catch(() => undefined);
+          }}
+        />
+      )}
+
+      {aba === 'naoParticipar' && (
+        <NaoParticiparPainel
+          pareceres={naoParticipar}
+          carregando={pareceres.situacao === 'carregando'}
+          historicoDe={pareceres.historicoDe}
+          onBuscarEdital={buscarEditalDoParecer}
+        />
+      )}
+
+      {/* A busca continua montada (escondida) para não perder os resultados. */}
+      <div style={{ display: aba === 'busca' ? 'block' : 'none' }}>
+
+      {/* Andamento do "Participar" (pasta, documentos, ClickUp) também na busca. */}
+      {acompanhamento.mensagem && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 12,
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: /não foi possível|não baixados|sem permissão|sem acesso/i.test(acompanhamento.mensagem) ? '#FDECEA' : COR.cianoClaro,
+            color: COR.azul,
+            fontSize: 13,
+            lineHeight: 1.5
+          }}
+        >
+          {acompanhamento.processandoChave ? '⏳ ' : ''}{acompanhamento.mensagem}
+        </div>
+      )}
+
+      {/* ======================================================
           FORMULÁRIO
           ====================================================== */}
       <div style={cartao}>
@@ -571,13 +924,25 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
             )}
           </div>
 
-          <button
-            type="button"
-            style={botaoSecundario}
-            onClick={onIrParaTeste}
-          >
-            Testar conexão
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {ehAdministrador && (
+              <button
+                type="button"
+                style={botaoSecundario}
+                onClick={() => setConfigIaAberta(true)}
+                title="Prompt, provedor e parâmetros da análise por IA"
+              >
+                🤖 Configurar IA
+              </button>
+            )}
+            <button
+              type="button"
+              style={botaoSecundario}
+              onClick={onIrParaTeste}
+            >
+              Testar conexão
+            </button>
+          </div>
         </div>
 
         {/* O que procurar */}
@@ -593,6 +958,19 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
               placeholder="Ex.: gestão de documentos, automação de processos, software de workflow"
               disabled={busca.buscando}
             />
+            <SugestoesTermos
+              grupos={SUGESTOES_ASSUNTO}
+              valor={form.assunto}
+              disabled={busca.buscando}
+              onChange={novo => {
+                alterar('assunto', novo);
+                // Mais de um assunto: compara por termo (o "exato"
+                // procuraria a frase inteira, com a vírgula).
+                if (listaDoTexto(novo).length > 1 && form.modoBusca === '1') {
+                  alterar('modoBusca', '3' as ModoBuscaAssunto);
+                }
+              }}
+            />
           </div>
 
           <div>
@@ -607,7 +985,14 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
               <option value="1">Assunto exato</option>
               <option value="2">Qualquer palavra do assunto</option>
               <option value="3">Assunto + palavras relacionadas</option>
+              <option value="4">Edital específico (número ou nome)</option>
             </select>
+            {form.modoBusca === '4' && (
+              <span style={dica}>
+                Digite o número (ex.: 016/2026) ou o nome do edital no Assunto principal.
+                Exclusões e score mínimo não se aplicam. Escolha UF, período e modalidades que incluam o edital.
+              </span>
+            )}
           </div>
 
           <div>
@@ -719,7 +1104,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
                 <span style={dica}>Todas devem aparecer no objeto. Separe por vírgula.</span>
               </div>
 
-              <div>
+              <div style={{ gridColumn: '1 / -1' }}>
                 <label style={rotulo} htmlFor="lic-rel">Palavras relacionadas</label>
                 <input
                   id="lic-rel"
@@ -729,10 +1114,16 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
                   placeholder="BPM, software, digitalização"
                   disabled={busca.buscando}
                 />
-                <span style={dica}>Aumentam a aderência (+15 cada).</span>
+                <span style={dica}>Aumentam a aderência (+15 cada). Clique para incluir:</span>
+                <SugestoesTermos
+                  grupos={SUGESTOES_RELACIONADAS}
+                  valor={form.relacionadas}
+                  disabled={busca.buscando}
+                  onChange={novo => alterar('relacionadas', novo)}
+                />
               </div>
 
-              <div>
+              <div style={{ gridColumn: '1 / -1' }}>
                 <label style={rotulo} htmlFor="lic-neg">Palavras para excluir</label>
                 <input
                   id="lic-neg"
@@ -742,7 +1133,15 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
                   placeholder="hospitalar, equipamento"
                   disabled={busca.buscando}
                 />
-                <span style={dica}>Se aparecer no objeto, o resultado é descartado.</span>
+                <span style={dica}>Se aparecer no objeto, o resultado é descartado. Clique para incluir:</span>
+                <SugestoesTermos
+                  grupos={SUGESTOES_EXCLUIR}
+                  valor={form.negativas}
+                  disabled={busca.buscando}
+                  cor="#9B2C1F"
+                  corFundo="#FDECEA"
+                  onChange={novo => alterar('negativas', novo)}
+                />
               </div>
 
               <div>
@@ -1059,6 +1458,14 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
               parecer={pareceres.obter(item)}
               situacaoPareceres={pareceres.situacao}
               onRegistrarParecer={abrirDialogoParecer}
+              estadoIa={ia.estadoDe(item)}
+              onAnalisarIa={ia.analisar}
+              acompanhamento={acompanhamento.obter(item)}
+              novidades={(() => { const a = acompanhamento.obter(item); return a ? acompanhamento.naoLidas(a.id) : 0; })()}
+              acompanhamentoDisponivel={acompanhamento.situacao === 'ok'}
+              processandoAcompanhamento={acompanhamento.processandoChave !== '' && acompanhamento.processandoChave !== '*'}
+              onAcompanhar={it => { acompanhamento.acompanhar(it).catch(() => undefined); }}
+              onVerAcompanhamento={() => setAba('acompanhamento')}
             />
           ))}
 
@@ -1077,8 +1484,25 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
             Experimente aumentar o período, buscar no Brasil inteiro, remover palavras obrigatórias,
             adicionar palavras relacionadas ou reduzir o score mínimo.
           </p>
+          {form.modoBusca !== '4' && /\d/.test(form.assunto) && (
+            <p style={{ ...textoApoio, marginTop: 8 }}>
+              Procurando <strong>um edital específico</strong> pelo número ou nome?{' '}
+              <button
+                type="button"
+                style={botaoSecundario}
+                onClick={() => {
+                  setForm(atual => ({ ...atual, modoBusca: '4' }));
+                  window.scrollTo(0, 0);
+                }}
+              >
+                Usar “Edital específico”
+              </button>
+            </p>
+          )}
         </div>
       )}
+
+      </div>
 
       <EditalPreviaModal
         item={previa}
@@ -1086,14 +1510,31 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         parecer={previa ? pareceres.obter(previa) : undefined}
         situacaoPareceres={pareceres.situacao}
         onRegistrarParecer={previa
-          ? (decisao?: DecisaoParecer) => abrirDialogoParecer(previa, decisao)
+          ? (decisao?: DecisaoParecer, justificativa?: string) => abrirDialogoParecer(previa, decisao, justificativa)
           : undefined}
-        dialogoParecerAberto={!!dialogo}
+        dialogoParecerAberto={!!dialogo || configIaAberta}
+        estadoIa={previa ? ia.estadoDe(previa) : undefined}
+        onAnalisarIa={previa ? () => ia.analisar(previa) : undefined}
+      />
+
+      <ConfigurarIaModal
+        aberto={configIaAberta}
+        promptAtual={ia.prompt}
+        promptService={ia.promptService}
+        servicoAnalise={ia.servicoAnalise}
+        tabelasExistem={ia.tabelasIaExistem}
+        resultados={busca.resultados}
+        pareceresAtuais={pareceres.atuais}
+        responsavel={contexto ? contexto.nome : ''}
+        apiDisponivel={ia.apiDisponivel}
+        onSalvo={ia.definirPrompt}
+        onFechar={() => setConfigIaAberta(false)}
       />
 
       <RegistrarParecerDialog
         item={dialogo ? dialogo.item : undefined}
         decisaoInicial={dialogo ? dialogo.decisao : undefined}
+        justificativaInicial={dialogo ? dialogo.justificativa : undefined}
         parecerAtual={dialogo ? pareceres.obter(dialogo.item) : undefined}
         onCancelar={fecharDialogoParecer}
         onSalvar={salvarParecer}

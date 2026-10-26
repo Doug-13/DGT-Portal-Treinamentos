@@ -153,7 +153,12 @@ export class FluxoRepositorioDataverse
 
     const dados: Record<string, unknown> = {
       [REVISAO_FLUXO.estadoJson]: JSON.stringify(instancia),
-      [REVISAO_FLUXO.etapaAtual]: instancia.status === 'concluido' ? 'fim' : limitar(instancia.elementoAtualId, 100),
+      [REVISAO_FLUXO.etapaAtual]:
+        instancia.status === 'concluido'
+          ? 'fim'
+          : instancia.status === 'cancelado'
+            ? 'cancelado'
+            : limitar(instancia.elementoAtualId, 100),
       [REVISAO_FLUXO.situacaoFluxo]: instancia.status
     };
 

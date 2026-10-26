@@ -39,12 +39,19 @@ export type TipoElementoFluxo =
 //   gestorArea   → Gestores da área do documento (dgt_usuarioarea, perfil Gestor)
 //   area         → membros (ou só Gestores) de uma área escolhida
 //   usuario      → um usuário específico (dgt_usuario)
+//   cargoArea        → quem tem um CARGO na área (ex.: Diretor da área),
+//                      cadastrado em RH e Pessoas → Estrutura por área
+//   nivelHierarquico → o N-ésimo nível da cadeia da área (1º, 2º, 3º…
+//                      ou o topo). A cadeia sai dos cargos cadastrados
+//                      (ex.: Coordenador → Head → Diretor).
 // Ainda não resolvidos (exigem vínculo usuário × grupo/função/setor):
 //   grupo, funcao, setor
 export type TipoResponsavelFluxo =
   | 'autorRevisao'
   | 'gestorArea'
   | 'area'
+  | 'cargoArea'
+  | 'nivelHierarquico'
   | 'grupo'
   | 'funcao'
   | 'setor'
@@ -64,6 +71,19 @@ export interface IFluxoResponsavel {
   // tipo = 'area': só os Gestores da área (e não todos os membros).
   somenteGestores?: boolean;
 
+  // tipo = 'cargoArea': cargo exigido (ex.: 'Diretor').
+  cargo?: string;
+
+  // tipo = 'nivelHierarquico': 1 = primeiro nível da cadeia da área,
+  // 2 = segundo…; 0 = topo da cadeia.
+  nivel?: number;
+
+  // cargoArea / nivelHierarquico — de qual área:
+  //   referenciaId preenchido      → área fixa
+  //   origemArea = 'autor'         → área de QUEM CRIOU a revisão/planilha
+  //   vazio (padrão)               → área do documento/planilha
+  origemArea?: 'documento' | 'autor';
+
   // Chave do "papel" deste responsável. Identifica o responsável no
   // motor: no modo de teste vira um usuário simulado; no Dataverse
   // é calculada a partir do usuário real.
@@ -79,6 +99,19 @@ export interface IResponsavelResolvido {
   usuarioId?: string;
   areaId?: string;
   somenteGestores?: boolean;
+  // Hierarquia: quem tem este cargo na área (cargoArea) ou o nível da
+  // cadeia da área (nivelHierarquico). Conferido na hora, com os
+  // cargos atuais — trocar o Diretor vale para as pendências abertas.
+  cargo?: string;
+  nivel?: number;
+  // Hierarquia pela área de quem criou: as áreas são as do autor
+  // (vínculos ativos). Se o autor também é da área do documento,
+  // vale só ela (areaPreferidaId).
+  autorId?: string;
+  areaPreferidaId?: string;
+  // Hierarquia: pessoas que respondiam quando a pendência foi criada
+  // (para avisos/notificações). Quem pode agir é conferido na hora.
+  usuariosIds?: string[];
 }
 
 // Status do documento (dgt_documentorevisao.dgt_status) enquanto a
@@ -100,7 +133,20 @@ export type AcaoSistemaFluxo =
   // tarefa de sistema).
   | 'novaRevisao'
   | 'novaSubRevisao'
-  | 'proximaRevisao';
+  | 'proximaRevisao'
+  // Evento de revisão com "Remover o arquivo" marcado: a revisão
+  // segue sem arquivo (o arquivo anterior continua no SharePoint e
+  // no histórico) e o novo é anexado numa etapa seguinte.
+  | 'removerArquivoRevisao';
+
+// Arquivo da revisão numa etapa com responsável:
+//   'nao'         a etapa não mostra o anexo (padrão)
+//   'opcional'    o responsável pode anexar / substituir o arquivo
+//   'obrigatorio' só conclui a etapa com o arquivo anexado
+export type AnexoArquivoEtapa =
+  | 'nao'
+  | 'opcional'
+  | 'obrigatorio';
 
 export interface IFluxoAcao {
   chave: string;
@@ -196,7 +242,15 @@ export interface IFluxoCampo {
 
   // Só exige este campo quando outro campo tiver o valor indicado.
   // Ex.: justificativa obrigatória apenas quando retreinamento = 'nao'.
+  // O campo também só APARECE quando a condição é atendida.
   obrigatorioQuando?: {
+    campo: string;
+    valor: string;
+  };
+
+  // Só MOSTRA este campo (opcional) quando outro campo tiver o valor
+  // indicado. Ex.: observação opcional apenas quando houver = 'sim'.
+  mostrarQuando?: {
     campo: string;
     valor: string;
   };
@@ -251,6 +305,22 @@ export interface IFluxoElemento {
 
   // eventoRevisao: como o número da revisão muda ao passar aqui.
   tipoRevisao?: TipoEventoRevisao;
+
+  // eventoRevisao: true = ao passar aqui, a revisão fica SEM
+  // arquivo (o anterior não é apagado do SharePoint: só deixa de
+  // ser o arquivo desta revisão). Opcional; padrão = mantém.
+  removerArquivo?: boolean;
+
+  // tarefaHumana: o responsável anexa o arquivo da revisão nesta
+  // etapa (ex.: Elaboração). Padrão = 'nao'.
+  anexoArquivo?: AnexoArquivoEtapa;
+
+  // tarefaHumana: o arquivo da revisão pode ser ABERTO PARA EDIÇÃO
+  // nesta etapa ("Abrir documento" no Word/Excel online). Fora das
+  // etapas que permitem, só há pré-visualização (somente leitura).
+  // Não definido = padrão: só na etapa de Elaboração (status
+  // "Elaboração" ou a 1ª etapa do fluxo com status automático).
+  permiteEditarDocumento?: boolean;
 
   // tarefaHumana com status 'Vigente': retreinamento na publicação.
   //   'nao' (padrão) · 'sim' · 'etapa:<id>' = sim, se o fluxo passou
@@ -346,7 +416,10 @@ export interface IFluxoDefinicao {
 
 export type StatusInstanciaFluxo =
   | 'emAndamento'
-  | 'concluido';
+  | 'concluido'
+  // Revisão cancelada por um administrador (retorno para a revisão
+  // vigente anterior). O histórico é preservado.
+  | 'cancelado';
 
 export interface IFluxoHistorico {
   id: string;

@@ -1,6 +1,7 @@
 import {
   maiorRevisao,
   proximaRevisaoEmTrabalho,
+  proximaSubRevisao,
   revisaoInteira
 } from '../utils/numeracaoRevisao';
 
@@ -160,17 +161,27 @@ export const calcularPrazoRevisao = (
 
 export const estagioRevisao = (
   status: string
-): 'elaboracao' | 'revisao' | 'aprovacao' | 'vigente' => {
+): 'elaboracao' | 'revisao' | 'aprovacao' | 'vigente' | 'cancelada' => {
 
   const valor =
     normalizar(status);
 
   return valor === 'revisao' ||
     valor === 'aprovacao' ||
-    valor === 'vigente'
+    valor === 'vigente' ||
+    valor === 'cancelada'
     ? valor
     : 'elaboracao';
 };
+
+// Rótulo da opção de dgt_status usada para revisões canceladas por um
+// administrador (retorno da 1ª etapa para a revisão vigente).
+export const STATUS_REVISAO_CANCELADA = 'Cancelada';
+
+export const revisaoCancelada = (
+  revisao: Pick<IDocumentoRevisao, 'status'>
+): boolean =>
+  estagioRevisao(revisao.status) === 'cancelada';
 
 export const numeroRevisao = (
   revisao: string
@@ -191,14 +202,36 @@ export const calcularProximaRevisao = (
   revisoes: IDocumentoRevisao[]
 ): string => {
 
+  // Revisões canceladas não contam para a numeração...
+  const validas =
+    revisoes.filter(revisao => !revisaoCancelada(revisao));
+
   const maior =
     maiorRevisao(
-      revisoes.map(revisao => revisao.revisao)
+      validas.map(revisao => revisao.revisao)
     );
 
-  return proximaRevisaoEmTrabalho(
-    maior ? revisaoInteira(maior) : undefined
-  );
+  let proxima =
+    proximaRevisaoEmTrabalho(
+      maior ? revisaoInteira(maior) : undefined
+    );
+
+  // ...mas o número delas não é reaproveitado: depois de uma Rev.01A
+  // cancelada vem a Rev.01B (o histórico e a pasta do arquivo da
+  // cancelada continuam identificáveis).
+  const usados =
+    revisoes
+      .filter(revisao => revisaoCancelada(revisao))
+      .map(revisao => (revisao.revisao || '').trim().toLowerCase());
+
+  let limite = 26;
+
+  while (usados.indexOf(proxima.toLowerCase()) >= 0 && limite > 0) {
+    proxima = proximaSubRevisao(proxima);
+    limite--;
+  }
+
+  return proxima;
 };
 
 // Revisão que está em andamento (Elaboração / Aprovação / legado
@@ -208,8 +241,10 @@ export const obterRevisaoEmAndamento = (
 ): IDocumentoRevisao | undefined =>
 
   revisoes.find(
-    revisao =>
-      estagioRevisao(revisao.status) !== 'vigente'
+    revisao => {
+      const estagio = estagioRevisao(revisao.status);
+      return estagio !== 'vigente' && estagio !== 'cancelada';
+    }
   );
 
 // Revisão vigente atual: a de maior número entre as vigentes ativas
@@ -530,6 +565,76 @@ export class DocumentoRevisaoFluxoService {
           usuarioNome: dados.usuario.nome
         })) || aviso;
     }
+
+    return { aviso };
+  }
+
+  // ==========================================================
+  // ANEXAR / SUBSTITUIR O ARQUIVO PELA ETAPA DO FLUXO
+  // ==========================================================
+  // Usado nas etapas do fluxo configurável com "Arquivo da revisão"
+  // = Opcional/Obrigatório (ex.: Elaboração). Quem decide se a etapa
+  // permite anexar é o fluxo; aqui só a revisão vigente (publicada)
+  // é protegida. O arquivo anterior não é apagado do SharePoint.
+
+  public async anexarArquivo(
+    documento: IDocumento,
+    revisao: IDocumentoRevisao,
+    arquivo: File,
+    usuario: IUsuarioFluxo
+  ): Promise<IResultadoFluxo> {
+
+    // Protege só a revisão PUBLICADA (status Vigente) e a cancelada.
+    // "ativa" (dgt_ativa) não serve aqui: toda revisão nasce ativa,
+    // inclusive as que estão em elaboração.
+    const estagio =
+      estagioRevisao(revisao.status);
+
+    if (estagio === 'vigente') {
+      throw new Error(
+        'A revisão vigente não pode ter o arquivo trocado. Crie uma nova revisão.'
+      );
+    }
+
+    if (estagio === 'cancelada') {
+      throw new Error(
+        'Esta revisão foi cancelada e não pode receber arquivo.'
+      );
+    }
+
+    const upload =
+      await this.upload(
+        documento,
+        revisao.revisao,
+        arquivo,
+        true
+      );
+
+    await this.dataverse
+      .atualizarDocumentoRevisao(
+        revisao.id,
+        {
+          dgt_arquivourl: upload.arquivoUrl,
+          dgt_biblioteca: upload.biblioteca
+        }
+      );
+
+    const aviso =
+      await this.historico.registrarSemInterromper({
+        documentoId: documento.id,
+        tipo: 'ARQUIVO_SUBSTITUIDO',
+        titulo: revisao.arquivoUrl
+          ? 'Arquivo da revisão substituído'
+          : 'Arquivo da revisão anexado',
+        descricao: `Arquivo: ${arquivo.name} (anexado na etapa do fluxo)`,
+        revisao,
+        arquivoUrl: upload.arquivoUrl,
+        dadosAnteriores: {
+          arquivoUrl: revisao.arquivoUrl || ''
+        },
+        usuarioId: usuario.id,
+        usuarioNome: usuario.nome
+      });
 
     return { aviso };
   }

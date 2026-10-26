@@ -669,6 +669,35 @@ export class ModuloConteudoAdminService {
       );
   }
 
+  // Grava a ordem 1, 2, 3… na sequência informada. Só atualiza os
+  // conteúdos cuja ordem mudou (corrige ordens repetidas ou com
+  // buracos, que impediam a troca de posição).
+  public async reordenar(
+    sequencia:
+      IModuloConteudoAdmin[]
+  ): Promise<void> {
+
+    for (let indice = 0; indice < sequencia.length; indice++) {
+
+      const item =
+        sequencia[indice];
+
+      const ordem =
+        indice + 1;
+
+      if (item.ordem !== ordem) {
+        await this.dataverse
+          .atualizarConteudoModulo(
+            item.id,
+            {
+              dgt_ordem:
+                ordem
+            }
+          );
+      }
+    }
+  }
+
   public async mover(
     atual:
       IModuloConteudoAdmin,

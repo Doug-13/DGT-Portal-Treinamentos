@@ -1,5 +1,7 @@
 import * as React from 'react';
 
+import RetornarEtapaPainel from './RetornarEtapaPainel';
+
 import {
   ESTILO_PASSO_FLUXO,
   categoriaDoPasso
@@ -45,6 +47,10 @@ import ConfirmarAcaoModal from
 import TabelaCampoFluxo from
   '../../components/fluxo/TabelaCampoFluxo';
 
+import {
+  obterRevisaoEmAndamento
+} from '../../services/DocumentoRevisaoFluxoService';
+
 // ============================================================
 // ABA "FLUXO (TESTE)" DO DETALHE DO DOCUMENTO
 //
@@ -74,6 +80,22 @@ export interface IFluxoRevisaoTabProps {
 
   // Abre a aba com o fluxo completo (desenho e histórico).
   onVerFluxoCompleto?: () => void;
+
+  // Com "compacto": sem moldura nem barra escura, para ficar dentro
+  // de outro card (ex.: o card do treinamento no assistente).
+  embutido?: boolean;
+
+  // Mostra só esta ação da etapa (chave). Usado quando a ação foi
+  // escolhida fora daqui (ex.: botão na lista de treinamentos).
+  somenteAcao?: string;
+
+  // Anexa/substitui o arquivo da revisão em andamento, nas etapas
+  // com "Arquivo da revisão" = Opcional/Obrigatório. Sem ele, a
+  // etapa mostra o arquivo atual, mas não permite anexar.
+  onAnexarArquivo?: (revisao: IDocumentoRevisao, arquivo: File) => Promise<boolean>;
+
+  // Mensagem de erro do último anexo (vinda do hook da página).
+  erroAnexo?: string;
 }
 
 const COR_AZUL = '#202A44';
@@ -175,8 +197,25 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   onAbrirProcesso,
   onRevisaoAlterada,
   compacto = false,
-  onVerFluxoCompleto
+  onVerFluxoCompleto,
+  embutido = false,
+  somenteAcao,
+  onAnexarArquivo,
+  erroAnexo
 }) => {
+
+  // Arquivo escolhido na etapa (antes de enviar).
+  const [arquivoEtapa, setArquivoEtapa] =
+    React.useState<File | undefined>(undefined);
+
+  const [enviandoArquivo, setEnviandoArquivo] =
+    React.useState<boolean>(false);
+
+  const [falhaArquivo, setFalhaArquivo] =
+    React.useState<string>('');
+
+  const campoArquivoRef =
+    React.useRef<HTMLInputElement>(null);
 
   const fluxo =
     useFluxoRevisaoTeste(
@@ -290,6 +329,27 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
     );
   }
 
+  // Revisão que já avançou no fluxo padrão antes de o processo ter
+  // fluxo publicado: termina no fluxo padrão (aba Revisão).
+  if (fluxo.situacao === 'foraDoFluxo') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
+        {avisoTeste}
+        <section style={{ ...estiloCartao, padding: '18px 20px' }}>
+          <div style={{ fontSize: '17px', fontWeight: 700 }}>
+            Esta revisão segue o fluxo padrão até o fim
+          </div>
+          <div style={{ fontSize: '14px', marginTop: '6px', lineHeight: 1.5 }}>
+            A revisão já foi enviada no fluxo padrão (aprovação do Gestor da área) antes de o processo
+            {fluxo.processoAtual ? ` “${fluxo.processoAtual.nome}”` : ''} ter fluxo publicado. Para não
+            perder o que já foi feito, ela é concluída na aba “Revisão”. A próxima revisão do documento
+            seguirá automaticamente o fluxo publicado do processo.
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   if (
     fluxo.situacao === 'semProcesso' ||
     fluxo.situacao === 'escolherPrincipal' ||
@@ -321,7 +381,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
         ? 'O fluxo de revisão é definido no processo. Vincule o documento a um processo para que a revisão siga o fluxo dele.'
         : fluxo.situacao === 'escolherPrincipal'
           ? 'Escolha qual processo governa a revisão deste documento. Os demais vínculos continuam valendo para consulta.'
-          : 'Crie e publique o fluxo no módulo Processos. Depois volte aqui: a revisão começa automaticamente na versão publicada.';
+          : 'O processo precisa ser publicado antes de o documento avançar. Publique o fluxo no módulo Processos e volte aqui: a revisão passa a segui-lo automaticamente.';
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
@@ -339,6 +399,23 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
               <div style={{ fontSize: '17px', fontWeight: 700 }}>{titulo}</div>
               <div style={{ fontSize: '14px', marginTop: '4px' }}>{explicacao}</div>
             </div>
+
+            {
+              fluxo.erro && (
+                <div
+                  role="alert"
+                  style={{
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #485CC7',
+                    background: '#E8EAF8',
+                    fontSize: '13px'
+                  }}
+                >
+                  {fluxo.erro}
+                </div>
+              )
+            }
 
             {
               fluxo.situacao !== 'semFluxo' && (
@@ -374,12 +451,21 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                           <option value="">Selecione...</option>
                           {
                             opcoes.map(
-                              processo => (
-                                <option key={processo.id} value={processo.id}>
-                                  {processo.codigo ? `${processo.codigo} — ` : ''}{processo.nome}
-                                  {processo.origem === 'teste' ? ' (teste)' : ''}
-                                </option>
-                              )
+                              processo => {
+                                // Sem fluxo publicado: aparece, mas não pode ser escolhido.
+                                const versao = fluxo.fluxosPublicados[processo.id];
+                                return (
+                                  <option
+                                    key={processo.id}
+                                    value={processo.id}
+                                    disabled={!versao}
+                                  >
+                                    {processo.codigo ? `${processo.codigo} — ` : ''}{processo.nome}
+                                    {processo.origem === 'teste' ? ' (teste)' : ''}
+                                    {versao ? ` · fluxo v${versao}` : ' · sem fluxo publicado (indisponível)'}
+                                  </option>
+                                );
+                              }
                             )
                           }
                         </select>
@@ -387,7 +473,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
                       <button
                         type="button"
-                        disabled={!processoEscolhido}
+                        disabled={!processoEscolhido || !fluxo.fluxosPublicados[processoEscolhido]}
                         onClick={() => {
                           const acao =
                             fluxo.situacao === 'semProcesso'
@@ -398,7 +484,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                             (error: unknown) => console.error(error)
                           );
                         }}
-                        style={estiloBotao(true, !processoEscolhido)}
+                        style={estiloBotao(true, !processoEscolhido || !fluxo.fluxosPublicados[processoEscolhido])}
                       >
                         {fluxo.situacao === 'semProcesso' ? `Vincular${teste}` : `Definir como principal${teste}`}
                       </button>
@@ -507,6 +593,57 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   const tarefa =
     tarefaPendente(instancia);
 
+  // ---------------- Arquivo da revisão na etapa ----------------
+
+  const revisaoArquivo =
+    obterRevisaoEmAndamento(revisoes);
+
+  const modoAnexo =
+    !concluido && elementoAtual && elementoAtual.anexoArquivo
+      ? elementoAtual.anexoArquivo
+      : 'nao';
+
+  // "Exige o arquivo": as ações (exceto as que dispensam campos,
+  // como Reprovar) só liberam com o arquivo anexado. No teste
+  // (navegador) não há arquivo real, então não bloqueia.
+  const faltaArquivo =
+    modoAnexo === 'obrigatorio' &&
+    !fluxo.local &&
+    !(revisaoArquivo && revisaoArquivo.arquivoUrl);
+
+  const enviarArquivoEtapa = (): void => {
+    if (!arquivoEtapa || !revisaoArquivo || !onAnexarArquivo) {
+      return;
+    }
+    setEnviandoArquivo(true);
+    setFalhaArquivo('');
+    onAnexarArquivo(revisaoArquivo, arquivoEtapa)
+      .then(ok => {
+        if (ok) {
+          setArquivoEtapa(undefined);
+          if (campoArquivoRef.current) {
+            campoArquivoRef.current.value = '';
+          }
+        } else {
+          setFalhaArquivo(erroAnexo || 'Não foi possível anexar o arquivo.');
+        }
+      })
+      .catch(erro => setFalhaArquivo(erro instanceof Error ? erro.message : String(erro)))
+      .then(() => setEnviandoArquivo(false))
+      .catch(() => undefined);
+  };
+
+  const nomeArquivoAtual = (url?: string): string => {
+    if (!url) {
+      return '';
+    }
+    try {
+      return decodeURIComponent(url.split('/').pop() || url);
+    } catch {
+      return url;
+    }
+  };
+
   const definirValor = (
     chave: string,
     valor: string
@@ -577,11 +714,15 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       ...valores
     };
 
-    // Campo condicional só aparece quando a condição é atendida.
+    // Campo condicional só aparece quando a condição é atendida
+    // (obrigatório ou opcional com condição).
+    const condicao =
+      campo.obrigatorioQuando || campo.mostrarQuando;
+
     if (
-      campo.obrigatorioQuando &&
-      (valoresVisiveis[campo.obrigatorioQuando.campo] || '') !==
-        campo.obrigatorioQuando.valor
+      condicao &&
+      (valoresVisiveis[condicao.campo] || '') !==
+        condicao.valor
     ) {
       return undefined;
     }
@@ -1025,8 +1166,14 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
           teste (simulação), em que as ações são feitas aqui.
         */}
         {(compacto || fluxo.local) && (
-        <section style={estiloCartao}>
-          <div style={{ ...estiloBarraSecao, display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <section style={embutido ? { background: 'transparent' } : estiloCartao}>
+          <div
+            style={
+              embutido
+                ? { display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', color: COR_AZUL, fontWeight: 700, fontSize: '13px', letterSpacing: '.04em', textTransform: 'uppercase', paddingBottom: '8px', borderBottom: `2px solid ${COR_BORDA}` }
+                : { ...estiloBarraSecao, display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }
+            }
+          >
             <span>
               {concluido ? (fluxo.local ? 'Resultado (simulado)' : 'Revisão concluída') : `Etapa atual — ${elementoAtual?.nome || '-'}`}
               {compacto && ` · Fluxo ${definicao.nome} v${instancia.fluxoVersao}`}
@@ -1041,9 +1188,9 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                     minHeight: '30px',
                     padding: '0 12px',
                     borderRadius: '6px',
-                    border: '1px solid rgba(255,255,255,.6)',
+                    border: embutido ? `1px solid ${COR_AZUL}` : '1px solid rgba(255,255,255,.6)',
                     background: 'transparent',
-                    color: '#FFFFFF',
+                    color: embutido ? COR_AZUL : '#FFFFFF',
                     fontWeight: 700,
                     fontSize: '12px',
                     letterSpacing: 0,
@@ -1060,7 +1207,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
           {
             concluido
               ? (
-                <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ padding: embutido ? '14px 0 0' : '18px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ fontSize: '17px', fontWeight: 700 }}>
                     Fluxo concluído em {formatarDataHora(instancia.concluidoEm)}
                   </div>
@@ -1084,7 +1231,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                 </div>
               )
               : elementoAtual && (
-                <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ padding: embutido ? '14px 0 0' : '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
                     <div>
@@ -1116,6 +1263,78 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                   }
 
                   {
+                    fluxo.publicacaoPendente && (
+                      <div
+                        role="alert"
+                        style={{
+                          border: '1px solid #0E7C56',
+                          background: '#E6F6EF',
+                          color: '#0B4F37',
+                          borderRadius: '6px',
+                          padding: '12px 14px',
+                          fontSize: '13.5px',
+                          lineHeight: 1.5
+                        }}
+                      >
+                        <strong>Publicação pendente.</strong> A revisão está na etapa de publicação
+                        “{elementoAtual.nome}”, mas ainda não foi publicada — isso acontece quando o fluxo ou o
+                        processo é trocado com a revisão nesta etapa. Ao concluir, a revisão {instancia.revisao} fica
+                        <strong> vigente</strong>, a anterior vira obsoleta e o retreinamento segue o que foi decidido no fluxo.
+                        <div style={{ marginTop: '10px' }}>
+                          {podeAgir
+                            ? (
+                              <button
+                                type="button"
+                                disabled={fluxo.processando}
+                                onClick={() => {
+                                  fluxo.concluirPublicacao().catch(erro => console.error(erro));
+                                }}
+                                style={{
+                                  border: 0,
+                                  borderRadius: '6px',
+                                  padding: '9px 16px',
+                                  background: '#0E7C56',
+                                  color: '#FFFFFF',
+                                  fontWeight: 700,
+                                  cursor: fluxo.processando ? 'wait' : 'pointer',
+                                  opacity: fluxo.processando ? 0.6 : 1
+                                }}
+                              >
+                                {fluxo.processando ? 'Publicando...' : 'Concluir publicação'}
+                              </button>
+                            )
+                            : (
+                              <span style={{ fontSize: '12.5px' }}>
+                                Aguardando o responsável pela etapa (ou um Administrador) concluir a publicação.
+                              </span>
+                            )}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  {
+                    podeAgir &&
+                    fluxo.atuandoComoAdministrador && (
+                      <div
+                        style={{
+                          border: '1px solid #B45309',
+                          background: '#FFF4E5',
+                          color: '#7C2D12',
+                          borderRadius: '6px',
+                          padding: '10px 12px',
+                          fontSize: '13.5px'
+                        }}
+                      >
+                        <strong>Ação como Administrador.</strong>{' '}
+                        Você não é o responsável por “{elementoAtual.nome}”
+                        {fluxo.responsaveisEtapaAtual.length > 0 ? ` (responsável: ${fluxo.responsaveisEtapaAtual.join(' · ')})` : ''},
+                        mas pode executá-la. A ação fica registrada no histórico com seu nome e a indicação “(Administrador)”.
+                      </div>
+                    )
+                  }
+
+                  {
                     !podeAgir && (
                       <div
                         style={{
@@ -1140,6 +1359,94 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                                 Somente {fluxo.responsaveisEtapaAtual.length > 1 ? 'os responsáveis indicados acima podem' : 'o responsável indicado acima pode'} avançar esta etapa.
                               </>
                             )
+                        }
+                      </div>
+                    )
+                  }
+
+                  {
+                    modoAnexo !== 'nao' && (
+                      <div
+                        style={{
+                          border: `1px solid ${faltaArquivo ? COR_INDIGO : COR_BORDA}`,
+                          borderRadius: '8px',
+                          padding: '12px 14px',
+                          background: '#F8FAFC'
+                        }}
+                      >
+                        <div style={estiloRotuloCampo}>
+                          Arquivo da revisão{modoAnexo === 'obrigatorio' ? ' *' : ''}
+                        </div>
+
+                        <div style={{ fontSize: '13.5px', marginBottom: '8px' }}>
+                          {
+                            revisaoArquivo && revisaoArquivo.arquivoUrl
+                              ? (
+                                <>
+                                  📎{' '}
+                                  <a href={revisaoArquivo.arquivoUrl} target="_blank" rel="noopener noreferrer">
+                                    {nomeArquivoAtual(revisaoArquivo.arquivoUrl)}
+                                  </a>
+                                </>
+                              )
+                              : (
+                                <span style={{ color: faltaArquivo ? COR_INDIGO : '#64748B', fontWeight: faltaArquivo ? 700 : 400 }}>
+                                  {modoAnexo === 'obrigatorio'
+                                    ? 'Nenhum arquivo anexado. Anexe o arquivo para concluir esta etapa.'
+                                    : 'Nenhum arquivo anexado.'}
+                                </span>
+                              )
+                          }
+                        </div>
+
+                        {
+                          fluxo.local
+                            ? (
+                              <div style={{ fontSize: '12px', color: '#64748B' }}>
+                                No modo de teste o arquivo não é enviado; na revisão real o responsável anexa aqui.
+                              </div>
+                            )
+                            : podeAgir && onAnexarArquivo && revisaoArquivo
+                              ? (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <input
+                                    ref={campoArquivoRef}
+                                    type="file"
+                                    aria-label="Escolher o arquivo da revisão"
+                                    disabled={enviandoArquivo || fluxo.processando}
+                                    onChange={evento => {
+                                      setFalhaArquivo('');
+                                      setArquivoEtapa(evento.target.files && evento.target.files[0] ? evento.target.files[0] : undefined);
+                                    }}
+                                    style={{ fontSize: '13px', maxWidth: '100%' }}
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={!arquivoEtapa || enviandoArquivo || fluxo.processando}
+                                    onClick={enviarArquivoEtapa}
+                                    style={estiloBotao(true, !arquivoEtapa || enviandoArquivo || fluxo.processando)}
+                                  >
+                                    {enviandoArquivo
+                                      ? 'Enviando…'
+                                      : revisaoArquivo.arquivoUrl ? 'Substituir arquivo' : 'Anexar arquivo'}
+                                  </button>
+                                </div>
+                              )
+                              : (
+                                <div style={{ fontSize: '12px', color: '#64748B' }}>
+                                  {podeAgir
+                                    ? 'Não é possível anexar por aqui nesta tela. Use "Editar revisão".'
+                                    : 'Somente o responsável pela etapa anexa o arquivo.'}
+                                </div>
+                              )
+                        }
+
+                        {
+                          falhaArquivo && (
+                            <div role="alert" style={{ marginTop: '8px', fontSize: '12.5px', color: COR_INDIGO, fontWeight: 700 }}>
+                              ! {falhaArquivo}
+                            </div>
+                          )
                         }
                       </div>
                     )
@@ -1179,16 +1486,25 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     {
                       (podeAgir || fluxo.local) &&
-                      elementoAtual.acoes.map(
+                      elementoAtual.acoes
+                        .filter(() => !fluxo.publicacaoPendente)
+                        .filter(acao => !somenteAcao || acao.chave === somenteAcao || !elementoAtual.acoes.some(item => item.chave === somenteAcao))
+                        .map(
                         acao => {
+                          // "Exige o arquivo": bloqueia as ações que não
+                          // dispensam os campos (ex.: libera "Reprovar").
+                          const bloqueadaPorArquivo =
+                            faltaArquivo && !acao.dispensaCampos;
+
                           const desabilitado =
-                            !podeAgir || fluxo.processando;
+                            !podeAgir || fluxo.processando || enviandoArquivo || bloqueadaPorArquivo;
 
                           return (
                             <button
                               key={acao.chave}
                               type="button"
                               disabled={desabilitado}
+                              title={bloqueadaPorArquivo ? 'Anexe o arquivo da revisão para continuar.' : undefined}
                               onClick={() => executar(acao)}
                               style={estiloBotao(acao.principal, desabilitado)}
                             >
@@ -1213,6 +1529,19 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                         errosExecucao={fluxo.errosAcao}
                         onConfirmar={confirmarAcao}
                         onCancelar={fecharConfirmacao}
+                      />
+                    )
+                  }
+
+                  {
+                    // Corrige avanço indevido: volta UMA etapa
+                    // (somente administrador, com justificativa).
+                    fluxo.podeRetornar && !somenteAcao && (
+                      <RetornarEtapaPainel
+                        previa={fluxo.previaRetorno}
+                        revisaoAtual={instancia.revisao || (fluxo.revisaoAlvo ? fluxo.revisaoAlvo.revisao : '')}
+                        processando={fluxo.processando}
+                        onConfirmar={fluxo.retornarUmPasso}
                       />
                     )
                   }

@@ -2,6 +2,8 @@ import * as React from 'react';
 
 import Icones, { IconeChave } from './common/Icones';
 import VersaoPortal from './common/VersaoPortal';
+import MenuUsuario from './common/MenuUsuario';
+import AvisosPortal from './common/AvisosPortal';
 
 import {
   IEventoTreinamento,
@@ -10,6 +12,7 @@ import {
 
 import {
   IImpactoRemocao,
+  IOpcoesRemocao,
   TreinamentoRemocaoService
 } from '../services/TreinamentoRemocaoService';
 
@@ -35,7 +38,7 @@ import PortalRouter from './PortalRouter';
 import { Pagina } from '../constants/routes';
 import { descreverPerfil, podeAdministrarAcessos } from '../services/AutorizacaoService';
 import { calcularResumoConformidade } from '../services/ConformidadeService';
-import { montarEscopoPessoas, pessoaNoEscopo } from '../utils/regrasAcesso';
+import { areasCatalogo, montarEscopoPessoas, noEscopoDeConteudo, pessoaNoEscopo } from '../utils/regrasAcesso';
 import { podeAcessarRota } from '../services/RoutePermissionService';
 import {
   obterModuloPagina,
@@ -62,6 +65,7 @@ import { ITrilha } from '../models/Trilha';
 import { useModulos } from '../hooks/useModulos';
 import { ProgressoTreinamentoService } from '../services/ProgressoTreinamentoService';
 import { CertificadoService } from '../services/CertificadoService';
+import { criarEnviarParaIaDataverse } from '../services/ia/enviarParaIaDataverse';
 import { TreinamentoRevisaoService, revisaoNaData } from '../services/TreinamentoRevisaoService';
 import { useModuloExecucao, IPerguntaRapidaExecucao } from '../hooks/useModuloExecucao';
 import { IModuloTreinamento, StatusUsuarioModulo } from '../models/Modulo';
@@ -89,6 +93,8 @@ import { obterMenuTreinamento, obterMenuDocumentos, obterMenuLicitacoes, obterMe
 import { IModuloImportJson, ImportacaoJsonEtapasService } from '../services/ImportacaoJsonEtapasService';
 import { SharePointDocumentoService } from '../services/sharepoint/SharePointDocumentoService';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
+import { TreinamentoDocumentoControleService } from '../services/TreinamentoDocumentoControleService';
+import { CONTROLE_DOCUMENTAL, controleDocumentalHabilitado } from '../constants/controleDocumental';
 
 type DataverseRecord =
   IDataverseRecord;
@@ -623,6 +629,19 @@ const PortalTreinamentos:
     const avaliacao =
       useAvaliacao(
         dataverseService
+      );
+
+    // IA das licitações: Claude via Custom API do Dataverse
+    // (a chave fica no plugin, nunca no portal).
+    const enviarParaIa =
+      React.useMemo(
+        () =>
+          criarEnviarParaIaDataverse(
+            dataverseService
+          ),
+        [
+          dataverseService
+        ]
       );
 
     const gestaoTreinamentos =
@@ -1183,7 +1202,28 @@ const gestaoAreas =
                       ],
 
                     imagemUrl:
-                      item?.imagemUrl
+                      item?.imagemUrl,
+
+                    // Revisão em que foi treinado (gravada na
+                    // conclusão) e data de conclusão — a revisão
+                    // vigente é preenchida logo abaixo.
+                    revisaoTreinada:
+                      obterTexto(
+                        a,
+                        [
+                          'dgt_revisaotreinada'
+                        ],
+                        ''
+                      ) || undefined,
+
+                    dataConclusaoIso:
+                      obterTexto(
+                        a,
+                        [
+                          'dgt_dataconclusao'
+                        ],
+                        ''
+                      ) || undefined
                   };
                 }
               );
@@ -1504,6 +1544,67 @@ const gestaoAreas =
               );
             }
 
+            // ==================================================
+            // REVISÃO DO TREINAMENTO NO CARD
+            // ==================================================
+            // Vigente = maior revisão (Rev.00 se nunca revisado).
+            // Concluído sem revisão gravada: a vigente na data da
+            // conclusão (mesma regra do certificado). Se a tabela de
+            // revisões não existir, o card simplesmente não mostra.
+
+            try {
+
+              const revisoesTreinamentos =
+                await new TreinamentoRevisaoService(
+                  dataverseService
+                ).listarPorTreinamento(
+                  treinamentosUsuario.map(
+                    t => t.id
+                  )
+                );
+
+              treinamentosUsuario.forEach(
+                t => {
+
+                  const lista =
+                    revisoesTreinamentos[
+                      t.id
+                        .replace(
+                          /[{}]/g,
+                          ''
+                        )
+                        .toLowerCase()
+                    ] ||
+                    [];
+
+                  t.revisaoAtual =
+                    lista.length > 0
+                      ? lista[0].rotulo
+                      : 'Rev.00';
+
+                  if (
+                    t.status ===
+                      'Concluído' &&
+                    !t.revisaoTreinada
+                  ) {
+                    t.revisaoTreinada =
+                      revisaoNaData(
+                        lista,
+                        t.dataConclusaoIso ||
+                        ''
+                      );
+                  }
+                }
+              );
+
+            } catch (erroRevisoesTreinamentos) {
+
+              console.warn(
+                '[Treinamentos] Revisões do treinamento indisponíveis:',
+                erroRevisoesTreinamentos
+              );
+            }
+
             setMeusTreinamentos(
               treinamentosUsuario
             );
@@ -1703,6 +1804,181 @@ const gestaoAreas =
     // SALVAR NOVO TREINAMENTO
     // ==========================================================
 
+    // Controle documental: cada treinamento é controlado por um
+    // documento (mesmo código, tipo TRN) que segue o fluxo do processo
+    // de treinamentos. Ver constants/controleDocumental.ts.
+    const controleDocumentalService =
+      React.useMemo(
+        () =>
+          controleDocumentalHabilitado()
+            ? new TreinamentoDocumentoControleService(
+              dataverseService
+            )
+            : undefined,
+        [
+          dataverseService
+        ]
+      );
+
+    // Editor por área só vê (e mantém) os treinamentos das áreas em
+    // que é Editor. Admin/Editor global: todos. (Memorizado: evita
+    // recarregar as telas que dependem da lista a cada render.)
+    const treinamentosNoEscopo =
+      React.useMemo(
+        () =>
+          gestaoTreinamentos.treinamentos.filter(
+            treinamento =>
+              noEscopoDeConteudo(
+                autorizacao.contexto?.areasConteudo,
+                treinamento.areaId
+              )
+          ),
+        [
+          gestaoTreinamentos.treinamentos,
+          autorizacao.contexto
+        ]
+      );
+
+    // Catálogo: Gestor vê só os treinamentos das áreas dele (sem isso
+    // ele não sabe quais cursos existem na área). Admin/Editor global:
+    // todos.
+    const escopoCatalogo =
+      React.useMemo(
+        () =>
+          areasCatalogo(
+            autorizacao.contexto
+          ),
+        [
+          autorizacao.contexto
+        ]
+      );
+
+    const treinamentosCatalogo =
+      React.useMemo(
+        () =>
+          gestaoTreinamentos.treinamentos.filter(
+            treinamento =>
+              noEscopoDeConteudo(
+                escopoCatalogo,
+                treinamento.areaId
+              )
+          ),
+        [
+          gestaoTreinamentos.treinamentos,
+          escopoCatalogo
+        ]
+      );
+
+    // Nomes das áreas do recorte (aviso no topo do catálogo).
+    const areasCatalogoNomes =
+      React.useMemo(
+        (): string[] => {
+          if (!escopoCatalogo) {
+            return [];
+          }
+          const nomes: string[] = [];
+          (autorizacao.contexto?.vinculosArea || []).forEach(v => {
+            const igual = escopoCatalogo.some(id => id.replace(/[{}]/g, '').toLowerCase() === v.areaId.replace(/[{}]/g, '').toLowerCase());
+            if (igual && v.areaNome && nomes.indexOf(v.areaNome) < 0) {
+              nomes.push(v.areaNome);
+            }
+          });
+          return nomes;
+        },
+        [
+          escopoCatalogo,
+          autorizacao.contexto
+        ]
+      );
+
+    // Documentos de controle dos treinamentos (tipo TRN): ficam FORA
+    // do módulo Documentos — a gestão deles é feita na Gestão de
+    // treinamentos (fluxo de revisão, pendências e análise).
+    const ehDocumentoControle =
+      (
+        documento:
+          IDocumento
+      ): boolean =>
+        controleDocumentalHabilitado() &&
+        (documento.tipo || '').trim().toUpperCase() ===
+          CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO;
+
+    const documentosVisiveis =
+      React.useMemo(
+        () =>
+          documentos.filter(
+            documento =>
+              !ehDocumentoControle(
+                documento
+              )
+          ),
+        [
+          documentos
+        ]
+      );
+
+    const documentosControle =
+      React.useMemo(
+        () =>
+          documentos.filter(
+            ehDocumentoControle
+          ),
+        [
+          documentos
+        ]
+      );
+
+    const documentosAdministrativosVisiveis =
+      React.useMemo(
+        () =>
+          gestaoDocumentos.documentos.filter(
+            documento =>
+              !(
+                controleDocumentalHabilitado() &&
+                (documento.tipo || '').trim().toUpperCase() ===
+                  CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO
+              )
+          ),
+        [
+          gestaoDocumentos.documentos
+        ]
+      );
+
+    const recarregarDocumentos =
+      React.useCallback(
+        async (): Promise<void> => {
+          try {
+            setDocumentos(
+              await documentoService.getDocumentos()
+            );
+          } catch (error) {
+            console.error(
+              'Não foi possível recarregar os documentos:',
+              error
+            );
+          }
+
+          // Lista da Gestão (usada para sugerir o próximo código).
+          try {
+            await gestaoDocumentos.recarregarDocumentos();
+          } catch (error) {
+            console.error(error);
+          }
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [
+          documentoService,
+          gestaoDocumentos.recarregarDocumentos
+        ]
+      );
+
+    // Análise do treinamento a abrir ao entrar na Gestão.
+    const [
+      analiseTreinamentoId,
+      setAnaliseTreinamentoId
+    ] =
+      React.useState('');
+
     const salvarNovoTreinamento =
       React.useCallback(
         async (
@@ -1711,13 +1987,33 @@ const gestaoAreas =
         ): Promise<void> => {
 
           // ======================================================
+          // 0. PRÉ-REQUISITOS — todo treinamento nasce vinculado ao
+          //    fluxo de treinamentos. Sem tipo TRN, sem o processo
+          //    TRE-001 ou sem fluxo publicado, NADA é criado.
+          // ======================================================
+
+          if (
+            controleDocumentalService
+          ) {
+            await controleDocumentalService
+              .verificarPreRequisitos();
+          }
+
+          // ======================================================
           // 1. CRIAR TREINAMENTO
+          //    Com controle documental, o treinamento nasce INATIVO:
+          //    só fica ativo quando o fluxo publicar a revisão.
           // ======================================================
 
           const treinamentoCriado =
             await gestaoTreinamentos
               .criar(
-                dados
+                controleDocumentalService
+                  ? {
+                    ...dados,
+                    ativo: false
+                  }
+                  : dados
               );
 
           if (
@@ -1728,6 +2024,73 @@ const gestaoAreas =
             throw new Error(
               'O treinamento foi criado, mas não foi possível identificar o registro criado.'
             );
+          }
+
+          // ======================================================
+          // 1.1 DOCUMENTO DE CONTROLE (Rev.00A em Elaboração,
+          //     vinculado ao processo de treinamentos) — OBRIGATÓRIO.
+          //     Se falhar, a criação é desfeita: não pode existir
+          //     treinamento fora do fluxo.
+          // ======================================================
+
+          if (
+            controleDocumentalService
+          ) {
+            try {
+              const controle =
+                await controleDocumentalService
+                  .garantirDocumentoControle(
+                    treinamentoCriado.id,
+                    {
+                      id:
+                        autorizacao.contexto?.usuarioId ||
+                        '',
+                      nome:
+                        autorizacao.contexto?.nome ||
+                        userName
+                    },
+                    {
+                      exigirFluxo:
+                        true
+                    }
+                  );
+
+              if (
+                controle.avisos.length > 0
+              ) {
+                window.alert(
+                  controle.avisos.join('\n\n')
+                );
+              }
+            } catch (erroControle) {
+              console.error(
+                erroControle
+              );
+
+              try {
+                await controleDocumentalService
+                  .desfazerCriacao(
+                    treinamentoCriado.id
+                  );
+              } catch (erroDesfazer) {
+                console.error(
+                  'Não foi possível desfazer a criação do treinamento:',
+                  erroDesfazer
+                );
+              }
+
+              await gestaoTreinamentos
+                .carregar();
+
+              throw new Error(
+                'O treinamento NÃO foi criado: não foi possível vinculá-lo ao fluxo de treinamentos. ' +
+                (
+                  erroControle instanceof Error
+                    ? erroControle.message
+                    : ''
+                )
+              );
+            }
           }
 
           // ======================================================
@@ -1762,8 +2125,11 @@ const gestaoAreas =
 
         },
         [
+          autorizacao.contexto,
+          controleDocumentalService,
           gestaoModulos,
-          gestaoTreinamentos
+          gestaoTreinamentos,
+          userName
         ]
       );
     // ==========================================================
@@ -1856,6 +2222,84 @@ const gestaoAreas =
             await importacaoJsonEtapasService
               .importarModulosDados(
                 gestaoModulos.treinamentoId,
+                dados
+              );
+
+          await gestaoModulos
+            .selecionarTreinamento(
+              gestaoModulos.treinamentoId
+            );
+
+          return mensagem;
+        },
+        [
+          gestaoModulos,
+          importacaoJsonEtapasService
+        ]
+      );
+
+    // Etapa de edição dos módulos: atualiza TODOS os módulos por JSON.
+    const atualizarModulosEmLote =
+      React.useCallback(
+        async (
+          dados:
+            IModuloImportJson,
+          destinos:
+            string[]
+        ): Promise<string> => {
+
+          if (
+            !gestaoModulos.treinamentoId
+          ) {
+            throw new Error(
+              'Treinamento não selecionado.'
+            );
+          }
+
+          const mensagem =
+            await importacaoJsonEtapasService
+              .atualizarModulosEmLote(
+                gestaoModulos.treinamentoId,
+                dados,
+                destinos
+              );
+
+          await gestaoModulos
+            .selecionarTreinamento(
+              gestaoModulos.treinamentoId
+            );
+
+          return mensagem;
+        },
+        [
+          gestaoModulos,
+          importacaoJsonEtapasService
+        ]
+      );
+
+    // Etapa de edição dos módulos: atualiza UM módulo por JSON.
+    const atualizarModuloJson =
+      React.useCallback(
+        async (
+          moduloId:
+            string,
+          dados:
+            IModuloImportJson
+        ): Promise<string> => {
+
+          if (
+            !gestaoModulos.treinamentoId
+          ) {
+            throw new Error(
+              'Treinamento não selecionado.'
+            );
+          }
+
+          const mensagem =
+            await importacaoJsonEtapasService
+              .atualizarModuloDados(
+                gestaoModulos.treinamentoId,
+                moduloId,
                 dados
               );
 
@@ -2097,9 +2541,37 @@ const gestaoAreas =
             IEditarTreinamento
         ): Promise<void> => {
 
+          let dadosGravar =
+            dados;
+
+          // Controle documental: sem revisão publicada o treinamento
+          // não pode ser ativado pela edição (só pela publicação).
+          if (
+            controleDocumentalService &&
+            dados.ativo
+          ) {
+            const controle =
+              await controleDocumentalService
+                .obterPorTreinamento(
+                  dados.id
+                );
+
+            // Sem documento de controle (fora do fluxo) ou sem revisão
+            // publicada: não pode ser ativado pela edição.
+            if (
+              !controle ||
+              !controle.vigente
+            ) {
+              dadosGravar = {
+                ...dados,
+                ativo: false
+              };
+            }
+          }
+
           await gestaoTreinamentos
             .editar(
-              dados
+              dadosGravar
             );
 
           await gestaoModulos
@@ -2117,6 +2589,7 @@ const gestaoAreas =
           );
         },
         [
+          controleDocumentalService,
           gestaoModulos,
           gestaoTreinamentos
         ]
@@ -2147,9 +2620,48 @@ const gestaoAreas =
             );
           }
 
+          const treinamentoId =
+            fluxoCriacaoTreinamentoId;
+
           setFluxoCriacaoTreinamentoId(
             ''
           );
+
+          // Controle documental: o treinamento segue o fluxo do processo
+          // de treinamentos DENTRO da Gestão de treinamentos. Abre a
+          // análise do treinamento para o autor concluir a 1ª etapa.
+          if (
+            controleDocumentalService
+          ) {
+            try {
+              const controle =
+                await controleDocumentalService
+                  .obterPorTreinamento(
+                    treinamentoId
+                  );
+
+              if (
+                controle &&
+                !controle.vigente
+              ) {
+                await recarregarDocumentos();
+
+                setAnaliseTreinamentoId(
+                  treinamentoId
+                );
+
+                window.alert(
+                  `Treinamento salvo em ${controle.revisaoEmAndamento ? controle.revisaoEmAndamento.revisao : CONTROLE_DOCUMENTAL.REVISAO_INICIAL}. ` +
+                  'Conclua a etapa atual do fluxo para enviá-lo à revisão. ' +
+                  'O treinamento fica inativo até a publicação.'
+                );
+              }
+            } catch (erroControle) {
+              console.error(
+                erroControle
+              );
+            }
+          }
 
           setPaginaAtual(
             'gestao'
@@ -2161,8 +2673,10 @@ const gestaoAreas =
           );
         },
         [
+          controleDocumentalService,
           fluxoCriacaoTreinamentoId,
-          gestaoAvaliacoes.avaliacoes
+          gestaoAvaliacoes.avaliacoes,
+          recarregarDocumentos
         ]
       );
 
@@ -2232,21 +2746,31 @@ const gestaoAreas =
           treinamento:
             ITreinamentoAdmin,
           aoProgredir:
-            (mensagem: string) => void
+            (mensagem: string) => void,
+          opcoes?:
+            IOpcoesRemocao
         ): Promise<void> => {
 
           await treinamentoRemocaoService
             .remover(
               treinamento.id,
-              aoProgredir
+              aoProgredir,
+              {
+                ...(opcoes || {}),
+                usuarioNome:
+                  autorizacao.contexto?.nome ||
+                  userName
+              }
             );
 
           await gestaoTreinamentos
             .carregar();
         },
         [
+          autorizacao.contexto,
           gestaoTreinamentos,
-          treinamentoRemocaoService
+          treinamentoRemocaoService,
+          userName
         ]
       );
 
@@ -3275,6 +3799,25 @@ const gestaoAreas =
           : []
       ),
 
+      // Planejamento orçamentário — Gestor e Administrador (o item
+      // some do menu para quem não pode acessar a rota).
+      {
+        label:
+          'Planejamento orçamentário',
+
+        icon:
+          'wallet' as IconeChave,
+
+        pagina:
+          'planejamentoOrcamentario',
+
+        modulo:
+          'outro',
+
+        novo:
+          true
+      },
+
       {
         label:
           'Indicadores',
@@ -3299,8 +3842,14 @@ const gestaoAreas =
         icon:
           'users' as IconeChave,
 
+        pagina:
+          'rhPessoas',
+
         modulo:
-          'outro'
+          'outro',
+
+        novo:
+          true
       },
 
       {
@@ -3658,73 +4207,32 @@ const gestaoAreas =
 
               {
                 menuUsuarioAberto && (
-                  <div
-                    role="menu"
-                    style={{
-                      position: 'absolute',
-                      right: 0,
-                      top: 'calc(100% + 8px)',
-                      width: '290px',
-                      background: '#FFFFFF',
-                      color: '#202A44',
-                      border: '1px solid #E5E7EB',
-                      borderRadius: '12px',
-                      boxShadow: '0 16px 40px rgba(32,42,68,.22)',
-                      zIndex: 1000,
-                      overflow: 'hidden',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <div style={{ padding: '14px 16px', borderBottom: '1px solid #E5E7EB', background: '#F7F9FB' }}>
-                      <strong style={{ display: 'block', fontSize: '14px' }}>{autorizacao.contexto?.nome || usuario.primeiroNome}</strong>
-                      <span style={{ display: 'block', fontSize: '12px', color: '#64748b', overflowWrap: 'anywhere' }}>{autorizacao.contexto?.email || ''}</span>
-                      <span style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#0F6CBD', marginTop: '4px' }}>{perfilExibicao}</span>
-                      {
-                        (autorizacao.contexto?.vinculosArea || []).length > 0 && (
-                          <span style={{ display: 'block', fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
-                            {(autorizacao.contexto?.vinculosArea || []).map(item => `${item.areaNome}: ${item.perfil}`).join(' · ')}
-                          </span>
-                        )
-                      }
-                    </div>
-                    {
+                  <MenuUsuario
+                    nome={autorizacao.contexto?.nome || usuario.primeiroNome}
+                    email={autorizacao.contexto?.email || ''}
+                    perfil={autorizacao.contexto?.perfil || 'Funcionario'}
+                    fotoUrl={usuario.fotoUsuario && !usuario.erroFotoUsuario ? usuario.fotoUsuario : undefined}
+                    inicial={(usuario.primeiroNome || '?').charAt(0).toUpperCase()}
+                    vinculos={autorizacao.contexto?.vinculosArea || []}
+                    itens={
                       [
-                        { pagina: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', icone: '◉', visivel: true },
-                        { pagina: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', icone: '⚿', visivel: podeAdministrarAcessos(autorizacao.contexto) },
-                        { pagina: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', icone: '▦', visivel: autorizacao.contexto?.perfil === 'Administrador' }
+                        { chave: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', descricao: 'Seus dados, papéis e o que você acessa', icone: 'perfil' as const, visivel: true },
+                        { chave: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', descricao: 'Cadastro, perfis e módulos liberados', icone: 'usuarios' as const, visivel: podeAdministrarAcessos(autorizacao.contexto) },
+                        { chave: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', descricao: 'Áreas, equipes e papéis por área', icone: 'areas' as const, visivel: autorizacao.contexto?.perfil === 'Administrador' }
                       ]
                         .filter(item => item.visivel)
-                        .map(item => (
-                          <button
-                            key={item.pagina}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setMenuUsuarioAberto(false);
-                              navegar(item.pagina);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              width: '100%',
-                              padding: '11px 16px',
-                              border: 0,
-                              borderBottom: '1px solid #F1F5F9',
-                              background: '#FFFFFF',
-                              color: '#202A44',
-                              fontSize: '13.5px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              textAlign: 'left'
-                            }}
-                          >
-                            <span aria-hidden="true" style={{ width: '18px', textAlign: 'center' }}>{item.icone}</span>
-                            {item.rotulo}
-                          </button>
-                        ))
+                        .map(item => ({
+                          chave: item.chave,
+                          rotulo: item.rotulo,
+                          descricao: item.descricao,
+                          icone: item.icone,
+                          onClick: () => {
+                            setMenuUsuarioAberto(false);
+                            navegar(item.chave);
+                          }
+                        }))
                     }
-                  </div>
+                  />
                 )
               }
               </div>
@@ -3732,6 +4240,14 @@ const gestaoAreas =
             </div>
 
           </header>
+
+          {/* Avisos no canto da tela (configuráveis em Meu perfil). */}
+          <AvisosPortal
+            dataverseService={dataverseService}
+            contexto={autorizacao.contexto}
+            onNavegar={pagina => navegar(pagina as Pagina)}
+            onAbrirDocumento={abrirDocumentoPorId}
+          />
 
           {/* CONTEÚDO */}
 
@@ -3790,6 +4306,11 @@ const gestaoAreas =
                       pagina: 'processos',
                       label: 'Processos',
                       icon: 'workflow'
+                    },
+                    {
+                      pagina: 'fluxos',
+                      label: 'Fluxos',
+                      icon: 'settings'
                     }
                   ]}
                   paginaAtual={paginaAtual}
@@ -3841,6 +4362,20 @@ const gestaoAreas =
                   paginaAtual
                 }
 
+                // Licitações: análise por IA (Claude via Dataverse).
+                enviarParaIa={
+                  enviarParaIa
+                }
+
+                // RH e Pessoas: leitura da biblioteca Certificados.
+                spHttpClient={
+                  spHttpClient
+                }
+
+                siteUrl={
+                  siteUrl
+                }
+
                 primeiroNome={
                   usuario.primeiroNome
                 }
@@ -3854,7 +4389,25 @@ const gestaoAreas =
                 }
 
                 documentos={
-                  documentos
+                  documentosVisiveis
+                }
+
+                documentosControle={
+                  documentosControle
+                }
+
+                recarregarDocumentos={
+                  recarregarDocumentos
+                }
+
+                analiseTreinamentoId={
+                  analiseTreinamentoId
+                }
+
+                limparAnaliseTreinamento={() =>
+                  setAnaliseTreinamentoId(
+                    ''
+                  )
                 }
 
                 documentoSelecionado={
@@ -4238,7 +4791,19 @@ const gestaoAreas =
                 }
 
                 treinamentosAdministrativos={
-                  gestaoTreinamentos.treinamentos
+                  treinamentosNoEscopo
+                }
+
+                treinamentosCatalogo={
+                  treinamentosCatalogo
+                }
+
+                catalogoRecortado={
+                  !!escopoCatalogo
+                }
+
+                areasCatalogoNomes={
+                  areasCatalogoNomes
                 }
 
                 carregandoGestaoTreinamentos={
@@ -4378,6 +4943,14 @@ const gestaoAreas =
                   confirmarImportacaoModulosJson
                 }
 
+                atualizarModuloJson={
+                  atualizarModuloJson
+                }
+
+                atualizarModulosEmLote={
+                  atualizarModulosEmLote
+                }
+
                 moduloConteudoSelecionadoId={
                   gestaoModuloConteudos.moduloId
                 }
@@ -4424,6 +4997,10 @@ const gestaoAreas =
 
                 moverConteudoModuloAbaixo={
                   gestaoModuloConteudos.moverAbaixo
+                }
+
+                reposicionarConteudoModulo={
+                  gestaoModuloConteudos.reposicionar
                 }
 
                 avaliacoesAdministrativas={
@@ -4633,7 +5210,7 @@ const gestaoAreas =
                 }
 
                 documentosAdministrativos={
-                  gestaoDocumentos.documentos
+                  documentosAdministrativosVisiveis
                 }
 
                 documentoAdministrativoSelecionado={

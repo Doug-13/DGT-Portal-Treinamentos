@@ -18,7 +18,8 @@ import {
 import {
   ChaveModuloPortal,
   gravarModulosAcesso,
-  lerModulosAcesso
+  lerModulosAcesso,
+  lerModulosAdministrados
 } from '../utils/modulosPortal';
 
 // ============================================================
@@ -43,6 +44,8 @@ export interface IUsuarioAcesso {
   usuario: IUsuarioDisponivelArea;
   vinculos: IUsuarioAreaAdmin[];
   modulos?: ChaveModuloPortal[];
+  // Módulos que o usuário administra ("Administrador do módulo").
+  modulosAdministrados?: ChaveModuloPortal[];
 }
 
 export interface IDadosUsuariosAcessos {
@@ -91,6 +94,7 @@ export class UsuariosAcessosService {
     // Módulos (coluna opcional).
     let modulosDisponiveis = true;
     const modulosPorUsuario: { [id: string]: ChaveModuloPortal[] | undefined } = {};
+    const administradosPorUsuario: { [id: string]: ChaveModuloPortal[] } = {};
 
     try {
       const registros =
@@ -101,6 +105,8 @@ export class UsuariosAcessosService {
       registros.forEach(registro => {
         modulosPorUsuario[guid(String(registro.dgt_usuarioid || ''))] =
           lerModulosAcesso(registro.dgt_modulosacesso);
+        administradosPorUsuario[guid(String(registro.dgt_usuarioid || ''))] =
+          lerModulosAdministrados(registro.dgt_modulosacesso);
       });
     } catch {
       modulosDisponiveis = false;
@@ -124,7 +130,8 @@ export class UsuariosAcessosService {
       usuarios.map(usuario => ({
         usuario,
         vinculos: vinculos.filter(item => guid(item.usuarioId) === guid(usuario.id)),
-        modulos: modulosPorUsuario[guid(usuario.id)]
+        modulos: modulosPorUsuario[guid(usuario.id)],
+        modulosAdministrados: administradosPorUsuario[guid(usuario.id)] || []
       }));
 
     // Gestor: só quem está (ativo ou não) em uma das suas áreas.
@@ -167,7 +174,9 @@ export class UsuariosAcessosService {
   public async definirModulos(
     contexto: IContextoAcesso | undefined,
     usuarioId: string,
-    modulos: ChaveModuloPortal[] | undefined
+    modulos: ChaveModuloPortal[] | undefined,
+    // Módulos que o usuário administra (gravados como "admin:<módulo>").
+    administrados: ChaveModuloPortal[] = []
   ): Promise<void> {
 
     if (!this.ehAdministrador(contexto)) {
@@ -178,7 +187,7 @@ export class UsuariosAcessosService {
       await this.dataverse.atualizarRegistro(
         'dgt_usuario',
         usuarioId,
-        { dgt_modulosacesso: gravarModulosAcesso(modulos) }
+        { dgt_modulosacesso: gravarModulosAcesso(modulos, administrados) }
       );
     } catch (error) {
       throw new Error(

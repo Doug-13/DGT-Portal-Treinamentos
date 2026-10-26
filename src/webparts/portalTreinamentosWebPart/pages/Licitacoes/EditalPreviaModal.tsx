@@ -26,6 +26,14 @@ import {
 } from './ParecerLicitacao';
 
 import {
+  AnaliseIaBloco
+} from './AnaliseIaLicitacao';
+
+import {
+  IEstadoAnaliseIa
+} from '../../models/LicitacaoIa';
+
+import {
   IArquivoEdital,
   baixarArquivoEdital,
   carregarDetalheEdital,
@@ -87,9 +95,13 @@ export interface IEditalPreviaModalProps {
   // Parecer da DGT (opcionais: sem eles o painel funciona como antes)
   parecer?: ISituacaoParecer;
   situacaoPareceres?: SituacaoPareceres;
-  onRegistrarParecer?: (decisao?: DecisaoParecer) => void;
+  onRegistrarParecer?: (decisao?: DecisaoParecer, justificativa?: string) => void;
   // Enquanto a janela de parecer está aberta, o Esc é dela.
   dialogoParecerAberto?: boolean;
+
+  // Análise por IA (só aparece quando o edital não tem parecer)
+  estadoIa?: IEstadoAnaliseIa;
+  onAnalisarIa?: () => void;
 }
 
 type Aba = 'resumo' | 'itens' | 'documentos' | 'edital';
@@ -396,7 +408,9 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
   parecer,
   situacaoPareceres,
   onRegistrarParecer,
-  dialogoParecerAberto
+  dialogoParecerAberto,
+  estadoIa,
+  onAnalisarIa
 }) => {
 
   const dialogoParecerRef = React.useRef<boolean>(!!dialogoParecerAberto);
@@ -619,6 +633,15 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
   // ==========================================================
   const renderResumo = (): React.ReactNode => (
     <>
+      {!parecer && estadoIa && onAnalisarIa && onRegistrarParecer && (
+        <AnaliseIaBloco
+          completo
+          estado={estadoIa}
+          onAnalisar={onAnalisarIa}
+          onUsarSugestao={(decisao, justificativa) => onRegistrarParecer(decisao, justificativa)}
+        />
+      )}
+
       {onRegistrarParecer && (
         <ParecerPainel
           parecer={parecer}

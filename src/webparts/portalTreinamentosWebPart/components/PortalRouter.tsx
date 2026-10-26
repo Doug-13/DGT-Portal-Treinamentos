@@ -86,6 +86,9 @@ import NovoDocumentoPage from
 import ProcessosPage from
   '../pages/Processos/ProcessosPage';
 
+import ProcessosNegocioPage from
+  '../pages/Processos/ProcessosNegocioPage';
+
 import {
   solicitarAberturaProcesso
 } from '../services/processos/ProcessoService';
@@ -193,7 +196,8 @@ import CatalogoTreinamentosPage from
   '../pages/Treinamentos/CatalogoTreinamentosPage';
 
 import {
-  IImpactoRemocao
+  IImpactoRemocao,
+  IOpcoesRemocao
 } from '../services/TreinamentoRemocaoService';
 
 import {
@@ -227,11 +231,23 @@ import {
 import IndicadoresPage from
   '../pages/Indicadores/IndicadoresPage';
 
+import RhPessoasPage from
+  '../pages/RH/RhPessoasPage';
+
+import {
+  EnviarParaIa
+} from '../services/ia/provedoresIa';
+
+import {
+  SPHttpClient
+} from '@microsoft/sp-http';
+
 import LicitacoesBuscaPage from
   '../pages/Licitacoes/LicitacoesBuscaPage';
 
 import {
-  areaNoEscopo
+  areaNoEscopo,
+  noEscopoDeConteudo
 } from '../utils/regrasAcesso';
 
 import UsuariosAcessosPage from
@@ -245,6 +261,9 @@ import ArquiteturaPage from
 
 import RegistrosOportunidadePage from
   '../pages/Arquitetura/RegistrosOportunidadePage';
+
+import PlanejamentoOrcamentarioPage from
+  '../pages/Orcamento/PlanejamentoOrcamentarioPage';
 
 import LicitacoesTesteConexaoPage from
   '../pages/Licitacoes/LicitacoesTesteConexaoPage';
@@ -767,7 +786,9 @@ export interface IPortalRouterProps {
       treinamento:
         ITreinamentoAdmin,
       aoProgredir:
-        (mensagem: string) => void
+        (mensagem: string) => void,
+      opcoes?:
+        IOpcoesRemocao
     ) => Promise<void>;
 
   // Modo de teste do treinamento (visão do colaborador, sem registros).
@@ -872,6 +893,31 @@ export interface IPortalRouterProps {
   // DOCUMENTOS
   // ============================================================
 
+  // Documentos de controle dos treinamentos (tipo TRN): ficam fora
+  // do módulo Documentos e são geridos na Gestão de treinamentos.
+  documentosControle?:
+    IDocumento[];
+
+  recarregarDocumentos?:
+    () => Promise<void>;
+
+  // Treinamento cuja análise abre ao entrar na Gestão.
+  analiseTreinamentoId?:
+    string;
+
+  limparAnaliseTreinamento?:
+    () => void;
+
+  // Catálogo: treinamentos no escopo do usuário (Gestor: áreas dele).
+  treinamentosCatalogo?:
+    ITreinamentoAdmin[];
+
+  catalogoRecortado?:
+    boolean;
+
+  areasCatalogoNomes?:
+    string[];
+
   documentos:
   IDocumento[];
 
@@ -924,6 +970,17 @@ export interface IPortalRouterProps {
   // Também usado pelo teste de conexão do painel de diagnóstico.
   dataverseService?:
   DataverseService;
+
+  // RH e Pessoas: leitura da biblioteca Certificados (PDFs).
+  spHttpClient?:
+  SPHttpClient;
+
+  siteUrl?:
+  string;
+
+  // Licitações: envio de prompts ao serviço de IA (Claude).
+  enviarParaIa?:
+  EnviarParaIa;
 
   // Diagnóstico de acesso: e-mail do usuário logado e recarga das
   // permissões depois de o administrador corrigir o problema.
@@ -1087,6 +1144,24 @@ export interface IPortalRouterProps {
       IModuloImportJson
   ) => Promise<string>;
 
+  // Etapa de edição dos módulos: atualiza TODOS os módulos por JSON.
+  atualizarModulosEmLote?:
+  (
+    dados:
+      IModuloImportJson,
+    destinos:
+      string[]
+  ) => Promise<string>;
+
+  // Etapa de edição dos módulos: atualiza UM módulo por JSON.
+  atualizarModuloJson?:
+  (
+    moduloId:
+      string,
+    dados:
+      IModuloImportJson
+  ) => Promise<string>;
+
   moduloConteudoSelecionadoId:
   string;
 
@@ -1141,6 +1216,15 @@ export interface IPortalRouterProps {
   (
     item:
       IModuloConteudoAdmin
+  ) => Promise<void>;
+
+  // Arrastar e soltar os conteúdos do módulo.
+  reposicionarConteudoModulo?:
+  (
+    itemId:
+      string,
+    novaPosicao:
+      number
   ) => Promise<void>;
 }
 
@@ -1222,6 +1306,7 @@ const PortalRouter:
         />
       );
     }
+    const renderizarPagina = (): React.ReactElement | null => {
     switch (
     props.pagina
     ) {
@@ -1671,6 +1756,12 @@ const PortalRouter:
               props.primeiroNome
             }
 
+            usuarioAtual={
+              props.contextoAcesso
+                ? { id: props.contextoAcesso.usuarioId, nome: props.contextoAcesso.nome }
+                : undefined
+            }
+
             areas={
               props.areasAdministrativas
             }
@@ -1787,6 +1878,10 @@ const PortalRouter:
 
         return (
           <DocumentoDetalhePage
+
+            onDocumentoExcluido={
+              props.recarregarDocumentos
+            }
             documento={
               props.documentoSelecionado
             }
@@ -1861,7 +1956,7 @@ const PortalRouter:
 
             onAbrirProcesso={processoId => {
               solicitarAberturaProcesso(processoId);
-              props.navegar('processos');
+              props.navegar('fluxos');
             }}
 
             onVoltar={() =>
@@ -1877,6 +1972,38 @@ const PortalRouter:
       // ========================================================
 
       case 'processos':
+
+        // Processos de negócio: Área → Processo → documentos.
+        return (
+          <ProcessosNegocioPage
+            documentos={
+              props.documentos
+            }
+
+            areas={
+              props.areasAdministrativas
+            }
+
+            contexto={
+              props.contextoAcesso
+            }
+
+            dataverseService={
+              props.dataverseService
+            }
+
+            onAbrirDocumento={
+              props.abrirDocumento
+            }
+
+            onIrParaFluxos={() =>
+              props.navegar('fluxos')
+            }
+          />
+        );
+
+      // Fluxos (caminhos de aprovação, com versões) — antes "Processos".
+      case 'fluxos':
 
         return (
           <ProcessosPage
@@ -1933,7 +2060,14 @@ const PortalRouter:
         return (
           <CatalogoTreinamentosPage
             treinamentos={
+              props.treinamentosCatalogo ||
               props.treinamentosAdministrativos
+            }
+            recortado={
+              !!props.catalogoRecortado
+            }
+            areasNomes={
+              props.areasCatalogoNomes
             }
             carregando={
               props.carregandoGestaoTreinamentos
@@ -1958,7 +2092,7 @@ const PortalRouter:
       case 'testeTreinamento': {
 
         const emTeste =
-          props.treinamentosAdministrativos
+          (props.treinamentosCatalogo || props.treinamentosAdministrativos)
             .find(
               item =>
                 item.id ===
@@ -1972,7 +2106,14 @@ const PortalRouter:
           return (
             <CatalogoTreinamentosPage
               treinamentos={
+                props.treinamentosCatalogo ||
                 props.treinamentosAdministrativos
+              }
+              recortado={
+                !!props.catalogoRecortado
+              }
+              areasNomes={
+                props.areasCatalogoNomes
               }
               carregando={
                 props.carregandoGestaoTreinamentos
@@ -2130,6 +2271,50 @@ const PortalRouter:
               props.contextoAcesso?.nome
             }
 
+            // Controle documental: autor das revisões criadas pela
+            // Gestão e abertura do documento de controle do treinamento.
+            usuarioId={
+              props.contextoAcesso?.usuarioId
+            }
+
+            onAbrirDocumento={
+              props.abrirDocumentoPorId
+            }
+
+            // Fluxo de revisão dos treinamentos dentro da Gestão.
+            documentosControle={
+              props.documentosControle
+            }
+
+            onRecarregarDocumentos={
+              props.recarregarDocumentos
+            }
+
+            contexto={
+              props.contextoAcesso
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
+            sharePointDocumentoService={
+              props.sharePointDocumentoService
+            }
+
+            onAbrirProcesso={processoId => {
+              solicitarAberturaProcesso(processoId);
+              props.navegar('fluxos');
+            }}
+
+            analiseInicialTreinamentoId={
+              props.analiseTreinamentoId
+            }
+
+            onAnaliseInicialAberta={
+              props.limparAnaliseTreinamento
+            }
+
             onTestarTreinamento={
               podeAcessarRota(
                 'testeTreinamento',
@@ -2264,8 +2449,15 @@ const PortalRouter:
             // (ou entre dois treinamentos): nenhum dado anterior fica.
             key={props.fluxoCriacaoTreinamentoId || 'novo-treinamento'}
 
+            // Editor por área só cria treinamentos nas áreas dele.
             areas={
-              props.areasAdministrativas
+              props.areasAdministrativas.filter(
+                area =>
+                  noEscopoDeConteudo(
+                    props.contextoAcesso?.areasConteudo,
+                    area.id
+                  )
+              )
             }
 
             treinamentoExistente={
@@ -2391,6 +2583,15 @@ const PortalRouter:
           <EquipePage
             colaboradores={
               props.colaboradores
+            }
+
+            // Filtro e agrupamento por área (Gestão → Áreas e acessos).
+            areas={
+              props.areasAdministrativas
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
             }
 
             carregando={
@@ -2588,6 +2789,19 @@ const PortalRouter:
             dataverseService={
               props.dataverseService
             }
+
+            // Envio de imagens pelo portal (Midias de Treinamento).
+            spHttpClient={
+              props.spHttpClient
+            }
+
+            siteUrl={
+              props.siteUrl
+            }
+
+            usuarioEmail={
+              props.usuarioEmail
+            }
             
             treinamentos={
               props
@@ -2664,19 +2878,30 @@ const PortalRouter:
                 .reordenarModulos
             }
 
-            // Remover módulo: somente Administrador.
+            // Excluir módulo: só na etapa de edição dos módulos (o
+            // assistente do treinamento) ou pelo Administrador. A
+            // tela mostra a opção apenas na etapa de edição; o serviço
+            // bloqueia módulos com progresso ou respostas.
             onAnalisarRemocaoModulo={
-              props.contextoAcesso?.perfil ===
-              'Administrador'
+              props.contextoAcesso?.perfil === 'Administrador' ||
+              !!props.fluxoCriacaoTreinamentoId
                 ? props.analisarRemocaoModulo
                 : undefined
             }
 
             onRemoverModulo={
-              props.contextoAcesso?.perfil ===
-              'Administrador'
+              props.contextoAcesso?.perfil === 'Administrador' ||
+              !!props.fluxoCriacaoTreinamentoId
                 ? props.removerModulo
                 : undefined
+            }
+
+            onAtualizarModuloJson={
+              props.atualizarModuloJson
+            }
+
+            onAtualizarModulosEmLote={
+              props.atualizarModulosEmLote
             }
 
             onAnalisarJson={
@@ -2752,6 +2977,11 @@ const PortalRouter:
             onMoverConteudoModuloAbaixo={
               props
                 .moverConteudoModuloAbaixo
+            }
+
+            onReposicionarConteudoModulo={
+              props
+                .reposicionarConteudoModulo
             }
           />
         );
@@ -3054,6 +3284,25 @@ const PortalRouter:
           />
 
         );
+      case 'rhPessoas':
+
+        return (
+          <RhPessoasPage
+            dataverseService={
+              props.dataverseService
+            }
+            spHttpClient={
+              props.spHttpClient
+            }
+            siteUrl={
+              props.siteUrl
+            }
+            usuarioNome={
+              props.contextoAcesso?.nome
+            }
+          />
+        );
+
       case 'indicadores':
 
         return (
@@ -3106,6 +3355,7 @@ const PortalRouter:
             }
             dataverseService={props.dataverseService}
             contexto={props.contextoAcesso}
+            enviarParaIa={props.enviarParaIa}
           />
         );
 
@@ -3130,6 +3380,21 @@ const PortalRouter:
 
         return (
           <ArquiteturaPage
+            dataverseService={props.dataverseService}
+            contexto={props.contextoAcesso}
+            spHttpClient={props.spHttpClient}
+            siteUrl={props.siteUrl}
+          />
+        );
+
+      // ========================================================
+      // PLANEJAMENTO ORÇAMENTÁRIO
+      // ========================================================
+
+      case 'planejamentoOrcamentario':
+
+        return (
+          <PlanejamentoOrcamentarioPage
             dataverseService={props.dataverseService}
             contexto={props.contextoAcesso}
           />
@@ -3167,7 +3432,14 @@ const PortalRouter:
           />
         );
     }
+    // (O "return null" que ficava aqui era inalcançável — o switch já
+    // tem "default" — e quebrava a compilação com o erro TS7027.)
+    };
 
+    const conteudo =
+      renderizarPagina();
+
+    return conteudo;
   };
 
 export default PortalRouter;

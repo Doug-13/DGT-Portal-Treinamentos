@@ -62,6 +62,31 @@ const TreinamentoCard:
     treinamento.status === 'Vencido';
 
   // ==========================================================
+  // REVISÃO
+  // Concluído: a revisão em que a pessoa foi treinada (e, se o
+  // treinamento já foi revisado depois, a vigente ao lado).
+  // Demais: a revisão vigente, que é a que será feita.
+  // ==========================================================
+
+  const revisaoExibida =
+    concluido && treinamento.revisaoTreinada
+      ? treinamento.revisaoTreinada
+      : treinamento.revisaoAtual || '';
+
+  const revisaoDesatualizada =
+    concluido &&
+    !!treinamento.revisaoTreinada &&
+    !!treinamento.revisaoAtual &&
+    treinamento.revisaoTreinada.trim().toLowerCase() !==
+      treinamento.revisaoAtual.trim().toLowerCase();
+
+  const dicaRevisao =
+    concluido && treinamento.revisaoTreinada
+      ? `Concluído na ${treinamento.revisaoTreinada}` +
+        (revisaoDesatualizada ? `; revisão vigente: ${treinamento.revisaoAtual}` : ' (revisão vigente)')
+      : `Revisão vigente do treinamento: ${treinamento.revisaoAtual || ''}`;
+
+  // ==========================================================
   // PROGRESSO
   // ==========================================================
 
@@ -332,13 +357,17 @@ const TreinamentoCard:
           </span>
         </div>
 
-        {/* CÓDIGO: distingue treinamentos com o mesmo nome */}
+        {/* CÓDIGO E REVISÃO: distingue treinamentos com o mesmo
+            nome e mostra a versão do conteúdo */}
 
         {
-          treinamento.codigo && (
+          (treinamento.codigo || treinamento.revisaoAtual) && (
             <span
               style={{
-                display: 'block',
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 6,
                 fontSize: 10,
                 fontWeight: 600,
                 color: '#64748B',
@@ -347,6 +376,32 @@ const TreinamentoCard:
               }}
             >
               {treinamento.codigo}
+
+              {
+                revisaoExibida && (
+                  <span
+                    title={dicaRevisao}
+                    style={{
+                      padding: '1px 6px',
+                      borderRadius: 8,
+                      background: revisaoDesatualizada ? '#E8EAF8' : '#EDF0F5',
+                      color: revisaoDesatualizada ? '#485CC7' : '#202A44',
+                      fontWeight: 700,
+                      letterSpacing: 0
+                    }}
+                  >
+                    {revisaoExibida}
+                  </span>
+                )
+              }
+
+              {
+                revisaoDesatualizada && (
+                  <span style={{ color: '#485CC7', fontWeight: 600, letterSpacing: 0 }}>
+                    vigente {treinamento.revisaoAtual}
+                  </span>
+                )
+              }
             </span>
           )
         }

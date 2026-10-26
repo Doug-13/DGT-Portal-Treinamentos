@@ -49,6 +49,9 @@ export interface IUsuarioAreaAdmin {
   areaSigla: string;
   perfil: PerfilArea;
   ativo: boolean;
+  // Cargo na hierarquia da área (Coordenador, Gerente, Head, Diretor…),
+  // cadastrado em RH e Pessoas → Estrutura por área. Vazio = sem cargo.
+  cargo?: string;
 }
 
 export interface INovoUsuarioArea {
@@ -269,13 +272,119 @@ export class AreaAdminService {
       );
   }
 
+  // ==========================================================
+  // HIERARQUIA (cargo na área) — RH e Pessoas → Estrutura por área
+  //
+  // Lido numa consulta à parte: se a coluna dgt_cargo ainda não
+  // existir (script criar-coluna-cargo-area.ps1), tudo continua
+  // funcionando, apenas sem cargos.
+  // ==========================================================
+
+  private async lerCargos(): Promise<{ [vinculoId: string]: string }> {
+    try {
+      const registros =
+        await this.dataverse.listarRegistros(
+          'dgt_usuarioarea',
+          '$select=dgt_usuarioareaid,dgt_cargo&$filter=dgt_cargo ne null'
+        );
+      const mapa: { [vinculoId: string]: string } = {};
+      registros.forEach(registro => {
+        const id = texto(registro, 'dgt_usuarioareaid').replace(/[{}]/g, '').toLowerCase();
+        const cargo = texto(registro, 'dgt_cargo').trim();
+        if (id && cargo) {
+          mapa[id] = cargo;
+        }
+      });
+      return mapa;
+    } catch {
+      return {};
+    }
+  }
+
+  // A coluna do cargo existe no Dataverse?
+  public async temColunaCargo(): Promise<boolean> {
+    try {
+      await this.dataverse.listarRegistros('dgt_usuarioarea', '$select=dgt_cargo&$top=1');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Grava o cargo de um vínculo existente ('' = sem cargo).
+  public async definirCargo(
+    vinculoId: string,
+    cargo: string
+  ): Promise<void> {
+    await this.dataverse.atualizarRegistro(
+      'dgt_usuarioarea',
+      vinculoId,
+      { dgt_cargo: cargo ? cargo.substring(0, 100) : null }
+    );
+  }
+
+  // Dá à pessoa o cargo nas áreas indicadas (Head ou Diretor que
+  // agrupa várias áreas, gerente de duas áreas…). Onde a pessoa ainda
+  // não tem vínculo, cria um vínculo de Membro ativo.
+  public async atribuirCargoEmAreas(
+    usuarioId: string,
+    cargo: string,
+    areaIds: string[],
+    vinculosAtuais: IUsuarioAreaAdmin[]
+  ): Promise<string[]> {
+
+    const falhas: string[] = [];
+    const guidLocal = (valor: string): string => (valor || '').replace(/[{}]/g, '').toLowerCase();
+
+    for (const areaId of areaIds) {
+      try {
+        let vinculo =
+          vinculosAtuais.filter(item =>
+            guidLocal(item.usuarioId) === guidLocal(usuarioId) &&
+            guidLocal(item.areaId) === guidLocal(areaId)
+          )[0];
+
+        if (!vinculo) {
+          await this.vincularUsuario({ usuarioId, areaId, perfil: 'Membro', ativo: true });
+          const relidos = await this.dataverse.getUsuariosAreasAdmin();
+          const criado =
+            relidos.filter(registro =>
+              guidLocal(texto(registro, '_dgt_usuario_value')) === guidLocal(usuarioId) &&
+              guidLocal(texto(registro, '_dgt_area_value')) === guidLocal(areaId)
+            )[0];
+          if (!criado) {
+            throw new Error('o vínculo foi criado, mas não foi encontrado em seguida');
+          }
+          vinculo = {
+            id: texto(criado, 'dgt_usuarioareaid'),
+            usuarioId,
+            usuarioNome: '',
+            usuarioEmail: '',
+            areaId,
+            areaNome: '',
+            areaSigla: '',
+            perfil: 'Membro',
+            ativo: true
+          };
+        }
+
+        await this.definirCargo(vinculo.id, cargo);
+      } catch (erro) {
+        falhas.push(`${areaId}: ${erro instanceof Error ? erro.message : String(erro)}`);
+      }
+    }
+
+    return falhas;
+  }
+
   public async listarUsuariosArea():
     Promise<IUsuarioAreaAdmin[]> {
 
     const [
       vinculos,
       usuarios,
-      areas
+      areas,
+      cargos
     ] =
       await Promise.all([
         this.dataverse
@@ -283,7 +392,9 @@ export class AreaAdminService {
 
         this.listarUsuarios(),
 
-        this.listarAreas()
+        this.listarAreas(),
+
+        this.lerCargos()
       ]);
 
     const usuariosMap =
@@ -368,7 +479,15 @@ export class AreaAdminService {
                 registro,
                 'dgt_ativo',
                 true
-              )
+              ),
+
+            cargo:
+              cargos[
+                texto(
+                  registro,
+                  'dgt_usuarioareaid'
+                ).replace(/[{}]/g, '').toLowerCase()
+              ] || undefined
           };
         }
       )

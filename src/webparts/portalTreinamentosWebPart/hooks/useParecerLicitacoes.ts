@@ -38,7 +38,11 @@ export interface IUseParecerLicitacoes {
   erro?: string;
   total: number;
   podeRegistrar: boolean;
+  // Parecer vigente de cada edital (base de conhecimento da IA).
+  atuais: IParecerLicitacao[];
   obter: (item: ILicitacaoResultado) => ISituacaoParecer | undefined;
+  // Histórico de um edital pela chave (mais recente primeiro).
+  historicoDe: (chaveEdital: string) => IParecerLicitacao[];
   registrar: (
     item: ILicitacaoResultado,
     decisao: DecisaoParecer,
@@ -136,12 +140,19 @@ export const useParecerLicitacoes = (
     []
   );
 
+  const atuais = React.useMemo(
+    () => Object.keys(porEdital).map(chave => porEdital[chave].atual),
+    [porEdital]
+  );
+
   return {
     situacao,
     erro,
+    atuais,
     total: Object.keys(porEdital).length,
     podeRegistrar: situacao === 'ok',
     obter,
+    historicoDe: (chave: string) => (porEdital[chave] ? porEdital[chave].historico : []),
     registrar,
     recarregar
   };

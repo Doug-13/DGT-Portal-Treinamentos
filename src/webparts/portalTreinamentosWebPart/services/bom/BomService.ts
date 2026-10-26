@@ -1,4 +1,9 @@
 import {
+  ISelecaoKit,
+  normalizarSelecao
+} from './montadorBom';
+
+import {
   DataverseService,
   IDataverseRecord
 } from '../DataverseService';
@@ -405,6 +410,50 @@ export class BomService {
       [BOM.etapa]: valorOpcao(OPCOES_BOM.etapa, 'Dados da demanda'),
       [BOM.ativo]: true
     });
+  }
+
+  // ----------------------------------------------------------
+  // Etapa 3 — Seleção de kit
+  // ----------------------------------------------------------
+
+  // undefined = ainda sem seleção; 'semColuna' = script não executado.
+  public async lerSelecaoKit(
+    bomId: string
+  ): Promise<ISelecaoKit | undefined | 'semColuna'> {
+    try {
+      const lido = await this.dataverse.obterRegistro(TABELAS_BOM.bom, bomId, [BOM.selecaoKit]);
+      const json = lido ? texto(lido.registro, BOM.selecaoKit) : '';
+      if (!json) {
+        return undefined;
+      }
+      return normalizarSelecao(JSON.parse(json) as ISelecaoKit);
+    } catch (erro) {
+      if (/dgt_bom_selecaokit/i.test(erro instanceof Error ? erro.message : String(erro))) {
+        return 'semColuna';
+      }
+      throw erro;
+    }
+  }
+
+  public async salvarSelecaoKit(
+    bomId: string,
+    selecao: ISelecaoKit,
+    usuarioNome: string
+  ): Promise<void> {
+    try {
+      await this.dataverse.atualizarRegistro(TABELAS_BOM.bom, bomId, {
+        [BOM.selecaoKit]: JSON.stringify({
+          ...selecao,
+          atualizadoEm: new Date().toISOString(),
+          atualizadoPor: usuarioNome
+        })
+      });
+    } catch (erro) {
+      if (/dgt_bom_selecaokit/i.test(erro instanceof Error ? erro.message : String(erro))) {
+        throw new Error('A coluna da seleção de kit ainda não existe: execute scripts/dataverse/criar-coluna-selecao-kit.ps1.');
+      }
+      throw erro;
+    }
   }
 
   public async atualizarEtapa(

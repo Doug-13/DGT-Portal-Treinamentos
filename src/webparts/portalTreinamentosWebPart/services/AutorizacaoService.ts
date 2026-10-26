@@ -5,7 +5,9 @@ import {
 
 import {
   ChaveModuloPortal,
-  lerModulosAcesso
+  MODULOS_PORTAL,
+  lerModulosAcesso,
+  lerModulosAdministrados
 } from '../utils/modulosPortal';
 
 import {
@@ -62,10 +64,18 @@ export interface IContextoAcesso {
   vinculosArea?: IVinculoAcesso[];
   areasGestor?: string[];
   areasEditor?: string[];
+  // Áreas em que é "Administrador da área" (admin com escopo na área).
+  areasAdministrador?: string[];
+  // Módulos que administra ("Administrador do módulo").
+  modulosAdministrados?: ChaveModuloPortal[];
 
   // Áreas cujas pessoas o usuário acompanha (equipe, atribuição,
   // conformidade). undefined = todas.
   escopoAreas?: string[];
+
+  // Áreas cujos treinamentos o usuário pode ver e manter na Gestão
+  // (Editor por área). undefined = todas.
+  areasConteudo?: string[];
 
   // Módulos liberados (undefined = todos os que o perfil permite).
   modulosPermitidos?: ChaveModuloPortal[];
@@ -108,9 +118,14 @@ export const descreverPerfil = (
   const resumir = (lista: string[]): string =>
     lista.length === 1 ? lista[0] : `${lista.length} áreas`;
 
+  const adminEm =
+    (contexto.vinculosArea || [])
+      .filter(item => item.perfil === 'Administrador da área')
+      .map(item => item.areaNome);
+
   const gestorEm =
     (contexto.vinculosArea || [])
-      .filter(item => item.perfil === 'Gestor' || item.perfil === 'Administrador da área')
+      .filter(item => item.perfil === 'Gestor')
       .map(item => item.areaNome);
 
   const editorEm =
@@ -119,6 +134,15 @@ export const descreverPerfil = (
       .map(item => item.areaNome);
 
   const partes: string[] = [global];
+
+  if (adminEm.length > 0) {
+    partes.push(`Administrador em ${resumir(adminEm)}`);
+  }
+
+  if ((contexto.modulosAdministrados || []).length > 0) {
+    const nomes = (contexto.modulosAdministrados || []).map(chave => (MODULOS_PORTAL.find(item => item.chave === chave) || { nome: chave }).nome);
+    partes.push(`Admin. de ${nomes.length === 1 ? nomes[0] : `${nomes.length} módulos`}`);
+  }
 
   if (gestorEm.length > 0 && contexto.perfil !== 'Gestor') {
     partes.push(`Gestor em ${resumir(gestorEm)}`);
@@ -374,6 +398,8 @@ export class AutorizacaoService {
 
     // Módulos liberados (coluna opcional dgt_modulosacesso).
     let modulosPermitidos: ChaveModuloPortal[] | undefined;
+    // Módulos que administra ("admin:<módulo>" na mesma coluna).
+    let modulosAdministrados: ChaveModuloPortal[] = [];
 
     if (!admin && usuarioId) {
       try {
@@ -383,10 +409,9 @@ export class AutorizacaoService {
             usuarioId,
             ['dgt_modulosacesso']
           );
-        modulosPermitidos =
-          lido && lido.registro
-            ? lerModulosAcesso((lido.registro as Record<string, unknown>).dgt_modulosacesso)
-            : undefined;
+        const valor = lido && lido.registro ? (lido.registro as Record<string, unknown>).dgt_modulosacesso : undefined;
+        modulosPermitidos = lerModulosAcesso(valor);
+        modulosAdministrados = lerModulosAdministrados(valor);
       } catch {
         // Coluna ainda não criada: sem restrição de módulos.
         modulosPermitidos = undefined;
@@ -397,7 +422,8 @@ export class AutorizacaoService {
       calcularRegrasAcesso(
         perfil,
         vinculosArea,
-        modulosPermitidos
+        modulosPermitidos,
+        modulosAdministrados
       );
 
     return {
@@ -458,8 +484,17 @@ export class AutorizacaoService {
       areasEditor:
         regras.areasEditor,
 
+      areasAdministrador:
+        regras.areasAdministrador,
+
+      modulosAdministrados:
+        regras.modulosAdministrados,
+
       escopoAreas:
         regras.escopoAreas,
+
+      areasConteudo:
+        regras.areasConteudo,
 
       vinculosArea,
       modulosPermitidos

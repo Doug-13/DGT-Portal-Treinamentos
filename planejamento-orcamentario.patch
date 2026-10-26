@@ -1,0 +1,3433 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 73a87a3..360de7f 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,9 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
+ 
+ ## [Não publicado]
+ 
++- Novo: Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir.
++- Novo: visão "Todas as planilhas" para o Administrador, com consolidado por grupo, consulta de cada planilha, reabertura e exportação CSV no layout da planilha de orçamento.
++
+ ## [1.4.4] - 2026-10-09
+ 
+ - Melhoria: ajustes e correções internas.
+diff --git a/scripts/dataverse/criar-tabelas-orcamento.ps1 b/scripts/dataverse/criar-tabelas-orcamento.ps1
+new file mode 100644
+index 0000000..cfe30d5
+--- /dev/null
++++ b/scripts/dataverse/criar-tabelas-orcamento.ps1
+@@ -0,0 +1,470 @@
++﻿<#
++.SYNOPSIS
++  Cria no Dataverse as tabelas do PLANEJAMENTO ORÇAMENTÁRIO do Portal DGT:
++  dgt_orcamentoplanilha (uma planilha por gestor e por ano) e
++  dgt_orcamentolinha (linhas da planilha, com os valores de jan a dez).
++
++.DESCRIPTION
++  Pode ser executado mais de uma vez: o que já existe é mantido e só o
++  que falta é criado. Tudo é criado dentro da solução informada.
++
++  Cria:
++    Tabela dgt_orcamentoplanilha (Planilha orçamentária)
++      dgt_ano, dgt_gestor (pesquisa -> dgt_usuario), dgt_gestornome,
++      dgt_areas, dgt_status, dgt_dataenvio, dgt_observacao, dgt_ativo
++
++    Tabela dgt_orcamentolinha (Linha do orçamento)
++      dgt_planilha (pesquisa -> dgt_orcamentoplanilha), dgt_cenario,
++      dgt_grupo, dgt_codigo, dgt_conta, dgt_descricao, dgt_ordem,
++      dgt_jan ... dgt_dez (decimal, 2 casas), dgt_ativo
++
++  Os nomes DEVEM ser iguais aos de
++  src/webparts/portalTreinamentosWebPart/services/orcamento/esquemaOrcamento.ts
++
++  As duas tabelas são de propriedade de USUÁRIO (UserOwned). É isso que
++  permite que cada gestor veja somente a própria planilha: o gestor
++  recebe Ler no nível Usuário e o Administrador no nível Organização.
++
++  Opcional: informando -PapelGestores e/ou -PapelAdministradores (NOME
++  do perfil de segurança), o script já concede os privilégios.
++
++.PARAMETER UrlAmbiente
++  Endereço do ambiente. Ex.: https://suaorg.crm2.dynamics.com
++  (Power Apps > Configurações (engrenagem) > Detalhes da sessão > URL da instância)
++
++.PARAMETER Solucao
++  NOME (nome exclusivo) da solução, não o nome de exibição.
++  (Power Apps > Soluções > coluna "Nome")
++
++.PARAMETER PapelGestores
++  Opcional. Nome do perfil de segurança dos gestores
++  (ex.: "DGT Treinamentos - Gestores").
++
++.PARAMETER PapelAdministradores
++  Opcional. Nome do perfil de segurança dos administradores do portal
++  (ex.: "DGT Treinamentos - Administradores").
++
++.PARAMETER Token
++  Opcional. Token de acesso já obtido. Se não for informado, o script
++  usa o módulo Az.Accounts (Connect-AzAccount) para obter um.
++
++.EXAMPLE
++  .\criar-tabelas-orcamento.ps1 -UrlAmbiente https://suaorg.crm2.dynamics.com -Solucao DGTPortalConhecimentoTreinamentos
++
++.EXAMPLE
++  .\criar-tabelas-orcamento.ps1 -UrlAmbiente https://suaorg.crm2.dynamics.com -Solucao DGTPortalConhecimentoTreinamentos -PapelGestores "DGT Treinamentos - Gestores" -PapelAdministradores "DGT Treinamentos - Administradores"
++#>
++
++param(
++  [Parameter(Mandatory = $true)] [string] $UrlAmbiente,
++  [Parameter(Mandatory = $true)] [string] $Solucao,
++  [string] $PapelGestores,
++  [string] $PapelAdministradores,
++  [string] $Token
++)
++
++$ErrorActionPreference = 'Stop'
++
++$UrlAmbiente = $UrlAmbiente.TrimEnd('/')
++$Api = "$UrlAmbiente/api/data/v9.2"
++
++# ------------------------------------------------------------
++# Autenticação
++# ------------------------------------------------------------
++
++if (-not $Token) {
++
++  if (-not (Get-Module -ListAvailable -Name Az.Accounts)) {
++    Write-Host 'Instalando o módulo Az.Accounts (apenas para o seu usuário)...' -ForegroundColor Yellow
++    Install-Module Az.Accounts -Scope CurrentUser -Force -AllowClobber
++  }
++
++  Import-Module Az.Accounts
++
++  if (-not (Get-AzContext)) {
++    Connect-AzAccount | Out-Null
++  }
++
++  $resultadoToken = Get-AzAccessToken -ResourceUrl $UrlAmbiente
++
++  if ($resultadoToken.Token -is [System.Security.SecureString]) {
++    $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($resultadoToken.Token)
++    try { $Token = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
++    finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
++  }
++  else {
++    $Token = $resultadoToken.Token
++  }
++}
++
++$Cabecalhos = @{
++  'Authorization'              = "Bearer $Token"
++  'Accept'                     = 'application/json'
++  'OData-MaxVersion'           = '4.0'
++  'OData-Version'              = '4.0'
++  'MSCRM.SolutionUniqueName'   = $Solucao
++}
++
++function Invoke-Dv {
++  param([string] $Metodo, [string] $Caminho, $Corpo)
++
++  $parametros = @{
++    Method      = $Metodo
++    Uri         = "$Api/$Caminho"
++    Headers     = $Cabecalhos
++    ContentType = 'application/json; charset=utf-8'
++  }
++
++  if ($null -ne $Corpo) {
++    $json = $Corpo | ConvertTo-Json -Depth 30
++    $parametros.Body = [System.Text.Encoding]::UTF8.GetBytes($json)
++  }
++
++  Invoke-RestMethod @parametros
++}
++
++function Test-Existe {
++  param([string] $Caminho)
++  try {
++    Invoke-Dv -Metodo 'GET' -Caminho $Caminho | Out-Null
++    return $true
++  }
++  catch {
++    $status = $null
++    if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
++    if ($status -eq 404) { return $false }
++    throw
++  }
++}
++
++# ------------------------------------------------------------
++# Idioma base do ambiente (os rótulos precisam dele)
++# ------------------------------------------------------------
++
++$org = Invoke-Dv -Metodo 'GET' -Caminho 'organizations?$select=languagecode'
++$Idioma = [int]$org.value[0].languagecode
++Write-Host "Ambiente: $UrlAmbiente  |  Solução: $Solucao  |  Idioma base: $Idioma" -ForegroundColor Cyan
++
++function Rotulo {
++  param([string] $Texto)
++  @{
++    '@odata.type'   = 'Microsoft.Dynamics.CRM.Label'
++    LocalizedLabels = @(
++      @{
++        '@odata.type' = 'Microsoft.Dynamics.CRM.LocalizedLabel'
++        Label         = $Texto
++        LanguageCode  = $Idioma
++      }
++    )
++  }
++}
++
++# ------------------------------------------------------------
++# Criadores
++# ------------------------------------------------------------
++
++function New-Tabela {
++  param([string] $Schema, [string] $Nome, [string] $Plural, [string] $Descricao)
++
++  $logico = $Schema.ToLower()
++
++  if (Test-Existe "EntityDefinitions(LogicalName='$logico')?`$select=LogicalName") {
++    Write-Host "  = tabela $logico já existe"
++    return
++  }
++
++  Write-Host "  + criando tabela $logico..." -ForegroundColor Green
++
++  Invoke-Dv -Metodo 'POST' -Caminho 'EntityDefinitions' -Corpo @{
++    '@odata.type'          = 'Microsoft.Dynamics.CRM.EntityMetadata'
++    SchemaName             = $Schema
++    DisplayName            = Rotulo $Nome
++    DisplayCollectionName  = Rotulo $Plural
++    Description            = Rotulo $Descricao
++    OwnershipType          = 'UserOwned'
++    IsActivity             = $false
++    HasActivities          = $false
++    HasNotes               = $false
++    Attributes             = @(
++      @{
++        '@odata.type'  = 'Microsoft.Dynamics.CRM.StringAttributeMetadata'
++        SchemaName     = 'dgt_Name'
++        IsPrimaryName  = $true
++        RequiredLevel  = @{ Value = 'None' }
++        MaxLength      = 200
++        FormatName     = @{ Value = 'Text' }
++        DisplayName    = Rotulo 'Nome'
++      }
++    )
++  } | Out-Null
++}
++
++function New-Coluna {
++  param([string] $Tabela, [string] $Schema, [hashtable] $Corpo)
++
++  $logico = $Schema.ToLower()
++
++  if (Test-Existe "EntityDefinitions(LogicalName='$Tabela')/Attributes(LogicalName='$logico')?`$select=LogicalName") {
++    Write-Host "  = $Tabela.$logico já existe"
++    return
++  }
++
++  Write-Host "  + $Tabela.$logico" -ForegroundColor Green
++
++  $Corpo.SchemaName = $Schema
++  $Corpo.RequiredLevel = @{ Value = 'None' }
++
++  Invoke-Dv -Metodo 'POST' -Caminho "EntityDefinitions(LogicalName='$Tabela')/Attributes" -Corpo $Corpo | Out-Null
++}
++
++function New-Texto {
++  param([string] $Tabela, [string] $Schema, [string] $Nome, [int] $Tamanho)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.StringAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    MaxLength     = $Tamanho
++    FormatName    = @{ Value = 'Text' }
++  }
++}
++
++function New-TextoLongo {
++  param([string] $Tabela, [string] $Schema, [string] $Nome, [int] $Tamanho)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.MemoAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    MaxLength     = $Tamanho
++    Format        = 'TextArea'
++  }
++}
++
++function New-Inteiro {
++  param([string] $Tabela, [string] $Schema, [string] $Nome)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.IntegerAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    Format        = 'None'
++    MinValue      = -2147483648
++    MaxValue      = 2147483647
++  }
++}
++
++function New-SimNao {
++  param([string] $Tabela, [string] $Schema, [string] $Nome, [bool] $Padrao = $false)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.BooleanAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    DefaultValue  = $Padrao
++    OptionSet     = @{
++      '@odata.type'  = 'Microsoft.Dynamics.CRM.BooleanOptionSetMetadata'
++      OptionSetType  = 'Boolean'
++      TrueOption     = @{ Value = 1; Label = Rotulo 'Sim' }
++      FalseOption    = @{ Value = 0; Label = Rotulo 'Não' }
++    }
++  }
++}
++
++function New-DataHora {
++  param([string] $Tabela, [string] $Schema, [string] $Nome)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type'    = 'Microsoft.Dynamics.CRM.DateTimeAttributeMetadata'
++    DisplayName      = Rotulo $Nome
++    Format           = 'DateAndTime'
++    DateTimeBehavior = @{ Value = 'UserLocal' }
++  }
++}
++
++# Valor em reais: aceita negativos (estornos/receitas negativas).
++function New-Decimal {
++  param([string] $Tabela, [string] $Schema, [string] $Nome)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.DecimalAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    Precision     = 2
++    MinValue      = -100000000000
++    MaxValue      = 100000000000
++  }
++}
++
++function New-Lookup {
++  param([string] $Tabela, [string] $Schema, [string] $Nome, [string] $Referenciada, [string] $Relacionamento)
++
++  $logico = $Schema.ToLower()
++
++  if (Test-Existe "EntityDefinitions(LogicalName='$Tabela')/Attributes(LogicalName='$logico')?`$select=LogicalName") {
++    Write-Host "  = $Tabela.$logico já existe"
++    return
++  }
++
++  Write-Host "  + $Tabela.$logico (pesquisa -> $Referenciada)" -ForegroundColor Green
++
++  Invoke-Dv -Metodo 'POST' -Caminho 'RelationshipDefinitions' -Corpo @{
++    '@odata.type'        = 'Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata'
++    SchemaName           = $Relacionamento
++    ReferencedEntity     = $Referenciada
++    ReferencingEntity    = $Tabela
++    CascadeConfiguration = @{
++      Assign   = 'NoCascade'
++      Delete   = 'RemoveLink'
++      Merge    = 'NoCascade'
++      Reparent = 'NoCascade'
++      Share    = 'NoCascade'
++      Unshare  = 'NoCascade'
++    }
++    Lookup               = @{
++      '@odata.type' = 'Microsoft.Dynamics.CRM.LookupAttributeMetadata'
++      SchemaName    = $Schema
++      DisplayName   = Rotulo $Nome
++      RequiredLevel = @{ Value = 'None' }
++    }
++  } | Out-Null
++}
++
++# ------------------------------------------------------------
++# 1) Tabelas
++# ------------------------------------------------------------
++
++Write-Host "`n1) Tabelas" -ForegroundColor Cyan
++
++New-Tabela 'dgt_OrcamentoPlanilha' 'Planilha orçamentária' 'Planilhas orçamentárias' 'Planejamento orçamentário: uma planilha por gestor e por ano. Nunca é excluída pelo portal.'
++New-Tabela 'dgt_OrcamentoLinha'    'Linha do orçamento'    'Linhas do orçamento'    'Linha (conta) de uma planilha orçamentária, com os valores de janeiro a dezembro. Linha removida é desativada (histórico).'
++
++# ------------------------------------------------------------
++# 2) Colunas da planilha
++# ------------------------------------------------------------
++
++Write-Host "`n2) Colunas de dgt_orcamentoplanilha" -ForegroundColor Cyan
++
++$P = 'dgt_orcamentoplanilha'
++
++New-Inteiro    $P 'dgt_Ano'          'Ano'
++New-Lookup     $P 'dgt_Gestor'       'Gestor' 'dgt_usuario' 'dgt_usuario_dgt_orcamentoplanilha_gestor'
++New-Texto      $P 'dgt_GestorNome'   'Nome do gestor' 200
++New-Texto      $P 'dgt_Areas'        'Áreas' 400
++New-Texto      $P 'dgt_Status'       'Situação' 40
++New-DataHora   $P 'dgt_DataEnvio'    'Data de envio'
++New-TextoLongo $P 'dgt_Observacao'   'Observação' 4000
++New-SimNao     $P 'dgt_Ativo'        'Ativo' $true
++
++# ------------------------------------------------------------
++# 3) Colunas da linha
++# ------------------------------------------------------------
++
++Write-Host "`n3) Colunas de dgt_orcamentolinha" -ForegroundColor Cyan
++
++$L = 'dgt_orcamentolinha'
++
++New-Lookup     $L 'dgt_Planilha'     'Planilha' 'dgt_orcamentoplanilha' 'dgt_orcamentoplanilha_dgt_orcamentolinha'
++New-Texto      $L 'dgt_Cenario'      'Cenário' 40
++New-Texto      $L 'dgt_Grupo'        'Grupo (linha da DRE)' 200
++New-Texto      $L 'dgt_Codigo'       'Código da conta' 40
++New-Texto      $L 'dgt_Conta'        'Conta' 200
++New-Texto      $L 'dgt_Descricao'    'Descrição' 400
++New-Inteiro    $L 'dgt_Ordem'        'Ordem'
++
++$meses = @(
++  @('dgt_Jan', 'Janeiro'), @('dgt_Fev', 'Fevereiro'), @('dgt_Mar', 'Março'),
++  @('dgt_Abr', 'Abril'),   @('dgt_Mai', 'Maio'),      @('dgt_Jun', 'Junho'),
++  @('dgt_Jul', 'Julho'),   @('dgt_Ago', 'Agosto'),    @('dgt_Set', 'Setembro'),
++  @('dgt_Out', 'Outubro'), @('dgt_Nov', 'Novembro'),  @('dgt_Dez', 'Dezembro')
++)
++
++foreach ($mes in $meses) {
++  New-Decimal $L $mes[0] "$($mes[1]) (R$)"
++}
++
++New-SimNao     $L 'dgt_Ativo'        'Ativo' $true
++
++# ------------------------------------------------------------
++# 4) Publicação
++# ------------------------------------------------------------
++
++Write-Host "`n4) Publicando as tabelas..." -ForegroundColor Cyan
++
++Invoke-Dv -Metodo 'POST' -Caminho 'PublishXml' -Corpo @{
++  ParameterXml = '<importexportxml><entities><entity>dgt_orcamentoplanilha</entity><entity>dgt_orcamentolinha</entity></entities></importexportxml>'
++} | Out-Null
++
++# ------------------------------------------------------------
++# 5) Privilégios (opcional)
++#
++# Gestores:        Criar, Ler, Gravar, Acrescentar e Acrescentar a
++#                  no nível USUÁRIO (cada um só vê o que é seu).
++#                  Sem Excluir: linha removida é desativada.
++#                  + Acrescentar a (Organização) em dgt_usuario, para
++#                  gravar a pesquisa "Gestor".
++# Administradores: Criar, Ler, Gravar, Acrescentar e Acrescentar a
++#                  no nível ORGANIZAÇÃO (vê todas as planilhas).
++#                  Sem Excluir (histórico).
++# ------------------------------------------------------------
++
++function Get-PrivilegioId {
++  param([string] $Nome)
++  $resultado = Invoke-Dv -Metodo 'GET' -Caminho "privileges?`$select=privilegeid&`$filter=name eq '$Nome'"
++  if ($resultado.value.Count -eq 0) {
++    throw "Privilégio $Nome não encontrado. A tabela foi publicada?"
++  }
++  return $resultado.value[0].privilegeid
++}
++
++function Grant-Privilegios {
++  param([string] $NomePapel, [string] $Profundidade, [string[]] $Tabelas, [string[]] $Acoes)
++
++  $nomeFiltro = $NomePapel.Replace("'", "''")
++  $papeis = Invoke-Dv -Metodo 'GET' -Caminho "roles?`$select=roleid,name,_businessunitid_value&`$filter=name eq '$nomeFiltro' and _parentroleid_value eq null"
++
++  if ($papeis.value.Count -eq 0) {
++    Write-Host "  ! perfil de segurança '$NomePapel' não encontrado — conceda os privilégios manualmente." -ForegroundColor Yellow
++    return
++  }
++
++  $papel = $papeis.value[0]
++  $lista = @()
++
++  foreach ($tabela in $Tabelas) {
++    foreach ($acao in $Acoes) {
++      $lista += @{
++        PrivilegeId    = (Get-PrivilegioId "prv$acao$tabela")
++        Depth          = $Profundidade
++        BusinessUnitId = $papel._businessunitid_value
++      }
++    }
++  }
++
++  Invoke-Dv -Metodo 'POST' -Caminho "roles($($papel.roleid))/Microsoft.Dynamics.CRM.AddPrivilegesRole" -Corpo @{
++    Privileges = $lista
++  } | Out-Null
++
++  Write-Host "  + '$NomePapel': $($Acoes -join ', ') ($Profundidade) em $($Tabelas -join ', ')" -ForegroundColor Green
++}
++
++$tabelasOrcamento = @('dgt_orcamentoplanilha', 'dgt_orcamentolinha')
++$acoesOrcamento = @('Create', 'Read', 'Write', 'Append', 'AppendTo')
++
++if ($PapelGestores -or $PapelAdministradores) {
++  Write-Host "`n5) Privilégios" -ForegroundColor Cyan
++}
++
++if ($PapelGestores) {
++  Grant-Privilegios $PapelGestores 'Basic' $tabelasOrcamento $acoesOrcamento
++  Grant-Privilegios $PapelGestores 'Global' @('dgt_usuario') @('AppendTo')
++}
++
++if ($PapelAdministradores) {
++  Grant-Privilegios $PapelAdministradores 'Global' $tabelasOrcamento $acoesOrcamento
++  Grant-Privilegios $PapelAdministradores 'Global' @('dgt_usuario') @('AppendTo')
++}
++
++Write-Host "`nConcluído." -ForegroundColor Green
++Write-Host 'Próximos passos:' -ForegroundColor Green
++
++if (-not $PapelGestores -or -not $PapelAdministradores) {
++  Write-Host '  1. Perfis de segurança (Power Platform admin center > Ambiente > Configurações > Usuários + permissões > Perfis de segurança):'
++  Write-Host '       Gestores        -> dgt_orcamentoplanilha e dgt_orcamentolinha: Criar, Ler, Gravar, Acrescentar, Acrescentar a = USUÁRIO'
++  Write-Host '                          dgt_usuario: Acrescentar a = ORGANIZAÇÃO'
++  Write-Host '       Administradores -> as duas tabelas: Criar, Ler, Gravar, Acrescentar, Acrescentar a = ORGANIZAÇÃO'
++  Write-Host '       NÃO conceda Excluir (linha removida é desativada; o histórico fica).'
++  Write-Host '       NÃO conceda nada ao perfil dos Colaboradores.'
++}
++
++Write-Host '  2. (Recomendado) Ative a auditoria das duas tabelas (Propriedades da tabela > Auditar alterações nos dados).'
++Write-Host '  3. Gere o pacote (npm run build) e publique o .sppkg.'
+diff --git a/src/webparts/portalTreinamentosWebPart/components/PortalRouter.tsx b/src/webparts/portalTreinamentosWebPart/components/PortalRouter.tsx
+index e5a5666..6058c08 100644
+--- a/src/webparts/portalTreinamentosWebPart/components/PortalRouter.tsx
++++ b/src/webparts/portalTreinamentosWebPart/components/PortalRouter.tsx
+@@ -246,6 +246,9 @@ import ArquiteturaPage from
+ import RegistrosOportunidadePage from
+   '../pages/Arquitetura/RegistrosOportunidadePage';
+ 
++import PlanejamentoOrcamentarioPage from
++  '../pages/Orcamento/PlanejamentoOrcamentarioPage';
++
+ import LicitacoesTesteConexaoPage from
+   '../pages/Licitacoes/LicitacoesTesteConexaoPage';
+ 
+@@ -3135,6 +3138,19 @@ const PortalRouter:
+           />
+         );
+ 
++      // ========================================================
++      // PLANEJAMENTO ORÇAMENTÁRIO
++      // ========================================================
++
++      case 'planejamentoOrcamentario':
++
++        return (
++          <PlanejamentoOrcamentarioPage
++            dataverseService={props.dataverseService}
++            contexto={props.contextoAcesso}
++          />
++        );
++
+       case 'meuPerfil':
+ 
+         return (
+diff --git a/src/webparts/portalTreinamentosWebPart/components/PortalTreinamentos.tsx b/src/webparts/portalTreinamentosWebPart/components/PortalTreinamentos.tsx
+index 9f0a35d..b63ab81 100644
+--- a/src/webparts/portalTreinamentosWebPart/components/PortalTreinamentos.tsx
++++ b/src/webparts/portalTreinamentosWebPart/components/PortalTreinamentos.tsx
+@@ -3275,6 +3275,25 @@ const gestaoAreas =
+           : []
+       ),
+ 
++      // Planejamento orçamentário — Gestor e Administrador (o item
++      // some do menu para quem não pode acessar a rota).
++      {
++        label:
++          'Planejamento orçamentário',
++
++        icon:
++          'wallet' as IconeChave,
++
++        pagina:
++          'planejamentoOrcamentario',
++
++        modulo:
++          'outro',
++
++        novo:
++          true
++      },
++
+       {
+         label:
+           'Indicadores',
+diff --git a/src/webparts/portalTreinamentosWebPart/components/common/Icones.tsx b/src/webparts/portalTreinamentosWebPart/components/common/Icones.tsx
+index 7e0d72c..9a6ae44 100644
+--- a/src/webparts/portalTreinamentosWebPart/components/common/Icones.tsx
++++ b/src/webparts/portalTreinamentosWebPart/components/common/Icones.tsx
+@@ -44,7 +44,8 @@ export type IconeChave =
+   | 'building'
+   | 'grid'
+   | 'megaphone'
+-  | 'info';
++  | 'info'
++  | 'wallet';
+ 
+ export const Icones:
+   Record<IconeChave, React.FC> = {
+@@ -240,6 +241,16 @@ export const Icones:
+     </svg>
+   ),
+ 
++  // Planejamento orçamentário: carteira
++  wallet: () => (
++    <svg {...base}>
++      <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3" />
++      <rect x="4" y="8" width="16.5" height="11" rx="2" />
++      <path d="M20.5 12h-4a1.5 1.5 0 0 0 0 3h4" />
++      <circle cx="16.6" cy="13.5" r=".6" fill="currentColor" />
++    </svg>
++  ),
++
+   // Sobre a DGT: informação
+   info: () => (
+     <svg {...base}>
+diff --git a/src/webparts/portalTreinamentosWebPart/constants/routes.ts b/src/webparts/portalTreinamentosWebPart/constants/routes.ts
+index 1256815..2635eff 100644
+--- a/src/webparts/portalTreinamentosWebPart/constants/routes.ts
++++ b/src/webparts/portalTreinamentosWebPart/constants/routes.ts
+@@ -35,7 +35,9 @@ export type Pagina =
+   | 'usuariosAcessos'
+   // Arquitetura de Soluções (B.O.M.)
+   | 'arquitetura'
+-  | 'arquiteturaROs';
++  | 'arquiteturaROs'
++  // Planejamento orçamentário (Gestor e Administrador)
++  | 'planejamentoOrcamentario';
+ 
+ export const ROTAS = {
+   INICIO: 'inicio',
+@@ -71,6 +73,7 @@ export const ROTAS = {
+   USUARIOS_ACESSOS: 'usuariosAcessos',
+   ARQUITETURA: 'arquitetura',
+   ARQUITETURA_ROS: 'arquiteturaROs',
++  PLANEJAMENTO_ORCAMENTARIO: 'planejamentoOrcamentario',
+ } as const;
+ 
+ 
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/AdicionarLinhaModal.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/AdicionarLinhaModal.tsx
+new file mode 100644
+index 0000000..8f8395b
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/AdicionarLinhaModal.tsx
+@@ -0,0 +1,211 @@
++import * as React from 'react';
++
++import {
++  GRUPOS_ORCAMENTO,
++  IContaOrcamento,
++  PLANO_CONTAS
++} from '../../services/orcamento/planoContasOrcamento';
++
++import {
++  COR,
++  FONTE,
++  botao,
++  campo
++} from './orcamentoComum';
++
++// ============================================================
++// ADICIONAR LINHA — escolhe a conta no plano de contas
++//
++// A mesma conta pode entrar mais de uma vez (ex.: duas licenças de
++// software diferentes), cada uma com a sua descrição. O modal fica
++// aberto para incluir várias contas seguidas.
++// ============================================================
++
++export interface IAdicionarLinhaModalProps {
++  // Códigos já presentes na planilha (só para sinalizar).
++  codigosNaPlanilha: string[];
++  onAdicionar: (conta: IContaOrcamento, descricao: string) => void;
++  onFechar: () => void;
++}
++
++const normalizar = (valor: string): string =>
++  valor
++    .toLowerCase()
++    .normalize('NFD')
++    .replace(/[\u0300-\u036f]/g, '');
++
++const AdicionarLinhaModal: React.FC<IAdicionarLinhaModalProps> = (props) => {
++
++  const [busca, setBusca] = React.useState('');
++  const [grupo, setGrupo] = React.useState('');
++  const [descricao, setDescricao] = React.useState('');
++  const [ultimaIncluida, setUltimaIncluida] = React.useState('');
++
++  const resultados =
++    React.useMemo(() => {
++      const termo = normalizar(busca.trim());
++      return PLANO_CONTAS.filter(item =>
++        (!grupo || item.grupo === grupo) &&
++        (!termo ||
++          normalizar(item.conta).indexOf(termo) >= 0 ||
++          item.codigo.indexOf(termo) >= 0 ||
++          normalizar(item.grupo).indexOf(termo) >= 0)
++      );
++    }, [busca, grupo]);
++
++  const { onFechar } = props;
++
++  React.useEffect(() => {
++    const aoTeclar = (evento: KeyboardEvent): void => {
++      if (evento.key === 'Escape') {
++        onFechar();
++      }
++    };
++    document.addEventListener('keydown', aoTeclar);
++    return () => document.removeEventListener('keydown', aoTeclar);
++  }, [onFechar]);
++
++  const adicionar = (conta: IContaOrcamento): void => {
++    props.onAdicionar(conta, descricao.trim());
++    setUltimaIncluida(`${conta.codigo} ${conta.conta}`);
++    setDescricao('');
++  };
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-label="Adicionar linha ao orçamento"
++      onClick={props.onFechar}
++      style={{
++        position: 'fixed',
++        inset: 0,
++        background: 'rgba(15, 23, 42, .45)',
++        zIndex: 1000,
++        display: 'flex',
++        alignItems: 'center',
++        justifyContent: 'center',
++        padding: '16px',
++        fontFamily: FONTE
++      }}
++    >
++      <div
++        onClick={evento => evento.stopPropagation()}
++        style={{
++          background: '#FFFFFF',
++          borderRadius: '14px',
++          width: '100%',
++          maxWidth: '760px',
++          maxHeight: '88vh',
++          display: 'flex',
++          flexDirection: 'column',
++          boxShadow: '0 20px 50px rgba(15,23,42,.25)'
++        }}
++      >
++        <div style={{ padding: '18px 22px', borderBottom: `1px solid ${COR.borda}` }}>
++          <div style={{ fontSize: '18px', fontWeight: 700, color: COR.azul }}>
++            Adicionar linha
++          </div>
++          <div style={{ fontSize: '13px', color: COR.texto2, marginTop: '4px' }}>
++            Escolha a conta do plano de contas. Você pode incluir várias seguidas; os valores são preenchidos na tabela.
++          </div>
++        </div>
++
++        <div style={{ padding: '14px 22px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px' }}>
++          <input
++            type="search"
++            autoFocus
++            placeholder="Buscar por conta, código ou grupo..."
++            value={busca}
++            onChange={evento => setBusca(evento.target.value)}
++            style={campo}
++            aria-label="Buscar conta"
++          />
++          <select
++            value={grupo}
++            onChange={evento => setGrupo(evento.target.value)}
++            style={campo}
++            aria-label="Filtrar por grupo"
++          >
++            <option value="">Todos os grupos</option>
++            {GRUPOS_ORCAMENTO.map(item => (
++              <option key={item} value={item}>{item}</option>
++            ))}
++          </select>
++          <input
++            type="text"
++            placeholder="Descrição da linha (opcional) — ex.: Licença do sistema X"
++            value={descricao}
++            maxLength={400}
++            onChange={evento => setDescricao(evento.target.value)}
++            style={{ ...campo, gridColumn: '1 / -1' }}
++            aria-label="Descrição da linha"
++          />
++        </div>
++
++        <div style={{ overflowY: 'auto', padding: '0 22px', flex: 1 }}>
++          {resultados.length === 0 && (
++            <div style={{ padding: '24px 0', textAlign: 'center', color: COR.texto2, fontSize: '13px' }}>
++              Nenhuma conta encontrada.
++            </div>
++          )}
++          {resultados.map(item => {
++            const jaExiste = props.codigosNaPlanilha.indexOf(item.codigo) >= 0;
++            return (
++              <div
++                key={`${item.grupo}|${item.codigo}|${item.conta}`}
++                style={{
++                  display: 'flex',
++                  alignItems: 'center',
++                  gap: '12px',
++                  padding: '9px 0',
++                  borderBottom: `1px solid ${COR.borda}`
++                }}
++              >
++                <div style={{ flex: 1, minWidth: 0 }}>
++                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: COR.azul }}>
++                    {item.conta}
++                  </div>
++                  <div style={{ fontSize: '12px', color: COR.texto2 }}>
++                    {item.codigo} · {item.grupo}
++                    {jaExiste && (
++                      <span style={{ marginLeft: '8px', color: '#0F6CBD', fontWeight: 700 }}>
++                        já na planilha
++                      </span>
++                    )}
++                  </div>
++                </div>
++                <button
++                  type="button"
++                  onClick={() => adicionar(item)}
++                  style={botao(jaExiste ? 'secundario' : 'principal')}
++                >
++                  {jaExiste ? '+ Outra linha' : '+ Adicionar'}
++                </button>
++              </div>
++            );
++          })}
++        </div>
++
++        <div
++          style={{
++            padding: '14px 22px',
++            borderTop: `1px solid ${COR.borda}`,
++            display: 'flex',
++            alignItems: 'center',
++            gap: '12px'
++          }}
++        >
++          <div style={{ flex: 1, fontSize: '12.5px', color: '#107C10', fontWeight: 600 }}>
++            {ultimaIncluida ? `✓ Incluída: ${ultimaIncluida}` : ''}
++          </div>
++          <button type="button" onClick={props.onFechar} style={botao('secundario')}>
++            Concluir
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++};
++
++export default AdicionarLinhaModal;
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PlanejamentoOrcamentarioPage.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PlanejamentoOrcamentarioPage.tsx
+new file mode 100644
+index 0000000..096c10a
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PlanejamentoOrcamentarioPage.tsx
+@@ -0,0 +1,894 @@
++import * as React from 'react';
++
++import {
++  DataverseService
++} from '../../services/DataverseService';
++
++import {
++  IContextoAcesso
++} from '../../services/AutorizacaoService';
++
++import {
++  ILinhaOrcamento,
++  IPlanilhaOrcamento,
++  OrcamentoService,
++  arredondar,
++  novaChaveTemporaria,
++  mesesVazios,
++  totalLinha
++} from '../../services/orcamento/OrcamentoService';
++
++import {
++  STATUS_PLANILHA,
++  anoPadraoOrcamento
++} from '../../services/orcamento/esquemaOrcamento';
++
++import {
++  IContaOrcamento
++} from '../../services/orcamento/planoContasOrcamento';
++
++import TabelaOrcamento from './TabelaOrcamento';
++import AdicionarLinhaModal from './AdicionarLinhaModal';
++
++import {
++  COR,
++  CartaoNumero,
++  FONTE,
++  SeloStatus,
++  agruparLinhas,
++  baixarCsv,
++  botao,
++  cartao,
++  estiloAba,
++  formatarData,
++  formatarMoeda,
++  gerarCsvOrcamento,
++  nomeArquivoSeguro,
++  somar,
++  somarMeses
++} from './orcamentoComum';
++
++// ============================================================
++// PLANEJAMENTO ORÇAMENTÁRIO
++//
++// • "Minha planilha": cada gestor preenche a SUA planilha do ano
++//   (adiciona, altera e remove linhas). Ao terminar, envia; a
++//   planilha enviada fica somente leitura até o Administrador
++//   reabrir.
++// • "Todas as planilhas" (somente Administrador): lista de todas as
++//   planilhas do ano, consulta de cada uma, consolidado por grupo,
++//   exportação e reabertura.
++//
++// A rota só aparece para Gestor (global ou de área) e Administrador
++// (RoutePermissionService). A proteção dos dados está nas Security
++// Roles do Dataverse — ver scripts/dataverse/criar-tabelas-orcamento.ps1.
++// ============================================================
++
++export interface IPlanejamentoOrcamentarioPageProps {
++  dataverseService?: DataverseService;
++  contexto?: IContextoAcesso;
++}
++
++type Aba = 'minha' | 'todas';
++
++// Campos que contam como "alteração" de uma linha.
++const assinatura = (linha: ILinhaOrcamento): string =>
++  JSON.stringify([linha.descricao, linha.valores]);
++
++const mensagemErro = (erro: unknown): string =>
++  erro instanceof Error ? erro.message : String(erro);
++
++// Explica o erro mais comum (tabela ainda não criada / sem permissão).
++const explicarErro = (erro: unknown): string => {
++  const texto = mensagemErro(erro);
++  if (/dgt_orcamento/i.test(texto) && /(404|not found|does not exist|Could not find)/i.test(texto)) {
++    return 'As tabelas do Planejamento orçamentário ainda não existem no Dataverse. Execute o script scripts/dataverse/criar-tabelas-orcamento.ps1. Detalhe: ' + texto;
++  }
++  if (/(403|privilege|prvRead|prvCreate|prvWrite|prvAppend)/i.test(texto)) {
++    return 'Seu usuário não tem a permissão necessária nas tabelas do orçamento (Security Role). Fale com um administrador. Detalhe: ' + texto;
++  }
++  return texto;
++};
++
++const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps> = (props) => {
++
++  const { dataverseService, contexto } = props;
++
++  const ehAdmin = !!contexto && contexto.perfil === 'Administrador';
++
++  const servico =
++    React.useMemo(
++      () => (dataverseService ? new OrcamentoService(dataverseService) : undefined),
++      [dataverseService]
++    );
++
++  const anoInicial = anoPadraoOrcamento();
++  const anosDisponiveis = [anoInicial - 1, anoInicial, anoInicial + 1];
++
++  const [aba, setAba] = React.useState<Aba>('minha');
++  const [ano, setAno] = React.useState<number>(anoInicial);
++
++  // ---------------- Minha planilha ----------------
++  const [planilha, setPlanilha] = React.useState<IPlanilhaOrcamento | undefined>(undefined);
++  const [linhas, setLinhas] = React.useState<ILinhaOrcamento[]>([]);
++  const [originais, setOriginais] = React.useState<{ [id: string]: string }>({});
++  const [removidas, setRemovidas] = React.useState<ILinhaOrcamento[]>([]);
++  const [carregando, setCarregando] = React.useState(true);
++  const [salvando, setSalvando] = React.useState(false);
++  const [erro, setErro] = React.useState('');
++  const [aviso, setAviso] = React.useState('');
++  const [modalAberto, setModalAberto] = React.useState(false);
++
++  // ---------------- Todas (Administrador) ----------------
++  const [planilhas, setPlanilhas] = React.useState<IPlanilhaOrcamento[]>([]);
++  const [linhasTodas, setLinhasTodas] = React.useState<ILinhaOrcamento[]>([]);
++  const [carregandoTodas, setCarregandoTodas] = React.useState(false);
++  const [erroTodas, setErroTodas] = React.useState('');
++  const [planilhaAbertaId, setPlanilhaAbertaId] = React.useState('');
++
++  // ----------------------------------------------------------
++  // Alterações pendentes
++  // ----------------------------------------------------------
++
++  const novas = linhas.filter(linha => !linha.id);
++
++  const alteradas =
++    linhas.filter(linha => !!linha.id && originais[linha.id] !== assinatura(linha));
++
++  const removidasGravadas = removidas.filter(linha => !!linha.id);
++
++  const totalPendencias = novas.length + alteradas.length + removidasGravadas.length;
++
++  const chavesAlteradas =
++    novas.map(linha => linha.chave).concat(alteradas.map(linha => linha.chave));
++
++  const somenteLeitura = !planilha || planilha.status === STATUS_PLANILHA.enviada;
++
++  // Aviso do navegador ao fechar/recarregar com alterações não salvas.
++  const pendenciasRef = React.useRef(0);
++  pendenciasRef.current = totalPendencias;
++
++  React.useEffect(() => {
++    const antesDeSair = (evento: BeforeUnloadEvent): string | undefined => {
++      if (pendenciasRef.current > 0) {
++        evento.preventDefault();
++        evento.returnValue = '';
++        return '';
++      }
++      return undefined;
++    };
++    window.addEventListener('beforeunload', antesDeSair);
++    return () => window.removeEventListener('beforeunload', antesDeSair);
++  }, []);
++
++  const confirmarDescarte = (): boolean =>
++    pendenciasRef.current === 0 ||
++    window.confirm('Existem alterações não salvas na sua planilha. Deseja descartá-las?');
++
++  // ----------------------------------------------------------
++  // Carregamento
++  // ----------------------------------------------------------
++
++  const aplicarLinhasCarregadas = (lista: ILinhaOrcamento[]): void => {
++    const mapa: { [id: string]: string } = {};
++    lista.forEach(linha => {
++      if (linha.id) {
++        mapa[linha.id] = assinatura(linha);
++      }
++    });
++    setLinhas(lista);
++    setOriginais(mapa);
++    setRemovidas([]);
++  };
++
++  const carregarMinha = React.useCallback(async (): Promise<void> => {
++
++    if (!servico || !contexto) {
++      setCarregando(false);
++      return;
++    }
++
++    setCarregando(true);
++    setErro('');
++    setAviso('');
++
++    try {
++      const encontrada =
++        await servico.carregarPlanilhaDoGestor(ano, contexto.usuarioId);
++
++      setPlanilha(encontrada);
++
++      aplicarLinhasCarregadas(
++        encontrada ? await servico.carregarLinhas(encontrada.id) : []
++      );
++    } catch (falha) {
++      setErro(explicarErro(falha));
++      setPlanilha(undefined);
++      aplicarLinhasCarregadas([]);
++    } finally {
++      setCarregando(false);
++    }
++  }, [servico, contexto, ano]);
++
++  const carregarTodas = React.useCallback(async (): Promise<void> => {
++
++    if (!servico || !ehAdmin) {
++      return;
++    }
++
++    setCarregandoTodas(true);
++    setErroTodas('');
++
++    try {
++      const lista = await servico.listarPlanilhas(ano);
++      setPlanilhas(lista);
++      setLinhasTodas(
++        lista.length > 0
++          ? await servico.carregarLinhasDePlanilhas(lista.map(item => item.id))
++          : []
++      );
++    } catch (falha) {
++      setErroTodas(explicarErro(falha));
++      setPlanilhas([]);
++      setLinhasTodas([]);
++    } finally {
++      setCarregandoTodas(false);
++    }
++  }, [servico, ehAdmin, ano]);
++
++  React.useEffect(() => {
++    carregarMinha().catch(() => undefined);
++  }, [carregarMinha]);
++
++  React.useEffect(() => {
++    if (aba === 'todas') {
++      carregarTodas().catch(() => undefined);
++    }
++  }, [aba, carregarTodas]);
++
++  // ----------------------------------------------------------
++  // Ações — Minha planilha
++  // ----------------------------------------------------------
++
++  const iniciarPlanilha = async (): Promise<void> => {
++    if (!servico || !contexto) {
++      return;
++    }
++    setSalvando(true);
++    setErro('');
++    try {
++      const criada = await servico.criarPlanilha(ano, contexto);
++      setPlanilha(criada);
++      aplicarLinhasCarregadas([]);
++      setAviso(`Planilha de ${ano} criada. Use "Adicionar linha" para incluir as contas.`);
++    } catch (falha) {
++      setErro(explicarErro(falha));
++    } finally {
++      setSalvando(false);
++    }
++  };
++
++  const proximaOrdem = (): number =>
++    linhas.reduce((maior, linha) => Math.max(maior, linha.ordem), 0) + 10;
++
++  const adicionarLinha = (conta: IContaOrcamento, descricao: string): void => {
++    if (!planilha) {
++      return;
++    }
++    const nova: ILinhaOrcamento = {
++      chave: novaChaveTemporaria(),
++      planilhaId: planilha.id,
++      grupo: conta.grupo,
++      codigo: conta.codigo,
++      conta: conta.conta,
++      descricao,
++      ordem: proximaOrdem(),
++      valores: mesesVazios()
++    };
++    setLinhas(atual => atual.concat([nova]));
++    setAviso('');
++  };
++
++  const alterarLinha = (
++    chave: string,
++    alterar: (linha: ILinhaOrcamento) => ILinhaOrcamento
++  ): void => {
++    setLinhas(atual => atual.map(linha => (linha.chave === chave ? alterar(linha) : linha)));
++    setAviso('');
++  };
++
++  const alterarValor = (chave: string, mes: number, valor: number): void =>
++    alterarLinha(chave, linha => {
++      const valores = linha.valores.slice();
++      valores[mes] = arredondar(valor);
++      return { ...linha, valores };
++    });
++
++  const colarValores = (chave: string, mesInicial: number, colados: number[]): void =>
++    alterarLinha(chave, linha => {
++      const valores = linha.valores.slice();
++      colados.forEach((valor, deslocamento) => {
++        const mes = mesInicial + deslocamento;
++        if (mes < 12) {
++          valores[mes] = arredondar(valor);
++        }
++      });
++      return { ...linha, valores };
++    });
++
++  const repetirJaneiro = (chave: string): void =>
++    alterarLinha(chave, linha => ({
++      ...linha,
++      valores: linha.valores.map(() => linha.valores[0])
++    }));
++
++  const alterarDescricao = (chave: string, descricao: string): void =>
++    alterarLinha(chave, linha => ({ ...linha, descricao }));
++
++  const removerLinha = (chave: string): void => {
++    const linha = linhas.filter(item => item.chave === chave)[0];
++    if (!linha) {
++      return;
++    }
++    const temValor = totalLinha(linha) !== 0;
++    if (
++      temValor &&
++      !window.confirm(`Remover a linha "${linha.codigo} ${linha.conta}"? Ela some da planilha ao salvar (o registro fica no histórico).`)
++    ) {
++      return;
++    }
++    setLinhas(atual => atual.filter(item => item.chave !== chave));
++    if (linha.id) {
++      setRemovidas(atual => atual.concat([linha]));
++    }
++    setAviso('');
++  };
++
++  const descartar = (): void => {
++    if (!confirmarDescarte()) {
++      return;
++    }
++    carregarMinha().catch(() => undefined);
++  };
++
++  const salvar = async (): Promise<boolean> => {
++
++    if (!servico || !planilha || totalPendencias === 0) {
++      return true;
++    }
++
++    setSalvando(true);
++    setErro('');
++    setAviso('');
++
++    try {
++      const resultado =
++        await servico.salvarAlteracoes(planilha.id, {
++          novas,
++          alteradas,
++          removidas: removidasGravadas
++        });
++
++      // Recarrega do Dataverse: o que aparece é o que foi gravado.
++      await carregarMinha();
++
++      if (resultado.falhas.length > 0) {
++        setErro(
++          `${resultado.gravadas} alteração(ões) gravada(s), ${resultado.falhas.length} com erro:\n` +
++          resultado.falhas.join('\n')
++        );
++        return false;
++      }
++
++      setAviso(`✓ ${resultado.gravadas} alteração(ões) salva(s).`);
++      return true;
++    } catch (falha) {
++      setErro(explicarErro(falha));
++      return false;
++    } finally {
++      setSalvando(false);
++    }
++  };
++
++  const enviar = async (): Promise<void> => {
++
++    if (!servico || !planilha) {
++      return;
++    }
++
++    if (linhas.length === 0) {
++      setErro('Inclua pelo menos uma linha antes de enviar a planilha.');
++      return;
++    }
++
++    if (!window.confirm(`Enviar a planilha de ${ano}? Depois de enviada, ela fica somente leitura. Para alterar, será preciso pedir ao administrador para reabrir.`)) {
++      return;
++    }
++
++    const salvou = await salvar();
++
++    if (!salvou) {
++      return;
++    }
++
++    setSalvando(true);
++    try {
++      await servico.enviarPlanilha(planilha.id);
++      await carregarMinha();
++      setAviso(`✓ Planilha de ${ano} enviada.`);
++    } catch (falha) {
++      setErro(explicarErro(falha));
++    } finally {
++      setSalvando(false);
++    }
++  };
++
++  const exportarMinha = (): void => {
++    if (!planilha) {
++      return;
++    }
++    baixarCsv(
++      `${nomeArquivoSeguro(`Orcamento_${ano}_${planilha.gestorNome}`)}.csv`,
++      gerarCsvOrcamento(ano, linhas, false)
++    );
++  };
++
++  // ----------------------------------------------------------
++  // Ações — Administrador
++  // ----------------------------------------------------------
++
++  const reabrir = async (item: IPlanilhaOrcamento): Promise<void> => {
++    if (!servico) {
++      return;
++    }
++    if (!window.confirm(`Reabrir a planilha de ${item.gestorNome}? O gestor poderá alterá-la de novo.`)) {
++      return;
++    }
++    try {
++      await servico.reabrirPlanilha(item.id);
++      await carregarTodas();
++      if (planilha && planilha.id === item.id) {
++        await carregarMinha();
++      }
++    } catch (falha) {
++      setErroTodas(explicarErro(falha));
++    }
++  };
++
++  const exportarConsolidado = (): void => {
++    baixarCsv(
++      `Orcamento_${ano}_consolidado.csv`,
++      gerarCsvOrcamento(ano, linhasTodas, true)
++    );
++  };
++
++  // ----------------------------------------------------------
++  // Troca de ano / aba
++  // ----------------------------------------------------------
++
++  const trocarAno = (novoAno: number): void => {
++    if (novoAno === ano || !confirmarDescarte()) {
++      return;
++    }
++    setPlanilhaAbertaId('');
++    setAno(novoAno);
++  };
++
++  const trocarAba = (nova: Aba): void => {
++    setPlanilhaAbertaId('');
++    setAba(nova);
++  };
++
++  // ----------------------------------------------------------
++  // Render
++  // ----------------------------------------------------------
++
++  if (!dataverseService || !contexto) {
++    return (
++      <div style={{ ...cartao, fontFamily: FONTE, color: COR.texto2 }}>
++        Carregando as permissões do usuário...
++      </div>
++    );
++  }
++
++  if (!contexto.usuarioId) {
++    return (
++      <div style={{ ...cartao, fontFamily: FONTE, color: COR.perigo }}>
++        Seu usuário não está cadastrado no portal (tabela dgt_usuario). Peça a um administrador para cadastrá-lo em Usuários e acessos.
++      </div>
++    );
++  }
++
++  const totaisMinha = somarMeses(linhas);
++  const totalMinha = somar(totaisMinha);
++
++  const renderMensagens = (textoErro: string): React.ReactNode => (
++    <>
++      {textoErro && (
++        <div style={{ ...cartao, background: '#FDE7E9', borderColor: '#F3C1C1', color: COR.perigo, whiteSpace: 'pre-line', fontSize: '13px' }}>
++          {textoErro}
++        </div>
++      )}
++      {aviso && aba === 'minha' && (
++        <div style={{ ...cartao, background: '#E7F6EC', borderColor: '#B7E1C1', color: '#107C10', fontSize: '13px', fontWeight: 600 }}>
++          {aviso}
++        </div>
++      )}
++    </>
++  );
++
++  const renderMinha = (): React.ReactNode => {
++
++    if (carregando) {
++      return <div style={{ ...cartao, color: COR.texto2 }}>Carregando a sua planilha de {ano}...</div>;
++    }
++
++    if (!planilha) {
++      return (
++        <>
++          {renderMensagens(erro)}
++          <div style={{ ...cartao, textAlign: 'center', padding: '36px 20px' }}>
++            <div style={{ fontSize: '17px', fontWeight: 700, color: COR.azul }}>
++              Você ainda não iniciou o orçamento de {ano}
++            </div>
++            <div style={{ fontSize: '13.5px', color: COR.texto2, margin: '8px auto 18px', maxWidth: '520px' }}>
++              A planilha é sua: só você e os administradores conseguem vê-la. Depois de criada, inclua as contas e preencha os valores mês a mês.
++            </div>
++            <button type="button" onClick={() => { iniciarPlanilha().catch(() => undefined); }} disabled={salvando} style={botao('principal', salvando)}>
++              {salvando ? 'Criando...' : `Iniciar planilha de ${ano}`}
++            </button>
++          </div>
++        </>
++      );
++    }
++
++    const maiorMes =
++      totaisMinha.reduce((maior, valor, indice) => (valor > totaisMinha[maior] ? indice : maior), 0);
++
++    return (
++      <>
++        {renderMensagens(erro)}
++
++        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
++          <CartaoNumero titulo="Total anual" valor={formatarMoeda(totalMinha)} detalhe={`${linhas.length} linha(s)`} />
++          <CartaoNumero titulo="Média mensal" valor={formatarMoeda(arredondar(totalMinha / 12))} />
++          <CartaoNumero
++            titulo="Mês de maior valor"
++            valor={totalMinha ? formatarMoeda(totaisMinha[maiorMes]) : '—'}
++            detalhe={totalMinha ? ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][maiorMes] : undefined}
++          />
++          <div style={{ ...cartao, marginBottom: 0, flex: '1 1 180px', minWidth: '180px' }}>
++            <div style={{ fontSize: '12px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px' }}>Situação</div>
++            <div style={{ marginTop: '8px' }}><SeloStatus status={planilha.status} /></div>
++            {planilha.status === STATUS_PLANILHA.enviada && (
++              <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '6px' }}>Enviada em {formatarData(planilha.dataEnvio)}</div>
++            )}
++          </div>
++        </div>
++
++        {planilha.status === STATUS_PLANILHA.enviada && (
++          <div style={{ ...cartao, background: '#E8F2FF', borderColor: '#BBD6F5', color: '#0F4C81', fontSize: '13px' }}>
++            Esta planilha já foi enviada e está somente para consulta. Para alterar, peça a um administrador para reabri-la.
++          </div>
++        )}
++
++        <div
++          style={{
++            display: 'flex',
++            flexWrap: 'wrap',
++            alignItems: 'center',
++            gap: '8px',
++            marginBottom: '12px'
++          }}
++        >
++          {!somenteLeitura && (
++            <button type="button" onClick={() => setModalAberto(true)} disabled={salvando} style={botao('principal', salvando)}>
++              + Adicionar linha
++            </button>
++          )}
++          {!somenteLeitura && (
++            <button
++              type="button"
++              onClick={() => { salvar().catch(() => undefined); }}
++              disabled={salvando || totalPendencias === 0}
++              style={botao('principal', salvando || totalPendencias === 0)}
++            >
++              {salvando ? 'Salvando...' : `Salvar alterações${totalPendencias > 0 ? ` (${totalPendencias})` : ''}`}
++            </button>
++          )}
++          {!somenteLeitura && totalPendencias > 0 && (
++            <button type="button" onClick={descartar} disabled={salvando} style={botao('secundario', salvando)}>
++              Descartar
++            </button>
++          )}
++          <div style={{ flex: 1 }} />
++          <button type="button" onClick={exportarMinha} disabled={linhas.length === 0} style={botao('secundario', linhas.length === 0)}>
++            Exportar CSV
++          </button>
++          {!somenteLeitura && (
++            <button
++              type="button"
++              onClick={() => { enviar().catch(() => undefined); }}
++              disabled={salvando || linhas.length === 0}
++              style={botao('secundario', salvando || linhas.length === 0)}
++              title="Conclui o preenchimento. A planilha fica somente leitura."
++            >
++              Enviar planilha
++            </button>
++          )}
++        </div>
++
++        {linhas.length === 0 ? (
++          <div style={{ ...cartao, textAlign: 'center', color: COR.texto2, fontSize: '13.5px', padding: '30px 20px' }}>
++            Nenhuma linha na planilha. Clique em <strong>+ Adicionar linha</strong> para escolher as contas.
++          </div>
++        ) : (
++          <>
++            {!somenteLeitura && (
++              <div style={{ fontSize: '12px', color: COR.texto2, marginBottom: '8px' }}>
++                Dica: digite os valores (ex.: 1.500,00) ou cole uma linha copiada do Excel na célula de janeiro. O botão ⇉ repete o valor de janeiro em todos os meses.
++              </div>
++            )}
++            <TabelaOrcamento
++              linhas={linhas}
++              ano={ano}
++              somenteLeitura={somenteLeitura}
++              chavesAlteradas={chavesAlteradas}
++              onAlterarValor={alterarValor}
++              onColarValores={colarValores}
++              onAlterarDescricao={alterarDescricao}
++              onRepetirJaneiro={repetirJaneiro}
++              onRemover={removerLinha}
++            />
++          </>
++        )}
++
++        {modalAberto && (
++          <AdicionarLinhaModal
++            codigosNaPlanilha={linhas.map(linha => linha.codigo)}
++            onAdicionar={adicionarLinha}
++            onFechar={() => setModalAberto(false)}
++          />
++        )}
++      </>
++    );
++  };
++
++  const renderTodas = (): React.ReactNode => {
++
++    if (carregandoTodas) {
++      return <div style={{ ...cartao, color: COR.texto2 }}>Carregando as planilhas de {ano}...</div>;
++    }
++
++    const aberta = planilhas.filter(item => item.id === planilhaAbertaId)[0];
++
++    // Consulta de uma planilha (somente leitura).
++    if (aberta) {
++      const linhasDaAberta = linhasTodas.filter(linha => linha.planilhaId === aberta.id);
++      return (
++        <>
++          {renderMensagens(erroTodas)}
++          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
++            <button type="button" onClick={() => setPlanilhaAbertaId('')} style={botao('secundario')}>
++              ← Voltar
++            </button>
++            <div style={{ flex: 1, minWidth: '200px' }}>
++              <div style={{ fontSize: '17px', fontWeight: 700, color: COR.azul }}>{aberta.gestorNome}</div>
++              <div style={{ fontSize: '12.5px', color: COR.texto2 }}>
++                {aberta.areas || 'Sem área informada'} · atualizada em {formatarData(aberta.alteradoEm)}
++              </div>
++            </div>
++            <SeloStatus status={aberta.status} />
++            {aberta.status === STATUS_PLANILHA.enviada && (
++              <button type="button" onClick={() => { reabrir(aberta).catch(() => undefined); }} style={botao('secundario')}>
++                Reabrir
++              </button>
++            )}
++            <button
++              type="button"
++              onClick={() =>
++                baixarCsv(
++                  `${nomeArquivoSeguro(`Orcamento_${ano}_${aberta.gestorNome}`)}.csv`,
++                  gerarCsvOrcamento(ano, linhasDaAberta, false)
++                )
++              }
++              disabled={linhasDaAberta.length === 0}
++              style={botao('secundario', linhasDaAberta.length === 0)}
++            >
++              Exportar CSV
++            </button>
++          </div>
++          {linhasDaAberta.length === 0 ? (
++            <div style={{ ...cartao, textAlign: 'center', color: COR.texto2 }}>Esta planilha ainda não tem linhas.</div>
++          ) : (
++            <TabelaOrcamento linhas={linhasDaAberta} ano={ano} somenteLeitura={true} />
++          )}
++        </>
++      );
++    }
++
++    const totalConsolidado = somar(somarMeses(linhasTodas));
++    const enviadas = planilhas.filter(item => item.status === STATUS_PLANILHA.enviada).length;
++    const grupos = agruparLinhas(linhasTodas);
++
++    const cabecalho: React.CSSProperties = {
++      textAlign: 'left',
++      padding: '8px 10px',
++      fontSize: '12px',
++      color: COR.texto2,
++      fontWeight: 700,
++      textTransform: 'uppercase',
++      borderBottom: `1px solid ${COR.borda}`,
++      whiteSpace: 'nowrap'
++    };
++
++    const celula: React.CSSProperties = {
++      padding: '10px',
++      fontSize: '13.5px',
++      color: COR.azul,
++      borderBottom: `1px solid ${COR.borda}`
++    };
++
++    return (
++      <>
++        {renderMensagens(erroTodas)}
++
++        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
++          <CartaoNumero titulo="Planilhas" valor={String(planilhas.length)} detalhe={`${enviadas} enviada(s)`} />
++          <CartaoNumero titulo="Em preenchimento" valor={String(planilhas.length - enviadas)} />
++          <CartaoNumero titulo="Total consolidado" valor={formatarMoeda(totalConsolidado)} detalhe={`Ano ${ano}`} />
++        </div>
++
++        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
++          <button type="button" onClick={() => { carregarTodas().catch(() => undefined); }} style={botao('secundario')}>
++            Atualizar
++          </button>
++          <div style={{ flex: 1 }} />
++          <button type="button" onClick={exportarConsolidado} disabled={planilhas.length === 0} style={botao('principal', planilhas.length === 0)}>
++            Exportar consolidado (CSV)
++          </button>
++        </div>
++
++        <div style={{ ...cartao, padding: 0, overflowX: 'auto' }}>
++          {planilhas.length === 0 ? (
++            <div style={{ padding: '28px', textAlign: 'center', color: COR.texto2, fontSize: '13.5px' }}>
++              Nenhum gestor iniciou a planilha de {ano} ainda.
++            </div>
++          ) : (
++            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FONTE }}>
++              <thead>
++                <tr>
++                  <th style={cabecalho}>Gestor</th>
++                  <th style={cabecalho}>Áreas</th>
++                  <th style={cabecalho}>Situação</th>
++                  <th style={{ ...cabecalho, textAlign: 'right' }}>Linhas</th>
++                  <th style={{ ...cabecalho, textAlign: 'right' }}>Total anual</th>
++                  <th style={cabecalho}>Atualizada em</th>
++                  <th style={cabecalho} />
++                </tr>
++              </thead>
++              <tbody>
++                {planilhas.map(item => {
++                  const daPlanilha = linhasTodas.filter(linha => linha.planilhaId === item.id);
++                  return (
++                    <tr key={item.id}>
++                      <td style={{ ...celula, fontWeight: 600 }}>{item.gestorNome || '—'}</td>
++                      <td style={{ ...celula, color: COR.texto2 }}>{item.areas || '—'}</td>
++                      <td style={celula}><SeloStatus status={item.status} /></td>
++                      <td style={{ ...celula, textAlign: 'right' }}>{daPlanilha.length}</td>
++                      <td style={{ ...celula, textAlign: 'right', fontWeight: 700 }}>
++                        {formatarMoeda(somar(daPlanilha.map(linha => totalLinha(linha))))}
++                      </td>
++                      <td style={{ ...celula, color: COR.texto2 }}>{formatarData(item.alteradoEm)}</td>
++                      <td style={{ ...celula, textAlign: 'right', whiteSpace: 'nowrap' }}>
++                        <button type="button" onClick={() => setPlanilhaAbertaId(item.id)} style={{ ...botao('secundario'), marginRight: '6px' }}>
++                          Ver
++                        </button>
++                        {item.status === STATUS_PLANILHA.enviada && (
++                          <button type="button" onClick={() => { reabrir(item).catch(() => undefined); }} style={botao('secundario')}>
++                            Reabrir
++                          </button>
++                        )}
++                      </td>
++                    </tr>
++                  );
++                })}
++              </tbody>
++            </table>
++          )}
++        </div>
++
++        {grupos.length > 0 && (
++          <div style={{ ...cartao, padding: 0, overflowX: 'auto' }}>
++            <div style={{ padding: '14px 16px', fontSize: '15px', fontWeight: 700, color: COR.azul, borderBottom: `1px solid ${COR.borda}` }}>
++              Consolidado por grupo
++            </div>
++            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FONTE }}>
++              <thead>
++                <tr>
++                  <th style={cabecalho}>Grupo</th>
++                  <th style={{ ...cabecalho, textAlign: 'right' }}>Total anual</th>
++                  <th style={{ ...cabecalho, textAlign: 'right' }}>% do total</th>
++                </tr>
++              </thead>
++              <tbody>
++                {grupos.map(item => (
++                  <tr key={item.grupo}>
++                    <td style={celula}>{item.grupo}</td>
++                    <td style={{ ...celula, textAlign: 'right', fontWeight: 600 }}>{formatarMoeda(item.total)}</td>
++                    <td style={{ ...celula, textAlign: 'right', color: COR.texto2 }}>
++                      {totalConsolidado ? `${((item.total / totalConsolidado) * 100).toFixed(1).replace('.', ',')}%` : '—'}
++                    </td>
++                  </tr>
++                ))}
++              </tbody>
++            </table>
++          </div>
++        )}
++      </>
++    );
++  };
++
++  return (
++    <section style={{ fontFamily: FONTE }}>
++
++      {/* Cabeçalho */}
++      <div
++        style={{
++          background: COR.azul,
++          color: '#FFFFFF',
++          borderRadius: '14px',
++          padding: '22px 24px',
++          marginBottom: '16px',
++          display: 'flex',
++          flexWrap: 'wrap',
++          alignItems: 'center',
++          gap: '16px'
++        }}
++      >
++        <div style={{ flex: 1, minWidth: '240px' }}>
++          <div style={{ fontSize: '12px', fontWeight: 700, color: COR.ciano, textTransform: 'uppercase', letterSpacing: '.6px' }}>
++            Gestão
++          </div>
++          <div style={{ fontSize: '22px', fontWeight: 700, marginTop: '4px' }}>
++            Planejamento orçamentário
++          </div>
++          <div style={{ fontSize: '13.5px', opacity: 0.85, marginTop: '4px' }}>
++            {ehAdmin
++              ? 'Preencha a sua planilha e acompanhe as planilhas de todos os gestores.'
++              : 'Preencha o orçamento da sua área mês a mês. Só você e os administradores veem esta planilha.'}
++          </div>
++        </div>
++        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600 }}>
++          Ano
++          <select
++            value={ano}
++            onChange={evento => trocarAno(Number(evento.target.value))}
++            style={{ padding: '7px 10px', borderRadius: '6px', border: 0, fontSize: '14px', fontWeight: 700, color: COR.azul, fontFamily: FONTE }}
++            aria-label="Ano do orçamento"
++          >
++            {anosDisponiveis.map(item => (
++              <option key={item} value={item}>{item}</option>
++            ))}
++          </select>
++        </label>
++      </div>
++
++      {/* Abas */}
++      {ehAdmin && (
++        <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '16px', overflowX: 'auto' }}>
++          <button type="button" role="tab" aria-selected={aba === 'minha'} onClick={() => trocarAba('minha')} style={estiloAba(aba === 'minha')}>
++            Minha planilha
++          </button>
++          <button type="button" role="tab" aria-selected={aba === 'todas'} onClick={() => trocarAba('todas')} style={estiloAba(aba === 'todas')}>
++            Todas as planilhas
++          </button>
++        </div>
++      )}
++
++      {aba === 'minha' || !ehAdmin ? renderMinha() : renderTodas()}
++    </section>
++  );
++};
++
++export default PlanejamentoOrcamentarioPage;
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TabelaOrcamento.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TabelaOrcamento.tsx
+new file mode 100644
+index 0000000..4b908dc
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TabelaOrcamento.tsx
+@@ -0,0 +1,391 @@
++import * as React from 'react';
++
++import {
++  ILinhaOrcamento,
++  totalLinha
++} from '../../services/orcamento/OrcamentoService';
++
++import {
++  NOMES_MESES
++} from '../../services/orcamento/esquemaOrcamento';
++
++import {
++  COR,
++  FONTE,
++  agruparLinhas,
++  converterValor,
++  formatarValor,
++  somar,
++  somarMeses
++} from './orcamentoComum';
++
++// ============================================================
++// TABELA DO ORÇAMENTO (Conta × Jan..Dez × Total)
++//
++// • Linhas agrupadas pelo grupo da DRE, com subtotal por grupo e
++//   total geral no rodapé.
++// • Valores aceitam "1.234,56" ou "1234,56".
++// • Colar uma linha copiada do Excel (valores separados por TAB)
++//   preenche os meses a partir da célula onde colou.
++// • Em somente leitura (planilha enviada ou visão do Administrador)
++//   os campos viram texto.
++// ============================================================
++
++export interface ITabelaOrcamentoProps {
++  linhas: ILinhaOrcamento[];
++  somenteLeitura: boolean;
++  ano: number;
++  // Chaves das linhas com alteração ainda não salva (destaque).
++  chavesAlteradas?: string[];
++  onAlterarValor?: (chave: string, mes: number, valor: number) => void;
++  onColarValores?: (chave: string, mesInicial: number, valores: number[]) => void;
++  onAlterarDescricao?: (chave: string, descricao: string) => void;
++  onRepetirJaneiro?: (chave: string) => void;
++  onRemover?: (chave: string) => void;
++}
++
++const LARGURA_CONTA = 300;
++const LARGURA_MES = 104;
++const LARGURA_TOTAL = 120;
++
++const celula: React.CSSProperties = {
++  padding: '6px 8px',
++  borderBottom: `1px solid ${COR.borda}`,
++  fontSize: '13px',
++  color: COR.azul,
++  fontFamily: FONTE,
++  whiteSpace: 'nowrap'
++};
++
++const celulaNumero: React.CSSProperties = {
++  ...celula,
++  textAlign: 'right',
++  width: `${LARGURA_MES}px`,
++  minWidth: `${LARGURA_MES}px`
++};
++
++// Primeira coluna fixa ao rolar para o lado.
++const colunaFixa = (fundo: string): React.CSSProperties => ({
++  position: 'sticky',
++  left: 0,
++  zIndex: 1,
++  background: fundo,
++  width: `${LARGURA_CONTA}px`,
++  minWidth: `${LARGURA_CONTA}px`,
++  maxWidth: `${LARGURA_CONTA}px`,
++  boxShadow: `1px 0 0 ${COR.borda}`
++});
++
++// ------------------------------------------------------------
++// Campo de valor: mostra formatado; ao focar, edita o número.
++// ------------------------------------------------------------
++
++interface ICampoValorProps {
++  valor: number;
++  rotulo: string;
++  onConfirmar: (valor: number) => void;
++  onColar?: (valores: number[]) => void;
++}
++
++const CampoValor: React.FC<ICampoValorProps> = (props) => {
++
++  const [editando, setEditando] = React.useState(false);
++  const [textoCampo, setTextoCampo] = React.useState('');
++  const [invalido, setInvalido] = React.useState(false);
++
++  const confirmar = (): void => {
++    const convertido = converterValor(textoCampo);
++    if (isNaN(convertido)) {
++      setInvalido(true);
++      return;
++    }
++    setInvalido(false);
++    setEditando(false);
++    if (convertido !== props.valor) {
++      props.onConfirmar(convertido);
++    }
++  };
++
++  const aoColar = (evento: React.ClipboardEvent<HTMLInputElement>): void => {
++    if (!props.onColar) {
++      return;
++    }
++    const colado = evento.clipboardData.getData('text') || '';
++    // Só trata colagem de várias células (linha do Excel).
++    if (colado.indexOf('\t') < 0) {
++      return;
++    }
++    evento.preventDefault();
++    const valores =
++      colado
++        .replace(/\r?\n$/, '')
++        .split(/\r?\n/)[0]
++        .split('\t')
++        .map(parte => converterValor(parte));
++    if (valores.some(valor => isNaN(valor))) {
++      setInvalido(true);
++      return;
++    }
++    setEditando(false);
++    setInvalido(false);
++    props.onColar(valores);
++  };
++
++  return (
++    <input
++      type="text"
++      inputMode="decimal"
++      aria-label={props.rotulo}
++      title={invalido ? 'Valor inválido. Use, por exemplo, 1.234,56' : props.rotulo}
++      value={editando ? textoCampo : (props.valor ? formatarValor(props.valor) : '')}
++      placeholder="0,00"
++      onFocus={evento => {
++        setEditando(true);
++        setTextoCampo(props.valor ? formatarValor(props.valor) : '');
++        const alvo = evento.currentTarget;
++        window.setTimeout(() => alvo.select(), 0);
++      }}
++      onChange={evento => {
++        setTextoCampo(evento.target.value);
++        setInvalido(false);
++      }}
++      onBlur={confirmar}
++      onPaste={aoColar}
++      onKeyDown={evento => {
++        if (evento.key === 'Enter') {
++          (evento.currentTarget as HTMLInputElement).blur();
++        }
++        if (evento.key === 'Escape') {
++          setEditando(false);
++          setInvalido(false);
++        }
++      }}
++      style={{
++        width: '100%',
++        boxSizing: 'border-box',
++        padding: '6px 6px',
++        border: `1px solid ${invalido ? COR.perigo : COR.borda}`,
++        borderRadius: '5px',
++        textAlign: 'right',
++        fontSize: '13px',
++        fontFamily: FONTE,
++        color: COR.azul,
++        background: invalido ? '#FDE7E9' : '#FFFFFF'
++      }}
++    />
++  );
++};
++
++// ------------------------------------------------------------
++// Tabela
++// ------------------------------------------------------------
++
++const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
++
++  const grupos =
++    React.useMemo(
++      () => agruparLinhas(props.linhas),
++      [props.linhas]
++    );
++
++  const totaisGerais =
++    React.useMemo(
++      () => somarMeses(props.linhas),
++      [props.linhas]
++    );
++
++  const alteradas = props.chavesAlteradas || [];
++
++  const colunasAcoes = props.somenteLeitura ? 0 : 1;
++
++  return (
++    <div
++      style={{
++        overflowX: 'auto',
++        border: `1px solid ${COR.borda}`,
++        borderRadius: '10px',
++        background: '#FFFFFF'
++      }}
++    >
++      <table
++        style={{
++          borderCollapse: 'separate',
++          borderSpacing: 0,
++          width: '100%',
++          fontFamily: FONTE
++        }}
++      >
++        <thead>
++          <tr>
++            <th style={{ ...celula, ...colunaFixa('#F1F5F9'), textAlign: 'left', fontWeight: 700, zIndex: 2 }}>
++              Conta
++            </th>
++            {NOMES_MESES.map(mes => (
++              <th key={mes} style={{ ...celulaNumero, background: '#F1F5F9', fontWeight: 700 }}>
++                {mes}/{String(props.ano).substring(2)}
++              </th>
++            ))}
++            <th style={{ ...celulaNumero, background: '#F1F5F9', fontWeight: 700, width: `${LARGURA_TOTAL}px`, minWidth: `${LARGURA_TOTAL}px` }}>
++              Total
++            </th>
++            {colunasAcoes > 0 && (
++              <th style={{ ...celula, background: '#F1F5F9', width: '76px' }} />
++            )}
++          </tr>
++        </thead>
++
++        <tbody>
++          {grupos.map(grupo => (
++            <React.Fragment key={grupo.grupo}>
++
++              {/* Subtotal do grupo */}
++              <tr>
++                <td style={{ ...celula, ...colunaFixa(COR.fundoGrupo), fontWeight: 700 }}>
++                  {grupo.grupo}
++                </td>
++                {grupo.totais.map((valor, indice) => (
++                  <td key={indice} style={{ ...celulaNumero, background: COR.fundoGrupo, fontWeight: 700 }}>
++                    {formatarValor(valor)}
++                  </td>
++                ))}
++                <td style={{ ...celulaNumero, background: COR.fundoGrupo, fontWeight: 700 }}>
++                  {formatarValor(grupo.total)}
++                </td>
++                {colunasAcoes > 0 && (
++                  <td style={{ ...celula, background: COR.fundoGrupo }} />
++                )}
++              </tr>
++
++              {grupo.linhas.map(linha => {
++
++                const alterada = alteradas.indexOf(linha.chave) >= 0;
++                const fundo = alterada ? COR.alterado : '#FFFFFF';
++
++                return (
++                  <tr key={linha.chave}>
++
++                    <td style={{ ...celula, ...colunaFixa(fundo), whiteSpace: 'normal' }}>
++                      <div style={{ fontSize: '11.5px', color: COR.texto2 }}>
++                        {linha.codigo}
++                        {alterada && (
++                          <span style={{ marginLeft: '6px', color: '#B45309', fontWeight: 700 }}>
++                            • não salvo
++                          </span>
++                        )}
++                      </div>
++                      <div style={{ fontWeight: 600, lineHeight: 1.25 }}>
++                        {linha.conta}
++                      </div>
++                      {props.somenteLeitura ? (
++                        linha.descricao && (
++                          <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '2px' }}>
++                            {linha.descricao}
++                          </div>
++                        )
++                      ) : (
++                        <input
++                          type="text"
++                          value={linha.descricao}
++                          maxLength={400}
++                          placeholder="Descrição / justificativa (opcional)"
++                          aria-label={`Descrição de ${linha.conta}`}
++                          onChange={evento =>
++                            props.onAlterarDescricao &&
++                            props.onAlterarDescricao(linha.chave, evento.target.value)
++                          }
++                          style={{
++                            width: '100%',
++                            boxSizing: 'border-box',
++                            marginTop: '4px',
++                            padding: '4px 6px',
++                            border: `1px solid ${COR.borda}`,
++                            borderRadius: '5px',
++                            fontSize: '12px',
++                            fontFamily: FONTE,
++                            color: COR.azul,
++                            background: '#FFFFFF'
++                          }}
++                        />
++                      )}
++                    </td>
++
++                    {linha.valores.map((valor, mes) => (
++                      <td key={mes} style={{ ...celulaNumero, background: fundo, padding: props.somenteLeitura ? celula.padding : '4px' }}>
++                        {props.somenteLeitura ? (
++                          valor ? formatarValor(valor) : <span style={{ color: '#CBD5E1' }}>0,00</span>
++                        ) : (
++                          <CampoValor
++                            valor={valor}
++                            rotulo={`${linha.conta} — ${NOMES_MESES[mes]}/${props.ano}`}
++                            onConfirmar={novo =>
++                              props.onAlterarValor &&
++                              props.onAlterarValor(linha.chave, mes, novo)
++                            }
++                            onColar={valores =>
++                              props.onColarValores &&
++                              props.onColarValores(linha.chave, mes, valores)
++                            }
++                          />
++                        )}
++                      </td>
++                    ))}
++
++                    <td style={{ ...celulaNumero, background: fundo, fontWeight: 700, width: `${LARGURA_TOTAL}px`, minWidth: `${LARGURA_TOTAL}px` }}>
++                      {formatarValor(totalLinha(linha))}
++                    </td>
++
++                    {colunasAcoes > 0 && (
++                      <td style={{ ...celula, background: fundo, textAlign: 'center' }}>
++                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
++                          <button
++                            type="button"
++                            title="Repetir o valor de janeiro em todos os meses"
++                            aria-label={`Repetir janeiro em todos os meses de ${linha.conta}`}
++                            onClick={() => props.onRepetirJaneiro && props.onRepetirJaneiro(linha.chave)}
++                            style={{ border: `1px solid ${COR.borda}`, background: '#FFFFFF', borderRadius: '5px', cursor: 'pointer', padding: '3px 6px', fontSize: '12px', color: COR.azul }}
++                          >
++                            ⇉
++                          </button>
++                          <button
++                            type="button"
++                            title="Remover esta linha"
++                            aria-label={`Remover ${linha.conta}`}
++                            onClick={() => props.onRemover && props.onRemover(linha.chave)}
++                            style={{ border: `1px solid #F3C1C1`, background: '#FFFFFF', borderRadius: '5px', cursor: 'pointer', padding: '3px 7px', fontSize: '12px', color: COR.perigo }}
++                          >
++                            ✕
++                          </button>
++                        </div>
++                      </td>
++                    )}
++                  </tr>
++                );
++              })}
++            </React.Fragment>
++          ))}
++        </tbody>
++
++        <tfoot>
++          <tr>
++            <td style={{ ...celula, ...colunaFixa(COR.azul), color: '#FFFFFF', fontWeight: 700, borderBottom: 0 }}>
++              TOTAL GERAL
++            </td>
++            {totaisGerais.map((valor, indice) => (
++              <td key={indice} style={{ ...celulaNumero, background: COR.azul, color: '#FFFFFF', fontWeight: 700, borderBottom: 0 }}>
++                {formatarValor(valor)}
++              </td>
++            ))}
++            <td style={{ ...celulaNumero, background: COR.azul, color: '#FFFFFF', fontWeight: 700, borderBottom: 0 }}>
++              {formatarValor(somar(totaisGerais))}
++            </td>
++            {colunasAcoes > 0 && (
++              <td style={{ ...celula, background: COR.azul, borderBottom: 0 }} />
++            )}
++          </tr>
++        </tfoot>
++      </table>
++    </div>
++  );
++};
++
++export default TabelaOrcamento;
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/orcamentoComum.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/orcamentoComum.tsx
+new file mode 100644
+index 0000000..378b401
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/orcamentoComum.tsx
+@@ -0,0 +1,351 @@
++import * as React from 'react';
++
++import {
++  ILinhaOrcamento,
++  arredondar
++} from '../../services/orcamento/OrcamentoService';
++
++import {
++  CENARIO_ORCADO,
++  NOMES_MESES,
++  StatusPlanilha
++} from '../../services/orcamento/esquemaOrcamento';
++
++import {
++  GRUPOS_ORCAMENTO,
++  PLANO_CONTAS
++} from '../../services/orcamento/planoContasOrcamento';
++
++// ============================================================
++// PLANEJAMENTO ORÇAMENTÁRIO — ELEMENTOS VISUAIS E UTILITÁRIOS
++// (cores da identidade visual DGT: azul 202A44, ciano 05C3DD)
++// ============================================================
++
++export const COR = {
++  azul: '#202A44',
++  ciano: '#05C3DD',
++  azulAcao: '#0877c9',
++  texto2: '#64748b',
++  borda: '#E5E7EB',
++  fundo: '#F7F9FB',
++  fundoGrupo: '#EEF6FA',
++  alterado: '#FFF8E1',
++  perigo: '#B42318'
++};
++
++export const FONTE = "Barlow, Arial, 'Segoe UI', sans-serif";
++
++export const cartao: React.CSSProperties = {
++  background: '#FFFFFF',
++  border: `1px solid ${COR.borda}`,
++  borderRadius: '12px',
++  padding: '18px 20px',
++  marginBottom: '16px'
++};
++
++export const campo: React.CSSProperties = {
++  width: '100%',
++  boxSizing: 'border-box',
++  padding: '8px 10px',
++  border: `1px solid ${COR.borda}`,
++  borderRadius: '6px',
++  fontSize: '13.5px',
++  fontFamily: FONTE,
++  color: COR.azul,
++  background: '#FFFFFF'
++};
++
++export const botao = (
++  tipo: 'principal' | 'secundario' | 'perigo' = 'principal',
++  desabilitado = false
++): React.CSSProperties => ({
++  minHeight: '36px',
++  padding: '0 16px',
++  borderRadius: '6px',
++  border: tipo === 'secundario' ? `1px solid ${COR.borda}` : 0,
++  background: tipo === 'principal' ? COR.azulAcao : tipo === 'perigo' ? COR.perigo : '#FFFFFF',
++  color: tipo === 'secundario' ? COR.azul : '#FFFFFF',
++  fontWeight: 700,
++  fontSize: '13px',
++  cursor: desabilitado ? 'not-allowed' : 'pointer',
++  opacity: desabilitado ? 0.5 : 1,
++  whiteSpace: 'nowrap',
++  fontFamily: FONTE
++});
++
++export const estiloAba = (
++  ativa: boolean
++): React.CSSProperties => ({
++  padding: '10px 16px',
++  border: 0,
++  borderBottom: `3px solid ${ativa ? COR.ciano : 'transparent'}`,
++  background: 'transparent',
++  color: ativa ? COR.azul : COR.texto2,
++  fontWeight: ativa ? 700 : 500,
++  fontSize: '14px',
++  cursor: 'pointer',
++  fontFamily: FONTE,
++  whiteSpace: 'nowrap'
++});
++
++export const CORES_STATUS: Record<StatusPlanilha, { cor: string; fundo: string }> = {
++  'Em preenchimento': { cor: '#B45309', fundo: '#FFF4E5' },
++  Enviada: { cor: '#107C10', fundo: '#E7F6EC' }
++};
++
++export const Selo: React.FC<{ texto: string; cor: string; fundo: string }> = ({ texto, cor, fundo }) => (
++  <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '999px', background: fundo, color: cor, fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap' }}>
++    {texto}
++  </span>
++);
++
++export const SeloStatus: React.FC<{ status: StatusPlanilha }> = ({ status }) => (
++  <Selo texto={status} cor={CORES_STATUS[status].cor} fundo={CORES_STATUS[status].fundo} />
++);
++
++// Cartão de número (resumo no topo).
++export const CartaoNumero: React.FC<{ titulo: string; valor: string; detalhe?: string }> = ({ titulo, valor, detalhe }) => (
++  <div style={{ ...cartao, marginBottom: 0, flex: '1 1 180px', minWidth: '180px' }}>
++    <div style={{ fontSize: '12px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px' }}>{titulo}</div>
++    <div style={{ fontSize: '22px', fontWeight: 700, color: COR.azul, marginTop: '6px' }}>{valor}</div>
++    {detalhe && <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '4px' }}>{detalhe}</div>}
++  </div>
++);
++
++// ------------------------------------------------------------
++// Números
++// ------------------------------------------------------------
++
++export const formatarValor = (valor: number): string =>
++  (valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
++
++export const formatarMoeda = (valor: number): string =>
++  `R$ ${formatarValor(valor)}`;
++
++// Aceita "1.234,56", "1234,56", "1234.56", "R$ 1.234" e vazio (= 0).
++// Devolve NaN quando o texto não é um número.
++export const converterValor = (entrada: string): number => {
++
++  let textoLimpo =
++    String(entrada || '')
++      .replace(/R\$/gi, '')
++      .replace(/\s/g, '')
++      .trim();
++
++  if (textoLimpo === '' || textoLimpo === '-') {
++    return 0;
++  }
++
++  if (textoLimpo.indexOf(',') >= 0) {
++    // Formato brasileiro: ponto = milhar, vírgula = decimal.
++    textoLimpo = textoLimpo.replace(/\./g, '').replace(',', '.');
++  } else if (/^-?\d{1,3}(\.\d{3})+$/.test(textoLimpo)) {
++    // "1.234.567" sem vírgula: pontos são separadores de milhar.
++    textoLimpo = textoLimpo.replace(/\./g, '');
++  }
++
++  const valor = Number(textoLimpo);
++
++  return isFinite(valor) ? arredondar(valor) : NaN;
++};
++
++export const formatarData = (valor?: string): string =>
++  valor && /^\d{4}-\d{2}-\d{2}/.test(valor)
++    ? `${valor.substring(8, 10)}/${valor.substring(5, 7)}/${valor.substring(0, 4)}`
++    : '—';
++
++// ------------------------------------------------------------
++// Agrupamento (mesma ordem da planilha modelo)
++// ------------------------------------------------------------
++
++export interface IGrupoLinhas {
++  grupo: string;
++  linhas: ILinhaOrcamento[];
++  totais: number[];
++  total: number;
++}
++
++const ordemConta = (codigo: string): number => {
++  for (let i = 0; i < PLANO_CONTAS.length; i++) {
++    if (PLANO_CONTAS[i].codigo === codigo) {
++      return i;
++    }
++  }
++  return PLANO_CONTAS.length;
++};
++
++export const somarMeses = (linhas: ILinhaOrcamento[]): number[] => {
++  const totais = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
++  linhas.forEach(linha => {
++    linha.valores.forEach((valor, indice) => {
++      totais[indice] = arredondar(totais[indice] + (valor || 0));
++    });
++  });
++  return totais;
++};
++
++export const somar = (valores: number[]): number =>
++  arredondar(valores.reduce((soma, valor) => soma + (valor || 0), 0));
++
++export const agruparLinhas = (linhas: ILinhaOrcamento[]): IGrupoLinhas[] => {
++
++  const nomes: string[] = GRUPOS_ORCAMENTO.slice();
++
++  // Grupos que não estão no plano atual (contas antigas) vão ao fim.
++  linhas.forEach(linha => {
++    if (nomes.indexOf(linha.grupo) < 0) {
++      nomes.push(linha.grupo);
++    }
++  });
++
++  return nomes
++    .map(grupo => {
++      const doGrupo =
++        linhas
++          .filter(linha => linha.grupo === grupo)
++          .sort((a, b) => (ordemConta(a.codigo) - ordemConta(b.codigo)) || (a.ordem - b.ordem));
++      const totais = somarMeses(doGrupo);
++      return { grupo, linhas: doGrupo, totais, total: somar(totais) };
++    })
++    .filter(item => item.linhas.length > 0);
++};
++
++// ------------------------------------------------------------
++// Exportação CSV — mesmo layout de Orcamento_DGT_AAAA.xlsx
++// (Cenário;Linha;Código;Conta;Jan/AAAA;...;Dez/AAAA;Total)
++//
++// Contas iguais (mesmo grupo e código) são SOMADAS, então serve
++// tanto para a planilha de um gestor quanto para o consolidado.
++// As linhas calculadas da DRE (Lucro bruto, EBITDA...) não são
++// exportadas: elas dependem de fórmulas da Controladoria.
++// ------------------------------------------------------------
++
++const numeroCsv = (valor: number): string =>
++  arredondar(valor).toFixed(2).replace('.', ',').replace(',00', '');
++
++const textoCsv = (valor: string): string =>
++  /[;"\n]/.test(valor) ? `"${valor.replace(/"/g, '""')}"` : valor;
++
++interface IContaSomada {
++  codigo: string;
++  conta: string;
++  valores: number[];
++}
++
++const agruparTodasContas = (
++  linhas: ILinhaOrcamento[],
++  incluirContasZeradas: boolean
++): Array<{ grupo: string; totais: number[]; contas: IContaSomada[] }> => {
++
++  const nomes: string[] = GRUPOS_ORCAMENTO.slice();
++  linhas.forEach(linha => {
++    if (nomes.indexOf(linha.grupo) < 0) {
++      nomes.push(linha.grupo);
++    }
++  });
++
++  return nomes
++    .map(grupo => {
++      const contas: IContaSomada[] = [];
++
++      // Contas do plano, na ordem da planilha modelo.
++      PLANO_CONTAS
++        .filter(item => item.grupo === grupo)
++        .forEach(item => {
++          const lancadas = linhas.filter(linha => linha.grupo === grupo && linha.codigo === item.codigo);
++          if (lancadas.length > 0 || incluirContasZeradas) {
++            contas.push({ codigo: item.codigo, conta: item.conta, valores: somarMeses(lancadas) });
++          }
++        });
++
++      // Contas lançadas que não existem mais no plano.
++      linhas
++        .filter(linha =>
++          linha.grupo === grupo &&
++          !PLANO_CONTAS.some(item => item.grupo === grupo && item.codigo === linha.codigo))
++        .forEach(linha => {
++          const existente = contas.filter(item => item.codigo === linha.codigo)[0];
++          if (existente) {
++            existente.valores = somarMeses([
++              { ...linha, valores: existente.valores },
++              linha
++            ]);
++          } else {
++            contas.push({ codigo: linha.codigo, conta: linha.conta, valores: linha.valores.slice() });
++          }
++        });
++
++      const totais = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
++      contas.forEach(conta => conta.valores.forEach((valor, indice) => {
++        totais[indice] = arredondar(totais[indice] + valor);
++      }));
++
++      return { grupo, totais, contas };
++    })
++    .filter(item => item.contas.length > 0);
++};
++
++export const gerarCsvOrcamento = (
++  ano: number,
++  linhas: ILinhaOrcamento[],
++  incluirContasZeradas: boolean
++): string => {
++
++  const cabecalho =
++    ['Cenário', 'Linha', 'Código', 'Conta']
++      .concat(NOMES_MESES.map(mes => `${mes}/${ano}`))
++      .concat(['Total']);
++
++  const saida: string[] = [cabecalho.join(';')];
++
++  const linhaCsv = (grupo: string, codigo: string, conta: string, valores: number[]): string =>
++    [CENARIO_ORCADO, grupo, codigo, conta].map(textoCsv)
++      .concat(valores.map(numeroCsv))
++      .concat([numeroCsv(somar(valores))])
++      .join(';');
++
++  agruparTodasContas(linhas, incluirContasZeradas).forEach(grupo => {
++    saida.push(linhaCsv(grupo.grupo, '', 'TOTAL', grupo.totais));
++    grupo.contas.forEach(conta => {
++      saida.push(linhaCsv(grupo.grupo, conta.codigo, conta.conta, conta.valores));
++    });
++  });
++
++  return saida.join('\r\n');
++};
++
++// Baixa o CSV no navegador (UTF-8 com BOM para o Excel abrir os acentos).
++export const baixarCsv = (
++  nomeArquivo: string,
++  conteudo: string
++): void => {
++
++  const blob = new Blob(['\uFEFF' + conteudo], { type: 'text/csv;charset=utf-8' });
++
++  const navegador = window.navigator as Navigator & {
++    msSaveOrOpenBlob?: (arquivo: Blob, nome: string) => boolean;
++  };
++
++  if (navegador.msSaveOrOpenBlob) {
++    navegador.msSaveOrOpenBlob(blob, nomeArquivo);
++    return;
++  }
++
++  const url = URL.createObjectURL(blob);
++  const link = document.createElement('a');
++  link.href = url;
++  link.download = nomeArquivo;
++  link.style.display = 'none';
++  document.body.appendChild(link);
++  link.click();
++  document.body.removeChild(link);
++  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
++};
++
++export const nomeArquivoSeguro = (texto: string): string =>
++  texto
++    .normalize('NFD')
++    .replace(/[\u0300-\u036f]/g, '')
++    .replace(/[^A-Za-z0-9_-]+/g, '_')
++    .replace(/_+/g, '_')
++    .replace(/^_|_$/g, '');
+diff --git a/src/webparts/portalTreinamentosWebPart/services/RoutePermissionService.ts b/src/webparts/portalTreinamentosWebPart/services/RoutePermissionService.ts
+index 7e8d35f..8763ede 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/RoutePermissionService.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/RoutePermissionService.ts
+@@ -75,6 +75,15 @@ const LICITACOES: PerfilAcesso[] = [
+   'Administrador'
+ ];
+ 
++// Planejamento orçamentário: Gestor (global ou de alguma área) e
++// Administrador. Cada gestor vê só a própria planilha; o
++// Administrador vê todas (regra aplicada na página e nas Security
++// Roles das tabelas dgt_orcamentoplanilha / dgt_orcamentolinha).
++const ORCAMENTO: PerfilAcesso[] = [
++  'Gestor',
++  'Administrador'
++];
++
+ const regras:
+   IRegraRota[] = [
+ 
+@@ -137,7 +146,10 @@ const regras:
+     // Arquitetura de Soluções: qualquer perfil com o MÓDULO liberado
+     { rota: 'arquitetura', perfis: LICITACOES },
+     { rota: 'arquiteturaROs', perfis: LICITACOES },
+-    { rota: 'licitacoesTeste', perfis: LICITACOES }
++    { rota: 'licitacoesTeste', perfis: LICITACOES },
++
++    // Planejamento orçamentário
++    { rota: 'planejamentoOrcamentario', perfis: ORCAMENTO }
+   ];
+ 
+ const mensagemNegado = (
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoService.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoService.ts
+new file mode 100644
+index 0000000..41a7cd6
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoService.ts
+@@ -0,0 +1,455 @@
++import {
++  DataverseService,
++  IDataverseRecord
++} from '../DataverseService';
++
++import {
++  IContextoAcesso
++} from '../AutorizacaoService';
++
++import {
++  BIND_ORCAMENTO,
++  CENARIO_ORCADO,
++  LINHA,
++  PLANILHA,
++  STATUS_PLANILHA,
++  StatusPlanilha,
++  TABELAS_ORCAMENTO
++} from './esquemaOrcamento';
++
++// ============================================================
++// PLANEJAMENTO ORÇAMENTÁRIO — ACESSO AOS DADOS (Dataverse)
++//
++// Quem vê o quê:
++//   • Gestor        → somente a PRÓPRIA planilha (filtro pelo gestor
++//                     aqui + Security Role com Ler no nível Usuário);
++//   • Administrador → todas as planilhas (Ler no nível Organização).
++//
++// O filtro desta classe organiza a TELA. A proteção real dos dados
++// está nas Security Roles do Dataverse (ver o script
++// scripts/dataverse/criar-tabelas-orcamento.ps1).
++//
++// Regras de histórico:
++//   • linha removida é DESATIVADA (dgt_ativo = Não), nunca excluída;
++//   • a planilha nunca é excluída pelo portal.
++// ============================================================
++
++export interface IPlanilhaOrcamento {
++  id: string;
++  nome: string;
++  ano: number;
++  gestorId: string;
++  gestorNome: string;
++  areas: string;
++  status: StatusPlanilha;
++  dataEnvio: string;
++  observacao: string;
++  criadoEm: string;
++  alteradoEm: string;
++}
++
++export interface ILinhaOrcamento {
++  // undefined = linha nova, ainda não gravada.
++  id?: string;
++  // Chave estável para a tela (id gravado ou um id temporário).
++  chave: string;
++  planilhaId: string;
++  grupo: string;
++  codigo: string;
++  conta: string;
++  descricao: string;
++  ordem: number;
++  // Sempre 12 posições (janeiro a dezembro).
++  valores: number[];
++}
++
++export interface IAlteracoesOrcamento {
++  novas: ILinhaOrcamento[];
++  alteradas: ILinhaOrcamento[];
++  removidas: ILinhaOrcamento[];
++}
++
++export interface IResultadoGravacao {
++  gravadas: number;
++  falhas: string[];
++  // chave temporária → id criado no Dataverse
++  idsCriados: { [chave: string]: string };
++}
++
++const guid = (valor?: unknown): string =>
++  String(valor || '').replace(/[{}]/g, '').trim().toLowerCase();
++
++const texto = (registro: IDataverseRecord, campo: string): string => {
++  const valor = registro[campo];
++  return valor === undefined || valor === null ? '' : String(valor);
++};
++
++const numero = (valor: unknown): number => {
++  const convertido = Number(valor);
++  return isFinite(convertido) ? convertido : 0;
++};
++
++// Arredonda em centavos para evitar 0,1 + 0,2 = 0,30000000000000004.
++export const arredondar = (valor: number): number =>
++  Math.round((valor || 0) * 100) / 100;
++
++export const totalLinha = (linha: ILinhaOrcamento): number =>
++  arredondar(linha.valores.reduce((soma, valor) => soma + (valor || 0), 0));
++
++let contadorTemporario = 0;
++
++export const novaChaveTemporaria = (): string => {
++  contadorTemporario++;
++  return `nova-${new Date().getTime()}-${contadorTemporario}`;
++};
++
++export const mesesVazios = (): number[] =>
++  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
++
++export class OrcamentoService {
++
++  private readonly dataverse: DataverseService;
++
++  public constructor(dataverse: DataverseService) {
++    this.dataverse = dataverse;
++  }
++
++  // ----------------------------------------------------------
++  // Mapeamento
++  // ----------------------------------------------------------
++
++  private mapearPlanilha(registro: IDataverseRecord): IPlanilhaOrcamento {
++
++    const status =
++      texto(registro, PLANILHA.status) === STATUS_PLANILHA.enviada
++        ? STATUS_PLANILHA.enviada
++        : STATUS_PLANILHA.emPreenchimento;
++
++    return {
++      id: guid(registro[PLANILHA.id]),
++      nome: texto(registro, PLANILHA.nome),
++      ano: numero(registro[PLANILHA.ano]),
++      gestorId: guid(registro[PLANILHA.gestorValor]),
++      gestorNome:
++        texto(registro, PLANILHA.gestorNome) ||
++        texto(registro, `${PLANILHA.gestorValor}@OData.Community.Display.V1.FormattedValue`),
++      areas: texto(registro, PLANILHA.areas),
++      status,
++      dataEnvio: texto(registro, PLANILHA.dataEnvio),
++      observacao: texto(registro, PLANILHA.observacao),
++      criadoEm: texto(registro, PLANILHA.criadoEm),
++      alteradoEm: texto(registro, PLANILHA.alteradoEm)
++    };
++  }
++
++  private mapearLinha(registro: IDataverseRecord): ILinhaOrcamento {
++
++    const id =
++      guid(registro[LINHA.id]);
++
++    return {
++      id,
++      chave: id,
++      planilhaId: guid(registro[LINHA.planilhaValor]),
++      grupo: texto(registro, LINHA.grupo),
++      codigo: texto(registro, LINHA.codigo),
++      conta: texto(registro, LINHA.conta),
++      descricao: texto(registro, LINHA.descricao),
++      ordem: numero(registro[LINHA.ordem]),
++      valores: LINHA.meses.map(campo => arredondar(numero(registro[campo])))
++    };
++  }
++
++  private camposPlanilha(): string {
++    return [
++      PLANILHA.id,
++      PLANILHA.nome,
++      PLANILHA.ano,
++      PLANILHA.gestorValor,
++      PLANILHA.gestorNome,
++      PLANILHA.areas,
++      PLANILHA.status,
++      PLANILHA.dataEnvio,
++      PLANILHA.observacao,
++      PLANILHA.criadoEm,
++      PLANILHA.alteradoEm
++    ].join(',');
++  }
++
++  private camposLinha(): string {
++    return [
++      LINHA.id,
++      LINHA.planilhaValor,
++      LINHA.grupo,
++      LINHA.codigo,
++      LINHA.conta,
++      LINHA.descricao,
++      LINHA.ordem
++    ].concat(LINHA.meses).join(',');
++  }
++
++  // Corpo gravado de uma linha (sem a pesquisa da planilha).
++  private corpoLinha(linha: ILinhaOrcamento): Record<string, unknown> {
++
++    const corpo: Record<string, unknown> = {
++      [LINHA.nome]: `${linha.codigo} ${linha.conta}`.trim().substring(0, 200),
++      [LINHA.cenario]: CENARIO_ORCADO,
++      [LINHA.grupo]: linha.grupo,
++      [LINHA.codigo]: linha.codigo,
++      [LINHA.conta]: linha.conta,
++      [LINHA.descricao]: linha.descricao || '',
++      [LINHA.ordem]: linha.ordem
++    };
++
++    LINHA.meses.forEach((campo, indice) => {
++      corpo[campo] = arredondar(linha.valores[indice] || 0);
++    });
++
++    return corpo;
++  }
++
++  // ----------------------------------------------------------
++  // Leitura
++  // ----------------------------------------------------------
++
++  // Planilha do usuário logado no ano (undefined = ainda não criada).
++  public async carregarPlanilhaDoGestor(
++    ano: number,
++    gestorId: string
++  ): Promise<IPlanilhaOrcamento | undefined> {
++
++    if (!gestorId) {
++      return undefined;
++    }
++
++    const registros =
++      await this.dataverse.listarRegistros(
++        TABELAS_ORCAMENTO.planilha,
++        `$select=${this.camposPlanilha()}` +
++        `&$filter=${PLANILHA.gestorValor} eq ${guid(gestorId)}` +
++        ` and ${PLANILHA.ano} eq ${ano}` +
++        ` and ${PLANILHA.ativo} eq true` +
++        `&$orderby=${PLANILHA.criadoEm} asc`
++      );
++
++    // Se por algum motivo existirem duas, vale a mais antiga.
++    return registros.length > 0
++      ? this.mapearPlanilha(registros[0])
++      : undefined;
++  }
++
++  // Todas as planilhas do ano (Administrador). Para o Gestor, a
++  // Security Role já devolve só as dele.
++  public async listarPlanilhas(
++    ano: number
++  ): Promise<IPlanilhaOrcamento[]> {
++
++    const registros =
++      await this.dataverse.listarRegistros(
++        TABELAS_ORCAMENTO.planilha,
++        `$select=${this.camposPlanilha()}` +
++        `&$filter=${PLANILHA.ano} eq ${ano} and ${PLANILHA.ativo} eq true` +
++        `&$orderby=${PLANILHA.gestorNome} asc`
++      );
++
++    return registros.map(registro => this.mapearPlanilha(registro));
++  }
++
++  public async carregarLinhas(
++    planilhaId: string
++  ): Promise<ILinhaOrcamento[]> {
++
++    const registros =
++      await this.dataverse.listarRegistros(
++        TABELAS_ORCAMENTO.linha,
++        `$select=${this.camposLinha()}` +
++        `&$filter=${LINHA.planilhaValor} eq ${guid(planilhaId)}` +
++        ` and ${LINHA.ativo} eq true` +
++        `&$orderby=${LINHA.ordem} asc`
++      );
++
++    return registros.map(registro => this.mapearLinha(registro));
++  }
++
++  // Linhas de várias planilhas (consolidado do Administrador).
++  // Consulta em blocos para não estourar o tamanho da URL.
++  public async carregarLinhasDePlanilhas(
++    planilhaIds: string[]
++  ): Promise<ILinhaOrcamento[]> {
++
++    const resultado: ILinhaOrcamento[] = [];
++    const tamanhoBloco = 15;
++
++    for (let inicio = 0; inicio < planilhaIds.length; inicio += tamanhoBloco) {
++
++      const bloco =
++        planilhaIds.slice(inicio, inicio + tamanhoBloco);
++
++      const filtroPlanilhas =
++        bloco.map(id => `${LINHA.planilhaValor} eq ${guid(id)}`).join(' or ');
++
++      const registros =
++        await this.dataverse.listarRegistros(
++          TABELAS_ORCAMENTO.linha,
++          `$select=${this.camposLinha()}` +
++          `&$filter=(${filtroPlanilhas}) and ${LINHA.ativo} eq true` +
++          `&$orderby=${LINHA.ordem} asc`
++        );
++
++      registros.forEach(registro => resultado.push(this.mapearLinha(registro)));
++    }
++
++    return resultado;
++  }
++
++  // ----------------------------------------------------------
++  // Gravação
++  // ----------------------------------------------------------
++
++  // Cria a planilha do usuário logado. Precisa ser criada pelo
++  // PRÓPRIO gestor: o registro fica com ele como proprietário, e é
++  // isso que a Security Role (Ler no nível Usuário) usa para mostrar
++  // a planilha só para ele.
++  public async criarPlanilha(
++    ano: number,
++    contexto: IContextoAcesso
++  ): Promise<IPlanilhaOrcamento> {
++
++    const areas =
++      (contexto.vinculosArea || [])
++        .filter(item => item.perfil === 'Gestor' || item.perfil === 'Administrador da área')
++        .map(item => item.areaNome)
++        .filter((nome, indice, lista) => !!nome && lista.indexOf(nome) === indice)
++        .join(', ');
++
++    const corpo: Record<string, unknown> = {
++      [PLANILHA.nome]: `Orçamento ${ano} — ${contexto.nome}`.substring(0, 200),
++      [PLANILHA.ano]: ano,
++      [PLANILHA.gestorNome]: contexto.nome,
++      [PLANILHA.areas]: areas.substring(0, 400),
++      [PLANILHA.status]: STATUS_PLANILHA.emPreenchimento,
++      [PLANILHA.ativo]: true,
++      [BIND_ORCAMENTO.planilhaGestor]:
++        await this.dataverse.referenciaLookup('dgt_usuario', contexto.usuarioId)
++    };
++
++    await this.dataverse.criarRegistro(
++      TABELAS_ORCAMENTO.planilha,
++      corpo
++    );
++
++    const criada =
++      await this.carregarPlanilhaDoGestor(ano, contexto.usuarioId);
++
++    if (!criada) {
++      throw new Error('A planilha foi criada, mas não foi possível lê-la de volta. Verifique a permissão de Leitura na tabela dgt_orcamentoplanilha.');
++    }
++
++    return criada;
++  }
++
++  // Grava novas, alteradas e removidas (removida = desativada).
++  // Continua mesmo se uma linha falhar e devolve o que falhou.
++  public async salvarAlteracoes(
++    planilhaId: string,
++    alteracoes: IAlteracoesOrcamento
++  ): Promise<IResultadoGravacao> {
++
++    const resultado: IResultadoGravacao = {
++      gravadas: 0,
++      falhas: [],
++      idsCriados: {}
++    };
++
++    const referenciaPlanilha =
++      await this.dataverse.referenciaLookup(TABELAS_ORCAMENTO.planilha, planilhaId);
++
++    const descrever = (linha: ILinhaOrcamento): string =>
++      `${linha.codigo} ${linha.conta}`.trim();
++
++    const mensagem = (erro: unknown): string =>
++      erro instanceof Error ? erro.message : String(erro);
++
++    for (const linha of alteracoes.removidas) {
++      if (!linha.id) {
++        continue;
++      }
++      try {
++        await this.dataverse.atualizarRegistro(
++          TABELAS_ORCAMENTO.linha,
++          linha.id,
++          { [LINHA.ativo]: false }
++        );
++        resultado.gravadas++;
++      } catch (erro) {
++        resultado.falhas.push(`Remover "${descrever(linha)}": ${mensagem(erro)}`);
++      }
++    }
++
++    for (const linha of alteracoes.alteradas) {
++      if (!linha.id) {
++        continue;
++      }
++      try {
++        await this.dataverse.atualizarRegistro(
++          TABELAS_ORCAMENTO.linha,
++          linha.id,
++          this.corpoLinha(linha)
++        );
++        resultado.gravadas++;
++      } catch (erro) {
++        resultado.falhas.push(`Alterar "${descrever(linha)}": ${mensagem(erro)}`);
++      }
++    }
++
++    for (const linha of alteracoes.novas) {
++      try {
++        const corpo =
++          this.corpoLinha(linha);
++
++        corpo[LINHA.ativo] = true;
++        corpo[BIND_ORCAMENTO.linhaPlanilha] = referenciaPlanilha;
++
++        const id =
++          await this.dataverse.criarRegistro(
++            TABELAS_ORCAMENTO.linha,
++            corpo
++          );
++
++        resultado.idsCriados[linha.chave] = guid(id);
++        resultado.gravadas++;
++      } catch (erro) {
++        resultado.falhas.push(`Incluir "${descrever(linha)}": ${mensagem(erro)}`);
++      }
++    }
++
++    return resultado;
++  }
++
++  // Gestor conclui o preenchimento: a planilha fica somente leitura.
++  public async enviarPlanilha(
++    planilhaId: string
++  ): Promise<void> {
++    await this.dataverse.atualizarRegistro(
++      TABELAS_ORCAMENTO.planilha,
++      planilhaId,
++      {
++        [PLANILHA.status]: STATUS_PLANILHA.enviada,
++        [PLANILHA.dataEnvio]: new Date().toISOString()
++      }
++    );
++  }
++
++  // Administrador devolve a planilha para o gestor ajustar.
++  public async reabrirPlanilha(
++    planilhaId: string
++  ): Promise<void> {
++    await this.dataverse.atualizarRegistro(
++      TABELAS_ORCAMENTO.planilha,
++      planilhaId,
++      {
++        [PLANILHA.status]: STATUS_PLANILHA.emPreenchimento
++      }
++    );
++  }
++}
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/esquemaOrcamento.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/esquemaOrcamento.ts
+new file mode 100644
+index 0000000..5e2c9ac
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/esquemaOrcamento.ts
+@@ -0,0 +1,105 @@
++// ============================================================
++// PLANEJAMENTO ORÇAMENTÁRIO — ESQUEMA NO DATAVERSE
++//
++// Nomes das tabelas/colunas criados pelo script
++// scripts/dataverse/criar-tabelas-orcamento.ps1. Os dois DEVEM
++// continuar iguais.
++//
++// Modelo:
++//   dgt_orcamentoplanilha  → uma planilha por GESTOR e por ANO
++//   dgt_orcamentolinha     → cada linha (conta) da planilha, com os
++//                            valores de janeiro a dezembro
++//
++// Regras de histórico:
++//   • linha removida pelo gestor é DESATIVADA (dgt_ativo = Não),
++//     nunca excluída;
++//   • código, conta e grupo são gravados como texto, então mudar o
++//     plano de contas não altera o que já foi lançado.
++// ============================================================
++
++export const TABELAS_ORCAMENTO = {
++  planilha: 'dgt_orcamentoplanilha',
++  linha: 'dgt_orcamentolinha'
++};
++
++export const PLANILHA = {
++  id: 'dgt_orcamentoplanilhaid',
++  nome: 'dgt_name',
++  ano: 'dgt_ano',
++  gestor: 'dgt_gestor',
++  gestorValor: '_dgt_gestor_value',
++  gestorNome: 'dgt_gestornome',
++  areas: 'dgt_areas',
++  status: 'dgt_status',
++  dataEnvio: 'dgt_dataenvio',
++  observacao: 'dgt_observacao',
++  ativo: 'dgt_ativo',
++  criadoEm: 'createdon',
++  alteradoEm: 'modifiedon'
++};
++
++export const LINHA = {
++  id: 'dgt_orcamentolinhaid',
++  nome: 'dgt_name',
++  planilha: 'dgt_planilha',
++  planilhaValor: '_dgt_planilha_value',
++  cenario: 'dgt_cenario',
++  grupo: 'dgt_grupo',
++  codigo: 'dgt_codigo',
++  conta: 'dgt_conta',
++  descricao: 'dgt_descricao',
++  ordem: 'dgt_ordem',
++  ativo: 'dgt_ativo',
++  meses: [
++    'dgt_jan',
++    'dgt_fev',
++    'dgt_mar',
++    'dgt_abr',
++    'dgt_mai',
++    'dgt_jun',
++    'dgt_jul',
++    'dgt_ago',
++    'dgt_set',
++    'dgt_out',
++    'dgt_nov',
++    'dgt_dez'
++  ]
++};
++
++// Nome de navegação de cada pesquisa (para gravar com @odata.bind).
++// É o SchemaName da coluna de pesquisa criada pelo script.
++export const BIND_ORCAMENTO = {
++  planilhaGestor: 'dgt_Gestor@odata.bind',
++  linhaPlanilha: 'dgt_Planilha@odata.bind'
++};
++
++export const NOMES_MESES = [
++  'Jan',
++  'Fev',
++  'Mar',
++  'Abr',
++  'Mai',
++  'Jun',
++  'Jul',
++  'Ago',
++  'Set',
++  'Out',
++  'Nov',
++  'Dez'
++];
++
++export type StatusPlanilha =
++  | 'Em preenchimento'
++  | 'Enviada';
++
++export const STATUS_PLANILHA: { emPreenchimento: StatusPlanilha; enviada: StatusPlanilha } = {
++  emPreenchimento: 'Em preenchimento',
++  enviada: 'Enviada'
++};
++
++export const CENARIO_ORCADO = 'Orçado';
++
++// Ano sugerido ao abrir a tela: o próximo ano (o orçamento é
++// preenchido no ano anterior ao de execução).
++export const anoPadraoOrcamento = (): number =>
++  new Date().getFullYear() + 1;
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/planoContasOrcamento.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/planoContasOrcamento.ts
+new file mode 100644
+index 0000000..fca7798
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/planoContasOrcamento.ts
+@@ -0,0 +1,344 @@
++// ============================================================
++// PLANEJAMENTO ORÇAMENTÁRIO — PLANO DE CONTAS
++//
++// Gerado a partir de Orcamento_DGT_2027.xlsx (aba "in", cenário
++// "Orçado"). A ordem é a mesma da planilha modelo, para que a
++// exportação saia no mesmo layout.
++//
++// Para incluir/alterar contas: edite as listas abaixo mantendo o
++// mesmo formato. As linhas já gravadas no Dataverse guardam o
++// código, a conta e o grupo como TEXTO, então mudar este arquivo
++// nunca altera o histórico.
++// ============================================================
++
++export interface IContaOrcamento {
++  grupo: string;
++  codigo: string;
++  conta: string;
++}
++
++// Todas as linhas TOTAL da planilha modelo, na ordem original
++// (inclui as linhas calculadas da DRE, como Lucro bruto e EBITDA).
++export const ESTRUTURA_DRE: string[] = [
++  "Receita bruta",
++  "(-) Deduções sobre a receita",
++  "Impostos sobre vendas",
++  "Comissões",
++  "Receita operacional líquida",
++  "(-) Custos de operação",
++  "Mercadorias para revenda",
++  "Custos diretos de serviços",
++  "Custos diretos de locação de bens",
++  "Lucro operacional antes da amortização",
++  "(-) Amortização de projetos",
++  "(-) Pesquisa e desenvolvimento",
++  "Lucro bruto",
++  "(-) Despesas operacionais e administrativas",
++  "Salários indiretos",
++  "Distribuição de resultado",
++  "Viagens e representações",
++  "Propaganda e publicidade",
++  "Despesas com veículos",
++  "Despesas gerais",
++  "Taxas diversas",
++  "Prospecção de clientes",
++  "Operações descontinuadas",
++  "Lucro operacional",
++  "(-) Despesas financeiras",
++  "(+) Receitas financeiras",
++  "(-) Provisões de rendimentos a apropriar",
++  "Lucro antes de IRPJ/CSLL",
++  "(-) CSLL",
++  "(-) IRPJ",
++  "Lucro líquido",
++  "Depreciações e amortizações",
++  "EBITDA"
++];
++
++// Grupos que recebem lançamentos (têm contas).
++export const GRUPOS_ORCAMENTO: string[] = [
++  "Receita bruta",
++  "Impostos sobre vendas",
++  "Comissões",
++  "Mercadorias para revenda",
++  "Custos diretos de serviços",
++  "Custos diretos de locação de bens",
++  "(-) Pesquisa e desenvolvimento",
++  "Salários indiretos",
++  "Distribuição de resultado",
++  "Viagens e representações",
++  "Propaganda e publicidade",
++  "Despesas com veículos",
++  "Despesas gerais",
++  "Taxas diversas",
++  "Prospecção de clientes",
++  "Operações descontinuadas",
++  "(-) Despesas financeiras",
++  "(+) Receitas financeiras",
++  "(-) Provisões de rendimentos a apropriar"
++];
++
++export const PLANO_CONTAS: IContaOrcamento[] = [
++  { grupo: "Receita bruta", codigo: "3.1.1.02.01.001", conta: "RECEITA DE LOCAÇÃO" },
++  { grupo: "Receita bruta", codigo: "3.1.1.02.01.002", conta: "SERVICOS DE INSTALAÇÃO E AMPLIAÇÃO DE SI" },
++  { grupo: "Receita bruta", codigo: "3.1.1.02.01.003", conta: "SERVICOS DE MANUTECAO E CONSERTO" },
++  { grupo: "Receita bruta", codigo: "3.1.1.02.01.004", conta: "SERVICO DE SUPORTE TECNICO TECNOLOG INFO" },
++  { grupo: "Receita bruta", codigo: "3.1.1.02.01.005", conta: "SERVICO DE PROMOCAO DE VENDAS" },
++  { grupo: "Receita bruta", codigo: "3.1.1.02.01.006", conta: "SERVICO EMPREITADA GLOBAL" },
++  { grupo: "Receita bruta", codigo: "3.1.1.02.02.001", conta: "RECEITAS DIFERIDAS" },
++  { grupo: "Impostos sobre vendas", codigo: "3.1.2.01.02.001", conta: "(-) ICMS" },
++  { grupo: "Impostos sobre vendas", codigo: "3.1.2.01.02.002", conta: "(-) ISSQN" },
++  { grupo: "Impostos sobre vendas", codigo: "3.1.2.01.02.003", conta: "(-) COFINS" },
++  { grupo: "Impostos sobre vendas", codigo: "3.1.2.01.02.004", conta: "(-) PIS" },
++  { grupo: "Impostos sobre vendas", codigo: "3.1.2.01.02.007", conta: "(-) ICMS DIFERENCIAL ALIQ VENDA" },
++  { grupo: "Comissões", codigo: "4.1.4.01.01.013", conta: "SERVICOS TERCEIROS - CSS" },
++  { grupo: "Mercadorias para revenda", codigo: "4.1.1.01.01.001", conta: "CUSTO DAS MERCADORIAS REVENDIDAS" },
++  { grupo: "Custos diretos de serviços", codigo: "4.1.3.01.01.001", conta: "CUSTOS DOS SERVICOS PRESTADOS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.2.01.01.001", conta: "CUSTOS PROJETOS AMORTIZADOS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.002", conta: "ENERGIA ELÉTRICA" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.003", conta: "FRETES S/ COMPRAS E REMESSAS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.004", conta: "LICENÇAS DE SOFTWARE" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.005", conta: "MATERIAL DE CONSUMO - PROJETO COM TAD" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.006", conta: "SEGUROS PARA CONTRATOS PÚBLICOS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.008", conta: "TAXAS DE REGISTRO NO CREA/RS E DEMAIS ÓR" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.009", conta: "ALUGUÉIS DE MÁQUINAS E EQUIP. POSTES E" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.0000", conta: "ALUGUÉIS DE VEICULOS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.010", conta: "PROVEDOR DE INTERNET" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.011", conta: "SERVICOS PRESTADOS POR TERCEIROS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.012", conta: "REEMBOLSO DE DESPESAS PRESTADORES DE SER" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.014", conta: "DESPESAS COM HOSPEDAGEM" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.015", conta: "TAXAS DIVERSAS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.016", conta: "MATERIAL P/MELHORIA EM PROJETOS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.017", conta: "LOCACAO BENS TERCEIROS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.018", conta: "CUSTO MOD PROJETOS C/TAD" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.019", conta: "DESPESAS COM ALIMENTACAO" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.020", conta: "SERVICOS PRESTADOS POR TERCEIROS - MANUT" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.021", conta: "SERVICO ASSISTENCIA TECNICA" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.022", conta: "SERVICO INTEGRADORES DE SOFTWARE" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.023", conta: "DIFAL S/COMPRA CONSUMO PROJETO" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.024", conta: "GASTOS COM RELACIONAMENTO CLIENTES" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.025", conta: "MATERIAL DE CONSUMO SUPORTE" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.026", conta: "IOF S/ OPERACAO CAMBIO" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.027", conta: "IRRF S/OPERACAO CAMBIO" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.028", conta: "PERDAS ESTOQUE" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.029", conta: "DESPESAS C/ POC" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.030", conta: "DESPESAS COM VIAGENS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.031", conta: "SERVICOS DE MANUTENCAO" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.01.032", conta: "ELABORACAO DE PROJETOS EXECUTIVOS" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.02.001", conta: "SERVICOS PRESTADOS POR TERCEIRO INDIRETO" },
++  { grupo: "Custos diretos de locação de bens", codigo: "4.1.4.01.02.002", conta: "TAXAS" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.01.001", conta: "CUSTO MOD P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.001", conta: "SERVICOS PRESTADOS POR TERCEIROS - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.002", conta: "MATERIAL CONSUMO - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.003", conta: "HOSPEDAGEM - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.004", conta: "FEIRAS E EVENTOS - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.005", conta: "PASSAGENS AEREAS - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.006", conta: "LICENÇAS DE SOFTWARE - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.007", conta: "OUTRAS DESPESAS - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.008", conta: "DIFAL CONSUMO - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.009", conta: "GESTAO DE PROJETOS - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.010", conta: "CURSOS E TREINAMENTOS - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.011", conta: "REFEICOES - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.012", conta: "IOF - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.013", conta: "DESPESA COM CONFRATERNIZACAO - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.014", conta: "REEMBOLSO DESPESA - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.015", conta: "DEPRECIACAO BENS - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.016", conta: "ALUGUEL DE VEICULOS - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.017", conta: "COMBUSTIVEL - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.018", conta: "SERVICO CONSULTORIA - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.019", conta: "SERVICO TERCEIROS - PJ - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.020", conta: "PROTOTIPAGEM E EQUIP. DE TESTE - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.021", conta: "DESENVOLVIMENTO DE PRODUTOS - P&D" },
++  { grupo: "(-) Pesquisa e desenvolvimento", codigo: "4.1.5.01.02.022", conta: "PROVEDOR DE INTERNET - P&D" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.001", conta: "SALÁRIOS E ORDENADOS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.002", conta: "HORAS EXTRAS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.003", conta: "DESPESA COM ALIMENTAÇÃO" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.004", conta: "PRÊMIOS E GRATIFICAÇÕES" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.005", conta: "13º SALÁRIO" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.006", conta: "FÉRIAS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.007", conta: "INSS PATRONAL" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.008", conta: "FGTS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.009", conta: "ASSISTÊNCIA MÉDICA" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.010", conta: "SERVIÇO DE MEDICINA DO TRABALHO" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.011", conta: "VALE TRANSPORTE" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.012", conta: "HORAS DE SOBREAVISO" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.013", conta: "BOLSA AUXÍLIO ESTÁGIO" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.014", conta: "ENCARGOS INSS S/PROVISÕES" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.015", conta: "ENCARGOS FGTS S/PROVISÕES" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.016", conta: "ADICIONAL POR TEMPO DE SERVIÇO" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.017", conta: "SERVIÇO DE SELEÇÃO DE PESSOAL" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.018", conta: "ADICIONAL DE PERICULOSIDADE" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.019", conta: "INDENIZAÇÕES TRABALHISTAS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.020", conta: "PRÊMIOS E GRATIFICAÇÕES" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.021", conta: "CURSOS E TREINAMENTOS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.022", conta: "AUXÍLIO EDUCAÇÃO E CRECHE" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.023", conta: "EQUIPAMENTOS DE SEGURANÇA" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.024", conta: "DESPESA COM FARMÁCIA" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.025", conta: "PLANO ODONTOLÓGICO" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.026", conta: "DESPESAS COM UNIFORMES DE EMPREGADOS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.027", conta: "SEGURO DE VIDA EMPREGADOS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.028", conta: "COMISSÕES SOBRE VENDAS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.029", conta: "PROVISÃO DE FÉRIAS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.030", conta: "PROVISÃO DE 13º SALARIO" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.031", conta: "PARTICIPAÇÃO NOS LUCROS" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.032", conta: "SERVIÇO DE TÉCNICO DE SEGURANÇA DO TRABA" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.033", conta: "REEMB. DESP. TELEFONE PARTICULAR" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.034", conta: "SERVIÇO DE CONSULTORIA DE RH" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.035", conta: "OUTRAS DESPESAS COM PESSOAL" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.036", conta: "AUXILIO MOBILIDADE" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.037", conta: "AJUDA DE CUSTO HOME OFFICE" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.038", conta: "REEMBOLSO DESPESA" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.039", conta: "SERVICO TERCEIROS - PJ" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.040", conta: "AUXILIO ATIVIDADE FISICA" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.041", conta: "PLR EMPREGADOS - ADM" },
++  { grupo: "Salários indiretos", codigo: "4.2.1.01.01.042", conta: "OUTROS DESCONTOS DE FUNCIONARIOS" },
++  { grupo: "Distribuição de resultado", codigo: "2.1.1.06.01.001", conta: "DIVIDENDOS A PAGAR" },
++  { grupo: "Viagens e representações", codigo: "4.2.1.01.05.001", conta: "REFEIÇÕES" },
++  { grupo: "Viagens e representações", codigo: "4.2.1.01.05.002", conta: "HOSPEDAGEM" },
++  { grupo: "Viagens e representações", codigo: "4.2.1.01.05.003", conta: "PASSAGENS AÉREAS" },
++  { grupo: "Viagens e representações", codigo: "4.2.1.01.05.004", conta: "DESPESAS DIVERSAS COM VIAGENS" },
++  { grupo: "Viagens e representações", codigo: "4.2.1.01.05.005", conta: "REEMBOLSO DESPESAS COM VIAGENS" },
++  { grupo: "Propaganda e publicidade", codigo: "4.2.1.01.03.001", conta: "SERVIÇO DE PROPAGANDA E PUBLICIDADE" },
++  { grupo: "Propaganda e publicidade", codigo: "4.2.1.01.03.002", conta: "DESPESAS COM FEIRAS E EVENTOS" },
++  { grupo: "Propaganda e publicidade", codigo: "4.2.1.01.03.003", conta: "MATERIAL PARA PROPAGANDA E PUBLICIDADE" },
++  { grupo: "Propaganda e publicidade", codigo: "4.2.1.01.03.004", conta: "PATROCÍNIOS PARA PUBLICIDADE DA EMPRESA" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.001", conta: "COMBUSTÍVEIS" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.002", conta: "DESPESAS COM PEDAGIOS E ESTACIONAMENTO" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.003", conta: "IPVA" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.004", conta: "PEÇAS E EQUIPAMENTOS PARA VEICULOS" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.005", conta: "SERVIÇO DE MANUTECAO DE VEICULOS" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.007", conta: "SEGUROS VEICULOS" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.008", conta: "RASTREAMENTO DE VEICULOS" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.009", conta: "ALUGUEL DE IMÓVEL PARA ESTACIONAMENTO" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.010", conta: "DEPRECIAÇÕES DE VEICULOS" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.011", conta: "ALUGUEIS DE VEICULOS" },
++  { grupo: "Despesas com veículos", codigo: "4.2.1.01.04.012", conta: "DESPESAS COM VEICULOS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.001", conta: "ÁGUA E ESGOTO" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.002", conta: "ASSISTÊNCIA CONTÁBIL" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.003", conta: "ALUGUEL DE IMOVEIS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.004", conta: "BENS NATUREZA PERMANENTE" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.006", conta: "DEPRECIACOES E AMORTIZACOES MATRIZ" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.007", conta: "DESPESAS COM CARTÓRIO" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.008", conta: "DESPESAS COM EVENTOS/ CONFRATERNIZAÇÃO" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.009", conta: "DESPESAS POSTAIS E TELEGRÁFICAS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.010", conta: "ENERGIA ELÉTRICA" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.011", conta: "FRETES E CARRETOS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.012", conta: "HONORÁRIOS ADVOCATICIOS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.013", conta: "INDENIZAÇÕES DANOS MATERIAIS TERCEIROS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.014", conta: "LICENÇAS DE SOFTWARE" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.015", conta: "MATERIAL DE COPA E COZINHA" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.016", conta: "MATERIAL DE EXPEDIENTE" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.017", conta: "MATERIAL DE HIGIENE E LIMPEZA" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.018", conta: "MENSALIDADES/ANUIDADES" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.019", conta: "OUTRAS DESPESAS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.020", conta: "SEGURO PREDIAL" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.021", conta: "TELEFONE E INTERNET" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.022", conta: "SERVICOS PRESTADOS POR TERCEIROS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.023", conta: "SEGURANÇA PATRIMONIAL" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.024", conta: "PERDAS NO RECEBIMENTO DE CRÉDITOS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.027", conta: "PERDAS ESTOQUE" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.028", conta: "DESPESAS C/ POC" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.029", conta: "DESPESA PERDA ROUBO AVARIA" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.030", conta: "DEPRECIACOES E AMORTIZACOES FILIAL MT" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.031", conta: "GESTAO DE PROJETOS - SETOR" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.032", conta: "DESPESA COM ENDOMARKETING" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.033", conta: "TAXA DE ADMINISTRACAO CONSORCIO" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.034", conta: "ASSESSORIA JURIDICA" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.035", conta: "MATERIAL PERSONALIZADO - USO INTERNO" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.036", conta: "MANUTENCAO INSTALACOES" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.037", conta: "ALUGUEL DE MAQUINAS E EQUIP - USO INTERN" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.038", conta: "SERVICO AUDITORIA/CONSULTORIA" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.039", conta: "DESPESAS REGISTRO MARCAS E PATENTES" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.040", conta: "MATERIAL PARA MANUTENCAO" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.041", conta: "LOCACAO DE IMOVEIS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.042", conta: "SERVICO DE LIMPEZA E ZELADORIA" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.043", conta: "SERVICOS DE TI PRESTADOS POR TERCEIROS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.044", conta: "DESPESA COM LOCOMOCAO" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.045", conta: "TAXAS DE REGISTRO DE CLASSE" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.046", conta: "SERVICOS DE TERCEIROS - CSS" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.047", conta: "DESPESA COM GARANTIA" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.048", conta: "BENS DE PEQUENO VALOR" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.049", conta: "EPI's" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.050", conta: "DOACOES" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.051", conta: "DESPESAS PAYTRACK" },
++  { grupo: "Despesas gerais", codigo: "4.2.1.01.06.999", conta: "DIFAL S/COMPRA PARA CONSUMO - SETORES" },
++  { grupo: "Taxas diversas", codigo: "4.2.1.01.07.001", conta: "IMPOSTOS E TAXAS DIVERSAS" },
++  { grupo: "Taxas diversas", codigo: "4.2.1.01.07.002", conta: "IOF" },
++  { grupo: "Taxas diversas", codigo: "4.2.1.01.07.003", conta: "IPTU" },
++  { grupo: "Taxas diversas", codigo: "4.2.1.01.07.004", conta: "IRRF SOBRE APLIC FINANCEIRA" },
++  { grupo: "Taxas diversas", codigo: "4.2.1.01.07.005", conta: "IRRF S/OPERACAO CAMBIO" },
++  { grupo: "Taxas diversas", codigo: "4.2.1.01.07.006", conta: "IOF S/ OPERACAO CAMBIO" },
++  { grupo: "Taxas diversas", codigo: "4.2.1.01.07.007", conta: "PERDA DE DIREITO AO CRÉDITO DE ICMS" },
++  { grupo: "Taxas diversas", codigo: "4.2.1.01.07.008", conta: "PIS S/ RECEITAS FINANCEIRAS" },
++  { grupo: "Taxas diversas", codigo: "4.2.1.01.07.009", conta: "COFINS S/ RECEITAS FINANCEIRAS" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.001", conta: "PASSAGENS AEREAS - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.002", conta: "REFEICOES - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.003", conta: "HOSPEDAGEM - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.004", conta: "COMBUSTIVEL - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.005", conta: "MATERIAL CONSUMO - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.006", conta: "SERVIÇO TERCEIROS - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.007", conta: "DESPESAS DIVERSAS COM VIAGENS - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.008", conta: "CUSTO MOD - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.009", conta: "LICENCA DE SOFTWARE - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.010", conta: "DESPESAS C/ POC - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.011", conta: "PEDAGIO E ESTACIONAMENTO - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.012", conta: "ASSESSORIA JURIDICA - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.013", conta: "SERVICO TERCEIROS CSS - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.014", conta: "DESPESAS COM DEMONSTRACAO - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.10.015", conta: "DESPESAS PAYTRACK - CP - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.12.001", conta: "HOSPEDAGEM - PV - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.12.002", conta: "COMBUSTIVEL - PV - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.12.003", conta: "LICENCA DE SOFTWRE - PV - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.12.004", conta: "ALIMENTACAO - PV - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.12.005", conta: "DESPESAS COM DEMONSTRACAO - PV - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.12.006", conta: "SERVICO PROSPECCAO AO CLIENTE - PV - CAC" },
++  { grupo: "Prospecção de clientes", codigo: "4.2.1.01.12.007", conta: "DESPESAS PAYTRACK - PV- CAC" },
++  { grupo: "Operações descontinuadas", codigo: "4.3.1.01.01.001", conta: "PERDAS NO RECEBIMENTO DE CRÉDITOS" },
++  { grupo: "Operações descontinuadas", codigo: "4.3.1.01.01.002", conta: "PERDAS NO ADTO A FORNECEDORES" },
++  { grupo: "(-) Despesas financeiras", codigo: "4.2.1.01.08.001", conta: "JUROS PASSIVOS" },
++  { grupo: "(-) Despesas financeiras", codigo: "4.2.1.01.08.002", conta: "JUROS E MULTA PARCELAMENTOS DE IMPOSTOS" },
++  { grupo: "(-) Despesas financeiras", codigo: "4.2.1.01.08.003", conta: "ENCARGOS FINANCEIROS ARRENDAMENTO MERCAN" },
++  { grupo: "(-) Despesas financeiras", codigo: "4.2.1.01.08.004", conta: "DESCONTOS INCONDICIONAIS CONCEDIDOS" },
++  { grupo: "(-) Despesas financeiras", codigo: "4.2.1.01.08.005", conta: "JUROS DE MORA" },
++  { grupo: "(-) Despesas financeiras", codigo: "4.2.1.01.08.006", conta: "DESPESAS BANCÁRIAS" },
++  { grupo: "(-) Despesas financeiras", codigo: "4.2.1.01.08.007", conta: "MULTAS DE MORA" },
++  { grupo: "(-) Despesas financeiras", codigo: "4.2.1.01.08.008", conta: "JUROS PASSIVOS S/EMPREST E FINANCIAM" },
++  { grupo: "(-) Despesas financeiras", codigo: "4.2.1.01.08.009", conta: "SEGURO P/OPERACAO FINANCEIRA" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.3.01.01.001", conta: "JUROS ATIVOS" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.3.01.01.002", conta: "DESCONTOS OBTIDOS" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.3.01.01.003", conta: "DESCONTOS INCONDICIONAIS OBTIDOS" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.3.01.01.004", conta: "RENDIMENTO APLICAÇÃO FINANCEIRA" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.3.01.01.005", conta: "JUROS ATIVOS NAO TRIBUTAVEIS" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.4.01.02.002", conta: "INDENIZACOES FORNECEDORES" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.4.01.03.001", conta: "DISTRIBUIÇÃO DE RESULTADOS COOP. SICREDI" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.4.01.03.002", conta: "DISTRIBUIÇÃO DE RESULTADOS COOP. SICOOB" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.4.01.03.003", conta: "DISTRIBUIÇÃO DE RESULTADOS COOP. SICR MT" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.4.01.03.004", conta: "DISTRIBUIÇAO DE RESULTADOS UNICRED" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.5.01.01.001", conta: "LUCROS E DIVIDENDOS PART SOCIETARIAS" },
++  { grupo: "(+) Receitas financeiras", codigo: "3.1.5.01.05.001", conta: "OUTRAS RECEITAS" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.102", conta: "(-) RENDIM APLIC A APROP - ITAU" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.105", conta: "(-) RENDIM APLIC A APROP - BANRI CDB AUT" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.109", conta: "(-) RENDIM APLIC A APROP - SANTANDER MAX" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.112", conta: "(-) RENDIM APLIC A APROP - SICREDINVEST" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.115", conta: "(-) RENDIM APLIC A APROP - BANRI CDB" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.118", conta: "(-) RENDIM APLIC A APROP - SICREDI EVOLU" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.121", conta: "(-) RENDIM APLIC A APROP - SICREDI AUTOM" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.125", conta: "(-) RENDIM APLIC A APROP - SICREDI EXCLU" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.128", conta: "(-) RENDIM APLIC A APROP - BRADESCO CDB" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.131", conta: "(-) RENDIM APLIC A APROP - SICREDI MT" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.135", conta: "(-) RENDIM APLIC A APROP - CAIXA 1" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.138", conta: "(-) RENDIM APLIC A APROP - BRAD INV FACI" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.141", conta: "(-) RENDIM APLIC A APROP - CAIXA 2" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.144", conta: "(-) RENDIM APLIC A APROP - SICREDI FLEX" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.147", conta: "(-) RENDIM APLIC A APROP - CDI 1000" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.150", conta: "(-) RENDIM APLIC A APROP - ABC DGT" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.153", conta: "(-) RENDIM APLIC A APROP - SICOOB" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.156", conta: "(-) RENDIM APLIC A APROP - ABC CAPTAR" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.159", conta: "(-) RENDIM APLIC A APROP - ITAU CDB PLUS" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.162", conta: "(-) RENDIM APLIC A APROP - UNICRED" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.165", conta: "(-) RENDIM APLIC A APROP - SICREDI FIRF" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.168", conta: "(-) RENDIM APLIC A APROP - BANCO XP" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.171", conta: "(-) RENDIM APLIC A APROP - SICREDI SC" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.176", conta: "(-) RENDIM APLIC A APROP - SICREDI INTEG" },
++  { grupo: "(-) Provisões de rendimentos a apropriar", codigo: "1.1.1.03.01.180", conta: "(-) RENDIM APLIC A APROP - SICREDI 3TECH" }
++];

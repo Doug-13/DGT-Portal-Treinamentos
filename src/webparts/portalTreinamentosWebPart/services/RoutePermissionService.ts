@@ -75,6 +75,24 @@ const LICITACOES: PerfilAcesso[] = [
   'Administrador'
 ];
 
+// Planejamento orçamentário: quem decide é o MÓDULO "orcamento"
+// (Usuários e acessos > Módulos liberados). Padrão para o perfil
+// Gestor; Administrador sempre; demais só com o módulo liberado.
+// A proteção dos dados está nas Security Roles e nas equipes por
+// área (scripts/dataverse/sincronizar-equipes-orcamento.ps1).
+const ORCAMENTO: PerfilAcesso[] = [
+  'Funcionario',
+  'Editor',
+  'Gestor',
+  'Administrador'
+];
+
+// Nunca liberadas pelo "Administrador do módulo".
+const ROTAS_SO_DO_ADMINISTRADOR_GLOBAL: string[] = [
+  'gestaoAreas',
+  'usuariosAcessos'
+];
+
 const regras:
   IRegraRota[] = [
 
@@ -95,6 +113,7 @@ const regras:
     // Módulo Processos (modo de teste). Todos consultam; somente
     // Editor e Administrador alteram fluxos (controlado na tela).
     { rota: 'processos', perfis: TODOS },
+    { rota: 'fluxos', perfis: TODOS },
 
     // Acompanhamento de pessoas (Editor, Gestor e Administrador; o
     // recorte pelas áreas de cada um é aplicado nos dados).
@@ -105,6 +124,10 @@ const regras:
     // Indicadores: a entrada é controlada pelo MÓDULO (Usuários e
     // acessos). O que cada perfil vê lá dentro é tratado na página.
     { rota: 'indicadores', perfis: TODOS },
+
+    // RH e Pessoas: a entrada é controlada pelo MÓDULO "RH e Pessoas"
+    // (Usuários e acessos). Padrão: só Administrador.
+    { rota: 'rhPessoas', perfis: TODOS },
 
     // Cadastro de documentos: quem mantém conteúdo (Editor e
     // Administrador). O Gestor aprova, não cria.
@@ -119,9 +142,10 @@ const regras:
     { rota: 'gestaoDocumentos', perfis: CONTEUDO },
 
     // Catálogo e modo de teste (visão do colaborador, sem registros).
-    // Para liberar só ao Administrador, troque CONTEUDO por SOMENTE_ADMIN.
-    { rota: 'catalogoTreinamentos', perfis: CONTEUDO },
-    { rota: 'testeTreinamento', perfis: CONTEUDO },
+    // Gestor: só os treinamentos das áreas dele (recorte nos dados —
+    // regrasAcesso.areasCatalogo). Editor: as áreas de conteúdo.
+    { rota: 'catalogoTreinamentos', perfis: ACOMPANHAR_PESSOAS },
+    { rota: 'testeTreinamento', perfis: ACOMPANHAR_PESSOAS },
 
     // Somente Administrador
     // (antes não havia regra para esta rota, o que a tornava pública)
@@ -137,7 +161,10 @@ const regras:
     // Arquitetura de Soluções: qualquer perfil com o MÓDULO liberado
     { rota: 'arquitetura', perfis: LICITACOES },
     { rota: 'arquiteturaROs', perfis: LICITACOES },
-    { rota: 'licitacoesTeste', perfis: LICITACOES }
+    { rota: 'licitacoesTeste', perfis: LICITACOES },
+
+    // Planejamento orçamentário
+    { rota: 'planejamentoOrcamentario', perfis: ORCAMENTO }
   ];
 
 const mensagemNegado = (
@@ -239,6 +266,21 @@ export const verificarPermissaoRota = (
     if ((contexto.areasEditor || []).length > 0) {
       perfisEfetivos.push('Editor');
     }
+    // Administrador da área: gestor e editor (com escopo na área).
+    if ((contexto.areasAdministrador || []).length > 0) {
+      perfisEfetivos.push('Gestor', 'Editor');
+    }
+  }
+
+  // Administrador do módulo: nas páginas DESTE módulo vale como
+  // Administrador (ex.: telas de administração de Treinamentos).
+  // Áreas e Usuários e acessos são do PORTAL: só o Administrador global.
+  if (
+    modulo &&
+    ROTAS_SO_DO_ADMINISTRADOR_GLOBAL.indexOf(rota) < 0 &&
+    (contexto.modulosAdministrados || []).indexOf(modulo) >= 0
+  ) {
+    perfisEfetivos.push('Administrador');
   }
 
   if (

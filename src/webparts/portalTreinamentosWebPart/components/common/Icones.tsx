@@ -44,7 +44,8 @@ export type IconeChave =
   | 'building'
   | 'grid'
   | 'megaphone'
-  | 'info';
+  | 'info'
+  | 'wallet';
 
 export const Icones:
   Record<IconeChave, React.FC> = {
@@ -237,6 +238,16 @@ export const Icones:
       <path d="M3 10v4a1 1 0 0 0 1 1h3l7 4V5L7 9H4a1 1 0 0 0-1 1z" />
       <path d="M17.5 8.5a5 5 0 0 1 0 7" />
       <path d="M7 15l1.5 5h2.5L9.5 15" />
+    </svg>
+  ),
+
+  // Planejamento orçamentário: carteira
+  wallet: () => (
+    <svg {...base}>
+      <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3" />
+      <rect x="4" y="8" width="16.5" height="11" rx="2" />
+      <path d="M20.5 12h-4a1.5 1.5 0 0 0 0 3h4" />
+      <circle cx="16.6" cy="13.5" r=".6" fill="currentColor" />
     </svg>
   ),
 

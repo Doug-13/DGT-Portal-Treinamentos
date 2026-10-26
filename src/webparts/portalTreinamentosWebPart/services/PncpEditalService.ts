@@ -322,7 +322,7 @@ export interface IArquivoEdital {
   tamanhoBytes: number;
 }
 
-const detectarTipo = async (
+export const detectarTipo = async (
   blob: Blob
 ): Promise<TipoArquivoEdital> => {
 
@@ -346,6 +346,22 @@ const detectarTipo = async (
   }
 
   return 'outro';
+};
+
+// Baixa o arquivo do PNCP e devolve os bytes (para gravar em outra
+// biblioteca, ex.: a pasta do edital no SharePoint).
+export const baixarBlobEdital = async (
+  url: string
+): Promise<{ blob: Blob; tipo: TipoArquivoEdital }> => {
+
+  const resposta = await fetch(url, { method: 'GET', credentials: 'omit', cache: 'no-store' });
+
+  if (!resposta.ok) {
+    throw new Error(`O PNCP respondeu HTTP ${resposta.status} ao baixar o arquivo.`);
+  }
+
+  const blob = await resposta.blob();
+  return { blob, tipo: await detectarTipo(blob) };
 };
 
 export const baixarArquivoEdital = async (

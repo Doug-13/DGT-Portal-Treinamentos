@@ -468,6 +468,11 @@ export const validarDefinicao = (
             if (chaves.indexOf(campo.chave) < 0) {
               erros.push(`A etapa "${item.nome}" usa um campo que não existe mais (${campo.chave}).`);
             }
+
+            const condicao = campo.obrigatorioQuando || campo.mostrarQuando;
+            if (condicao && chaves.indexOf(condicao.campo) < 0) {
+              erros.push(`O campo "${campo.rotulo}" da etapa "${item.nome}" depende de um campo que não existe mais (${condicao.campo}). Ajuste a regra "Mostrar quando".`);
+            }
           }
         );
 

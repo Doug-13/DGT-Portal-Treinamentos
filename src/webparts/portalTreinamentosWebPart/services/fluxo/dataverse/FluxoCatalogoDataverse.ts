@@ -26,6 +26,11 @@ import {
 } from '../FluxoValidacao';
 
 import {
+  OpcaoResponsaveisCopia,
+  prepararCopiaFluxo
+} from '../copiaFluxo';
+
+import {
   IFluxoCatalogo,
   idFluxoDoProcesso,
   IResultadoCatalogo
@@ -265,6 +270,39 @@ export class FluxoCatalogoDataverse
       ok: true,
       erros: [],
       definicao: await this.criarLinha(processo.id, base)
+    };
+  }
+
+  public async criarCopia(
+    processo: IProcesso,
+    origem: IFluxoDefinicao,
+    opcao: OpcaoResponsaveisCopia
+  ): Promise<IResultadoCatalogo> {
+
+    if ((await this.lerVersoes(processo.id)).some(item => item.status === 'rascunho')) {
+      return {
+        ok: false,
+        erros: ['Este processo já tem um rascunho. Publique ou descarte antes de copiar outro fluxo.']
+      };
+    }
+
+    // Considera também as versões descartadas para não repetir número.
+    const todas =
+      await this.dataverse.listarRegistros(
+        TABELA_FLUXO,
+        `$select=${FLUXO.versao}&$filter=${FLUXO.processoValor} eq ${guid(processo.id)}`
+      );
+
+    const maior =
+      todas.reduce((atual, registro) => Math.max(atual, Number(registro[FLUXO.versao] || 0)), 0);
+
+    return {
+      ok: true,
+      erros: [],
+      definicao: await this.criarLinha(
+        processo.id,
+        prepararCopiaFluxo(origem, processo, maior + 1, opcao)
+      )
     };
   }
 
