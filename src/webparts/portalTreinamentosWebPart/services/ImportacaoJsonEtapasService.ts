@@ -1174,6 +1174,91 @@ export class ImportacaoJsonEtapasService {
   }
 
   // ==========================================================
+  // ATUALIZAR TODOS OS MÓDULOS DE UMA VEZ (JSON com N módulos)
+  //
+  // destinos[i] = id do módulo existente que o módulo i do JSON
+  // atualiza, ou '' para CRIAR um módulo novo. Módulos existentes
+  // que não recebem nenhum módulo do JSON ficam como estão.
+  // Tudo é validado antes de qualquer gravação.
+  // ==========================================================
+
+  public async atualizarModulosEmLote(
+    treinamentoId:
+      string,
+    dados:
+      IModuloImportJson,
+    destinos:
+      string[]
+  ): Promise<string> {
+
+    if (!treinamentoId) {
+      throw new Error('Treinamento não selecionado.');
+    }
+
+    if (!Array.isArray(dados.modulos) || dados.modulos.length === 0) {
+      throw new Error('Nenhum módulo no JSON.');
+    }
+
+    // Um módulo existente só pode receber UM módulo do JSON.
+    const usados =
+      destinos.filter(id => !!id);
+
+    const repetido =
+      usados.find((id, i) => usados.indexOf(id) !== i);
+
+    if (repetido) {
+      throw new Error('Dois módulos do JSON estão apontando para o mesmo módulo existente. Ajuste a correspondência.');
+    }
+
+    // Validação completa antes de gravar.
+    dados.modulos.forEach((modulo, indice) => {
+      textoObrigatorio(modulo.titulo, `Módulo ${indice + 1}: titulo`);
+      if (!Array.isArray(modulo.conteudos)) {
+        throw new Error(`Módulo ${indice + 1}: "conteudos" deve ser uma lista.`);
+      }
+      modulo.conteudos.forEach((conteudo, i) =>
+        validarConteudoModuloJson(modulo, conteudo, i));
+    });
+
+    const mensagens: string[] = [];
+    let atualizados = 0;
+    let criados = 0;
+
+    for (let indice = 0; indice < dados.modulos.length; indice++) {
+
+      const modulo =
+        dados.modulos[indice];
+
+      const destino =
+        destinos[indice] || '';
+
+      if (destino) {
+        mensagens.push(
+          await this.atualizarModuloDados(
+            treinamentoId,
+            destino,
+            { ...dados, modulos: [modulo] }
+          )
+        );
+        atualizados += 1;
+      } else {
+        mensagens.push(
+          `Novo: ${await this.importarModulosDados(
+            treinamentoId,
+            { ...dados, modulos: [modulo] }
+          )}`
+        );
+        criados += 1;
+      }
+    }
+
+    return (
+      `${atualizados} módulo(s) atualizado(s) e ${criados} criado(s).\n` +
+      mensagens.map(item => `• ${item}`).join('\n')
+    );
+  }
+
+  // ==========================================================
   // ATUALIZAR UM MÓDULO EXISTENTE POR JSON
   //
   // O JSON deve trazer UM módulo. Os dados do módulo (título,

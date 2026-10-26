@@ -245,6 +245,16 @@ export interface IGestaoModulosPageProps {
         IModuloImportJson
     ) => Promise<string>;
 
+  // Etapa de edição dos módulos: atualiza TODOS os módulos de uma vez
+  // (destinos[i] = id do módulo existente, ou '' para criar novo).
+  onAtualizarModulosEmLote?:
+    (
+      dados:
+        IModuloImportJson,
+      destinos:
+        string[]
+    ) => Promise<string>;
+
   // Etapa de edição dos módulos: substitui os dados e os conteúdos de
   // UM módulo pelos de um JSON.
   onAtualizarModuloJson?:
@@ -367,6 +377,24 @@ const GestaoModulosPage:
   > = (
     props
   ) => {
+
+  // Atualização de TODOS os módulos por JSON (etapa de edição).
+  const [
+    atualizandoTodos,
+    setAtualizandoTodos
+  ] =
+    React.useState(false);
+
+  // Para cada módulo da prévia: id do módulo existente que ele
+  // atualiza ('' = criar novo).
+  const [
+    destinosLote,
+    setDestinosLote
+  ] =
+    React.useState<string[]>([]);
+
+  const destinosCalculadosRef =
+    React.useRef(false);
 
   // Atualização de UM módulo por JSON (etapa de edição dos módulos).
   const [
@@ -1448,7 +1476,50 @@ const GestaoModulosPage:
           modulos: atual.modulos.filter((_, indice) => indice !== indiceModulo)
         };
       });
+
+      setDestinosLote(atual => atual.filter((_, indice) => indice !== indiceModulo));
     };
+
+    // Correspondência sugerida (atualizar todos): primeiro pelo título,
+    // depois pela posição; sem correspondência = módulo novo.
+    React.useEffect(() => {
+      if (!previaImportacao) {
+        destinosCalculadosRef.current = false;
+        return;
+      }
+      if (!atualizandoTodos || destinosCalculadosRef.current) {
+        return;
+      }
+      destinosCalculadosRef.current = true;
+
+      const existentes =
+        props.modulos.slice().sort((a, b) => a.ordem - b.ordem);
+
+      const normalizar = (texto: string): string =>
+        (texto || '').trim().toLowerCase();
+
+      const destinos: string[] =
+        previaImportacao.modulos.map(() => '');
+
+      const usados: Record<string, boolean> = {};
+
+      previaImportacao.modulos.forEach((modulo, i) => {
+        const igual = existentes.find(item => !usados[item.id] && normalizar(item.titulo) === normalizar(modulo.titulo));
+        if (igual) {
+          destinos[i] = igual.id;
+          usados[igual.id] = true;
+        }
+      });
+
+      previaImportacao.modulos.forEach((_, i) => {
+        if (!destinos[i] && existentes[i] && !usados[existentes[i].id]) {
+          destinos[i] = existentes[i].id;
+          usados[existentes[i].id] = true;
+        }
+      });
+
+      setDestinosLote(destinos);
+    }, [previaImportacao, atualizandoTodos, props.modulos]);
 
     const atualizarConteudoPrevia = (
       indiceModulo: number,
@@ -1721,7 +1792,12 @@ const GestaoModulosPage:
         }
 
         const mensagem =
-          atualizando && props.onAtualizarModuloJson
+          atualizandoTodos && props.onAtualizarModulosEmLote
+            ? await props.onAtualizarModulosEmLote(
+              dadosFinais || previaImportacao,
+              (dadosFinais || previaImportacao).modulos.map((_, i) => destinosLote[i] || '')
+            )
+            : atualizando && props.onAtualizarModuloJson
             ? await props.onAtualizarModuloJson(
               atualizando.id,
               dadosFinais || previaImportacao
@@ -1731,6 +1807,7 @@ const GestaoModulosPage:
             );
 
         setModuloAtualizandoJson(null);
+        setAtualizandoTodos(false);
 
         const quantidadeImagens =
           Object.keys(urlsMidiaEnviadas.current).length;
@@ -1992,6 +2069,7 @@ const GestaoModulosPage:
                     );
 
                     setModuloAtualizandoJson(null);
+                    setAtualizandoTodos(false);
                   }
                 )
                 .then(
@@ -2021,10 +2099,48 @@ const GestaoModulosPage:
             justifyContent:
               'flex-end',
 
+            gap:
+              '8px',
+
+            flexWrap:
+              'wrap',
+
             marginBottom:
               '14px'
           }}
         >
+          {
+            edicaoDeModulos &&
+            props.onAtualizarModulosEmLote &&
+            props.modulos.length > 0 &&
+            (
+              <button
+                type="button"
+                disabled={
+                  !props.treinamentoId ||
+                  importandoJson
+                }
+                title="Um JSON com todos os módulos: cada módulo atualiza o existente correspondente (pelo título ou pela posição) e os demais são criados"
+                onClick={() => {
+                  setModuloAtualizandoJson(null);
+                  setAtualizandoTodos(true);
+                  inputJsonRef.current
+                    ?.click();
+                }}
+                style={{
+                  ...buttonSecondary,
+                  opacity:
+                    !props.treinamentoId ||
+                    importandoJson
+                      ? .55
+                      : 1
+                }}
+              >
+                ⟳ Atualizar todos os módulos por JSON
+              </button>
+            )
+          }
+
           <button
             type="button"
             disabled={
@@ -2034,6 +2150,7 @@ const GestaoModulosPage:
             onClick={() => {
               // Importação de módulos NOVOS (não é atualização).
               setModuloAtualizandoJson(null);
+              setAtualizandoTodos(false);
               inputJsonRef.current
                 ?.click();
             }}
@@ -2901,6 +3018,7 @@ const GestaoModulosPage:
                                   'Substituir os dados e os conteúdos deste módulo pelos de um arquivo JSON (ou .zip com imagens)',
 
                                 onClick: () => {
+                                  setAtualizandoTodos(false);
                                   setModuloAtualizandoJson(
                                     modulo
                                   );
@@ -3655,10 +3773,38 @@ const GestaoModulosPage:
               }}
             >
               <h2 style={{ marginBottom: '6px', color: '#0B2D4D' }}>
-                {moduloAtualizandoJson
-                  ? `Atualizar o módulo "${moduloAtualizandoJson.titulo}" por JSON`
-                  : 'Revisar importação por JSON'}
+                {atualizandoTodos
+                  ? 'Atualizar todos os módulos por JSON'
+                  : moduloAtualizandoJson
+                    ? `Atualizar o módulo "${moduloAtualizandoJson.titulo}" por JSON`
+                    : 'Revisar importação por JSON'}
               </h2>
+
+              {atualizandoTodos && previaImportacao && (() => {
+                const usados = destinosLote.filter(id => !!id);
+                const repetidos = usados.some((id, i) => usados.indexOf(id) !== i);
+                const intocados = props.modulos.filter(item => usados.indexOf(item.id) < 0);
+                return (
+                  <div style={{ background: '#FFF4E5', border: '1px solid #F5D7A8', color: '#7C2D12', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', fontSize: '13.5px', lineHeight: 1.5 }}>
+                    <strong>Atualização em lote.</strong> Cada módulo do JSON atualiza o módulo existente escolhido em
+                    “Atualiza” (dados e conteúdos substituídos; ordem, situação e vínculos mantidos) ou é criado como novo.
+                    Conteúdos com respostas de colaboradores são desativados, não apagados.
+                    <div style={{ marginTop: '6px' }}>
+                      <strong>{usados.length}</strong> atualizam módulos existentes · <strong>{previaImportacao.modulos.length - usados.length}</strong> serão criados.
+                    </div>
+                    {intocados.length > 0 && (
+                      <div style={{ marginTop: '4px' }}>
+                        Ficam como estão (não estão no JSON): {intocados.map(item => item.titulo).join(', ')}.
+                      </div>
+                    )}
+                    {repetidos && (
+                      <div style={{ marginTop: '6px', color: '#B42318', fontWeight: 700 }}>
+                        Dois módulos do JSON apontam para o mesmo módulo existente: ajuste a correspondência.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {moduloAtualizandoJson && (
                 <div style={{ background: '#FFF4E5', border: '1px solid #F5D7A8', color: '#7C2D12', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', fontSize: '13.5px', lineHeight: 1.5 }}>
@@ -3731,6 +3877,34 @@ const GestaoModulosPage:
                       Remover módulo
                     </button>
                   </div>
+
+                  {atualizandoTodos && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                      <label style={{ fontSize: '13px', fontWeight: 700, color: '#0B2D4D' }}>Atualiza</label>
+                      <select
+                        value={destinosLote[indiceModulo] || ''}
+                        onChange={evento => {
+                          const valor = evento.target.value;
+                          setDestinosLote(atual => {
+                            const copia = previaImportacao.modulos.map((_, i) => atual[i] || '');
+                            copia[indiceModulo] = valor;
+                            return copia;
+                          });
+                        }}
+                        style={{ minHeight: '32px', borderRadius: '8px', border: '1px solid #CBD5E1', padding: '4px 8px', fontSize: '13px', maxWidth: '100%' }}
+                      >
+                        <option value="">➕ Criar como módulo novo</option>
+                        {props.modulos
+                          .slice()
+                          .sort((a, b) => a.ordem - b.ordem)
+                          .map(item => (
+                            <option key={item.id} value={item.id}>
+                              #{item.ordem} — {item.titulo}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div style={{ height: '10px' }} />
 
@@ -3947,10 +4121,10 @@ const GestaoModulosPage:
                 <button
                   type="button"
                   disabled={confirmandoImportacao}
-                  onClick={() => { setPreviaImportacao(null); setModuloAtualizandoJson(null); }}
+                  onClick={() => { setPreviaImportacao(null); setModuloAtualizandoJson(null); setAtualizandoTodos(false); }}
                   style={{ ...buttonSecondary, opacity: confirmandoImportacao ? 0.55 : 1 }}
                 >
-                  {moduloAtualizandoJson ? 'Cancelar atualização' : 'Cancelar importação'}
+                  {moduloAtualizandoJson || atualizandoTodos ? 'Cancelar atualização' : 'Cancelar importação'}
                 </button>
 
                 <button
@@ -3963,9 +4137,11 @@ const GestaoModulosPage:
                 >
                   {confirmandoImportacao
                     ? 'Salvando...'
-                    : moduloAtualizandoJson
-                      ? 'Confirmar e atualizar o módulo'
-                      : 'Confirmar e importar'}
+                    : atualizandoTodos
+                      ? 'Confirmar e atualizar os módulos'
+                      : moduloAtualizandoJson
+                        ? 'Confirmar e atualizar o módulo'
+                        : 'Confirmar e importar'}
                 </button>
               </div>
             </div>

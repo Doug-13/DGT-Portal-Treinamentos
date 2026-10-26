@@ -2238,6 +2238,45 @@ const gestaoAreas =
         ]
       );
 
+    // Etapa de edição dos módulos: atualiza TODOS os módulos por JSON.
+    const atualizarModulosEmLote =
+      React.useCallback(
+        async (
+          dados:
+            IModuloImportJson,
+          destinos:
+            string[]
+        ): Promise<string> => {
+
+          if (
+            !gestaoModulos.treinamentoId
+          ) {
+            throw new Error(
+              'Treinamento não selecionado.'
+            );
+          }
+
+          const mensagem =
+            await importacaoJsonEtapasService
+              .atualizarModulosEmLote(
+                gestaoModulos.treinamentoId,
+                dados,
+                destinos
+              );
+
+          await gestaoModulos
+            .selecionarTreinamento(
+              gestaoModulos.treinamentoId
+            );
+
+          return mensagem;
+        },
+        [
+          gestaoModulos,
+          importacaoJsonEtapasService
+        ]
+      );
+
     // Etapa de edição dos módulos: atualiza UM módulo por JSON.
     const atualizarModuloJson =
       React.useCallback(
@@ -4906,6 +4945,10 @@ const gestaoAreas =
 
                 atualizarModuloJson={
                   atualizarModuloJson
+                }
+
+                atualizarModulosEmLote={
+                  atualizarModulosEmLote
                 }
 
                 moduloConteudoSelecionadoId={

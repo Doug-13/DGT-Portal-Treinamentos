@@ -1144,6 +1144,15 @@ export interface IPortalRouterProps {
       IModuloImportJson
   ) => Promise<string>;
 
+  // Etapa de edição dos módulos: atualiza TODOS os módulos por JSON.
+  atualizarModulosEmLote?:
+  (
+    dados:
+      IModuloImportJson,
+    destinos:
+      string[]
+  ) => Promise<string>;
+
   // Etapa de edição dos módulos: atualiza UM módulo por JSON.
   atualizarModuloJson?:
   (
@@ -2889,6 +2898,10 @@ const PortalRouter:
 
             onAtualizarModuloJson={
               props.atualizarModuloJson
+            }
+
+            onAtualizarModulosEmLote={
+              props.atualizarModulosEmLote
             }
 
             onAnalisarJson={

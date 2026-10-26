@@ -8,6 +8,8 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [1.4.14] - 2026-10-26
 
+- Novo: "⟳ Atualizar todos os módulos por JSON" na etapa de edição dos módulos — um JSON com todos os módulos atualiza cada módulo existente correspondente (sugestão pelo título e, depois, pela posição, ajustável na prévia em "Atualiza") e cria os que não têm correspondência; módulos fora do JSON ficam como estão.
+
 - Correção: revisão que ficou parada numa etapa de publicação (status "Vigente") depois de troca de processo ou de versão do fluxo agora mostra "Publicação pendente" com o botão "Concluir publicação", que publica a revisão (documento vigente, anterior obsoleta, retreinamento conforme o fluxo). A troca de fluxo também avisa quando a revisão cai numa etapa de publicação.
 
 - Novo: na etapa de edição dos módulos (assistente do treinamento), "Atualizar por JSON" no menu do módulo substitui título, descrição, duração, obrigatoriedade e conteúdos pelos do JSON (com prévia e imagens), mantendo ordem, situação e vínculos do módulo. Conteúdos com respostas de colaboradores são desativados, não apagados.
