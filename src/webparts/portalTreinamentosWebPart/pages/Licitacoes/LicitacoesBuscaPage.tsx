@@ -82,6 +82,7 @@ import {
 
 import {
   converterValor,
+  deduplicarEditais,
   formatarDataPncp,
   formatarMoeda,
   limparListaPalavras
@@ -329,6 +330,21 @@ const CartaoLicitacao: React.FC<{
       <Dado titulo="Encerramento das propostas" valor={formatarDataPncp(item.encerramento)} />
     </div>
 
+    {/* O mesmo edital publicado mais de uma vez no PNCP. */}
+    {item.outrasPublicacoes && item.outrasPublicacoes.length > 0 && (
+      <div style={{ marginBottom: 10, padding: '6px 10px', borderRadius: 7, background: COR.neutro, fontSize: 12, color: COR.textoSecundario }}>
+        ⧉ O órgão publicou este edital {item.outrasPublicacoes.length + 1} vezes no PNCP. Também como:{' '}
+        {item.outrasPublicacoes.map((outra, i) => (
+          <React.Fragment key={outra.chave}>
+            {i > 0 ? ', ' : ''}
+            <a href={outra.url} target="_blank" rel="noopener noreferrer" style={{ color: COR.indigo, fontWeight: 600 }}>
+              {outra.numero || 'outra publicação'}{outra.abertura ? ` (abertura ${formatarDataPncp(outra.abertura)})` : ''} ↗
+            </a>
+          </React.Fragment>
+        ))}
+      </div>
+    )}
+
     {/* Sem parecer: a IA sugere. Com parecer: vale a decisão da DGT. */}
     {!parecer && (
       <AnaliseIaBloco
@@ -453,6 +469,13 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     contexto ? contexto.nome : undefined
   );
 
+  // Mesmo edital publicado mais de uma vez no PNCP vira UM cartão
+  // (fica a publicação que já tem parecer; senão, a mais recente).
+  const resultados = React.useMemo(
+    () => deduplicarEditais(busca.resultados, item => !!pareceres.obter(item)),
+    [busca.resultados, pareceres.obter]
+  );
+
   const [filtroParecer, setFiltroParecer] = React.useState<FiltroParecer>('todos');
   const [dialogo, setDialogo] = React.useState<IDialogoParecer | undefined>(undefined);
   const [avisoParecer, setAvisoParecer] = React.useState<string>('');
@@ -467,7 +490,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
   // Análise por IA (só para editais sem parecer).
   const ia = useAnaliseIaLicitacoes(
     dataverseService,
-    busca.resultados,
+    resultados,
     pareceres.obter,
     pareceres.atuais,
     pareceres.situacao !== 'carregando',
@@ -479,7 +502,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
   // Acompanhamento das alterações dos editais (aba "Acompanhamento").
   const acompanhamento = useAcompanhamentoLicitacoes(
     dataverseService,
-    busca.resultados,
+    resultados,
     contexto ? contexto.nome : ''
   );
 
@@ -646,7 +669,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       return;
     }
 
-    const item = busca.resultados.find(r => {
+    const item = resultados.find(r => {
       const a = acompanhamento.obter(r);
       return !!a && a.chaveEdital === acomp.chaveEdital && !!r.idPncp;
     });
@@ -662,10 +685,18 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       .map(Number)
       .find(codigo => MODALIDADES_PNCP[codigo] === acomp.modalidade);
 
+    // Janela curta = busca rápida: o edital é publicado antes da
+    // abertura das propostas. Busca de (abertura − 20 dias) até hoje.
+    const abertura = acomp.abertura ? new Date(acomp.abertura) : undefined;
+    const diasDesdeAbertura = abertura && !isNaN(abertura.getTime())
+      ? Math.ceil((Date.now() - abertura.getTime()) / 86400000)
+      : 40;
+    const diasBusca = Math.min(365, Math.max(10, diasDesdeAbertura + 20));
+
     const filtros: IFiltrosLicitacao = {
       assunto: acomp.numero && acomp.numero !== '-' ? acomp.numero : acomp.orgao,
       uf: uf ? uf.trim() : undefined,
-      diasBusca: 180,
+      diasBusca,
       modalidades: codigoModalidade ? [codigoModalidade] : Object.keys(MODALIDADES_PNCP).map(Number),
       modoBusca: '4',
       palavrasObrigatorias: [],
@@ -685,7 +716,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     if (!downloadPendente) {
       return;
     }
-    const item = busca.resultados.find(r => {
+    const item = resultados.find(r => {
       const a = acompanhamento.obter(r);
       return !!a && a.chaveEdital === downloadPendente.chave && !!r.idPncp;
     });
@@ -699,9 +730,9 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     }
     if (!busca.buscando && busca.resumo) {
       setDownloadPendente(undefined);
-      setAvisoDownload('O edital não foi encontrado na busca automática (últimos 180 dias). Busque-o manualmente e clique de novo em "Baixar documentos".');
+      setAvisoDownload('O edital não foi encontrado na busca automática. Busque-o manualmente (aba Buscar editais, modo Edital específico) e clique de novo em “Baixar documentos”.');
     }
-  }, [busca.resultados, busca.buscando, busca.resumo, downloadPendente]);
+  }, [resultados, busca.buscando, busca.resumo, downloadPendente]);
 
   const aoTeclar = (evento: React.KeyboardEvent<HTMLInputElement>): void => {
     if (evento.key === 'Enter' && !busca.buscando) {
@@ -715,7 +746,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     }
     const abriu = abrirRelatorioImpressao(
       busca.filtrosUsados,
-      busca.resultados,
+      resultados,
       busca.resumo,
       urlAbsoluta(logoDgt)
     );
@@ -734,20 +765,20 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
 
   const contagemParecer = React.useMemo(() => {
     const contagem: { [filtro: string]: number } = {
-      todos: busca.resultados.length,
+      todos: resultados.length,
       semParecer: 0,
       Participar: 0,
       NaoParticipar: 0
     };
-    busca.resultados.forEach(item => {
+    resultados.forEach(item => {
       contagem[decisaoDe(item)]++;
     });
     return contagem;
-  }, [busca.resultados, decisaoDe]);
+  }, [resultados, decisaoDe]);
 
   const resultadosVisiveis = React.useMemo(() => {
     const termo = filtroLista.trim().toLowerCase();
-    return busca.resultados.filter(item => {
+    return resultados.filter(item => {
       if (filtroParecer !== 'todos' && decisaoDe(item) !== filtroParecer) {
         return false;
       }
@@ -758,7 +789,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         .toLowerCase()
         .indexOf(termo) >= 0;
     });
-  }, [busca.resultados, filtroLista, filtroParecer, decisaoDe]);
+  }, [resultados, filtroLista, filtroParecer, decisaoDe]);
 
   const presetAtivo = PRESETS_MODALIDADES.find(preset =>
     mesmoConjunto(preset.codigos, form.modalidades)
@@ -833,7 +864,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
           onBaixarDocumentos={baixarDocumentosDoAcompanhamento}
           onCriarTarefaClickUp={(acomp, atualizar) => {
             const parecer = pareceres.atuais.find(p => p.chaveEdital === acomp.chaveEdital);
-            const item = busca.resultados.find(r => acompanhamento.obter(r) === acomp);
+            const item = resultados.find(r => acompanhamento.obter(r) === acomp);
             const estadoIa = item ? ia.estadoDe(item) : undefined;
             acompanhamento.criarTarefaClickUp(acomp, item, {
               justificativa: parecer ? parecer.justificativa : '',
@@ -1339,7 +1370,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
               },
               {
                 titulo: 'Oportunidades aderentes',
-                valor: busca.resultados.length
+                valor: resultados.length
               }
             ].map(indicador => (
               <div
@@ -1395,7 +1426,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       {/* ======================================================
           RESULTADOS
           ====================================================== */}
-      {busca.resultados.length > 0 && (
+      {resultados.length > 0 && (
         <>
           <div
             style={{
@@ -1409,7 +1440,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
           >
             <h2 style={{ ...tituloSecao, margin: 0 }}>
               Oportunidades ({resultadosVisiveis.length}
-              {resultadosVisiveis.length !== busca.resultados.length ? ` de ${busca.resultados.length}` : ''})
+              {resultadosVisiveis.length !== resultados.length ? ` de ${resultados.length}` : ''})
             </h2>
 
             <input
@@ -1477,7 +1508,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         </>
       )}
 
-      {!busca.buscando && resumo && busca.resultados.length === 0 && (
+      {!busca.buscando && resumo && resultados.length === 0 && (
         <div style={{ ...cartao, background: COR.neutro }}>
           <h2 style={tituloSecao}>Nenhuma licitação encontrada</h2>
           <p style={textoApoio}>
@@ -1523,7 +1554,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         promptService={ia.promptService}
         servicoAnalise={ia.servicoAnalise}
         tabelasExistem={ia.tabelasIaExistem}
-        resultados={busca.resultados}
+        resultados={resultados}
         pareceresAtuais={pareceres.atuais}
         responsavel={contexto ? contexto.nome : ''}
         apiDisponivel={ia.apiDisponivel}

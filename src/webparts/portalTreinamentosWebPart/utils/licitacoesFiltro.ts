@@ -267,7 +267,11 @@ export const correspondeEditalEspecifico = (
   const soltos = (normal.replace(/\d+\s*[/-]\s*\d{4}/g, ' ').match(/\d+/g) || [])
     .filter(n => n.length < 4 || !/^(19|20)\d{2}$/.test(n));
 
-  const numeroCompra = semZeros((registro.numeroCompra || '').replace(/\D+/g, ''));
+  // "PE44/2026", "44/2026", "044", "PE 044-2026" → "44"
+  // (sem o ano: "PE44/2026" não pode virar "442026").
+  const brutoCompra = registro.numeroCompra || '';
+  const compraComAno = /(\d+)\s*[/-]\s*\d{4}\b/.exec(brutoCompra);
+  const numeroCompra = semZeros(compraComAno ? compraComAno[1] : brutoCompra.replace(/\D+/g, ''));
   const processo = normalizarTexto(registro.processo || '').replace(/\s+/g, '');
 
   if (comAno.length > 0 || soltos.length > 0) {
@@ -598,4 +602,83 @@ export const processarRegistro = (
     idPncp: registro.numeroControlePNCP,
     dados: extrairDadosEdital(registro)
   };
+};
+
+// ------------------------------------------------------------
+// MESMO EDITAL PUBLICADO MAIS DE UMA VEZ NO PNCP
+// ------------------------------------------------------------
+// Alguns órgãos publicam o mesmo edital duas vezes (ex.: uma pelo
+// sistema próprio e outra pela plataforma da disputa: "PE 44/2026" e
+// "[Portal de Compras Públicas] … PE44/2026"). Para a DGT é UM edital.
+//
+// Mesmo edital = mesmo órgão + mesmo município/UF + mesma modalidade
+// + mesmo número (sem zeros e sem letras: "PE 044/2026" = "44/2026")
+// + mesmo valor estimado (quando os dois têm valor).
+//
+// Fica UMA publicação: a que já tem parecer/acompanhamento; senão,
+// a mais recente. As outras ficam em "outrasPublicacoes".
+
+const numeroCanonico = (numero: string): string => {
+  const texto = normalizarTexto(numero);
+  const comAno = /(\d+)\s*[/-]\s*(\d{4})/.exec(texto);
+  if (comAno) {
+    return `${comAno[1].replace(/^0+(?=\d)/, '')}/${comAno[2]}`;
+  }
+  const digitos = texto.replace(/\D+/g, '');
+  return digitos.replace(/^0+(?=\d)/, '');
+};
+
+export const chaveMesmoEdital = (item: ILicitacaoResultado): string =>
+  [
+    normalizarTexto(item.orgao),
+    normalizarTexto(item.local),
+    normalizarTexto(item.modalidade),
+    numeroCanonico(item.numero || '')
+  ].join('|');
+
+export const deduplicarEditais = (
+  resultados: ILicitacaoResultado[],
+  temRegistro: (item: ILicitacaoResultado) => boolean
+): ILicitacaoResultado[] => {
+
+  const grupos: { [chave: string]: ILicitacaoResultado[] } = {};
+  const ordem: string[] = [];
+
+  resultados.forEach(item => {
+    // Sem número não dá para afirmar que é o mesmo edital.
+    const chave = numeroCanonico(item.numero || '') ? chaveMesmoEdital(item) : `unico|${item.chave}`;
+    if (!grupos[chave]) {
+      grupos[chave] = [];
+      ordem.push(chave);
+    }
+    grupos[chave].push(item);
+  });
+
+  const saida: ILicitacaoResultado[] = [];
+
+  ordem.forEach(chave => {
+    const grupo = grupos[chave];
+
+    // Valores diferentes = editais diferentes (ex.: lotes publicados
+    // com o mesmo número): não junta.
+    const comValor = grupo.filter(i => i.valor !== undefined && !isNaN(i.valor as number));
+    const valores = comValor.map(i => Math.round(i.valor as number));
+    const mesmoValor = valores.every(v => v === valores[0]);
+
+    if (grupo.length === 1 || !mesmoValor) {
+      grupo.forEach(i => saida.push(i));
+      return;
+    }
+
+    const principal =
+      grupo.find(temRegistro) ||
+      grupo.slice().sort((a, b) => (b.publicacao || '').localeCompare(a.publicacao || ''))[0];
+
+    saida.push({
+      ...principal,
+      outrasPublicacoes: grupo.filter(i => i !== principal)
+    });
+  });
+
+  return saida;
 };

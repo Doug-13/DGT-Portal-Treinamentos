@@ -131,10 +131,18 @@ Sem CNPJ e sem o link do PNCP (que contém o CNPJ): o link da tarefa leva ao por
     "aderencia": "2f364748-0cb1-4b95-8fa2-6ce502a4ed00",
     "compatibilidade": "113821ea-9d51-45c3-818f-337e907e5b05",
     "parecer": "656ebcaa-3ff6-469a-8b66-d2c70c61951a",
-    "resumo": "78f83369-4ac9-443d-a26e-d3eaeaf8c06f"
+    "resumo": "78f83369-4ac9-443d-a26e-d3eaeaf8c06f",
+    "linkSharepoint": "ab3c7c8b-2bfa-46fa-b578-baa1be1f9031",
+    "prazoImpugnacao": "365d7f76-a984-4886-a866-1672b2d04ad2",
+    "prazoChecklist": "3b3cc3a2-d577-4c02-9e8d-ff56e23c3334",
+    "prazoProposta": "17d47fce-3c52-482b-a0c9-acf31c21d1d8"
   }
 }
 ```
+
+Prazos internos (dias úteis = seg–sex, fora feriados nacionais):
+Prazo Impugnação = Data Pregão − 4 · Prazo Checklist Final = − 3 ·
+Prazo Proposta e Estratégia de Preços = − 2.
 
 Desfecho, Resultado Pregão, Atos ocorridos e Link Sharepoint ficam com o analista e o
 fluxo LIC01.

@@ -1456,6 +1456,44 @@ const PortalRouter:
                 'gestao'
               )
             }
+
+            // Minhas pendências: etapas de fluxo (treinamentos e
+            // documentos) aguardando o usuário.
+            dataverseService={
+              props.dataverseService
+            }
+
+            contexto={
+              props.contextoAcesso
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
+
+            documentos={
+              props.documentos
+            }
+
+            documentosControle={
+              props.documentosControle
+            }
+
+            onAbrirDocumento={
+              props.abrirDocumento
+            }
+
+            onAbrirGestaoPendencias={
+              podeAcessarRota(
+                'gestao',
+                props.contextoAcesso
+              )
+                ? () =>
+                  props.navegar(
+                    'gestao'
+                  )
+                : undefined
+            }
           />
         );
 

@@ -19,6 +19,10 @@ import {
 } from '../PncpEditalService';
 
 import {
+  subtrairDiasUteis
+} from '../../utils/diasUteis';
+
+import {
   IAlteracaoDetectada,
   ISnapshotLicitacao,
   TipoAlteracao,
@@ -606,9 +610,16 @@ export class AcompanhamentoLicitacaoService {
       `Parecer DGT: Participar — ${(limpo(contexto.justificativa) || '—').substring(0, 600)}`
     ].filter(l => l.length > 0).join('\n');
 
+    // Prazos internos (dias úteis antes da Data Pregão).
+    const prazoAntes = (dias: number): number | null =>
+      prazoValido && encerramento ? subtrairDiasUteis(encerramento, dias).getTime() : null;
+
     const campos: Record<string, unknown> = {
       orgaoMunicipio: `${orgao} — ${item.local || municipio}`,
       dataPregao: prazoValido && encerramento ? encerramento.getTime() : null,
+      prazoImpugnacao: prazoAntes(4),
+      prazoChecklist: prazoAntes(3),
+      prazoProposta: prazoAntes(2),
       resumo,
       orgao,
       municipio,

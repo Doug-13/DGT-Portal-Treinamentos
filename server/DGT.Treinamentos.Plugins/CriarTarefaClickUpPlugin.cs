@@ -37,6 +37,7 @@ namespace DGT.Treinamentos.Plugins
     //     "tags": ["licitação"],               (somadas às do portal: modalidade, UF)
     //     "campos": {                          (opcional: campos personalizados da lista)
     //       "orgaoMunicipio": "...", "dataPregao": "...", "resumo": "...", "parecer": "...",
+    //       "prazoImpugnacao": "...", "prazoChecklist": "...", "prazoProposta": "...",
     //       "orgao": "<id do campo>", "municipio": "...", "uf": "...",
     //       "modalidade": "...", "numero": "...", "valorEstimado": "...",
     //       "abertura": "...", "encerramento": "...", "compatibilidade": "...",
@@ -303,7 +304,8 @@ namespace DGT.Treinamentos.Plugins
                 };
 
                 // Datas com hora.
-                if (mapa.Name == "abertura" || mapa.Name == "encerramento" || mapa.Name == "dataPregao")
+                if (mapa.Name == "abertura" || mapa.Name == "encerramento" || mapa.Name == "dataPregao" ||
+                    mapa.Name == "prazoImpugnacao" || mapa.Name == "prazoChecklist" || mapa.Name == "prazoProposta")
                 {
                     corpo["value_options"] = new JObject { ["time"] = true };
                 }
@@ -344,6 +346,47 @@ namespace DGT.Treinamentos.Plugins
         // Preenche os campos que o portal não mandou, a partir dos outros
         // (assim os campos não ficam vazios se o portal for de uma
         // versão anterior).
+        // Dia útil = seg a sex, fora feriados nacionais (fixos + Carnaval,
+        // Sexta-feira Santa e Corpus Christi).
+        private static DateTimeOffset SubtrairDiasUteis(DateTimeOffset data, int dias)
+        {
+            var resultado = data;
+            while (dias > 0)
+            {
+                resultado = resultado.AddDays(-1);
+                if (EhDiaUtil(resultado.Date))
+                {
+                    dias--;
+                }
+            }
+            return resultado;
+        }
+
+        private static bool EhDiaUtil(DateTime dia)
+        {
+            if (dia.DayOfWeek == DayOfWeek.Saturday || dia.DayOfWeek == DayOfWeek.Sunday)
+            {
+                return false;
+            }
+            var fixos = new[] { "1-1", "4-21", "5-1", "9-7", "10-12", "11-2", "11-15", "11-20", "12-25" };
+            if (fixos.Contains($"{dia.Month}-{dia.Day}"))
+            {
+                return false;
+            }
+            var pascoa = Pascoa(dia.Year);
+            var moveis = new[] { pascoa.AddDays(-48), pascoa.AddDays(-47), pascoa.AddDays(-2), pascoa.AddDays(60) };
+            return !moveis.Any(m => m.Date == dia.Date);
+        }
+
+        private static DateTime Pascoa(int ano)
+        {
+            int a = ano % 19, b = ano / 100, c = ano % 100, d = b / 4, e = b % 4;
+            int f = (b + 8) / 25, g = (b - f + 1) / 3, h = (19 * a + b - d - g + 15) % 30;
+            int i = c / 4, k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = (a + 11 * h + 22 * l) / 451;
+            int mes = (h + l - 7 * m + 114) / 31, diaMes = ((h + l - 7 * m + 114) % 31) + 1;
+            return new DateTime(ano, mes, diaMes);
+        }
+
         private static void CompletarValores(JObject v, JObject payload)
         {
             string Texto(string chave) => ((string)v[chave] ?? string.Empty).Trim();
@@ -359,6 +402,17 @@ namespace DGT.Treinamentos.Plugins
                 encerramento != null && encerramento.Type != JTokenType.Null)
             {
                 v["dataPregao"] = encerramento.DeepClone();
+            }
+
+            // Prazos internos: Data Pregão − 4 / 3 / 2 dias úteis
+            // (mesma regra de utils/diasUteis.ts no portal).
+            var pregao = (long?)v["dataPregao"];
+            if (pregao.HasValue && pregao.Value > 0)
+            {
+                var data = DateTimeOffset.FromUnixTimeMilliseconds(pregao.Value).ToOffset(TimeSpan.FromHours(-3));
+                if (v["prazoImpugnacao"] == null || v["prazoImpugnacao"].Type == JTokenType.Null) { v["prazoImpugnacao"] = SubtrairDiasUteis(data, 4).ToUnixTimeMilliseconds(); }
+                if (v["prazoChecklist"] == null || v["prazoChecklist"].Type == JTokenType.Null) { v["prazoChecklist"] = SubtrairDiasUteis(data, 3).ToUnixTimeMilliseconds(); }
+                if (v["prazoProposta"] == null || v["prazoProposta"].Type == JTokenType.Null) { v["prazoProposta"] = SubtrairDiasUteis(data, 2).ToUnixTimeMilliseconds(); }
             }
 
             if (Texto("resumo").Length == 0)

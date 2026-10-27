@@ -24,6 +24,29 @@ import ResumoModulo, {
   IIndicadorResumo
 } from '../../components/common/ResumoModulo';
 
+import {
+  IDocumento
+} from '../../models/Documento';
+
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import {
+  IContextoAcesso
+} from '../../services/AutorizacaoService';
+
+import {
+  IUsuarioAreaAdmin
+} from '../../services/AreaAdminService';
+
+import {
+  useDocumentosPendencias
+} from '../../hooks/useDocumentosPendencias';
+
+import MinhasPendenciasTreinamentos from
+  './MinhasPendenciasTreinamentos';
+
 export interface IVisaoGeralTreinamentosPageProps {
 
   primeiroNome?:
@@ -61,7 +84,44 @@ export interface IVisaoGeralTreinamentosPageProps {
 
   onVerGestao?:
     () => void;
+
+  // ----------------------------------------------------------
+  // "Minhas pendências" (opcionais: sem eles o painel mostra só os
+  // treinamentos a realizar).
+  // ----------------------------------------------------------
+
+  dataverseService?:
+    DataverseService;
+
+  contexto?:
+    IContextoAcesso;
+
+  usuariosAreas?:
+    IUsuarioAreaAdmin[];
+
+  // Documentos comuns (POP, IT...).
+  documentos?:
+    IDocumento[];
+
+  // Documentos de controle dos treinamentos (tipo TRN).
+  documentosControle?:
+    IDocumento[];
+
+  onAbrirDocumento?:
+    (
+      documento:
+        IDocumento
+    ) => void;
+
+  // Abre a Gestão de treinamentos (etapas do fluxo de treinamentos).
+  // Só deve ser informado quando o usuário tem acesso à Gestão.
+  onAbrirGestaoPendencias?:
+    () => void;
 }
+
+// Listas vazias estáveis (evitam recarregar o hook a cada render).
+const SEM_DOCUMENTOS: IDocumento[] = [];
+const SEM_VINCULOS: IUsuarioAreaAdmin[] = [];
 
 const CARD:
   React.CSSProperties = {
@@ -154,6 +214,37 @@ const VisaoGeralTreinamentosPage:
     const secaoTreinamentosRef =
       React.useRef<HTMLElement>(
         null
+      );
+
+    // ----------------------------------------------------------
+    // MINHAS PENDÊNCIAS: documentos comuns + documentos de controle
+    // dos treinamentos. O cálculo é o mesmo da tela Documentos.
+    // ----------------------------------------------------------
+
+    const documentosComuns =
+      props.documentos || SEM_DOCUMENTOS;
+
+    const documentosControle =
+      props.documentosControle || SEM_DOCUMENTOS;
+
+    const todosDocumentos =
+      React.useMemo(
+        () =>
+          documentosComuns.concat(
+            documentosControle
+          ),
+        [
+          documentosComuns,
+          documentosControle
+        ]
+      );
+
+    const pendencias =
+      useDocumentosPendencias(
+        props.dataverseService,
+        todosDocumentos,
+        props.contexto,
+        props.usuariosAreas || SEM_VINCULOS
       );
 
     const alternarFiltro =
@@ -436,6 +527,30 @@ const VisaoGeralTreinamentosPage:
           indicadores={resumo}
         />
 
+        {/* MINHAS PENDÊNCIAS (fluxo de treinamentos, documentos e treinamentos a fazer) */}
+
+        <MinhasPendenciasTreinamentos
+          pendencias={pendencias.pendencias}
+          carregando={pendencias.carregando}
+          erro={pendencias.erro}
+          treinamentos={props.treinamentos}
+          onAbrirTreinamento={props.onAbrirTreinamento}
+          onVerTreinamentos={props.onVerTreinamentos}
+          onAbrirDocumento={props.onAbrirDocumento}
+          onAbrirGestao={props.onAbrirGestaoPendencias}
+          onRecarregar={
+            props.dataverseService
+              ? () => {
+                pendencias.recarregar()
+                  .catch(
+                    (error: unknown) =>
+                      console.error(error)
+                  );
+              }
+              : undefined
+          }
+        />
+
         {/* CONTEÚDO PRINCIPAL */}
 
         <div
@@ -469,304 +584,15 @@ const VisaoGeralTreinamentosPage:
 
             {/* CONTINUAR */}
 
-            <article
-              style={{
-                ...CARD,
-
-                overflow:
-                  'hidden'
-              }}
-            >
-              <div
+            {
+              // Só aparece quando há treinamento em andamento.
+              continuar && (
+                <article
                 style={{
-                  display:
-                    'flex',
+                  ...CARD,
 
-                  alignItems:
-                    'center',
-
-                  justifyContent:
-                    'space-between',
-
-                  padding:
-                    '13px 16px',
-
-                  borderBottom:
-                    '1px solid #E8EEF4'
-                }}
-              >
-                <strong>
-                  🧳 Continuar treinamento
-                </strong>
-
-                <button
-                  type="button"
-                  onClick={
-                    props.onVerTreinamentos
-                  }
-                  style={
-                    BOTAO_LINK
-                  }
-                >
-                  Ver meus treinamentos →
-                </button>
-              </div>
-
-              {
-                continuar
-                  ? (
-                    <div
-                      style={{
-                        display:
-                          'grid',
-
-                        gridTemplateColumns:
-                          '190px minmax(0,1fr) 145px',
-
-                        gap:
-                          '16px',
-
-                        alignItems:
-                          'center',
-
-                        padding:
-                          '16px'
-                      }}
-                    >
-
-                      <img
-                        src={
-                          continuar.imagemUrl ||
-                          continuar.imagem
-                        }
-                        alt=""
-                        style={{
-                          width:
-                            '190px',
-
-                          height:
-                            '105px',
-
-                          objectFit:
-                            'cover',
-
-                          borderRadius:
-                            '10px',
-
-                          background:
-                            '#EAF0F5'
-                        }}
-                      />
-
-                      <div>
-                        <span
-                          style={{
-                            display:
-                              'inline-block',
-
-                            padding:
-                              '4px 8px',
-
-                            borderRadius:
-                              '999px',
-
-                            background:
-                              '#E8F3FF',
-
-                            color:
-                              '#0B6FD6',
-
-                            fontSize:
-                              '11px',
-
-                            fontWeight:
-                              800
-                          }}
-                        >
-                          EM ANDAMENTO
-                        </span>
-
-                        <h3
-                          style={{
-                            margin:
-                              '6px 0 4px',
-
-                            color:
-                              '#0B2D4D',
-
-                            fontSize:
-                              '18px'
-                          }}
-                        >
-                          {
-                            continuar.nome
-                          }
-                        </h3>
-
-                        <div
-                          style={{
-                            color:
-                              '#5C7287',
-
-                            fontSize:
-                              '13px'
-                          }}
-                        >
-                          {
-                            continuar.codigo
-                          } | Carga horária: {
-                            continuar.cargaHoraria
-                          }
-                        </div>
-
-                        <div
-                          style={{
-                            display:
-                              'grid',
-
-                            gridTemplateColumns:
-                              '1fr 44px',
-
-                            alignItems:
-                              'center',
-
-                            gap:
-                              '10px',
-
-                            marginTop:
-                              '12px'
-                          }}
-                        >
-                          <div
-                            style={{
-                              height:
-                                '10px',
-
-                              borderRadius:
-                                '999px',
-
-                              overflow:
-                                'hidden',
-
-                              background:
-                                '#E3E9EE'
-                            }}
-                          >
-                            <div
-                              style={{
-                                height:
-                                  '100%',
-
-                                width:
-                                  `${clamp(
-                                    continuar.progresso
-                                  )}%`,
-
-                                borderRadius:
-                                  '999px',
-
-                                background:
-                                  '#1683E7'
-                              }}
-                            />
-                          </div>
-
-                          <strong
-                            style={{
-                              color:
-                                '#0B2D4D'
-                            }}
-                          >
-                            {
-                              clamp(
-                                continuar.progresso
-                              )
-                            }%
-                          </strong>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          props.onAbrirTreinamento(
-                            continuar
-                          )
-                        }
-                        style={{
-                          padding:
-                            '11px 14px',
-
-                          border:
-                            0,
-
-                          borderRadius:
-                            '8px',
-
-                          background:
-                            '#073A67',
-
-                          color:
-                            '#FFFFFF',
-
-                          cursor:
-                            'pointer',
-
-                          fontWeight:
-                            700
-                        }}
-                      >
-                        Continuar →
-                      </button>
-                    </div>
-                  )
-                  : (
-                    <div
-                      style={{
-                        padding:
-                          '18px'
-                      }}
-                    >
-                      <EmptyState
-                        titulo="Nenhum treinamento em andamento"
-                      />
-                    </div>
-                  )
-              }
-            </article>
-
-            {/* MEUS TREINAMENTOS (filtrável pelos cartões) */}
-
-            <article
-              ref={
-                secaoTreinamentosRef
-              }
-              style={{
-                ...CARD,
-
-                padding:
-                  '15px',
-
-                // Destaque quando filtrado por um cartão.
-                borderColor:
-                  filtro
-                    ? '#05C3DD'
-                    : '#E3EAF1',
-
-                scrollMarginTop:
-                  '12px'
-              }}
-            >
-              <div
-                style={{
-                  display:
-                    'flex',
-
-                  justifyContent:
-                    'space-between',
-
-                  alignItems:
-                    'center'
+                  overflow:
+                    'hidden'
                 }}
               >
                 <div
@@ -777,170 +603,469 @@ const VisaoGeralTreinamentosPage:
                     alignItems:
                       'center',
 
-                    gap:
-                      '8px',
+                    justifyContent:
+                      'space-between',
 
-                    flexWrap:
-                      'wrap'
+                    padding:
+                      '13px 16px',
+
+                    borderBottom:
+                      '1px solid #E8EEF4'
                   }}
                 >
                   <strong>
-                    🎓 Meus treinamentos
+                    🧳 Continuar treinamento
                   </strong>
 
-                  {
-                    filtro &&
-                    (
-                      <span
+                  <button
+                    type="button"
+                    onClick={
+                      props.onVerTreinamentos
+                    }
+                    style={
+                      BOTAO_LINK
+                    }
+                  >
+                    Ver meus treinamentos →
+                  </button>
+                </div>
+
+                {
+                  continuar
+                    ? (
+                      <div
                         style={{
                           display:
-                            'inline-flex',
+                            'grid',
+
+                          gridTemplateColumns:
+                            '190px minmax(0,1fr) 145px',
+
+                          gap:
+                            '16px',
 
                           alignItems:
                             'center',
 
-                          gap:
-                            '6px',
-
-                          background:
-                            '#E6F9FC',
-
-                          color:
-                            '#202A44',
-
-                          borderRadius:
-                            '999px',
-
                           padding:
-                            '3px 6px 3px 10px',
-
-                          fontSize:
-                            '12px',
-
-                          fontWeight:
-                            700
+                            '16px'
                         }}
                       >
-                        {ROTULO_FILTRO[filtro]} ({meusTreinamentos.length})
+
+                        <img
+                          src={
+                            continuar.imagemUrl ||
+                            continuar.imagem
+                          }
+                          alt=""
+                          style={{
+                            width:
+                              '190px',
+
+                            height:
+                              '105px',
+
+                            objectFit:
+                              'cover',
+
+                            borderRadius:
+                              '10px',
+
+                            background:
+                              '#EAF0F5'
+                          }}
+                        />
+
+                        <div>
+                          <span
+                            style={{
+                              display:
+                                'inline-block',
+
+                              padding:
+                                '4px 8px',
+
+                              borderRadius:
+                                '999px',
+
+                              background:
+                                '#E8F3FF',
+
+                              color:
+                                '#0B6FD6',
+
+                              fontSize:
+                                '11px',
+
+                              fontWeight:
+                                800
+                            }}
+                          >
+                            EM ANDAMENTO
+                          </span>
+
+                          <h3
+                            style={{
+                              margin:
+                                '6px 0 4px',
+
+                              color:
+                                '#0B2D4D',
+
+                              fontSize:
+                                '18px'
+                            }}
+                          >
+                            {
+                              continuar.nome
+                            }
+                          </h3>
+
+                          <div
+                            style={{
+                              color:
+                                '#5C7287',
+
+                              fontSize:
+                                '13px'
+                            }}
+                          >
+                            {
+                              continuar.codigo
+                            } | Carga horária: {
+                              continuar.cargaHoraria
+                            }
+                          </div>
+
+                          <div
+                            style={{
+                              display:
+                                'grid',
+
+                              gridTemplateColumns:
+                                '1fr 44px',
+
+                              alignItems:
+                                'center',
+
+                              gap:
+                                '10px',
+
+                              marginTop:
+                                '12px'
+                            }}
+                          >
+                            <div
+                              style={{
+                                height:
+                                  '10px',
+
+                                borderRadius:
+                                  '999px',
+
+                                overflow:
+                                  'hidden',
+
+                                background:
+                                  '#E3E9EE'
+                              }}
+                            >
+                              <div
+                                style={{
+                                  height:
+                                    '100%',
+
+                                  width:
+                                    `${clamp(
+                                      continuar.progresso
+                                    )}%`,
+
+                                  borderRadius:
+                                    '999px',
+
+                                  background:
+                                    '#1683E7'
+                                }}
+                              />
+                            </div>
+
+                            <strong
+                              style={{
+                                color:
+                                  '#0B2D4D'
+                              }}
+                            >
+                              {
+                                clamp(
+                                  continuar.progresso
+                                )
+                              }%
+                            </strong>
+                          </div>
+                        </div>
 
                         <button
                           type="button"
                           onClick={() =>
-                            setFiltro(
-                              undefined
+                            props.onAbrirTreinamento(
+                              continuar
                             )
                           }
-                          title="Limpar filtro"
-                          aria-label="Limpar filtro"
                           style={{
+                            padding:
+                              '11px 14px',
+
                             border:
                               0,
 
+                            borderRadius:
+                              '8px',
+
                             background:
-                              '#FFFFFF',
+                              '#073A67',
 
                             color:
-                              '#202A44',
-
-                            borderRadius:
-                              '50%',
-
-                            width:
-                              '18px',
-
-                            height:
-                              '18px',
-
-                            lineHeight:
-                              '18px',
-
-                            padding:
-                              0,
+                              '#FFFFFF',
 
                             cursor:
                               'pointer',
 
                             fontWeight:
-                              800
+                              700
                           }}
                         >
-                          ✕
+                          Continuar →
                         </button>
-                      </span>
+                      </div>
                     )
-                  }
+                    : (
+                      <div
+                        style={{
+                          padding:
+                            '18px'
+                        }}
+                      >
+                        <EmptyState
+                          titulo="Nenhum treinamento em andamento"
+                        />
+                      </div>
+                    )
+                }
+              </article>
+              )
+            }
+
+            {/* MEUS TREINAMENTOS (filtrável pelos cartões) */}
+
+            {
+              // Só aparece quando há treinamentos (ou quando um cartão está filtrando).
+              (meusTreinamentos.length > 0 || !!filtro) && (
+                <article
+                ref={
+                  secaoTreinamentosRef
+                }
+                style={{
+                  ...CARD,
+
+                  padding:
+                    '15px',
+
+                  // Destaque quando filtrado por um cartão.
+                  borderColor:
+                    filtro
+                      ? '#05C3DD'
+                      : '#E3EAF1',
+
+                  scrollMarginTop:
+                    '12px'
+                }}
+              >
+                <div
+                  style={{
+                    display:
+                      'flex',
+
+                    justifyContent:
+                      'space-between',
+
+                    alignItems:
+                      'center'
+                  }}
+                >
+                  <div
+                    style={{
+                      display:
+                        'flex',
+
+                      alignItems:
+                        'center',
+
+                      gap:
+                        '8px',
+
+                      flexWrap:
+                        'wrap'
+                    }}
+                  >
+                    <strong>
+                      🎓 Meus treinamentos
+                    </strong>
+
+                    {
+                      filtro &&
+                      (
+                        <span
+                          style={{
+                            display:
+                              'inline-flex',
+
+                            alignItems:
+                              'center',
+
+                            gap:
+                              '6px',
+
+                            background:
+                              '#E6F9FC',
+
+                            color:
+                              '#202A44',
+
+                            borderRadius:
+                              '999px',
+
+                            padding:
+                              '3px 6px 3px 10px',
+
+                            fontSize:
+                              '12px',
+
+                            fontWeight:
+                              700
+                          }}
+                        >
+                          {ROTULO_FILTRO[filtro]} ({meusTreinamentos.length})
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFiltro(
+                                undefined
+                              )
+                            }
+                            title="Limpar filtro"
+                            aria-label="Limpar filtro"
+                            style={{
+                              border:
+                                0,
+
+                              background:
+                                '#FFFFFF',
+
+                              color:
+                                '#202A44',
+
+                              borderRadius:
+                                '50%',
+
+                              width:
+                                '18px',
+
+                              height:
+                                '18px',
+
+                              lineHeight:
+                                '18px',
+
+                              padding:
+                                0,
+
+                              cursor:
+                                'pointer',
+
+                              fontWeight:
+                                800
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )
+                    }
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      props.onVerTreinamentos
+                    }
+                    style={
+                      BOTAO_LINK
+                    }
+                  >
+                    Ver todos →
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={
-                    props.onVerTreinamentos
-                  }
-                  style={
-                    BOTAO_LINK
-                  }
-                >
-                  Ver todos →
-                </button>
-              </div>
+                {
+                  meusTreinamentos.length ===
+                    0
+                    ? (
+                      <div
+                        style={{
+                          marginTop:
+                            '14px'
+                        }}
+                      >
+                        <EmptyState
+                          titulo={
+                            filtro
+                              ? `Nenhum treinamento em "${ROTULO_FILTRO[filtro]}"`
+                              : 'Nenhum treinamento atribuído'
+                          }
+                        />
+                      </div>
+                    )
+                    : (
+                      <div
+                        style={{
+                          display:
+                            'grid',
 
-              {
-                meusTreinamentos.length ===
-                  0
-                  ? (
-                    <div
-                      style={{
-                        marginTop:
-                          '14px'
-                      }}
-                    >
-                      <EmptyState
-                        titulo={
-                          filtro
-                            ? `Nenhum treinamento em "${ROTULO_FILTRO[filtro]}"`
-                            : 'Nenhum treinamento atribuído'
-                        }
-                      />
-                    </div>
-                  )
-                  : (
-                    <div
-                      style={{
-                        display:
-                          'grid',
+                          gridTemplateColumns:
+                            'repeat(4,minmax(0,1fr))',
 
-                        gridTemplateColumns:
-                          'repeat(4,minmax(0,1fr))',
+                          gap:
+                            '12px',
 
-                        gap:
-                          '12px',
-
-                        marginTop:
-                          '13px'
-                      }}
-                    >
-                      {
-                        meusTreinamentos.map(
-                          item => (
-                            <TreinamentoCard
-                              key={
-                                `${item.id}-${item.usuarioTreinamentoId || ''}`
-                              }
-                              treinamento={
-                                item
-                              }
-                              modo="compacto"
-                              onAbrir={
-                                props.onAbrirTreinamento
-                              }
-                            />
+                          marginTop:
+                            '13px'
+                        }}
+                      >
+                        {
+                          meusTreinamentos.map(
+                            item => (
+                              <TreinamentoCard
+                                key={
+                                  `${item.id}-${item.usuarioTreinamentoId || ''}`
+                                }
+                                treinamento={
+                                  item
+                                }
+                                modo="compacto"
+                                onAbrir={
+                                  props.onAbrirTreinamento
+                                }
+                              />
+                            )
                           )
-                        )
-                      }
-                    </div>
-                  )
-              }
-            </article>
+                        }
+                      </div>
+                    )
+                }
+              </article>
+              )
+            }
 
             {/* TRILHAS RECOMENDADAS */}
 
@@ -1135,351 +1260,365 @@ const VisaoGeralTreinamentosPage:
             }}
           >
 
-            <article
-              style={{
-                ...CARD,
+            {/* PRÓXIMOS */}
 
-                padding:
-                  '15px'
-              }}
-            >
-              <div
+            {
+              // Só aparece quando há treinamento disponível.
+              proximos.length > 0 && (
+                <article
                 style={{
-                  display:
-                    'flex',
+                  ...CARD,
 
-                  justifyContent:
-                    'space-between',
-
-                  alignItems:
-                    'center'
+                  padding:
+                    '15px'
                 }}
               >
-                <strong>
-                  🗓 Próximos treinamentos
-                </strong>
+                <div
+                  style={{
+                    display:
+                      'flex',
 
-                <button
-                  type="button"
-                  onClick={
-                    props.onVerTreinamentos
-                  }
-                  style={
-                    BOTAO_LINK
-                  }
+                    justifyContent:
+                      'space-between',
+
+                    alignItems:
+                      'center'
+                  }}
                 >
-                  Ver todos →
-                </button>
-              </div>
+                  <strong>
+                    🗓 Próximos treinamentos
+                  </strong>
 
-              {
-                proximos.length ===
-                  0
-                  ? (
-                    <div
-                      style={{
-                        marginTop:
-                          '12px',
-
-                        color:
-                          '#64748B',
-
-                        fontSize:
-                          '13px'
-                      }}
-                    >
-                      Nenhum treinamento disponível no momento.
-                    </div>
-                  )
-                  : proximos.map(
-                    (
-                      item,
-                      indice
-                    ) => (
-                      <button
-                        key={
-                          item.id
-                        }
-                        type="button"
-                        onClick={() =>
-                          props.onAbrirTreinamento(
-                            item
-                          )
-                        }
-                        style={{
-                          width:
-                            '100%',
-
-                          display:
-                            'grid',
-
-                          gridTemplateColumns:
-                            '52px 1fr',
-
-                          gap:
-                            '10px',
-
-                          padding:
-                            '11px 0',
-
-                          border:
-                            0,
-
-                          borderBottom:
-                            '1px solid #EDF1F5',
-
-                          background:
-                            'transparent',
-
-                          textAlign:
-                            'left',
-
-                          cursor:
-                            'pointer'
-                        }}
-                      >
-                        <div
-                          style={{
-                            padding:
-                              '8px 5px',
-
-                            borderRadius:
-                              '8px',
-
-                            background:
-                              '#EFF7F7',
-
-                            textAlign:
-                              'center',
-
-                            color:
-                              '#0B2D4D'
-                          }}
-                        >
-                          <strong
-                            style={{
-                              display:
-                                'block',
-
-                              fontSize:
-                                '17px'
-                            }}
-                          >
-                            {
-                              (
-                                15 +
-                                (
-                                  indice *
-                                  5
-                                )
-                              ) <
-                                10
-                                ? `0${
-                                  15 +
-                                  (
-                                    indice *
-                                    5
-                                  )
-                                }`
-                                : String(
-                                  15 +
-                                  (
-                                    indice *
-                                    5
-                                  )
-                                )
-                            }
-                          </strong>
-
-                          <small>
-                            SET
-                          </small>
-                        </div>
-
-                        <div>
-                          <strong
-                            style={{
-                              display:
-                                'block',
-
-                              color:
-                                '#173B5D',
-
-                              fontSize:
-                                '13px'
-                            }}
-                          >
-                            {
-                              item.nome
-                            }
-                          </strong>
-
-                          <small
-                            style={{
-                              display:
-                                'block',
-
-                              marginTop:
-                                '5px',
-
-                              color:
-                                '#64748B'
-                            }}
-                          >
-                            {
-                              item.cargaHoraria
-                            } · disponível
-                          </small>
-                        </div>
-                      </button>
-                    )
-                  )
-              }
-            </article>
-
-            <article
-              style={{
-                ...CARD,
-
-                padding:
-                  '15px'
-              }}
-            >
-              <div
-                style={{
-                  display:
-                    'flex',
-
-                  justifyContent:
-                    'space-between',
-
-                  alignItems:
-                    'center'
-                }}
-              >
-                <strong>
-                  ⚙ Trilhas em andamento
-                </strong>
+                  <button
+                    type="button"
+                    onClick={
+                      props.onVerTreinamentos
+                    }
+                    style={
+                      BOTAO_LINK
+                    }
+                  >
+                    Ver todos →
+                  </button>
+                </div>
 
                 {
-                  props.onVerTrilhas &&
-                  (
-                    <button
-                      type="button"
-                      onClick={
-                        props.onVerTrilhas
-                      }
-                      style={
-                        BOTAO_LINK
-                      }
-                    >
-                      Ver todas →
-                    </button>
-                  )
-                }
-              </div>
-
-              {
-                trilhas.length ===
-                  0
-                  ? (
-                    <div
-                      style={{
-                        marginTop:
-                          '12px',
-
-                        color:
-                          '#64748B',
-
-                        fontSize:
-                          '13px'
-                      }}
-                    >
-                      Nenhuma trilha em andamento.
-                    </div>
-                  )
-                  : trilhas.map(
-                    item => (
+                  proximos.length ===
+                    0
+                    ? (
                       <div
-                        key={
-                          item.id
-                        }
                         style={{
                           marginTop:
-                            '14px'
+                            '12px',
+
+                          color:
+                            '#64748B',
+
+                          fontSize:
+                            '13px'
                         }}
                       >
-                        <div
+                        Nenhum treinamento disponível no momento.
+                      </div>
+                    )
+                    : proximos.map(
+                      (
+                        item,
+                        indice
+                      ) => (
+                        <button
+                          key={
+                            item.id
+                          }
+                          type="button"
+                          onClick={() =>
+                            props.onAbrirTreinamento(
+                              item
+                            )
+                          }
                           style={{
-                            display:
-                              'flex',
+                            width:
+                              '100%',
 
-                            justifyContent:
-                              'space-between',
+                            display:
+                              'grid',
+
+                            gridTemplateColumns:
+                              '52px 1fr',
 
                             gap:
                               '10px',
 
-                            fontSize:
-                              '12px'
-                          }}
-                        >
-                          <strong>
-                            {
-                              item.nome
-                            }
-                          </strong>
+                            padding:
+                              '11px 0',
 
-                          <strong>
-                            {
-                              clamp(
-                                item.progresso
-                              )
-                            }%
-                          </strong>
-                        </div>
+                            border:
+                              0,
 
-                        <div
-                          style={{
-                            height:
-                              '7px',
-
-                            marginTop:
-                              '6px',
-
-                            borderRadius:
-                              '999px',
+                            borderBottom:
+                              '1px solid #EDF1F5',
 
                             background:
-                              '#E5EBF0',
+                              'transparent',
 
-                            overflow:
-                              'hidden'
+                            textAlign:
+                              'left',
+
+                            cursor:
+                              'pointer'
                           }}
                         >
                           <div
                             style={{
-                              height:
-                                '100%',
+                              padding:
+                                '8px 5px',
 
-                              width:
-                                `${clamp(
+                              borderRadius:
+                                '8px',
+
+                              background:
+                                '#EFF7F7',
+
+                              textAlign:
+                                'center',
+
+                              color:
+                                '#0B2D4D'
+                            }}
+                          >
+                            <strong
+                              style={{
+                                display:
+                                  'block',
+
+                                fontSize:
+                                  '17px'
+                              }}
+                            >
+                              {
+                                (
+                                  15 +
+                                  (
+                                    indice *
+                                    5
+                                  )
+                                ) <
+                                  10
+                                  ? `0${
+                                    15 +
+                                    (
+                                      indice *
+                                      5
+                                    )
+                                  }`
+                                  : String(
+                                    15 +
+                                    (
+                                      indice *
+                                      5
+                                    )
+                                  )
+                              }
+                            </strong>
+
+                            <small>
+                              SET
+                            </small>
+                          </div>
+
+                          <div>
+                            <strong
+                              style={{
+                                display:
+                                  'block',
+
+                                color:
+                                  '#173B5D',
+
+                                fontSize:
+                                  '13px'
+                              }}
+                            >
+                              {
+                                item.nome
+                              }
+                            </strong>
+
+                            <small
+                              style={{
+                                display:
+                                  'block',
+
+                                marginTop:
+                                  '5px',
+
+                                color:
+                                  '#64748B'
+                              }}
+                            >
+                              {
+                                item.cargaHoraria
+                              } · disponível
+                            </small>
+                          </div>
+                        </button>
+                      )
+                    )
+                }
+              </article>
+              )
+            }
+
+            {/* TRILHAS EM ANDAMENTO */}
+
+            {
+              // Só aparece quando há trilha em andamento.
+              trilhas.length > 0 && (
+                <article
+                style={{
+                  ...CARD,
+
+                  padding:
+                    '15px'
+                }}
+              >
+                <div
+                  style={{
+                    display:
+                      'flex',
+
+                    justifyContent:
+                      'space-between',
+
+                    alignItems:
+                      'center'
+                  }}
+                >
+                  <strong>
+                    ⚙ Trilhas em andamento
+                  </strong>
+
+                  {
+                    props.onVerTrilhas &&
+                    (
+                      <button
+                        type="button"
+                        onClick={
+                          props.onVerTrilhas
+                        }
+                        style={
+                          BOTAO_LINK
+                        }
+                      >
+                        Ver todas →
+                      </button>
+                    )
+                  }
+                </div>
+
+                {
+                  trilhas.length ===
+                    0
+                    ? (
+                      <div
+                        style={{
+                          marginTop:
+                            '12px',
+
+                          color:
+                            '#64748B',
+
+                          fontSize:
+                            '13px'
+                        }}
+                      >
+                        Nenhuma trilha em andamento.
+                      </div>
+                    )
+                    : trilhas.map(
+                      item => (
+                        <div
+                          key={
+                            item.id
+                          }
+                          style={{
+                            marginTop:
+                              '14px'
+                          }}
+                        >
+                          <div
+                            style={{
+                              display:
+                                'flex',
+
+                              justifyContent:
+                                'space-between',
+
+                              gap:
+                                '10px',
+
+                              fontSize:
+                                '12px'
+                            }}
+                          >
+                            <strong>
+                              {
+                                item.nome
+                              }
+                            </strong>
+
+                            <strong>
+                              {
+                                clamp(
                                   item.progresso
-                                )}%`,
+                                )
+                              }%
+                            </strong>
+                          </div>
+
+                          <div
+                            style={{
+                              height:
+                                '7px',
+
+                              marginTop:
+                                '6px',
 
                               borderRadius:
                                 '999px',
 
                               background:
-                                '#0B84E6'
+                                '#E5EBF0',
+
+                              overflow:
+                                'hidden'
                             }}
-                          />
+                          >
+                            <div
+                              style={{
+                                height:
+                                  '100%',
+
+                                width:
+                                  `${clamp(
+                                    item.progresso
+                                  )}%`,
+
+                                borderRadius:
+                                  '999px',
+
+                                background:
+                                  '#0B84E6'
+                              }}
+                            />
+                          </div>
                         </div>
-                      </div>
+                      )
                     )
-                  )
-              }
-            </article>
+                }
+              </article>
+              )
+            }
 
             <article
               style={{

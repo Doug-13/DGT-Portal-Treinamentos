@@ -123,6 +123,50 @@ const normalizar = (
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
 
+// Status do treinamento do usuário (a ação que ele precisa tomar).
+export const ESTILOS_STATUS_TREINAMENTO: Record<string, IEstiloStatusDocumento> = {
+  'Vencido': {
+    categoria: 'obsoleta',
+    cor: '#B42318',
+    fundo: '#FEF3F2',
+    borda: '#FECDCA',
+    icone: '!',
+    dica: 'Validade expirada: refaça o treinamento (reciclagem).'
+  },
+  'Reprovado': {
+    categoria: 'obsoleta',
+    cor: '#C4320A',
+    fundo: '#FFF6ED',
+    borda: '#FDDCAB',
+    icone: '✕',
+    dica: 'Reprovado na avaliação: faça uma nova tentativa.'
+  },
+  'Em andamento': {
+    categoria: 'aprovacao',
+    cor: '#B54708',
+    fundo: '#FFFAEB',
+    borda: '#FEDF89',
+    icone: '▶',
+    dica: 'Treinamento iniciado: continue de onde parou.'
+  },
+  'Disponível': {
+    categoria: 'revisao',
+    cor: '#05737E',
+    fundo: '#E6F9FC',
+    borda: '#9EE7F1',
+    icone: '★',
+    dica: 'Liberado para você: pode iniciar.'
+  },
+  'Concluído': {
+    categoria: 'vigente',
+    cor: '#067647',
+    fundo: '#ECFDF3',
+    borda: '#ABEFC6',
+    icone: '✓',
+    dica: 'Concluído.'
+  }
+};
+
 // Status do documento ou da revisão (dgt_status).
 export const estiloStatusDocumento = (
   status?: string
@@ -251,14 +295,17 @@ export const StatusDocumentoBadge:
     // Texto exibido no lugar do status (ex.: "Publicado").
     rotulo?: string;
     dica?: string;
+    // Estilo pronto (ex.: ESTILOS_STATUS_TREINAMENTO['Vencido']).
+    estiloFixo?: IEstiloStatusDocumento;
   }> = ({
     status,
     rotulo,
-    dica
+    dica,
+    estiloFixo
   }) => {
 
     const estilo =
-      estiloStatusDocumento(status);
+      estiloFixo || estiloStatusDocumento(status);
 
     const texto =
       rotulo || status || '-';

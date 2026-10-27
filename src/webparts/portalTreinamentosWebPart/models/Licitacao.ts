@@ -164,6 +164,10 @@ export interface IDadosEdital {
 }
 
 export interface ILicitacaoResultado {
+  // Outras publicações do MESMO edital no PNCP (o órgão publicou
+  // mais de uma vez). Ver deduplicarEditais em licitacoesFiltro.ts.
+  outrasPublicacoes?: ILicitacaoResultado[];
+
   // Chave interna (só em memória) para a lista do React.
   chave: string;
   score: number;
