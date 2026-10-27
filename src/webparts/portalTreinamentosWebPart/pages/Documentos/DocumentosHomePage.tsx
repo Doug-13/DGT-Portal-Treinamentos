@@ -55,6 +55,11 @@ import {
   useArquivosDocumentos
 } from '../../hooks/useArquivosDocumentos';
 
+import {
+  EtapaFluxoBadge,
+  StatusDocumentoBadge
+} from '../../components/common/StatusDocumento';
+
 import ResumoModulo, {
   CORES_INDICADOR,
   IIndicadorResumo
@@ -1324,13 +1329,25 @@ const DocumentosHomePage:
                                           situacao
                                             ? situacao.etapa
                                             : undefined;
+                                        // Fluxo encerrado (concluído/cancelado): sem
+                                        // etapa a cumprir, mostra o responsável do documento.
+                                        const fluxoEncerrado =
+                                          !!etapa && !!etapa.encerrado;
+                                        const etapaAtiva =
+                                          etapa && !fluxoEncerrado
+                                            ? etapa
+                                            : undefined;
+                                        const publicado =
+                                          statusEhVigente(documento.status);
                                         const nomeResponsavel =
-                                          etapa && etapa.responsaveis.length > 0
-                                            ? etapa.responsaveis.join(' · ')
+                                          etapaAtiva && etapaAtiva.responsaveis.length > 0
+                                            ? etapaAtiva.responsaveis.join(' · ')
                                             : documento.responsavel;
+                                        // "Você" só indica quem é o responsável;
+                                        // pendência é apenas a etapa aguardando você.
                                         const souEu =
-                                          etapa
-                                            ? etapa.aguardandoVoce
+                                          etapaAtiva
+                                            ? etapaAtiva.aguardandoVoce
                                             : !!contexto?.usuarioId &&
                                               guidTela(documento.responsavelId) ===
                                               guidTela(contexto.usuarioId);
@@ -1339,38 +1356,57 @@ const DocumentosHomePage:
                                           <>
                                             <td style={td}>
                                               {
-                                                situacao && situacao.emAndamento
+                                                situacao && situacao.emAndamento && !fluxoEncerrado
                                                   ? (
-                                                    <span
-                                                      title={etapa && etapa.prazo ? `Prazo da etapa: ${formatarDataCurta(etapa.prazo)}` : undefined}
-                                                      style={{
-                                                        display: 'inline-block',
-                                                        padding: '4px 10px',
-                                                        borderRadius: '999px',
-                                                        background: etapa && etapa.aguardandoVoce ? '#E6F9FC' : '#EEF2F6',
-                                                        color: '#202A44',
-                                                        fontWeight: 700,
-                                                        fontSize: '12px',
-                                                        border: etapa && etapa.aguardandoVoce ? '1px solid #05C3DD' : '1px solid transparent'
-                                                      }}
-                                                    >
-                                                      {etapa ? etapa.etapa : 'Carregando...'}
-                                                    </span>
+                                                    etapaAtiva
+                                                      ? (
+                                                        <EtapaFluxoBadge
+                                                          etapa={etapaAtiva.etapa}
+                                                          aguardandoVoce={etapaAtiva.aguardandoVoce}
+                                                          dica={
+                                                            etapaAtiva.prazo
+                                                              ? `Prazo da etapa: ${formatarDataCurta(etapaAtiva.prazo)}.`
+                                                              : undefined
+                                                          }
+                                                        />
+                                                      )
+                                                      : (
+                                                        <span style={{ color: '#66788A', fontSize: '12px' }}>
+                                                          Carregando...
+                                                        </span>
+                                                      )
                                                   )
-                                                  : (
-                                                    <span style={{ color: '#66788A', fontSize: '12px' }}>
-                                                      {statusEhVigente(documento.status) ? 'Publicado' : '-'}
-                                                    </span>
-                                                  )
+                                                  : publicado
+                                                    ? (
+                                                      <StatusDocumentoBadge
+                                                        status="Vigente"
+                                                        rotulo="Publicado"
+                                                        dica="Documento publicado. Não há ação pendente — o responsável pode iniciar uma nova revisão quando for necessário."
+                                                      />
+                                                    )
+                                                    : fluxoEncerrado && etapa
+                                                      ? (
+                                                        <EtapaFluxoBadge
+                                                          etapa={etapa.etapa}
+                                                          encerrado={true}
+                                                        />
+                                                      )
+                                                      : (
+                                                        <span style={{ color: '#66788A', fontSize: '12px' }}>
+                                                          -
+                                                        </span>
+                                                      )
                                               }
                                             </td>
 
                                             <td
                                               style={td}
                                               title={
-                                                etapa && documento.responsavel
+                                                etapaAtiva && documento.responsavel
                                                   ? `Responsável pelo documento: ${documento.responsavel}`
-                                                  : undefined
+                                                  : publicado
+                                                    ? 'Responsável pelo documento. Pode iniciar uma nova revisão — não é uma pendência.'
+                                                    : undefined
                                               }
                                             >
                                               <ResponsavelCelula
@@ -1411,49 +1447,49 @@ const DocumentosHomePage:
                                     </td>
 
                                     <td style={td}>
-                                      <span
-                                        style={{
-                                          display:
-                                            'inline-block',
+                                      {
+                                        (() => {
+                                          const situacao =
+                                            fluxoDocumentos.situacoes[
+                                              guidTela(documento.id)
+                                            ];
+                                          const novaRevisao =
+                                            statusEhVigente(documento.status) &&
+                                            !!situacao &&
+                                            situacao.emAndamento &&
+                                            !(situacao.etapa && situacao.etapa.encerrado);
 
-                                          padding:
-                                            '5px 11px',
-
-                                          borderRadius:
-                                            '999px',
-
-                                          background:
-                                            documento.status
-                                              .toLowerCase()
-                                              .indexOf(
-                                                'vigente'
-                                              ) >=
-                                                0
-                                                ? C.verdeClaro
-                                                : '#EEF2F6',
-
-                                          color:
-                                            documento.status
-                                              .toLowerCase()
-                                              .indexOf(
-                                                'vigente'
-                                              ) >=
-                                                0
-                                                ? C.verde
-                                                : '#53697D',
-
-                                          fontWeight:
-                                            700,
-
-                                          fontSize:
-                                            '11px'
-                                        }}
-                                      >
-                                        {
-                                          documento.status ||
-                                          '-'
-                                        }
-                                      </span>
+                                          return (
+                                            <span
+                                              style={{
+                                                display: 'inline-flex',
+                                                flexDirection: 'column',
+                                                gap: '3px'
+                                              }}
+                                            >
+                                              <StatusDocumentoBadge
+                                                status={documento.status}
+                                              />
+                                              {
+                                                novaRevisao &&
+                                                (
+                                                  <small
+                                                    title="A revisão vigente continua valendo enquanto a nova revisão percorre o fluxo."
+                                                    style={{
+                                                      color: '#485CC7',
+                                                      fontSize: '10.5px',
+                                                      fontWeight: 700,
+                                                      whiteSpace: 'nowrap'
+                                                    }}
+                                                  >
+                                                    + nova revisão em andamento
+                                                  </small>
+                                                )
+                                              }
+                                            </span>
+                                          );
+                                        })()
+                                      }
                                     </td>
 
                                     <td style={td}>

@@ -69,6 +69,14 @@ import {
 //                   eu sou o responsável (ou da própria revisão).
 //   Para aprovar  → revisão em Aprovação de um documento de uma área
 //                   em que eu sou Gestor (ou sou Administrador).
+//
+// NUNCA é pendência:
+//   • documento publicado sem revisão em andamento — o responsável
+//     pode iniciar uma nova revisão, mas isso é uma possibilidade,
+//     não uma tarefa;
+//   • revisão cujo fluxo já foi CONCLUÍDO ou CANCELADO (antes ela era
+//     confundida com "fluxo não iniciado" e voltava para a 1ª etapa);
+//   • etapa "pendente" que sobrou numa revisão já vigente/encerrada.
 // ============================================================
 
 export type TipoPendenciaDocumento =
@@ -163,6 +171,11 @@ export const useDocumentosPendencias = (
   const [revisoesComFluxo, setRevisoesComFluxo] =
     React.useState<string[]>([]);
 
+  // Revisões cujo fluxo já terminou (concluído ou cancelado): nunca
+  // geram pendência, nem pela regra antiga.
+  const [revisoesEncerradas, setRevisoesEncerradas] =
+    React.useState<string[]>([]);
+
   // Autor (quem criou) de cada revisão governada pelo fluxo.
   const [autores, setAutores] =
     React.useState<Record<string, string>>({});
@@ -195,27 +208,48 @@ export const useDocumentosPendencias = (
           lidos: IDataverseRecord[]
         ): Promise<{
           comFluxo: string[];
+          encerradas: string[];
           iniciais: Record<string, { etapa: string; responsaveis: IResponsavelResolvido[] }>;
         }> => {
 
-          // Só fluxos EM ANDAMENTO governam a revisão (concluído ou
-          // cancelado não geram pendência).
-          const comFluxo =
-            (await dataverse.listarRegistros(
+          const situacoes =
+            await dataverse.listarRegistros(
               'dgt_documentorevisao',
               '$select=dgt_documentorevisaoid,dgt_situacaofluxo&$filter=dgt_situacaofluxo ne null'
-            ))
+            );
+
+          const situacaoDe = (
+            registro: IDataverseRecord
+          ): string =>
+            texto(registro, 'dgt_situacaofluxo').trim().toLowerCase();
+
+          // Só fluxos EM ANDAMENTO governam a revisão.
+          const comFluxo =
+            situacoes
               .filter(registro => {
-                const situacao = texto(registro, 'dgt_situacaofluxo').trim().toLowerCase();
+                const situacao = situacaoDe(registro);
                 return !!situacao && situacao !== 'concluido' && situacao !== 'cancelado';
               })
               .map(registro => guid(texto(registro, 'dgt_documentorevisaoid')));
 
+          // Fluxo CONCLUÍDO ou CANCELADO: a revisão já percorreu o fluxo.
+          // Não pode ser tratada como "fluxo ainda não iniciado".
+          const encerradas =
+            situacoes
+              .filter(registro => {
+                const situacao = situacaoDe(registro);
+                return situacao === 'concluido' || situacao === 'cancelado';
+              })
+              .map(registro => guid(texto(registro, 'dgt_documentorevisaoid')));
+
           const semFluxo =
-            lidos.filter(registro => comFluxo.indexOf(guid(texto(registro, 'dgt_documentorevisaoid'))) < 0);
+            lidos.filter(registro => {
+              const id = guid(texto(registro, 'dgt_documentorevisaoid'));
+              return comFluxo.indexOf(id) < 0 && encerradas.indexOf(id) < 0;
+            });
 
           if (semFluxo.length === 0) {
-            return { comFluxo, iniciais: {} };
+            return { comFluxo, encerradas, iniciais: {} };
           }
 
           const persistencia =
@@ -299,7 +333,7 @@ export const useDocumentosPendencias = (
             };
           }
 
-          return { comFluxo, iniciais };
+          return { comFluxo, encerradas, iniciais };
         };
 
         try {
@@ -312,6 +346,7 @@ export const useDocumentosPendencias = (
           let tarefasFinal: IDataverseRecord[] = [];
           let autoresFinal: Record<string, string> = {};
           let comFluxoFinal: string[] = [];
+          let encerradasFinal: string[] = [];
           let iniciaisFinal: Record<string, { etapa: string; responsaveis: IResponsavelResolvido[] }> = {};
           let tarefasDisponiveis = true;
 
@@ -358,11 +393,31 @@ export const useDocumentosPendencias = (
             try {
               const governadas = await carregarGovernadas(registrosLidos);
               comFluxoFinal = governadas.comFluxo;
+              encerradasFinal = governadas.encerradas;
               iniciaisFinal = governadas.iniciais;
             } catch (erroFluxo) {
               console.error(erroFluxo);
               comFluxoFinal = [];
+              encerradasFinal = [];
               iniciaisFinal = {};
+            }
+
+            // Revisão com fluxo encerrado mas status diferente de
+            // "Vigente"/"Cancelada" indica que a publicação não chegou a
+            // atualizar o status. Fica registrado para conferência.
+            const encerradasForaDeVigencia =
+              registrosLidos
+                .filter(registro => encerradasFinal.indexOf(guid(texto(registro, 'dgt_documentorevisaoid'))) >= 0)
+                .map(registro =>
+                  `${texto(registro, '_dgt_documento_value@OData.Community.Display.V1.FormattedValue')} ${texto(registro, 'dgt_revisao')} ` +
+                  `(status: ${texto(registro, 'dgt_status@OData.Community.Display.V1.FormattedValue') || 'vazio'})`
+                );
+
+            if (encerradasForaDeVigencia.length > 0) {
+              console.warn(
+                '[Pendências] Revisões com fluxo encerrado (não geram pendência), mas com status diferente de Vigente/Cancelada:',
+                encerradasForaDeVigencia
+              );
             }
 
             // Fluxo "em andamento" sem nenhuma etapa pendente gravada é
@@ -414,6 +469,7 @@ export const useDocumentosPendencias = (
           setTarefas(tarefasFinal);
           setAutores(autoresFinal);
           setRevisoesComFluxo(comFluxoFinal);
+          setRevisoesEncerradas(encerradasFinal);
           setEtapasIniciais(iniciaisFinal);
 
         } catch (e) {
@@ -483,6 +539,7 @@ export const useDocumentosPendencias = (
         // nunca do status antigo nem do "Responsável" do documento.
         const governadas: string[] =
           revisoesComFluxo
+            .concat(revisoesEncerradas)
             .concat(Object.keys(etapasIniciais))
             .concat(tarefas.map(tarefa => guid(texto(tarefa, TAREFA.revisaoValor))));
 
@@ -529,6 +586,11 @@ export const useDocumentosPendencias = (
 
             const revisaoId =
               guid(texto(tarefa, TAREFA.revisaoValor));
+
+            // Etapa "pendente" que sobrou num fluxo já encerrado.
+            if (revisoesEncerradas.indexOf(revisaoId) >= 0) {
+              return;
+            }
 
             const registro =
               registros.find(item => guid(texto(item, 'dgt_documentorevisaoid')) === revisaoId);
@@ -668,6 +730,7 @@ export const useDocumentosPendencias = (
         tarefas,
         autores,
         revisoesComFluxo,
+        revisoesEncerradas,
         etapasIniciais,
         documentos,
         contexto,

@@ -113,6 +113,10 @@ export class AvisosService {
   // Documento de cada revisão (para o título do aviso).
   private readonly documentosPorRevisao: { [revisaoId: string]: { id: string; nome: string; controle: boolean } } = {};
 
+  // Revisões já encerradas (vigente, cancelada ou fluxo concluído).
+  // Etapas "pendentes" que sobraram nelas não viram aviso.
+  private readonly situacaoRevisao: { [revisaoId: string]: { encerrada: boolean; lidaEm: number } } = {};
+
   public constructor(dataverse: DataverseService) {
     this.dataverse = dataverse;
   }
@@ -198,8 +202,14 @@ export class AvisosService {
         continue;
       }
 
-      // Detalhes só das que ainda não foram avisadas (evita consultas).
       const revisaoId = guid(tarefa[TAREFA.revisaoValor]);
+
+      // Revisão publicada/encerrada: não há o que fazer nela.
+      if (await this.revisaoEncerrada(revisaoId)) {
+        continue;
+      }
+
+      // Detalhes só das que ainda não foram avisadas (evita consultas).
       const documento = jaVistos.indexOf(id) < 0 ? await this.documentoDaRevisao(revisaoId) : undefined;
       const controle = !!documento && documento.controle;
 
@@ -222,6 +232,51 @@ export class AvisosService {
     }
 
     return avisos;
+  }
+
+  // true = revisão vigente, cancelada ou com o fluxo concluído/cancelado.
+  // Guardado por 5 minutos (a situação muda quando a revisão avança).
+  private async revisaoEncerrada(
+    revisaoId: string
+  ): Promise<boolean> {
+
+    if (!revisaoId) {
+      return false;
+    }
+
+    const guardado = this.situacaoRevisao[revisaoId];
+
+    if (guardado && Date.now() - guardado.lidaEm < 5 * 60 * 1000) {
+      return guardado.encerrada;
+    }
+
+    let encerrada = false;
+
+    try {
+      const revisao =
+        await this.dataverse.obterRegistro('dgt_documentorevisao', revisaoId, ['dgt_status', 'dgt_situacaofluxo']);
+
+      if (revisao) {
+        const status = (formatado(revisao.registro, 'dgt_status') || '')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim();
+        const situacao = texto(revisao.registro, 'dgt_situacaofluxo').trim().toLowerCase();
+
+        encerrada =
+          status === 'vigente' ||
+          status === 'cancelada' ||
+          situacao === 'concluido' ||
+          situacao === 'cancelado';
+      }
+    } catch {
+      // Sem permissão ou coluna inexistente: mantém o aviso (comportamento anterior).
+      encerrada = false;
+    }
+
+    this.situacaoRevisao[revisaoId] = { encerrada, lidaEm: Date.now() };
+    return encerrada;
   }
 
   private async documentoDaRevisao(

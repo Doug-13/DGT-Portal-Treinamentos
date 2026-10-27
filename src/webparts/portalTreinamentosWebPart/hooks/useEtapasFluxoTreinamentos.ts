@@ -88,6 +88,10 @@ export interface IEtapaFluxoTreinamento {
   // true = fluxo ainda não iniciado (ninguém abriu a revisão).
   naoIniciado: boolean;
 
+  // true = o fluxo desta revisão já terminou (concluído ou cancelado).
+  // Não é pendência de ninguém: apenas informa a situação.
+  encerrado?: boolean;
+
   // Botões da etapa atual (do fluxo publicado do processo).
   acoes: IAcaoEtapaTreinamento[];
 }
@@ -189,6 +193,30 @@ export const useEtapasFluxoTreinamentos = (
             }
           }
 
+          // 1b) Situação do fluxo de cada revisão. Fluxo CONCLUÍDO ou
+          //     CANCELADO não é "fluxo não iniciado": não gera etapa
+          //     simulada nem pendência (antes, a revisão voltava para a
+          //     1ª etapa e aparecia como pendente para o responsável).
+          const encerradas: Record<string, string> = {};
+
+          try {
+            for (const lote of lotes(revisaoIds.filter(id => !!id), 20)) {
+              (await dataverse.listarRegistros(
+                'dgt_documentorevisao',
+                '$select=dgt_documentorevisaoid,dgt_situacaofluxo&$filter=' +
+                lote.map(id => `dgt_documentorevisaoid eq ${id}`).join(' or ')
+              )).forEach(r => {
+                const situacao = texto(r, 'dgt_situacaofluxo').trim().toLowerCase();
+                if (situacao === 'concluido' || situacao === 'cancelado') {
+                  encerradas[guid(r.dgt_documentorevisaoid)] = situacao;
+                }
+              });
+            }
+          } catch (erroSituacao) {
+            // Coluna ainda não criada: segue como antes.
+            console.error(erroSituacao);
+          }
+
           // 2) Autores (para "Autor da revisão")
           const autores: Record<string, string> = {};
 
@@ -243,12 +271,29 @@ export const useEtapasFluxoTreinamentos = (
             prazo?: string;
             desde?: string;
             naoIniciado: boolean;
+            encerrado?: boolean;
             acoes: IAcaoEtapaTreinamento[];
           }> = [];
 
           for (const controle of emAndamento) {
 
             const revisaoId = guid(controle.revisaoEmAndamento ? controle.revisaoEmAndamento.id : '');
+
+            // Fluxo encerrado: situação informativa, sem responsável
+            // aguardando (tarefas "pendentes" que tenham sobrado são
+            // ignoradas).
+            if (encerradas[revisaoId]) {
+              brutos.push({
+                controle,
+                etapa: encerradas[revisaoId] === 'cancelado' ? 'Fluxo cancelado' : 'Fluxo concluído',
+                responsaveis: [],
+                naoIniciado: false,
+                encerrado: true,
+                acoes: []
+              });
+              continue;
+            }
+
             const tarefa = tarefas.find(t => guid(texto(t, TAREFA.revisaoValor)) === revisaoId);
 
             if (tarefa) {
@@ -357,6 +402,7 @@ export const useEtapasFluxoTreinamentos = (
               desde: item.desde,
               aguardandoVoce: item.responsaveis.some(r => usuarioAtende(r, meuId, usuariosAreas)),
               naoIniciado: item.naoIniciado,
+              encerrado: !!item.encerrado,
               acoes: item.acoes
             };
           });

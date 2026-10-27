@@ -9,6 +9,11 @@ import {
   TipoPendenciaDocumento
 } from '../../hooks/useDocumentosPendencias';
 
+import {
+  EtapaFluxoBadge,
+  StatusDocumentoBadge
+} from '../../components/common/StatusDocumento';
+
 // ============================================================
 // PAINEL "MINHAS PENDÊNCIAS" — só aparece quando há pendências
 // ============================================================
@@ -262,17 +267,11 @@ const MinhasPendenciasDocumentos:
                                 <span style={{ fontSize: '11.5px', color: '#64748B' }}>
                                   {pendencia.documento.codigo} · {pendencia.revisao}
                                   {' · '}
-                                  <span
-                                    style={{
-                                      padding: '1px 6px',
-                                      borderRadius: '6px',
-                                      background: grupo.fundo,
-                                      color: grupo.cor,
-                                      fontWeight: 700
-                                    }}
-                                  >
-                                    {pendencia.etapa ? `Etapa: ${pendencia.etapa}` : pendencia.status}
-                                  </span>
+                                  {
+                                    pendencia.etapa
+                                      ? <EtapaFluxoBadge etapa={pendencia.etapa} />
+                                      : <StatusDocumentoBadge status={pendencia.status} />
+                                  }
                                   {' · '}
                                   <span
                                     style={{
