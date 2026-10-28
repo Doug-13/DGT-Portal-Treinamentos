@@ -161,6 +161,11 @@ const regras:
     // Arquitetura de Soluções: qualquer perfil com o MÓDULO liberado
     { rota: 'arquitetura', perfis: LICITACOES },
     { rota: 'arquiteturaROs', perfis: LICITACOES },
+
+    // Kits (catálogo do B.O.M.): a entrada é controlada pelo MÓDULO
+    // "kits". Alterar é só para Administrador / administrador do
+    // módulo (controlado na tela e nas Security Roles).
+    { rota: 'kits', perfis: LICITACOES },
     { rota: 'licitacoesTeste', perfis: LICITACOES },
 
     // Planejamento orçamentário

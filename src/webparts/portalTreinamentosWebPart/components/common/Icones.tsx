@@ -45,7 +45,8 @@ export type IconeChave =
   | 'grid'
   | 'megaphone'
   | 'info'
-  | 'wallet';
+  | 'wallet'
+  | 'package';
 
 export const Icones:
   Record<IconeChave, React.FC> = {
@@ -248,6 +249,17 @@ export const Icones:
       <rect x="4" y="8" width="16.5" height="11" rx="2" />
       <path d="M20.5 12h-4a1.5 1.5 0 0 0 0 3h4" />
       <circle cx="16.6" cy="13.5" r=".6" fill="currentColor" />
+    </svg>
+  ),
+
+  // Kits: caixa (catálogo de kits do B.O.M.)
+  package: () => (
+    <svg {...base}>
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+      <path d="M12 12l8-4.5" />
+      <path d="M12 12v9" />
+      <path d="M12 12L4 7.5" />
+      <path d="M8 5.2l8 4.6" />
     </svg>
   ),
 

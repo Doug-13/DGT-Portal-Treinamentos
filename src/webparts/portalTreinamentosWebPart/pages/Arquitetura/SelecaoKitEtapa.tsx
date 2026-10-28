@@ -58,6 +58,9 @@ export interface ISelecaoKitEtapaProps {
   salvando: boolean;
   somenteLeitura: boolean;
   onSalvar: (selecao: ISelecaoKit, concluir: boolean) => Promise<void>;
+  // Simulador da aba Kits: monta a lista normalmente, mas sem a
+  // barra de salvar/concluir (não existe B.O.M. por trás).
+  modoSimulacao?: boolean;
 }
 
 const VERDE = '#107C10';
@@ -300,7 +303,8 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   canal,
   salvando,
   somenteLeitura,
-  onSalvar
+  onSalvar,
+  modoSimulacao
 }) => {
 
   const [selecao, setSelecao] = React.useState<ISelecaoKit>(() => normalizarSelecao(selecaoInicial || selecaoVazia()));
@@ -914,7 +918,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
       </div>
 
       {/* barra de ações */}
-      {!somenteLeitura && (
+      {!somenteLeitura && !modoSimulacao && (
         <div
           style={{
             position: 'sticky', bottom: 0, zIndex: 10, marginTop: '14px',

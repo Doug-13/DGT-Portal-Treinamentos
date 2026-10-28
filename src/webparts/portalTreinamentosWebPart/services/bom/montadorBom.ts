@@ -4,6 +4,7 @@ import {
   CAMERAS_VIDEO,
   CAMERA_OCR_PADRAO,
   CAMERA_VIDEO_PADRAO,
+  COMPOSICAO_KITS,
   CONTROLADORES_PORTA,
   CONTROLADOR_PNE,
   ChaveItem,
@@ -11,6 +12,7 @@ import {
   ESTRUTURAS,
   EstruturaBridgefy,
   ICameraCatalogo,
+  IComponenteKit,
   ISwitchCatalogo,
   ITENS,
   MARGEM_POE,
@@ -33,7 +35,18 @@ import {
 // Regra geral dos kits Bridgefy: kit-base + itens adicionais. A
 // composição é calculada pelas regras abaixo — o resultado é igual
 // aos kits cadastrados para as combinações que têm kit pronto.
+//
+// O kit-base (estrutura, suportes, adesivos, serviços, itens de
+// porta) vem de COMPOSICAO_KITS, mantida na aba "Kits" do portal.
+// Ficam AQUI só as regras que dependem das escolhas do ponto:
+// câmeras, switch, fontes, licenças, controlador e a catraca.
 // ============================================================
+
+// Composições alternativas (rascunho da aba Kits), para simular um
+// kit antes de gravar. Sem isto, vale COMPOSICAO_KITS.
+export interface IOpcoesMontagem {
+  composicoes?: Record<string, IComponenteKit[]>;
+}
 
 export type TipoPonto =
   | EstruturaBridgefy
@@ -196,21 +209,30 @@ export const selecaoVazia = (): ISelecaoKit => ({
 const inteiro = (valor: number, minimo = 0): number =>
   Math.max(minimo, Math.floor(Number(valor) || 0));
 
+// Procura pelo id (código, ou modelo quando não há código) e, em
+// seguida, pelo modelo: seleções gravadas antes de o equipamento
+// receber o código CIGAM continuam encontrando o mesmo modelo.
 export const cameraVideo = (id: string): ICameraCatalogo =>
-  CAMERAS_VIDEO.find(c => idCamera(c) === id) || CAMERA_VIDEO_PADRAO;
+  CAMERAS_VIDEO.find(c => idCamera(c) === id) || CAMERAS_VIDEO.find(c => c.modelo === id) || CAMERA_VIDEO_PADRAO;
 
 export const cameraOcr = (id: string): ICameraCatalogo =>
-  CAMERAS_OCR.find(c => idCamera(c) === id) || CAMERA_OCR_PADRAO;
+  CAMERAS_OCR.find(c => idCamera(c) === id) || CAMERAS_OCR.find(c => c.modelo === id) || CAMERA_OCR_PADRAO;
 
 export const switchDe = (id: string): ISwitchCatalogo =>
-  SWITCHES.find(s => idSwitch(s) === id) || SWITCH_PADRAO;
+  SWITCHES.find(s => idSwitch(s) === id) || SWITCHES.find(s => s.modelo === id) || SWITCH_PADRAO;
 
 class Lista {
   public readonly itens: IItemBom[] = [];
   public constructor(private readonly origem: string) {}
 
-  public adicionar(chave: ChaveItem, quantidade: number): void {
+  public adicionar(chave: ChaveItem | string, quantidade: number): void {
     const base = ITENS[chave];
+    if (!base) {
+      // Chave sem cadastro (ex.: item removido do catálogo): entra
+      // como pendente, para não sumir da lista sem aviso.
+      this.livre('', `Item não cadastrado no catálogo (${chave})`, 'Infraestrutura', quantidade);
+      return;
+    }
     this.livre(base.codigo, base.descricao, base.categoria, quantidade);
   }
 
@@ -228,13 +250,78 @@ class Lista {
 }
 
 // ------------------------------------------------------------
+// Kit-base: linhas da composição (aba Kits)
+// ------------------------------------------------------------
+
+export interface IContextoComposicao {
+  camerasVideo: number;
+  camerasOcr: number;
+  comunicacaoBidirecional: boolean;
+  portaVidro: boolean;
+  usaWAccess: boolean;
+}
+
+export const fatorRegra = (
+  componente: IComponenteKit,
+  contexto: IContextoComposicao
+): number => {
+  const total = contexto.camerasVideo + contexto.camerasOcr;
+  switch (componente.regra) {
+    case 'porCamera': return total;
+    case 'porCameraVideo': return contexto.camerasVideo;
+    case 'porCameraOcr': return contexto.camerasOcr;
+    case 'porCameraAlemPrimeira': return Math.max(0, total - 1);
+    default: return 1;
+  }
+};
+
+export const condicaoAtendida = (
+  componente: IComponenteKit,
+  contexto: IContextoComposicao
+): boolean => {
+  switch (componente.condicao) {
+    case 'comunicacaoBidirecional': return contexto.comunicacaoBidirecional;
+    case 'portaVidro': return contexto.portaVidro;
+    case 'comWAccess': return contexto.usaWAccess;
+    default: return true;
+  }
+};
+
+export const composicaoDoKit = (
+  kit: string,
+  opcoes?: IOpcoesMontagem
+): IComponenteKit[] =>
+  (opcoes && opcoes.composicoes && opcoes.composicoes[kit]) || COMPOSICAO_KITS[kit] || [];
+
+const aplicarComposicao = (
+  lista: Lista,
+  kit: string,
+  contexto: IContextoComposicao,
+  opcoes: IOpcoesMontagem | undefined,
+  avisar: (mensagem: string) => void
+): void => {
+  composicaoDoKit(kit, opcoes).forEach(componente => {
+    if (!condicaoAtendida(componente, contexto)) {
+      return;
+    }
+    const quantidade = (Number(componente.quantidade) || 0) * fatorRegra(componente, contexto);
+    const item = ITENS[componente.chaveItem];
+    if (quantidade > 0 && item && item.ativo === false) {
+      avisar(`O kit usa "${item.descricao}", que está desativado no catálogo de kits.`);
+    }
+    lista.adicionar(componente.chaveItem, quantidade);
+  });
+};
+
+// ------------------------------------------------------------
 // Ponto Bridgefy (Torre, Box, Mini)
 // ------------------------------------------------------------
 
 const montarBridgefy = (
   ponto: IPontoKit,
   softwares: ISoftwaresKit,
-  alertas: IAlertaBom[]
+  alertas: IAlertaBom[],
+  opcoes?: IOpcoesMontagem
 ): IItemBom[] => {
 
   const tipo = ponto.tipo as EstruturaBridgefy;
@@ -311,54 +398,21 @@ const montarBridgefy = (
       : total + (tipo === 'torre' ? 1 : 0);     // Torre: +1 do giroled
   lista.adicionar('fonte12v35', fontes);
 
-  // ---- estrutura
-  if (tipo === 'torre') {
-    lista.adicionar('estruturaTorre', 1);
-    lista.adicionar('servicoImplantacaoTorre', 1);
-    lista.adicionar('giroled', 1);
-    lista.adicionar('filtroLinha', 1);
-    lista.adicionar('suporteVideoTorre', nV);
-    lista.adicionar('suporteOcrTorre', nO);
-    lista.adicionar('servicoProjetoExecutivo', 1);
-    // Regra: 1 por câmera além da primeira (pendência nº 4: o kit de
-    // 3 câmeras cadastrado traz 1 unidade).
-    lista.adicionar('servicoCameraAdicional', Math.max(0, total - 1));
-    lista.adicionar('adesivoBridgefy190', 2);
-    lista.adicionar('adesivoBridgefy153', 2);
-    lista.adicionar('adesivoBridgefyDgt', 2);
-    lista.adicionar('adesivoBridgefyQr', 2);
-    lista.adicionar('adesivoBridgefy', 2);
-    lista.adicionar('adesivoCamera', 2 * total);
-
-    if (ponto.comunicacaoBidirecional) {
-      lista.adicionar('suporteInterfone', 1);
-      lista.adicionar('parafusoAutobrocante', 4);
-      lista.adicionar('patchCord', 1);
-      lista.adicionar('fonte12v35', 1);
-      lista.adicionar('porteiroHikvision', 1);
-    }
-  }
-
-  if (tipo === 'box') {
-    lista.adicionar('estruturaBox', 1);
-    lista.adicionar('servicoInstalacaoBox', 1);
-    lista.adicionar('caixaBox', 1);
-    lista.adicionar('kitFitaLedBox', 1);
-    lista.adicionar('caixaHermetica', 1);
-    lista.adicionar('tomadaMultipla5', 1);
-    lista.adicionar('abracadeiraNailon', 18);
-    lista.adicionar('fixadorChicote', 12);
-  }
-
-  if (tipo === 'mini') {
-    lista.adicionar('servicoInstalacaoMini', 1);
-    lista.adicionar('suporteMini', 1);
-    lista.adicionar('lanternaMini', 1);
-    lista.adicionar('caixaHermetica', 1);
-    lista.adicionar('adesivoSuporteMini', 1);
-    lista.adicionar('adesivoCamera', 2 * total);
-    lista.adicionar('servicoProjetoExecutivo', 1);
-  }
+  // ---- kit-base (composição da aba Kits): estrutura, suportes,
+  // serviços, adesivos e opcionais (ex.: comunicação bidirecional).
+  aplicarComposicao(
+    lista,
+    tipo,
+    {
+      camerasVideo: nV,
+      camerasOcr: nO,
+      comunicacaoBidirecional: tipo === 'torre' && ponto.comunicacaoBidirecional,
+      portaVidro: false,
+      usaWAccess: false
+    },
+    opcoes,
+    mensagem => avisar('aviso', mensagem)
+  );
 
   // ---- licenças por câmera
   if (softwares.vms === 'safeCity' && ponto.safeCity) {
@@ -379,48 +433,33 @@ const montarBridgefy = (
 
 const montarPorta = (
   ponto: IPontoKit,
-  alertas: IAlertaBom[]
+  alertas: IAlertaBom[],
+  opcoes?: IOpcoesMontagem
 ): IItemBom[] => {
 
-  const dutotec = ponto.tipo === 'portaDutotec';
   const lista = new Lista(ponto.nome);
   const controlador =
     CONTROLADORES_PORTA.find(c => c.codigo === ponto.controladorPorta) || CONTROLADORES_PORTA[0];
 
   lista.livre(controlador.codigo, `Controlador de acesso facial ${controlador.modelo}`, 'Equipamento', 1);
-  lista.adicionar(dutotec ? 'acionadorSobrepor' : 'acionadorEmbutir', 1);
-  lista.adicionar('molaHidraulica', 1);
-  lista.adicionar('fonte12v5', 1);
-  lista.adicionar('caixaEmergencia', 1);
-  lista.adicionar('dutotecDuto', 2);
-  lista.adicionar('dutotecPortaEquip', 1);
-  lista.adicionar('caboManga', 10);
 
-  if (dutotec) {
-    lista.adicionar('fechaduraFe21150', 1);
-    if (ponto.portaVidro) {
-      lista.adicionar('suporteVidro', 1);
-    }
-    lista.adicionar('parafusoPhilips', 10);
-    lista.adicionar('buchaPlastica', 10);
-  } else {
-    lista.adicionar('releXr2201', 1);
-    lista.adicionar('eletroduto34', 2);
-    lista.adicionar('abracadeiraPvc34', 6);
-    lista.adicionar('conectorBox', 2);
-    lista.adicionar('tampaoCaixa', 3);
-    lista.adicionar('condulete', 1);
-    lista.adicionar('tampaCega', 1);
-    lista.adicionar('parafusoPhilips', 5);
-    lista.adicionar('buchaPlastica', 5);
-  }
+  // Kit-base da porta (composição da aba Kits). Serviço de
+  // instalação, cabo UTP e licença de leitora entram só com W-Access.
+  aplicarComposicao(
+    lista,
+    ponto.tipo,
+    {
+      camerasVideo: 0,
+      camerasOcr: 0,
+      comunicacaoBidirecional: false,
+      portaVidro: ponto.portaVidro,
+      usaWAccess: ponto.usaWAccess
+    },
+    opcoes,
+    mensagem => alertas.push({ nivel: 'aviso', origem: ponto.nome, mensagem })
+  );
 
-  // Serviço, cabo UTP e software: só quando o ponto usa o W-Access.
-  if (ponto.usaWAccess) {
-    lista.adicionar('servicoInstalacaoPonto', 1);
-    lista.adicionar('caboUtp', 30);
-    lista.adicionar('waccessLeitora', 1);
-  } else {
+  if (!ponto.usaWAccess) {
     alertas.push({ nivel: 'aviso', origem: ponto.nome, mensagem: 'Ponto sem W-Access: serviço de instalação e cabo UTP não entram (regra da planilha). Confirmar.' });
   }
 
@@ -591,7 +630,8 @@ export const kitsAplicados = (ponto: IPontoKit): string[] => {
 // ------------------------------------------------------------
 
 export const montarBom = (
-  selecaoEntrada: ISelecaoKit
+  selecaoEntrada: ISelecaoKit,
+  opcoes?: IOpcoesMontagem
 ): IResultadoBom => {
 
   const alertas: IAlertaBom[] = [];
@@ -611,10 +651,10 @@ export const montarBom = (
 
     const itensUm =
       ehBridgefy(ponto.tipo)
-        ? montarBridgefy(ponto, softwares, alertas)
+        ? montarBridgefy(ponto, softwares, alertas, opcoes)
         : ponto.tipo === 'catraca'
           ? montarCatraca(ponto, alertas)
-          : montarPorta(ponto, alertas);
+          : montarPorta(ponto, alertas, opcoes);
 
     porPonto.push({
       ponto,

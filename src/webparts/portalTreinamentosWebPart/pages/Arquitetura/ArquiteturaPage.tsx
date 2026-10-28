@@ -42,6 +42,10 @@ import {
 } from '../../services/bom/montadorBom';
 
 import {
+  garantirCatalogoKitsAplicado
+} from '../../services/bom/KitsService';
+
+import {
   COR,
   DECISAO,
   ETAPAS,
@@ -528,6 +532,21 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
   React.useEffect(() => {
     carregar().catch(() => undefined);
   }, [carregar]);
+
+  // Catálogo de kits (aba Kits): aplica o que está gravado no
+  // Dataverse antes de montar o B.O.M. Sem tabela ou sem permissão,
+  // o montador segue com o catálogo padrão do sistema.
+  const [, setVersaoCatalogo] = React.useState(0);
+
+  React.useEffect(() => {
+    garantirCatalogoKitsAplicado(dataverseService)
+      .then(catalogo => {
+        if (catalogo) {
+          setVersaoCatalogo(v => v + 1);
+        }
+      })
+      .catch(() => undefined);
+  }, [dataverseService]);
 
   const bom = visao && bomId ? visao.boms.find(item => item.id === bomId) : undefined;
   const demanda = visao && bom ? visao.demandas.find(item => item.id === bom.demandaId) : undefined;

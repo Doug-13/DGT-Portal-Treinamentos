@@ -37,6 +37,8 @@ export type Pagina =
   // Arquitetura de Soluções (B.O.M.)
   | 'arquitetura'
   | 'arquiteturaROs'
+  // Kits: catálogo do montador de B.O.M. (equipamentos e composição)
+  | 'kits'
   // RH e Pessoas (por enquanto: certificados dos colaboradores)
   | 'rhPessoas'
   // Planejamento orçamentário (Gestor e Administrador)
@@ -77,6 +79,7 @@ export const ROTAS = {
   USUARIOS_ACESSOS: 'usuariosAcessos',
   ARQUITETURA: 'arquitetura',
   ARQUITETURA_ROS: 'arquiteturaROs',
+  KITS: 'kits',
   RH_PESSOAS: 'rhPessoas',
   PLANEJAMENTO_ORCAMENTARIO: 'planejamentoOrcamentario',
 } as const;
