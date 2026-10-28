@@ -152,6 +152,7 @@ const TIPOS_RESPONSAVEL: Array<{ valor: TipoResponsavelFluxo; rotulo: string }> 
   { valor: 'gestorArea', rotulo: 'Gestor da área do documento' },
   { valor: 'area', rotulo: 'Área específica' },
   { valor: 'usuario', rotulo: 'Usuário específico' },
+  { valor: 'campoUsuario', rotulo: 'Usuário de um metadado (ex.: Responsável)' },
   { valor: 'cargoArea', rotulo: 'Hierarquia — cargo (ex.: Head, Diretor)' },
   { valor: 'nivelHierarquico', rotulo: 'Hierarquia — nível (1º, 2º, 3º, topo)' }
 ];
@@ -180,6 +181,7 @@ const DESCRICAO_PADRAO_RESPONSAVEL: Record<TipoResponsavelFluxo, string> = {
   funcao: 'Função',
   setor: 'Setor',
   usuario: 'Usuário',
+  campoUsuario: 'Usuário do campo',
   cargoArea: 'Head da área de quem criou',
   nivelHierarquico: '1º nível da hierarquia da área de quem criou'
 };
@@ -619,6 +621,9 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
             if (novo.tipo === 'usuario' && novo.referenciaNome) {
               novo.descricao = novo.referenciaNome;
             }
+            if (novo.tipo === 'campoUsuario' && novo.referenciaNome) {
+              novo.descricao = `Usuário do campo "${novo.referenciaNome}"`;
+            }
           }
 
           novo.papelTeste = papelTesteDe(novo);
@@ -993,6 +998,40 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                         {responsavel.tipo === 'cargoArea'
                           ? 'Quem tem este cargo na área (RH e Pessoas → Estrutura por área). Ex.: quem criou é de Processos → a pendência vai para o Head de Processos.'
                           : 'A cadeia da área sai dos cargos cadastrados (ex.: Coordenador → Head → Diretor). Se a área tiver menos níveis, vale o topo.'}
+                      </div>
+                    </div>
+                  )
+                }
+
+                {
+                  responsavel.tipo === 'campoUsuario' && (
+                    <div>
+                      <select
+                        aria-label={`Metadado do responsável ${indice + 1}`}
+                        value={responsavel.referenciaId || ''}
+                        disabled={!editavel}
+                        onChange={evento => {
+                          const campo = metadados.find(item => item.chave === evento.target.value);
+                          alterarResponsavel(indice, {
+                            referenciaId: campo ? campo.chave : '',
+                            referenciaNome: campo ? campo.rotulo : undefined
+                          });
+                        }}
+                        style={estiloEntradaPainel}
+                      >
+                        <option value="">Escolha o metadado do tipo Usuário...</option>
+                        {
+                          metadados
+                            .filter(item => item.tipo === 'usuario')
+                            .map(item => <option key={item.chave} value={item.chave}>{item.rotulo}</option>)
+                        }
+                      </select>
+                      <div style={{ fontSize: '11.5px', color: '#5E6670', marginTop: '4px', lineHeight: 1.4 }}>
+                        {
+                          metadados.some(item => item.tipo === 'usuario')
+                            ? 'A etapa vai para a pessoa escolhida nesse campo. Preencha o campo numa etapa ANTERIOR (de preferência como obrigatório); se estiver vazio, a etapa vai para o autor da revisão.'
+                            : 'Nenhum metadado do tipo Usuário neste processo. Crie um na aba Metadados (tipo "Usuário (busca na plataforma)").'
+                        }
                       </div>
                     </div>
                   )

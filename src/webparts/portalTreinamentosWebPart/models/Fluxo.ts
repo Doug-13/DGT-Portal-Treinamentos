@@ -44,6 +44,10 @@ export type TipoElementoFluxo =
 //   nivelHierarquico → o N-ésimo nível da cadeia da área (1º, 2º, 3º…
 //                      ou o topo). A cadeia sai dos cargos cadastrados
 //                      (ex.: Coordenador → Head → Diretor).
+//   campoUsuario     → o usuário escolhido num METADADO do tipo Usuário
+//                      (ex.: "Responsável pelo processo"). referenciaId
+//                      = chave do metadado; referenciaNome = rótulo.
+//                      Campo vazio → vai para o autor da revisão.
 // Ainda não resolvidos (exigem vínculo usuário × grupo/função/setor):
 //   grupo, funcao, setor
 export type TipoResponsavelFluxo =
@@ -55,7 +59,8 @@ export type TipoResponsavelFluxo =
   | 'grupo'
   | 'funcao'
   | 'setor'
-  | 'usuario';
+  | 'usuario'
+  | 'campoUsuario';
 
 export interface IFluxoResponsavel {
   tipo: TipoResponsavelFluxo;
@@ -176,7 +181,14 @@ export type TipoCampoFluxo =
   | 'numero'
   | 'data'
   | 'lista'
-  | 'tabela';
+  | 'tabela'
+  // Usuário da plataforma (dgt_usuario). Valor gravado como JSON
+  // {id, nome, email} — ver services/fluxo/valorUsuario.ts.
+  | 'usuario'
+  // Documento(s) da plataforma (dgt_documento). Valor gravado como
+  // JSON [{id, codigo, titulo}] — ver services/fluxo/valorDocumento.ts.
+  | 'documento'
+  | 'documentos';
 
 // Tipos permitidos numa coluna de tabela.
 export type TipoColunaTabela =

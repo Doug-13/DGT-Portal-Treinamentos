@@ -44,6 +44,12 @@ import FluxoDiagrama from
 import ConfirmarAcaoModal from
   './ConfirmarAcaoModal';
 
+import CampoUsuarioFluxo from
+  '../../components/fluxo/CampoUsuarioFluxo';
+
+import CampoDocumentoFluxo from
+  '../../components/fluxo/CampoDocumentoFluxo';
+
 import TabelaCampoFluxo from
   '../../components/fluxo/TabelaCampoFluxo';
 
@@ -96,6 +102,9 @@ export interface IFluxoRevisaoTabProps {
 
   // Mensagem de erro do último anexo (vinda do hook da página).
   erroAnexo?: string;
+
+  // Abre um documento referenciado (link nos campos "Documento referenciado").
+  onAbrirDocumento?: (documentoId: string) => void;
 }
 
 const COR_AZUL = '#202A44';
@@ -201,7 +210,8 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
   embutido = false,
   somenteAcao,
   onAnexarArquivo,
-  erroAnexo
+  erroAnexo,
+  onAbrirDocumento
 }) => {
 
   // Arquivo escolhido na etapa (antes de enviar).
@@ -746,6 +756,24 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       );
     }
 
+    // Documento referenciado somente leitura: mostra os cartões.
+    if (campo.somenteLeitura && (campo.tipo === 'documento' || campo.tipo === 'documentos')) {
+      return (
+        <div key={campo.chave}>
+          <div style={estiloRotuloCampo}>{campo.rotulo}</div>
+          <CampoDocumentoFluxo
+            id={`fluxo-campo-${campo.chave}`}
+            valor={valor}
+            multiplo={campo.tipo === 'documentos'}
+            desabilitado={true}
+            dataverseService={dataverseService}
+            onAbrirDocumento={onAbrirDocumento}
+            onAlterar={() => undefined}
+          />
+        </div>
+      );
+    }
+
     if (campo.somenteLeitura) {
       return (
         <div key={campo.chave}>
@@ -881,7 +909,30 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
     let entrada: React.ReactElement;
 
-    if (campo.tipo === 'lista') {
+    if (campo.tipo === 'documento' || campo.tipo === 'documentos') {
+      entrada = (
+        <CampoDocumentoFluxo
+          id={idCampo}
+          valor={valor}
+          multiplo={campo.tipo === 'documentos'}
+          desabilitado={desabilitado}
+          dataverseService={dataverseService}
+          documentoAtualId={documento.id}
+          onAbrirDocumento={onAbrirDocumento}
+          onAlterar={novo => definirValor(campo.chave, novo)}
+        />
+      );
+    } else if (campo.tipo === 'usuario') {
+      entrada = (
+        <CampoUsuarioFluxo
+          id={idCampo}
+          valor={valor}
+          desabilitado={desabilitado}
+          dataverseService={dataverseService}
+          onAlterar={novo => definirValor(campo.chave, novo)}
+        />
+      );
+    } else if (campo.tipo === 'lista') {
       entrada = (
         <select
           id={idCampo}

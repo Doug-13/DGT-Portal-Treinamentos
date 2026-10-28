@@ -60,6 +60,10 @@ import {
   StatusDocumentoBadge
 } from '../../components/common/StatusDocumento';
 
+import {
+  ProcessoNegocioService
+} from '../../services/processos/ProcessoNegocioService';
+
 import ResumoModulo, {
   CORES_INDICADOR,
   IIndicadorResumo
@@ -294,6 +298,14 @@ const inputStyle:
   fontSize:
     '13px'
 };
+
+// Linhas da tabela: cabeçalhos de grupo (área/processo) ou documento.
+type ItemTabelaDocumentos =
+  | { tipo: 'area'; chave: string; nome: string; quantidade: number; semProcesso?: boolean }
+  | { tipo: 'processo'; chave: string; nome: string; quantidade: number; semProcesso?: boolean }
+  | { tipo: 'documento'; documento: IDocumento };
+
+const CHAVE_AGRUPAR = 'dgt-documentos-agrupar';
 
 const th:
   React.CSSProperties = {
@@ -733,6 +745,210 @@ const DocumentosHomePage:
         ]
       );
 
+    // ----------------------------------------------------------
+    // AGRUPAMENTO  Área → Processo → Documentos  (padrão: ligado)
+    // A escolha do usuário fica guardada no navegador.
+    // ----------------------------------------------------------
+
+    const [agrupar, setAgrupar] =
+      React.useState<boolean>(() => {
+        try {
+          return window.localStorage.getItem(CHAVE_AGRUPAR) !== 'nao';
+        } catch {
+          return true;
+        }
+      });
+
+    const alternarAgrupar = (): void => {
+      const novo = !agrupar;
+      setAgrupar(novo);
+      try {
+        window.localStorage.setItem(CHAVE_AGRUPAR, novo ? 'sim' : 'nao');
+      } catch {
+        // navegador sem armazenamento: vale só nesta sessão
+      }
+    };
+
+    // Grupos recolhidos (chave = área ou área|processo).
+    const [recolhidos, setRecolhidos] =
+      React.useState<Record<string, boolean>>({});
+
+    const alternarGrupo = (chave: string): void =>
+      setRecolhidos(atual => ({ ...atual, [chave]: !atual[chave] }));
+
+    // Processo de negócio de cada documento.
+    const [processosNegocio, setProcessosNegocio] =
+      React.useState<{
+        porDocumento: Record<string, string>;
+        processos: Record<string, { codigo: string; nome: string; ordem: number }>;
+      }>({ porDocumento: {}, processos: {} });
+
+    React.useEffect(
+      () => {
+        if (!dataverseService) {
+          return;
+        }
+
+        let ativo = true;
+        const servico = new ProcessoNegocioService(dataverseService);
+
+        Promise.all([servico.listar(), servico.processoPorDocumento()])
+          .then(([lista, porDocumento]) => {
+            if (!ativo) {
+              return;
+            }
+            const processos: Record<string, { codigo: string; nome: string; ordem: number }> = {};
+            lista.forEach(item => {
+              processos[item.id] = { codigo: item.codigo, nome: item.nome, ordem: item.ordem };
+            });
+            setProcessosNegocio({ porDocumento, processos });
+          })
+          .catch(falha => {
+            // Sem as tabelas de processos: tudo fica em "Sem processo".
+            console.error(falha);
+          });
+
+        return () => { ativo = false; };
+      },
+      [dataverseService]
+    );
+
+    const itensTabela =
+      React.useMemo(
+        (): ItemTabelaDocumentos[] => {
+
+          if (!agrupar) {
+            return filtrados.map(documento => ({ tipo: 'documento' as const, documento }));
+          }
+
+          // área → processo → documentos (mantém a ordem da lista dentro do grupo)
+          const areas: Record<string, { nome: string; processos: Record<string, IDocumento[]> }> = {};
+
+          filtrados.forEach(documento => {
+            const chaveArea = guidTela(documento.areaId) || 'sem-area';
+            const processoId = processosNegocio.porDocumento[guidTela(documento.id)] || '';
+            const chaveProcesso = processoId && processosNegocio.processos[processoId] ? processoId : 'sem-processo';
+
+            if (!areas[chaveArea]) {
+              areas[chaveArea] = { nome: documento.area || 'Sem área', processos: {} };
+            }
+            (areas[chaveArea].processos[chaveProcesso] = areas[chaveArea].processos[chaveProcesso] || []).push(documento);
+          });
+
+          const itens: ItemTabelaDocumentos[] = [];
+
+          Object.keys(areas)
+            .sort((a, b) =>
+              a === 'sem-area' ? 1 : b === 'sem-area' ? -1 : areas[a].nome.localeCompare(areas[b].nome, 'pt-BR')
+            )
+            .forEach(chaveArea => {
+              const grupoArea = areas[chaveArea];
+              const total = Object.keys(grupoArea.processos)
+                .reduce((soma, chave) => soma + grupoArea.processos[chave].length, 0);
+
+              itens.push({ tipo: 'area', chave: chaveArea, nome: grupoArea.nome, quantidade: total });
+
+              if (recolhidos[chaveArea]) {
+                return;
+              }
+
+              Object.keys(grupoArea.processos)
+                .sort((a, b) => {
+                  if (a === 'sem-processo') { return 1; }
+                  if (b === 'sem-processo') { return -1; }
+                  const pa = processosNegocio.processos[a];
+                  const pb = processosNegocio.processos[b];
+                  return (pa.ordem - pb.ordem) || (pa.codigo || pa.nome).localeCompare(pb.codigo || pb.nome, 'pt-BR');
+                })
+                .forEach(chaveProcesso => {
+                  const processo = processosNegocio.processos[chaveProcesso];
+                  const chaveGrupo = `${chaveArea}|${chaveProcesso}`;
+                  const documentos = grupoArea.processos[chaveProcesso];
+
+                  itens.push({
+                    tipo: 'processo',
+                    chave: chaveGrupo,
+                    nome: processo
+                      ? `${processo.codigo ? `${processo.codigo} — ` : ''}${processo.nome}`
+                      : 'Sem processo definido',
+                    quantidade: documentos.length,
+                    semProcesso: !processo
+                  });
+
+                  if (!recolhidos[chaveGrupo]) {
+                    documentos.forEach(documento => itens.push({ tipo: 'documento', documento }));
+                  }
+                });
+            });
+
+          return itens;
+        },
+        [agrupar, filtrados, processosNegocio, recolhidos]
+      );
+
+    // Cabeçalho de grupo (área ou processo) dentro da tabela.
+    const renderCabecalhoGrupo = (
+      item: ItemTabelaDocumentos
+    ): React.ReactElement | null => {
+
+      if (item.tipo === 'documento') {
+        return null;
+      }
+
+      const recolhido = !!recolhidos[item.chave];
+      const ehArea = item.tipo === 'area';
+
+      return (
+        <tr key={`grupo-${item.chave}`}>
+          <td
+            colSpan={11}
+            style={{
+              padding: ehArea ? '10px 14px' : '7px 14px 7px 34px',
+              background: ehArea ? '#EDF0F5' : '#F8FAFC',
+              borderTop: ehArea ? '2px solid #D9DEE7' : '1px solid #EDF1F5'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => alternarGrupo(item.chave)}
+              aria-expanded={!recolhido}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                border: 0,
+                background: 'transparent',
+                padding: 0,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                color: ehArea ? '#202A44' : (item.semProcesso ? '#66788A' : '#485CC7'),
+                fontSize: ehArea ? '13px' : '12.5px',
+                fontWeight: ehArea ? 800 : 700,
+                fontStyle: item.semProcesso ? 'italic' : 'normal'
+              }}
+            >
+              <span style={{ width: '12px', display: 'inline-block' }}>{recolhido ? '▸' : '▾'}</span>
+              <span aria-hidden="true">{ehArea ? '🏢' : '⚙'}</span>
+              {ehArea ? item.nome.toUpperCase() : item.nome}
+              <span
+                style={{
+                  padding: '0 8px',
+                  borderRadius: '10px',
+                  background: ehArea ? '#202A44' : '#E8EAF8',
+                  color: ehArea ? '#FFFFFF' : '#485CC7',
+                  fontSize: '10.5px',
+                  lineHeight: '17px',
+                  fontStyle: 'normal'
+                }}
+              >
+                {item.quantidade}
+              </span>
+            </button>
+          </td>
+        </tr>
+      );
+    };
+
     React.useEffect(
       () => {
         if (
@@ -1149,19 +1365,69 @@ const DocumentosHomePage:
 
                 <span
                   style={{
-                    color:
-                      '#0867D7',
-
-                    fontSize:
-                      '11px',
-
-                    fontWeight:
-                      700
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '12px'
                   }}
                 >
+                  <label
+                    title="Agrupar a lista por área e, dentro dela, por processo"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      color: '#202A44',
+                      fontSize: '11.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={agrupar}
+                      onChange={alternarAgrupar}
+                    />
+                    Agrupar por área › processo
+                  </label>
+
                   {
-                    filtrados.length
-                  } encontrado(s)
+                    agrupar && Object.keys(recolhidos).some(chave => recolhidos[chave]) &&
+                    (
+                      <button
+                        type="button"
+                        onClick={() => setRecolhidos({})}
+                        style={{
+                          border: 0,
+                          background: 'transparent',
+                          padding: 0,
+                          color: '#0867D7',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit'
+                        }}
+                      >
+                        Expandir tudo
+                      </button>
+                    )
+                  }
+
+                  <span
+                    style={{
+                      color:
+                        '#0867D7',
+
+                      fontSize:
+                        '11px',
+
+                      fontWeight:
+                        700
+                    }}
+                  >
+                    {
+                      filtrados.length
+                    } encontrado(s)
+                  </span>
                 </span>
               </div>
 
@@ -1279,8 +1545,10 @@ const DocumentosHomePage:
 
                           <tbody>
                             {
-                              filtrados.map(
-                                documento => (
+                              itensTabela.map(
+                                item => item.tipo !== 'documento'
+                                  ? renderCabecalhoGrupo(item)
+                                  : ((documento: IDocumento) => (
                                   <tr
                                     key={
                                       documento.id
@@ -1530,7 +1798,7 @@ const DocumentosHomePage:
                                       }
                                     </td>
                                   </tr>
-                                )
+                                  ))(item.documento)
                               )
                             }
                           </tbody>

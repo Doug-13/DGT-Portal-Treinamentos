@@ -389,6 +389,21 @@ export const validarDefinicao = (
               );
             }
 
+            if (responsavel.tipo === 'campoUsuario') {
+              const campo =
+                metadados.find(metadado => metadado.chave === (responsavel.referenciaId || '').trim());
+
+              if (!campo) {
+                erros.push(
+                  `Escolha o metadado (tipo Usuário) do responsável "${responsavel.descricao}" na etapa "${item.nome}".`
+                );
+              } else if (campo.tipo !== 'usuario') {
+                erros.push(
+                  `O responsável "${responsavel.descricao}" da etapa "${item.nome}" usa o campo "${campo.rotulo}", que não é do tipo Usuário.`
+                );
+              }
+            }
+
             if (
               (responsavel.tipo === 'area' || responsavel.tipo === 'usuario') &&
               !(responsavel.referenciaId || '').trim()
@@ -577,6 +592,17 @@ export const validarDefinicao = (
 
         if (metadadoCondicao && metadadoCondicao.tipo === 'tabela') {
           erros.push(`A ligação "${nome}" não pode usar uma tabela como condição.`);
+        }
+
+        if (metadadoCondicao && metadadoCondicao.tipo === 'usuario') {
+          erros.push(`A ligação "${nome}" não pode usar um campo de usuário como condição.`);
+        }
+
+        if (
+          metadadoCondicao &&
+          (metadadoCondicao.tipo === 'documento' || metadadoCondicao.tipo === 'documentos')
+        ) {
+          erros.push(`A ligação "${nome}" não pode usar um documento referenciado como condição.`);
         }
 
         if (!(transicao.valorEsperado || '').trim()) {

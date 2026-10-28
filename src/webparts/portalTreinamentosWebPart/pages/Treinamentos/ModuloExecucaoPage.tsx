@@ -52,6 +52,18 @@ export interface IModuloExecucaoPageProps {
   // Recomeça a revisão (limpa as respostas marcadas).
   onRefazer?:
     () => void;
+
+  // Próximo módulo do treinamento (pela ordem). Vazio = este é o último.
+  proximoModuloTitulo?:
+    string;
+
+  // Conclui este módulo e abre o próximo.
+  onConcluirEProximo?:
+    () => Promise<void>;
+
+  // Revisão: abre o próximo módulo sem gravar nada.
+  onProximoModulo?:
+    () => void;
 }
 
 interface ISelecaoPergunta {
@@ -1522,14 +1534,65 @@ const ModuloExecucaoPage:
                       props.onVoltar
                     }
                     style={
-                      botaoPrimario
+                      props.proximoModuloTitulo && props.onProximoModulo
+                        ? botao
+                        : botaoPrimario
                     }
                   >
                     ← Voltar ao treinamento
                   </button>
+
+                  {
+                    props.proximoModuloTitulo &&
+                    props.onProximoModulo &&
+                    (
+                      <button
+                        type="button"
+                        onClick={
+                          props.onProximoModulo
+                        }
+                        title={`Próximo: ${props.proximoModuloTitulo}`}
+                        style={
+                          botaoPrimario
+                        }
+                      >
+                        Próximo módulo →
+                      </button>
+                    )
+                  }
                 </div>
               )
               : (
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              justifyContent: 'flex-end',
+              width: '100%'
+            }}
+          >
+          {
+            props.podeConcluir &&
+            !props.processando &&
+            (
+              <span
+                style={{
+                  marginRight: 'auto',
+                  fontSize: '12.5px',
+                  color: '#64748B'
+                }}
+              >
+                {
+                  props.proximoModuloTitulo
+                    ? <>Próximo: <strong style={{ color: '#202A44' }}>{props.proximoModuloTitulo}</strong></>
+                    : 'Este é o último módulo. Depois de concluir, a avaliação fica disponível no treinamento.'
+                }
+              </span>
+            )
+          }
+
           <button
             type="button"
             disabled={
@@ -1579,6 +1642,52 @@ const ModuloExecucaoPage:
                   : 'Responda as perguntas obrigatórias'
             }
           </button>
+
+          {
+            props.proximoModuloTitulo &&
+            props.onConcluirEProximo &&
+            (
+              <button
+                type="button"
+                disabled={
+                  !props.podeConcluir ||
+                  props.processando ||
+                  props.carregando
+                }
+                title={`Conclui este módulo e abre: ${props.proximoModuloTitulo}`}
+                onClick={() => {
+                  (props.onConcluirEProximo as () => Promise<void>)()
+                    .catch(
+                      (
+                        error:
+                          unknown
+                      ) =>
+                        console.error(
+                          error
+                        )
+                    );
+                }}
+                style={{
+                  ...botaoPrimario,
+                  background:
+                    props.podeConcluir
+                      ? '#202A44'
+                      : '#CBD5E1',
+                  borderColor:
+                    props.podeConcluir
+                      ? '#202A44'
+                      : '#CBD5E1',
+                  cursor:
+                    props.podeConcluir
+                      ? 'pointer'
+                      : 'not-allowed'
+                }}
+              >
+                Concluir e ir para o próximo →
+              </button>
+            )
+          }
+          </div>
               )
           }
         </footer>

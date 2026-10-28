@@ -6,7 +6,23 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: metadado do tipo Usuário nos processos — o campo busca os usuários ativos da plataforma por nome ou e-mail e grava nome e e-mail junto, para o histórico continuar legível.
+- Novo: responsável de etapa "Usuário de um metadado" — a etapa vai para a pessoa escolhida num campo do tipo Usuário (ex.: "Responsável pelo processo"); se o campo estiver vazio, vai para o autor da revisão.
+- Novo: metadados "Documento referenciado" (um) e "Documentos referenciados (vários)", com filtro por área e por processo, busca por código ou título e link para abrir o documento.
+- Novo: aba Referências no documento, com o que ele referencia, quem o referencia (ex.: o filho mostra o pai) e os treinamentos vinculados.
+- Novo: referências entre um documento e um treinamento criam automaticamente o vínculo treinamento × documento, usado no retreinamento por revisão documental (nada é apagado ao remover a referência).
+- Novo: "Documentos de referência" no cadastro do treinamento, para vincular POPs, ITs e políticas ao curso sem depender de metadados do fluxo.
+- Novo: lista de Documentos agrupada por Área › Processo (padrão ligado), com grupos recolhíveis, "Expandir tudo" e opção para desligar o agrupamento (a escolha fica guardada no navegador).
+- Novo: "Minhas pendências" na Visão geral de Treinamentos, reunindo etapas do fluxo de treinamentos, documentos aguardando o usuário e treinamentos para realizar.
+- Novo: resultado da avaliação com os botões "Sair" e "Ir para o próximo" (abre o próximo treinamento liberado); se reprovado, "Revisar módulos".
+- Novo: "Concluir e ir para o próximo" no módulo, que grava a conclusão e abre o módulo seguinte; na revisão de módulo concluído, "Próximo módulo".
+- Melhoria: status dos documentos com cores e ícones (✓ Vigente, ✎ Elaboração, ⟳ Revisão, ⏳ Aprovação, ⊘ Cancelada, ✕ Obsoleta); a etapa que aguarda o usuário ganha destaque "SUA VEZ".
+- Melhoria: Visão geral de Treinamentos mais limpa — "Continuar treinamento", "Meus treinamentos", "Próximos treinamentos" e "Trilhas em andamento" só aparecem quando têm conteúdo; sem pendências, uma linha "Tudo em dia".
+- Correção: documento publicado ou revisão com fluxo concluído/cancelado não aparece mais como pendência do responsável (antes voltava para a 1ª etapa do fluxo); avisos de etapas em revisões encerradas não são mais exibidos.
+- Novo: Arquitetura de Soluções — cadastro de Kits (B.O.M.). Requer scripts/dataverse/criar-tabelas-kits.ps1.
+
 ## [1.4.14] - 2026-10-26
+
 
 - Novo: "⟳ Atualizar todos os módulos por JSON" na etapa de edição dos módulos — um JSON com todos os módulos atualiza cada módulo existente correspondente (sugestão pelo título e, depois, pela posição, ajustável na prévia em "Atualiza") e cria os que não têm correspondência; módulos fora do JSON ficam como estão.
 

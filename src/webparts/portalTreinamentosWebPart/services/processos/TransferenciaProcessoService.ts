@@ -440,10 +440,10 @@ export class TransferenciaProcessoService {
             true,
             {
               rotuloRevisao: `${item.documento.codigo} ${item.revisao || ''}`.trim(),
-              resolverResponsaveis: (responsaveis: IFluxoResponsavel[]) =>
+              resolverResponsaveis: (responsaveis: IFluxoResponsavel[], valores?: Record<string, string>) =>
                 resolverResponsaveis(
                   responsaveis,
-                  { revisaoResponsavelId: autor, documentoAreaId: item.documento.areaId },
+                  { revisaoResponsavelId: autor, documentoAreaId: item.documento.areaId, valores },
                   vinculosUsuarios
                 )
             }
@@ -523,10 +523,10 @@ export class TransferenciaProcessoService {
               true,
               {
                 rotuloRevisao: `${item.documento.codigo} ${item.revisao || ''}`.trim(),
-                resolverResponsaveis: (responsaveis: IFluxoResponsavel[]) =>
+                resolverResponsaveis: (responsaveis: IFluxoResponsavel[], valores?: Record<string, string>) =>
                   resolverResponsaveis(
                     responsaveis,
-                    { revisaoResponsavelId: autor, documentoAreaId: item.documento.areaId },
+                    { revisaoResponsavelId: autor, documentoAreaId: item.documento.areaId, valores },
                     vinculosUsuarios
                   )
               }

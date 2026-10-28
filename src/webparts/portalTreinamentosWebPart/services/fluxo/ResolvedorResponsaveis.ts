@@ -13,6 +13,10 @@ import {
 } from '../AreaAdminService';
 
 import {
+  lerValorUsuario
+} from './valorUsuario';
+
+import {
   alvosDaHierarquia,
   pessoasComCargo,
   rotuloNivel
@@ -35,6 +39,10 @@ export interface IDadosRevisaoResponsaveis {
 
   // Área do documento (dgt_area).
   documentoAreaId?: string;
+
+  // Valores dos metadados já preenchidos na revisão (para o
+  // responsável "Usuário do campo").
+  valores?: Record<string, string>;
 }
 
 export const TIPOS_RESOLVIDOS: string[] = [
@@ -43,7 +51,8 @@ export const TIPOS_RESOLVIDOS: string[] = [
   'area',
   'usuario',
   'cargoArea',
-  'nivelHierarquico'
+  'nivelHierarquico',
+  'campoUsuario'
 ];
 
 export const tipoResolvido = (
@@ -83,6 +92,24 @@ export const resolverResponsavel = (
 
     case 'usuario':
       return { ...base, usuarioId: guid(responsavel.referenciaId) || undefined };
+
+    case 'campoUsuario': {
+      // Usuário escolhido no metadado. Se o campo ainda não foi
+      // preenchido, a etapa vai para o autor da revisão (nunca fica
+      // sem ninguém).
+      const chave = responsavel.referenciaId || '';
+      const escolhido = lerValorUsuario(dados.valores ? dados.valores[chave] : '');
+
+      if (escolhido) {
+        return { ...base, usuarioId: escolhido.id };
+      }
+
+      return {
+        ...base,
+        descricao: `${responsavel.descricao} — campo não preenchido, vai para o autor da revisão`,
+        usuarioId: guid(dados.revisaoResponsavelId) || undefined
+      };
+    }
 
     case 'cargoArea':
     case 'nivelHierarquico': {

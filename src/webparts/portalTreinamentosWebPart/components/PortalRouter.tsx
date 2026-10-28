@@ -749,7 +749,9 @@ export interface IPortalRouterProps {
   salvarNovoTreinamento:
   (
     dados:
-      INovoTreinamento
+      INovoTreinamento,
+    documentosReferencia?:
+      string[]
   ) => Promise<void>;
 
   fluxoCriacaoTreinamentoId:
@@ -888,6 +890,16 @@ export interface IPortalRouterProps {
 
   concluirModuloExecucao:
   () => Promise<void>;
+
+  // Próximo módulo (pela ordem) do treinamento aberto.
+  proximoModuloExecucaoTitulo?:
+  string;
+
+  concluirModuloEIrParaProximo?:
+  () => Promise<void>;
+
+  irParaProximoModulo?:
+  () => void;
 
   // ============================================================
   // DOCUMENTOS
@@ -1069,6 +1081,15 @@ export interface IPortalRouterProps {
         string,
         string[]
       >
+  ) => void;
+
+  // Resultado da avaliação: "Sair" e "Próximo treinamento".
+  sairDaAvaliacao?:
+  () => void;
+
+  irParaProximoTreinamento?:
+  (
+    nomeTreinamento: string
   ) => void;
 
   modulosAdministrativos:
@@ -1750,6 +1771,18 @@ const PortalRouter:
             onConcluir={
               props.concluirModuloExecucao
             }
+
+            proximoModuloTitulo={
+              props.proximoModuloExecucaoTitulo
+            }
+
+            onConcluirEProximo={
+              props.concluirModuloEIrParaProximo
+            }
+
+            onProximoModulo={
+              props.irParaProximoModulo
+            }
           />
         );
       // ========================================================
@@ -1996,6 +2029,11 @@ const PortalRouter:
               solicitarAberturaProcesso(processoId);
               props.navegar('fluxos');
             }}
+
+            // Links dos documentos referenciados.
+            onAbrirDocumento={
+              props.abrirDocumentoPorId
+            }
 
             onVoltar={() =>
               props.navegar(
@@ -2534,6 +2572,20 @@ const PortalRouter:
             onEtapaClick={
               props.navegarEtapaFluxoTreinamento
             }
+
+            // Documentos de referência do treinamento.
+            dataverseService={
+              props.dataverseService
+            }
+
+            onAbrirDocumento={
+              props.abrirDocumentoPorId
+                ? (documentoId: string) => {
+                  (props.abrirDocumentoPorId as (id: string) => Promise<boolean>)(documentoId)
+                    .catch(falha => console.error(falha));
+                }
+                : undefined
+            }
           />
         );
 
@@ -2692,6 +2744,14 @@ const PortalRouter:
 
             onEnviar={
               props.enviarAvaliacao
+            }
+
+            onSair={
+              props.sairDaAvaliacao
+            }
+
+            onProximo={
+              props.irParaProximoTreinamento
             }
           />
         );

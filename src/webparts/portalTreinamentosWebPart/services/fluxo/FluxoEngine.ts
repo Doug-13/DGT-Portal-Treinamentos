@@ -17,6 +17,17 @@ import {
 } from './valoresTabela';
 
 import {
+  formatarValorUsuario,
+  validarValorUsuario
+} from './valorUsuario';
+
+import {
+  ehTipoDocumento,
+  formatarValorDocumentos,
+  validarValorDocumentos
+} from './valorDocumento';
+
+import {
   ROTULO_HISTORICO_EVENTO_REVISAO,
   revisaoInteira,
   rotuloPeloEvento
@@ -288,6 +299,20 @@ export const validarAcao = (
       ) {
         erros.push(`Responda "${campo.rotulo}" com Sim ou Não.`);
       }
+
+      if (campo.tipo === 'usuario') {
+        const erroUsuario = validarValorUsuario(campo.rotulo, valor);
+        if (erroUsuario) {
+          erros.push(erroUsuario);
+        }
+      }
+
+      if (ehTipoDocumento(campo.tipo)) {
+        const erroDocumento = validarValorDocumentos(campo.rotulo, campo.tipo, valor);
+        if (erroDocumento) {
+          erros.push(erroDocumento);
+        }
+      }
     }
   );
 
@@ -309,6 +334,14 @@ export const formatarValorCampo = (
 
   if (tipo === 'tabela') {
     return resumoTabela(valor);
+  }
+
+  if (tipo === 'usuario') {
+    return formatarValorUsuario(valor);
+  }
+
+  if (ehTipoDocumento(tipo)) {
+    return formatarValorDocumentos(valor);
   }
 
   if (tipo === 'data') {

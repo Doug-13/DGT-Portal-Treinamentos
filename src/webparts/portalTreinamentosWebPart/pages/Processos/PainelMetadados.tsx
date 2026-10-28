@@ -46,7 +46,10 @@ const TIPOS: Array<{ valor: TipoCampoFluxo; rotulo: string }> = [
   { valor: 'data', rotulo: 'Data' },
   { valor: 'simNao', rotulo: 'Sim / Não' },
   { valor: 'lista', rotulo: 'Lista de opções' },
-  { valor: 'tabela', rotulo: 'Tabela' }
+  { valor: 'tabela', rotulo: 'Tabela' },
+  { valor: 'usuario', rotulo: 'Usuário (busca na plataforma)' },
+  { valor: 'documento', rotulo: 'Documento referenciado' },
+  { valor: 'documentos', rotulo: 'Documentos referenciados (vários)' }
 ];
 
 const TIPOS_COLUNA: Array<{ valor: TipoColunaTabela; rotulo: string }> = [

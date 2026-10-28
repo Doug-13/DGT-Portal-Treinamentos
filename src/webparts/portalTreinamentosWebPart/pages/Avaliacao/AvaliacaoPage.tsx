@@ -18,6 +18,11 @@ export interface IAvaliacaoPageProps {
   processando: boolean;
   onVoltar: () => void;
   onEnviar: (respostas: Record<string, string[]>) => void;
+
+  // Tela de resultado: "Sair" (volta para Meus treinamentos) e
+  // "Próximo" (abre o próximo treinamento liberado).
+  onSair?: () => void;
+  onProximo?: (nomeProximo: string) => void;
 }
 
 const doisDigitos = (valor: number): string =>
@@ -38,7 +43,9 @@ const AvaliacaoPage: React.FC<IAvaliacaoPageProps> = ({
   resultado,
   processando,
   onVoltar,
-  onEnviar
+  onEnviar,
+  onSair,
+  onProximo
 }) => {
   const [respostas, setRespostas] =
     React.useState<Record<string, string[]>>({});
@@ -131,8 +138,6 @@ const AvaliacaoPage: React.FC<IAvaliacaoPageProps> = ({
   if (resultado) {
     return (
       <section style={{ maxWidth: 900, margin: '0 auto' }}>
-        <button type="button" onClick={onVoltar}>← Voltar ao treinamento</button>
-
         <div
           style={{
             marginTop: 24,
@@ -179,6 +184,93 @@ const AvaliacaoPage: React.FC<IAvaliacaoPageProps> = ({
               <strong>{resultado.proximoTreinamentoNome}</strong>
             </p>
           )}
+
+          {/* AÇÕES: Sair · Próximo */}
+          {(() => {
+            const temProximo =
+              resultado.aprovado &&
+              resultado.proximoTreinamentoLiberado &&
+              !!resultado.proximoTreinamentoNome &&
+              !!onProximo;
+
+            // Reprovado: o "próximo passo" é rever os módulos (e tentar
+            // de novo, se ainda houver tentativas).
+            const rotuloSegundo =
+              temProximo
+                ? `Ir para o próximo: ${resultado.proximoTreinamentoNome} →`
+                : resultado.aprovado
+                  ? 'Próximo →'
+                  : resultado.tentativasRestantes > 0
+                    ? 'Revisar módulos e tentar de novo →'
+                    : 'Revisar módulos →';
+
+            const segundoDesabilitado =
+              resultado.aprovado && !temProximo;
+
+            const botao = (primario: boolean, desabilitado = false): React.CSSProperties => ({
+              padding: '11px 22px',
+              borderRadius: 10,
+              border: primario ? '1px solid #202A44' : '1px solid #CBD5E1',
+              background: desabilitado ? '#E2E8F0' : primario ? '#202A44' : '#FFFFFF',
+              color: desabilitado ? '#94A3B8' : primario ? '#FFFFFF' : '#202A44',
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: desabilitado ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit'
+            });
+
+            return (
+              <div style={{ marginTop: 26 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    justifyContent: 'flex-end',
+                    gap: 12,
+                    paddingTop: 18,
+                    borderTop: '1px solid #dbeafe'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={onSair || onVoltar}
+                    style={botao(false)}
+                  >
+                    Sair
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={segundoDesabilitado}
+                    title={
+                      segundoDesabilitado
+                        ? 'Não há próximo treinamento liberado na sua trilha.'
+                        : undefined
+                    }
+                    onClick={() => {
+                      if (temProximo && onProximo) {
+                        onProximo(resultado.proximoTreinamentoNome);
+                      } else if (!resultado.aprovado) {
+                        onVoltar();
+                      }
+                    }}
+                    style={botao(true, segundoDesabilitado)}
+                  >
+                    {rotuloSegundo}
+                  </button>
+                </div>
+
+                {
+                  segundoDesabilitado &&
+                  (
+                    <p style={{ margin: '8px 0 0', textAlign: 'right', fontSize: 12.5, color: '#64748B' }}>
+                      Você concluiu esta etapa. Não há próximo treinamento liberado na sua trilha no momento.
+                    </p>
+                  )
+                }
+              </div>
+            );
+          })()}
         </div>
       </section>
     );

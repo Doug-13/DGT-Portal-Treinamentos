@@ -359,22 +359,25 @@ export class OrcamentoFluxoService {
 
   // "Autor da revisão" = quem criou a planilha; "Gestor da área" =
   // gestores da área da planilha.
-  public dadosResponsaveis(planilha: IPlanilhaOrcamento): IDadosRevisaoResponsaveis {
+  public dadosResponsaveis(planilha: IPlanilhaOrcamento, instancia?: IFluxoInstancia): IDadosRevisaoResponsaveis {
     return {
       revisaoResponsavelId: planilha.gestorId,
-      documentoAreaId: planilha.areaId
+      documentoAreaId: planilha.areaId,
+      // Metadados preenchidos (responsável "Usuário do campo").
+      valores: instancia ? instancia.valores : undefined
     };
   }
 
   public async ator(
     definicao: IFluxoDefinicao,
     planilha: IPlanilhaOrcamento,
-    contexto: IContextoAcesso
+    contexto: IContextoAcesso,
+    instancia?: IFluxoInstancia
   ): Promise<IFluxoAtor> {
     return {
       id: guid(contexto.usuarioId),
       nome: contexto.nome,
-      papeisTeste: papeisDoUsuario(definicao, contexto, this.dadosResponsaveis(planilha), await this.vinculos())
+      papeisTeste: papeisDoUsuario(definicao, contexto, this.dadosResponsaveis(planilha, instancia), await this.vinculos())
     };
   }
 
@@ -383,7 +386,7 @@ export class OrcamentoFluxoService {
     return {
       // Com os vínculos, a hierarquia (ex.: Head da área de quem criou)
       // já sai com as pessoas certas na pendência.
-      resolverResponsaveis: responsaveis => resolverResponsaveis(responsaveis, dados, this.vinculosCache),
+      resolverResponsaveis: (responsaveis, valores) => resolverResponsaveis(responsaveis, { ...dados, valores }, this.vinculosCache),
       rotuloRevisao: `Orçamento ${planilha.ano} — ${planilha.areaNome || planilha.gestorNome}`,
       // O fluxo do orçamento não publica documentos: tarefas de
       // sistema (se houver no desenho) apenas seguem adiante.
@@ -420,7 +423,7 @@ export class OrcamentoFluxoService {
       return false;
     }
     const elemento = obterElementoAtual(estado.definicao, estado.instancia);
-    return atorPodeExecutar(elemento, await this.ator(estado.definicao, planilha, contexto));
+    return atorPodeExecutar(elemento, await this.ator(estado.definicao, planilha, contexto, estado.instancia));
   }
 
   // ----------------------------------------------------------
@@ -504,7 +507,7 @@ export class OrcamentoFluxoService {
             acaoChave,
             comentario,
             valores,
-            ator: await this.ator(antes.definicao, planilha, contexto)
+            ator: await this.ator(antes.definicao, planilha, contexto, antes.instancia)
           },
           this.contextoExecucao(planilha)
         );
@@ -588,7 +591,7 @@ export class OrcamentoFluxoService {
       elementoId: preenchimento.id,
       elementoNome: preenchimento.nome,
       responsaveis: preenchimento.responsaveis,
-      responsaveisResolvidos: resolverResponsaveis(preenchimento.responsaveis, this.dadosResponsaveis(planilha), await this.vinculos()),
+      responsaveisResolvidos: resolverResponsaveis(preenchimento.responsaveis, this.dadosResponsaveis(planilha, instancia), await this.vinculos()),
       status: 'pendente',
       criadaEm: agora,
       prazo: prazoEmDiasUteisDoMotor(preenchimento.prazoDiasUteis || PRAZO_AJUSTE_DIAS_UTEIS)
@@ -736,7 +739,7 @@ export class OrcamentoFluxoService {
         }
         const resolvidos =
           tarefa.responsaveisResolvidos ||
-          resolverResponsaveis(tarefa.responsaveis, this.dadosResponsaveis(planilha));
+          resolverResponsaveis(tarefa.responsaveis, this.dadosResponsaveis(planilha, estado.instancia));
         if (resolvidos.some(item => usuarioAtende(item, contexto.usuarioId, vinculos))) {
           resultado.push({ planilha, estado, tarefa });
         }

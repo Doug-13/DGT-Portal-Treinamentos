@@ -26,6 +26,17 @@ import {
   IAreaAdmin
 } from '../../services/AreaAdminService';
 
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import {
+  lerValorDocumentos
+} from '../../services/fluxo/valorDocumento';
+
+import DocumentosReferenciaTreinamento from
+  './DocumentosReferenciaTreinamento';
+
 export interface INovoTreinamentoPageProps {
 
   areas:
@@ -34,10 +45,14 @@ export interface INovoTreinamentoPageProps {
   onVoltar:
     () => void;
 
+  // documentosReferencia: ids dos documentos a vincular ao treinamento
+  // criado (dgt_treinamentodocumento).
   onSalvar:
     (
       dados:
-        INovoTreinamento
+        INovoTreinamento,
+      documentosReferencia?:
+        string[]
     ) => Promise<void>;
 
   treinamentoExistente?:
@@ -59,6 +74,16 @@ export interface INovoTreinamentoPageProps {
   // (ÁREA-TRN-SEQUENCIAL) de um treinamento já criado.
   podeEditarSequencial?:
     boolean;
+
+  // Documentos de referência (vínculo treinamento × documento).
+  dataverseService?:
+    DataverseService;
+
+  onAbrirDocumento?:
+    (
+      documentoId:
+        string
+    ) => void;
 }
 
 const cores = {
@@ -234,8 +259,16 @@ const NovoTreinamentoPage:
     treinamentoExistente,
     onAtualizar,
     onEtapaClick,
-    podeEditarSequencial
+    podeEditarSequencial,
+    dataverseService,
+    onAbrirDocumento
   }) => {
+
+    // Novo treinamento: documentos escolhidos, vinculados ao salvar.
+    const [
+      documentosReferencia,
+      setDocumentosReferencia
+    ] = React.useState('');
 
     const areasDisponiveis =
       (areas || [])
@@ -456,6 +489,8 @@ const NovoTreinamentoPage:
 
     const limpar =
       (): void => {
+
+        setDocumentosReferencia('');
 
         setNome('');
         setAreaId('');
@@ -860,7 +895,8 @@ const NovoTreinamentoPage:
 
             imagemUrl:
               imagemFinal.url
-          });
+          },
+          lerValorDocumentos(documentosReferencia).map(item => item.id));
 
           limpar();
 
@@ -1568,6 +1604,20 @@ const NovoTreinamentoPage:
               )
             }
 
+          </div>
+
+          {/* DOCUMENTOS DE REFERÊNCIA (vínculo treinamento × documento) */}
+
+          <div style={{ marginBottom: '16px' }}>
+            <DocumentosReferenciaTreinamento
+              dataverseService={dataverseService}
+              treinamentoId={treinamentoExistente ? treinamentoExistente.id : undefined}
+              treinamentoCodigo={treinamentoExistente ? treinamentoExistente.codigo : undefined}
+              valorPendente={documentosReferencia}
+              onAlterarPendente={setDocumentosReferencia}
+              onAbrirDocumento={onAbrirDocumento}
+              desabilitado={salvando}
+            />
           </div>
 
           <label

@@ -33,6 +33,7 @@ import {
 
 import FluxoDiagrama from '../../components/fluxo/FluxoDiagrama';
 import TabelaCampoFluxo from '../../components/fluxo/TabelaCampoFluxo';
+import CampoUsuarioFluxo from '../../components/fluxo/CampoUsuarioFluxo';
 
 import {
   COR,
@@ -126,6 +127,12 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
     }
   };
 
+  // Lista usada pelos campos do tipo "usuário" (já carregada pela tela).
+  const usuariosBusca = React.useMemo(
+    () => props.usuarios.map(usuario => ({ id: usuario.id, nome: usuario.nome })),
+    [props.usuarios]
+  );
+
   const renderCampo = (item: IFluxoCampo): React.ReactNode => {
     const valor = valoresConsolidados[item.chave] || '';
     const somenteLeitura = item.somenteLeitura || !props.podeAgir;
@@ -160,6 +167,27 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
           <option value="sim">Sim</option>
           <option value="nao">Não</option>
         </select>
+      );
+    }
+
+    // Documento referenciado: escolhido na tela de Documentos; aqui só exibe.
+    if (item.tipo === 'documento' || item.tipo === 'documentos') {
+      return (
+        <div style={{ fontSize: '13.5px', color: COR.azul }}>
+          {formatarValorCampo(item.tipo, valor) || '—'}
+        </div>
+      );
+    }
+
+    if (item.tipo === 'usuario') {
+      return (
+        <CampoUsuarioFluxo
+          id={`orcamento-campo-${item.chave}`}
+          valor={valor}
+          desabilitado={somenteLeitura}
+          usuarios={usuariosBusca}
+          onAlterar={alterar}
+        />
       );
     }
 

@@ -208,11 +208,12 @@ export interface IUseModulosResult {
         IModuloTreinamento
     ) => Promise<void>;
 
+  // true = concluído com sucesso.
   concluir:
     (
       modulo:
         IModuloTreinamento
-    ) => Promise<void>;
+    ) => Promise<boolean>;
 }
 
 export const useModulos =
@@ -633,7 +634,9 @@ export const useModulos =
         async (
           modulo:
             IModuloTreinamento
-        ): Promise<void> => {
+        ): Promise<boolean> => {
+
+          // true = módulo concluído (usado por "Concluir e ir para o próximo").
 
           const usuarioTreinamentoId =
             idsAtuais.current
@@ -647,7 +650,7 @@ export const useModulos =
               'A atribuição do treinamento não foi identificada.'
             );
 
-            return;
+            return false;
           }
 
           setProcessandoModuloId(
@@ -679,6 +682,8 @@ export const useModulos =
 
             await recarregar();
 
+            return true;
+
           } catch (e) {
 
             setErro(
@@ -686,6 +691,8 @@ export const useModulos =
                 ? e.message
                 : 'Erro ao concluir módulo.'
             );
+
+            return false;
 
           } finally {
 

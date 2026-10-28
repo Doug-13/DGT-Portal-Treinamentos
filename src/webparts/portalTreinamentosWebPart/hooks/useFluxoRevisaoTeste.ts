@@ -1,3 +1,7 @@
+import {
+  sincronizarVinculosTreinamento
+} from '../services/referencias/ReferenciasDocumentoService';
+
 import * as React from 'react';
 
 import {
@@ -428,9 +432,11 @@ export const useFluxoRevisaoTeste = (
     React.useMemo(
       () => ({
         revisaoResponsavelId: autorId || (revisaoEmAndamento ? revisaoEmAndamento.responsavelId : undefined),
-        documentoAreaId: documento ? documento.areaId : undefined
+        documentoAreaId: documento ? documento.areaId : undefined,
+        // Metadados preenchidos (responsável "Usuário do campo").
+        valores: instancia ? instancia.valores : undefined
       }),
-      [revisaoEmAndamento, documento, autorId]
+      [revisaoEmAndamento, documento, autorId, instancia]
     );
 
   // Administrador agindo numa etapa da qual NÃO é responsável.
@@ -574,12 +580,13 @@ export const useFluxoRevisaoTeste = (
 
     // Usa o autor já identificado (ref), mesmo que o estado ainda
     // não tenha sido atualizado na tela.
-    resolverResponsaveis: (responsaveis: IFluxoResponsavel[]): IResponsavelResolvido[] =>
+    resolverResponsaveis: (responsaveis: IFluxoResponsavel[], valores?: Record<string, string>): IResponsavelResolvido[] =>
       resolverResponsaveis(
         responsaveis,
         {
           ...dadosResponsaveis,
-          revisaoResponsavelId: autorIdRef.current || dadosResponsaveis.revisaoResponsavelId
+          revisaoResponsavelId: autorIdRef.current || dadosResponsaveis.revisaoResponsavelId,
+          valores: valores || dadosResponsaveis.valores
         },
         // Hierarquia: grava na pendência quem responde agora (avisos).
         vinculosUsuarios
@@ -1048,6 +1055,32 @@ export const useFluxoRevisaoTeste = (
           } catch (error) {
             console.error(error);
             setAvisos(atual => atual.concat('O status do documento não pôde ser atualizado.'));
+          }
+        }
+
+        // Referências a treinamentos (documento ↔ treinamento) viram
+        // vínculo em dgt_treinamentodocumento. Falha aqui não desfaz a
+        // ação: só avisa.
+        if (!local && dataverseService && documento) {
+          try {
+            const criados =
+              await sincronizarVinculosTreinamento(
+                dataverseService,
+                { id: documento.id, codigo: documento.codigo, tipo: documento.tipo },
+                resultado.instancia.valores,
+                revisaoAlvo.revisao
+              );
+
+            if (criados > 0) {
+              setAvisos(atual => atual.concat(
+                criados === 1
+                  ? '1 vínculo entre documento e treinamento foi criado pelas referências.'
+                  : `${criados} vínculos entre documentos e treinamentos foram criados pelas referências.`
+              ));
+            }
+          } catch (error) {
+            console.error(error);
+            setAvisos(atual => atual.concat('Os vínculos entre documentos e treinamentos não puderam ser atualizados.'));
           }
         }
 

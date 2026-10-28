@@ -86,6 +86,9 @@ import {
 import AcoesFluxoRevisao from
   './AcoesFluxoRevisao';
 
+import DocumentoReferenciasTab from
+  './DocumentoReferenciasTab';
+
 import FluxoRevisaoTab from
   './FluxoRevisaoTab';
 
@@ -184,6 +187,11 @@ export interface IDocumentoDetalhePageProps {
   // Depois de excluir o documento (recarrega as listas).
   onDocumentoExcluido?:
     () => Promise<void> | void;
+
+  // Abre outro documento pelo id (links dos documentos referenciados).
+  // Devolve false quando o documento não foi encontrado.
+  onAbrirDocumento?:
+    (documentoId: string) => Promise<boolean> | void;
 }
 
 // ============================================================
@@ -662,7 +670,7 @@ const obterReprovacaoPendente = (
 // COMPONENTE PRINCIPAL
 // ============================================================
 
-type Aba = 'revisoes' | 'historico' | 'fluxo';
+type Aba = 'revisoes' | 'historico' | 'fluxo' | 'referencias';
 
 const DocumentoDetalhePage:
   React.FC<IDocumentoDetalhePageProps> = ({
@@ -686,7 +694,8 @@ const DocumentoDetalhePage:
     onLimparResultadoPublicacao,
     onAbrirProcesso,
     onVoltar,
-    onDocumentoExcluido
+    onDocumentoExcluido,
+    onAbrirDocumento
 
   }) => {
 
@@ -707,6 +716,29 @@ const DocumentoDetalhePage:
 
     const [aba, setAba] =
       React.useState<Aba>('revisoes');
+
+    // Ao trocar de documento (ex.: link de um documento referenciado),
+    // volta para a aba Revisão.
+    React.useEffect(
+      () => {
+        setAba('revisoes');
+      },
+      [documento ? documento.id : undefined]
+    );
+
+    // Link dos documentos referenciados.
+    const abrirDocumentoReferenciado =
+      onAbrirDocumento
+        ? (documentoId: string): void => {
+          Promise.resolve(onAbrirDocumento(documentoId))
+            .then(abriu => {
+              if (abriu === false) {
+                window.alert('Documento não encontrado ou sem permissão de acesso.');
+              }
+            })
+            .catch(falha => console.error(falha));
+        }
+        : undefined;
 
     const [
       revisaoParaPublicar,
@@ -1687,6 +1719,15 @@ const DocumentoDetalhePage:
             Histórico ({fluxo.eventos.length})
           </button>
 
+          <button
+            type="button"
+            style={estiloAba(aba === 'referencias')}
+            onClick={() => setAba('referencias')}
+            title="Documentos que este documento referencia, que o referenciam e treinamentos vinculados"
+          >
+            Referências
+          </button>
+
           {
             FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE && (
               <button
@@ -1706,7 +1747,15 @@ const DocumentoDetalhePage:
         </div>
 
         {
-          aba === 'fluxo' &&
+          aba === 'referencias'
+            ? (
+              <DocumentoReferenciasTab
+                documento={documento}
+                dataverseService={dataverseService}
+                onAbrirDocumento={abrirDocumentoReferenciado}
+              />
+            )
+            : aba === 'fluxo' &&
           FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
             ? (
               <FluxoRevisaoTab
@@ -1718,6 +1767,7 @@ const DocumentoDetalhePage:
                 onRevisaoAlterada={async () => { if (onRecarregarRevisoes) { await onRecarregarRevisoes(); } setVersaoFluxo(atual => atual + 1); }}
                 onAnexarArquivo={fluxoDisponivel ? fluxo.anexarArquivo : undefined}
                 erroAnexo={fluxo.erro}
+                onAbrirDocumento={abrirDocumentoReferenciado}
               />
             )
             : aba === 'historico'
@@ -2379,6 +2429,7 @@ const DocumentoDetalhePage:
                                           onRevisaoAlterada={async () => { if (onRecarregarRevisoes) { await onRecarregarRevisoes(); } setVersaoFluxo(atual => atual + 1); }}
                                           onAnexarArquivo={fluxoDisponivel ? fluxo.anexarArquivo : undefined}
                                           erroAnexo={fluxo.erro}
+                                          onAbrirDocumento={abrirDocumentoReferenciado}
                                         />
                                       )
                                       : (

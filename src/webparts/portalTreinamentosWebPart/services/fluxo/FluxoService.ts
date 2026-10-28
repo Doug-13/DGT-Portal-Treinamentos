@@ -54,7 +54,8 @@ import {
 export interface IContextoExecucaoFluxo {
   // Converte os responsáveis da etapa em pessoas/áreas reais
   // (gravado na pendência). Sem ele, a pendência fica sem resolução.
-  resolverResponsaveis?: (responsaveis: IFluxoResponsavel[]) => IResponsavelResolvido[];
+  // "valores" = metadados já preenchidos (responsável "Usuário do campo").
+  resolverResponsaveis?: (responsaveis: IFluxoResponsavel[], valores?: Record<string, string>) => IResponsavelResolvido[];
 
   rotuloRevisao?: string;
 
@@ -132,7 +133,10 @@ export class FluxoService {
       tarefa => {
         if (tarefa.status === 'pendente' && !tarefa.responsaveisResolvidos) {
           tarefa.responsaveisResolvidos =
-            (contexto.resolverResponsaveis as (responsaveis: IFluxoResponsavel[]) => IResponsavelResolvido[])(tarefa.responsaveis);
+            (contexto.resolverResponsaveis as (responsaveis: IFluxoResponsavel[], valores?: Record<string, string>) => IResponsavelResolvido[])(
+              tarefa.responsaveis,
+              instancia.valores
+            );
         }
       }
     );

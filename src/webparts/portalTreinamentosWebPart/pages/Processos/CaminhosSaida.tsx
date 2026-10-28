@@ -177,7 +177,13 @@ export const FormCondicaoLigacao: React.FC<IFormCondicaoLigacaoProps> = ({
                 <option value="">Selecione...</option>
                 {
                   metadados
-                    .filter(item => item.tipo !== 'tabela')
+                    // Tabela, usuário e documento não servem como condição de caminho.
+                    .filter(item =>
+                      item.tipo !== 'tabela' &&
+                      item.tipo !== 'usuario' &&
+                      item.tipo !== 'documento' &&
+                      item.tipo !== 'documentos'
+                    )
                     .map(
                       item => <option key={item.chave} value={item.chave}>{item.rotulo}</option>
                     )
