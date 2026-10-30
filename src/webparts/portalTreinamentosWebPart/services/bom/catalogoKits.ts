@@ -301,11 +301,19 @@ export const CAMERAS_BASE_DIGIFORT = 8;
 // catracas, cabos por leitora...) e não usa esta tabela.
 // ============================================================
 
-export type ChaveKit =
+// Modelo de cálculo do kit: define QUAIS regras do montador valem
+// (estrutura Bridgefy, porta ou catraca). Todo kit tem um modelo.
+export type ModeloKit =
   | EstruturaBridgefy
   | 'portaEletroduto'
   | 'portaDutotec'
   | 'catraca';
+
+// Chave de um kit: a do modelo (kits do sistema) ou uma chave criada
+// na aba Kits (kits configurados, ex.: "Torre 3 câmeras municipal").
+export type ChaveKit = string;
+
+export const MODELOS_KIT: ModeloKit[] = ['torre', 'box', 'mini', 'portaEletroduto', 'portaDutotec', 'catraca'];
 
 export type RegraQuantidade =
   | 'fixa'
@@ -337,16 +345,35 @@ export interface IInfoKit {
   // Composição editável na aba Kits?
   editavel: boolean;
   resumo: string;
+  // Modelo de cálculo (para os kits do sistema, igual à chave).
+  modelo: ModeloKit;
+  // Kit do sistema (um por modelo) ou configurado na aba Kits.
+  sistema: boolean;
+  // Aparece para escolha na Seleção de kit.
+  ativo: boolean;
+  ordem: number;
 }
 
-export const KITS: IInfoKit[] = [
-  { chave: 'torre', nome: 'Torre Bridgefy', grupo: 'Bridgefy', editavel: true, resumo: 'Estrutura em PRFV para via pública, até 4 câmeras, aceita OCR/LPR.' },
-  { chave: 'box', nome: 'Bridgefy Box', grupo: 'Bridgefy', editavel: true, resumo: 'Caixa compacta com fita LED, até 2 câmeras de vídeo (sem OCR).' },
-  { chave: 'mini', nome: 'Bridgefy Mini (Wallfix)', grupo: 'Bridgefy', editavel: true, resumo: 'Suporte de parede com lanterna estrobo, até 2 câmeras.' },
-  { chave: 'portaEletroduto', nome: 'Porta — eletroduto', grupo: 'Controle de acesso', editavel: true, resumo: 'Controle de acesso facial em porta, infraestrutura em eletroduto.' },
-  { chave: 'portaDutotec', nome: 'Porta — dutotec', grupo: 'Controle de acesso', editavel: true, resumo: 'Controle de acesso facial em porta, infraestrutura em dutotec.' },
-  { chave: 'catraca', nome: 'Catraca — pedestal', grupo: 'Controle de acesso', editavel: false, resumo: 'Calculada por fórmula a partir do número de catracas e leitoras.' }
+const kitSistema = (chave: ModeloKit, nome: string, grupo: IInfoKit['grupo'], editavel: boolean, resumo: string, ordem: number): IInfoKit =>
+  ({ chave, nome, grupo, editavel, resumo, modelo: chave, sistema: true, ativo: true, ordem });
+
+const KITS_SISTEMA: IInfoKit[] = [
+  kitSistema('torre', 'Torre Bridgefy', 'Bridgefy', true, 'Estrutura em PRFV para via pública, até 4 câmeras, aceita OCR/LPR.', 10),
+  kitSistema('box', 'Bridgefy Box', 'Bridgefy', true, 'Caixa compacta com fita LED, até 2 câmeras de vídeo (sem OCR).', 20),
+  kitSistema('mini', 'Bridgefy Mini (Wallfix)', 'Bridgefy', true, 'Suporte de parede com lanterna estrobo, até 2 câmeras.', 30),
+  kitSistema('portaEletroduto', 'Porta — eletroduto', 'Controle de acesso', true, 'Controle de acesso facial em porta, infraestrutura em eletroduto.', 40),
+  kitSistema('portaDutotec', 'Porta — dutotec', 'Controle de acesso', true, 'Controle de acesso facial em porta, infraestrutura em dutotec.', 50),
+  kitSistema('catraca', 'Catraca — pedestal', 'Controle de acesso', false, 'Calculada por fórmula a partir do número de catracas e leitoras.', 60)
 ];
+
+// Kits EM USO (sistema + configurados na aba Kits). Mutável, como ITENS.
+export const KITS: IInfoKit[] = KITS_SISTEMA.map(k => ({ ...k }));
+
+export const grupoDoModelo = (modelo: ModeloKit): IInfoKit['grupo'] =>
+  modelo === 'torre' || modelo === 'box' || modelo === 'mini' ? 'Bridgefy' : 'Controle de acesso';
+
+export const infoKit = (chave: string | undefined, modelo?: ModeloKit): IInfoKit | undefined =>
+  KITS.filter(k => k.chave === chave)[0] || (modelo ? KITS.filter(k => k.chave === modelo)[0] : undefined);
 
 export const REGRAS_QUANTIDADE: Array<{
   regra: RegraQuantidade;
@@ -365,7 +392,8 @@ export const CONDICOES: Array<{
   condicao: CondicaoComponente;
   nome: string;
   explicacao: string;
-  kits: ChaveKit[];
+  // Modelos em que a condição faz sentido.
+  kits: ModeloKit[];
 }> = [
   { condicao: 'sempre', nome: 'Sempre', explicacao: 'Entra em todo ponto deste kit.', kits: ['torre', 'box', 'mini', 'portaEletroduto', 'portaDutotec'] },
   { condicao: 'comunicacaoBidirecional', nome: 'Com comunicação bidirecional', explicacao: 'Só quando o ponto tem interfone (opção da Torre).', kits: ['torre'] },
@@ -531,6 +559,9 @@ export interface IParametrosEstrutura {
 }
 
 export interface ICatalogoKitsDados {
+  // Kits configurados (além dos do sistema) e parâmetros de cada kit.
+  kits?: IInfoKit[];
+  parametrosKits?: Record<string, IParametrosEstrutura>;
   itens: Array<IItemCatalogo & { chave: string }>;
   camerasVideo: ICameraCatalogo[];
   camerasOcr: ICameraCatalogo[];
@@ -545,6 +576,13 @@ const clonar = <T>(valor: T): T => JSON.parse(JSON.stringify(valor)) as T;
 
 // Fotografia do padrão, tirada ao carregar o módulo (antes de
 // qualquer aplicarCatalogo).
+// Parâmetros (máx. câmeras, OCR, sinalização) por kit configurado com
+// modelo Bridgefy. Os kits do sistema usam ESTRUTURAS.
+export const PARAMETROS_KITS: Record<string, IParametrosEstrutura> = {};
+
+export const parametrosDoKit = (chave: string | undefined, modelo: EstruturaBridgefy): IParametrosEstrutura =>
+  (chave && PARAMETROS_KITS[chave]) || ESTRUTURAS[modelo];
+
 const PADRAO: ICatalogoKitsDados = clonar({
   itens: Object.keys(ITENS_PADRAO).map(chave => ({ chave, ...(ITENS_PADRAO as Record<string, IItemCatalogo>)[chave], ativo: true })),
   camerasVideo: CAMERAS_VIDEO,
@@ -621,6 +659,21 @@ export const aplicarCatalogo = (
     }
   });
   substituirObjeto(COMPOSICAO_KITS, composicoes);
+
+  // Kits: os do sistema (com nome e ordem do Dataverse, se houver) +
+  // os configurados.
+  const kits: IInfoKit[] = KITS_SISTEMA.map(k => ({ ...k }));
+  (dados.kits || []).forEach(k => {
+    const i = kits.findIndex(x => x.chave === k.chave);
+    if (i >= 0) {
+      kits[i] = { ...kits[i], nome: k.nome || kits[i].nome, resumo: k.resumo || kits[i].resumo, ordem: k.ordem, ativo: true };
+    } else if (MODELOS_KIT.indexOf(k.modelo) >= 0 && k.modelo !== 'catraca') {
+      kits.push({ ...k, sistema: false, editavel: true, grupo: grupoDoModelo(k.modelo) });
+    }
+  });
+  kits.sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome));
+  substituirLista(KITS, kits);
+  substituirObjeto(PARAMETROS_KITS, { ...(dados.parametrosKits || {}) });
 
   origemAplicada = origem;
 };

@@ -14,6 +14,7 @@ import {
   IParametrosEstrutura,
   ITENS_EM_REGRAS,
   KITS,
+  ModeloKit,
   RegraQuantidade,
   aplicarCatalogo,
   catalogoPadrao,
@@ -64,6 +65,11 @@ export interface IItemKit {
 export interface IKitParametros {
   id?: string;
   chave: ChaveKit;
+  // Modelo de cálculo (kits do sistema: igual à chave).
+  modelo: ModeloKit;
+  sistema: boolean;
+  ativo: boolean;
+  ordem: number;
   nome: string;
   codigoCigam: string;
   maxCameras: number;
@@ -131,8 +137,9 @@ const tabelaInexistente = (erro: unknown): boolean => {
   return /404|could not find|does not exist|não localizado|0x80060888/i.test(mensagem);
 };
 
-export const NOMES_KIT: Record<string, string> =
-  KITS.reduce((mapa, kit) => ({ ...mapa, [kit.chave]: kit.nome }), {} as Record<string, string>);
+// Nome do kit EM USO (sistema ou configurado).
+export const nomeKit = (chave: string): string =>
+  (KITS.filter(k => k.chave === chave)[0] || { nome: chave }).nome;
 
 // Chave estável de um equipamento do padrão.
 const chaveEquipamento = (tipo: TipoItemKit, id: string): string =>
@@ -222,10 +229,14 @@ export const itensDoPadrao = (): IItemKit[] => {
 
 export const kitsDoPadrao = (): IKitParametros[] => {
   const p = catalogoPadrao();
-  return KITS.map(kit => {
+  return KITS.filter(kit => kit.sistema).map(kit => {
     const estrutura = (p.estruturas as Record<string, IParametrosEstrutura | undefined>)[kit.chave];
     return {
       chave: kit.chave,
+      modelo: kit.modelo,
+      sistema: true,
+      ativo: true,
+      ordem: kit.ordem,
       nome: estrutura ? estrutura.nome : kit.nome,
       codigoCigam: estrutura ? estrutura.codigoKit : '',
       maxCameras: estrutura ? estrutura.maxCameras : 0,
@@ -273,16 +284,24 @@ export const dadosParaMontador = (
   const pne = ativos('controladorPne')[0];
 
   const estruturas: Partial<Record<EstruturaBridgefy, IParametrosEstrutura>> = {};
+  const parametrosKits: Record<string, IParametrosEstrutura> = {};
+  const bridgefy = (modelo: string): boolean => modelo === 'torre' || modelo === 'box' || modelo === 'mini';
+
   catalogo.kits
-    .filter(kit => kit.chave === 'torre' || kit.chave === 'box' || kit.chave === 'mini')
+    .filter(kit => bridgefy(kit.modelo))
     .forEach(kit => {
-      estruturas[kit.chave as EstruturaBridgefy] = {
+      const parametros: IParametrosEstrutura = {
         nome: kit.nome,
         codigoKit: kit.codigoCigam,
         maxCameras: kit.maxCameras,
         aceitaOcr: kit.aceitaOcr,
         sinalizacao: kit.sinalizacao
       };
+      if (kit.sistema) {
+        estruturas[kit.chave as EstruturaBridgefy] = parametros;
+      } else {
+        parametrosKits[kit.chave] = parametros;
+      }
     });
 
   return {
@@ -313,6 +332,18 @@ export const dadosParaMontador = (
     })),
     controladorPne: pne ? { codigo: pne.codigo, modelo: pne.descricao } : undefined,
     estruturas,
+    parametrosKits,
+    kits: catalogo.kits.map(kit => ({
+      chave: kit.chave,
+      nome: kit.nome,
+      grupo: (bridgefy(kit.modelo) ? 'Bridgefy' : 'Controle de acesso') as 'Bridgefy' | 'Controle de acesso',
+      editavel: kit.modelo !== 'catraca',
+      resumo: kit.descricao,
+      modelo: kit.modelo,
+      sistema: kit.sistema,
+      ativo: kit.ativo,
+      ordem: kit.ordem
+    })),
     composicoes: catalogo.composicoes
   };
 };
@@ -332,7 +363,7 @@ export const usosDoItem = (
 ): string[] => {
   const usos = Object.keys(composicoes)
     .filter(kit => composicoes[kit].some(linha => linha.chaveItem === chave))
-    .map(kit => NOMES_KIT[kit] || kit);
+    .map(kit => nomeKit(kit));
   if (ITENS_EM_REGRAS[chave] && usos.indexOf(ITENS_EM_REGRAS[chave]) < 0) {
     usos.push(ITENS_EM_REGRAS[chave]);
   }
@@ -374,7 +405,13 @@ export class KitsService {
       this.dataverse.listarRegistros(
         TABELAS_KITS.kit,
         `$select=${Object.keys(COL_KIT).map(k => (COL_KIT as Record<string, string>)[k]).join(',')}`
-      ),
+      ).catch(() =>
+        // Tabela criada antes das colunas de kits configurados
+        // (dgt_modelo, dgt_ordem): lê sem elas.
+        this.dataverse.listarRegistros(
+          TABELAS_KITS.kit,
+          `$select=${[COL_KIT.id, COL_KIT.nome, COL_KIT.chave, COL_KIT.codigoCigam, COL_KIT.maxCameras, COL_KIT.aceitaOcr, COL_KIT.sinalizacao, COL_KIT.descricao, COL_KIT.ativo].join(',')}`
+        )),
       this.dataverse.listarRegistros(
         TABELAS_KITS.composicao,
         `$select=${Object.keys(COL_COMPOSICAO).map(k => (COL_COMPOSICAO as Record<string, string>)[k]).join(',')}&$filter=${COL_COMPOSICAO.ativo} eq true&$orderby=${COL_COMPOSICAO.ordem} asc`
@@ -411,23 +448,41 @@ export class KitsService {
       };
     });
 
-    // Parâmetros dos kits.
-    const kits = kitsDoPadrao().map(padrao => {
-      const registro = registrosKits.find(r => texto(r, COL_KIT.chave) === padrao.chave);
-      if (!registro) {
-        return padrao;
-      }
-      return {
-        id: guid(registro[COL_KIT.id]),
-        chave: padrao.chave,
-        nome: texto(registro, COL_KIT.nome) || padrao.nome,
-        codigoCigam: texto(registro, COL_KIT.codigoCigam),
-        maxCameras: numero(registro, COL_KIT.maxCameras, padrao.maxCameras),
-        aceitaOcr: registro[COL_KIT.aceitaOcr] === true,
-        sinalizacao: texto(registro, COL_KIT.sinalizacao),
-        descricao: texto(registro, COL_KIT.descricao) || padrao.descricao
-      };
+    // Parâmetros dos kits: os do sistema (padrão + gravado) e os
+    // configurados na aba Kits (dgt_modelo preenchido).
+    const lerKit = (registro: IDataverseRecord, padrao: IKitParametros): IKitParametros => ({
+      id: guid(registro[COL_KIT.id]),
+      chave: padrao.chave,
+      modelo: padrao.modelo,
+      sistema: padrao.sistema,
+      ativo: padrao.sistema ? true : registro[COL_KIT.ativo] !== false,
+      ordem: registro[COL_KIT.ordem] === undefined || registro[COL_KIT.ordem] === null ? padrao.ordem : numero(registro, COL_KIT.ordem),
+      nome: texto(registro, COL_KIT.nome) || padrao.nome,
+      codigoCigam: texto(registro, COL_KIT.codigoCigam),
+      maxCameras: numero(registro, COL_KIT.maxCameras, padrao.maxCameras),
+      aceitaOcr: registro[COL_KIT.aceitaOcr] === true,
+      sinalizacao: texto(registro, COL_KIT.sinalizacao),
+      descricao: texto(registro, COL_KIT.descricao) || padrao.descricao
     });
+
+    const padroes = kitsDoPadrao();
+    const kits = padroes.map(padrao => {
+      const registro = registrosKits.find(r => texto(r, COL_KIT.chave) === padrao.chave);
+      return registro ? lerKit(registro, padrao) : padrao;
+    });
+
+    registrosKits
+      .filter(r => padroes.every(p => p.chave !== texto(r, COL_KIT.chave)))
+      .forEach(registro => {
+        const modelo = texto(registro, COL_KIT.modelo) as ModeloKit;
+        const base = padroes.filter(p => p.chave === modelo)[0];
+        if (!base || modelo === 'catraca') {
+          return;
+        }
+        kits.push(lerKit(registro, { ...base, chave: texto(registro, COL_KIT.chave), sistema: false, ordem: 100 }));
+      });
+
+    kits.sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome));
 
     // Composições: kit com linhas gravadas usa só as gravadas.
     const composicoes = catalogoPadrao().composicoes;
@@ -503,13 +558,14 @@ export class KitsService {
       [COL_KIT.aceitaOcr]: kit.aceitaOcr,
       [COL_KIT.sinalizacao]: kit.sinalizacao,
       [COL_KIT.descricao]: kit.descricao,
-      [COL_KIT.ativo]: true
+      [COL_KIT.ativo]: kit.sistema ? true : kit.ativo,
+      ...(kit.sistema ? {} : { [COL_KIT.modelo]: kit.modelo, [COL_KIT.ordem]: Math.round(kit.ordem || 0) })
     };
   }
 
   private dadosLinha(kit: string, linha: IComponenteKit, ordem: number): Record<string, unknown> {
     return {
-      [COL_COMPOSICAO.nome]: `${NOMES_KIT[kit] || kit} — ${linha.chaveItem}`.substring(0, 200),
+      [COL_COMPOSICAO.nome]: `${nomeKit(kit)} — ${linha.chaveItem}`.substring(0, 200),
       [COL_COMPOSICAO.kit]: kit,
       [COL_COMPOSICAO.itemChave]: linha.chaveItem,
       [COL_COMPOSICAO.quantidade]: Number(linha.quantidade) || 0,
@@ -632,10 +688,36 @@ export class KitsService {
       entidade: 'Composição',
       chave: kit,
       acao: 'Composição',
-      resumo: `${NOMES_KIT[kit] || kit}: ${resumo}`,
+      resumo: `${nomeKit(kit)}: ${resumo}`,
       motivo,
       antes: anterior.map(l => ({ chaveItem: l.chaveItem, quantidade: l.quantidade, regra: l.regra, condicao: l.condicao })),
       depois: nova.map(l => ({ chaveItem: l.chaveItem, quantidade: l.quantidade, regra: l.regra, condicao: l.condicao })),
+      usuarioNome
+    });
+  }
+
+  // Novo kit configurado: registro do kit + composição inicial
+  // (copiada de outro kit do mesmo modelo).
+  public async criarKit(
+    kit: IKitParametros,
+    composicao: IComponenteKit[],
+    motivo: string,
+    usuarioNome: string
+  ): Promise<void> {
+
+    await this.dataverse.criarRegistro(TABELAS_KITS.kit, this.dadosKit({ ...kit, sistema: false, ativo: true }));
+
+    for (let i = 0; i < composicao.length; i++) {
+      await this.dataverse.criarRegistro(TABELAS_KITS.composicao, this.dadosLinha(kit.chave, { ...composicao[i], id: undefined }, i));
+    }
+
+    await this.registrarAlteracao({
+      entidade: 'Kit',
+      chave: kit.chave,
+      acao: 'Inclusão',
+      resumo: `Novo kit: ${kit.nome} (modelo ${nomeKit(kit.modelo)})`,
+      motivo,
+      depois: { ...kit, composicao: composicao.map(l => ({ chaveItem: l.chaveItem, quantidade: l.quantidade, regra: l.regra, condicao: l.condicao })) },
       usuarioNome
     });
   }

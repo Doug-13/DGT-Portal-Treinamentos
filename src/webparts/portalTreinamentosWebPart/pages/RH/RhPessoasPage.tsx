@@ -25,6 +25,7 @@ import {
 } from '../../services/LicitacaoParecerService';
 
 import EstruturaAreaAba from './EstruturaAreaAba';
+import FabricantesTerceirosAba from './FabricantesTerceirosAba';
 
 // ============================================================
 // RH E PESSOAS
@@ -50,12 +51,30 @@ export interface IRhPessoasPageProps {
   usuarioNome?: string;
 }
 
-type Aba = 'certificados' | 'estrutura';
+type Aba = 'certificados' | 'estrutura' | 'fabricantes';
 
-const ABAS: Array<{ id: Aba; rotulo: string }> = [
-  { id: 'certificados', rotulo: 'Certificados' },
+const ABAS: Array<{ id: Aba; rotulo: string; titulo: string; descricao: string }> = [
+  {
+    id: 'certificados',
+    rotulo: 'Certificados',
+    titulo: 'Certificados dos colaboradores',
+    descricao: 'Clique em um colaborador para ver todos os certificados — da plataforma e externos — e cadastrar novos documentos.'
+  },
   // Hierarquia por área (cargos) usada pelos fluxos de aprovação.
-  { id: 'estrutura', rotulo: 'Estrutura por área' }
+  {
+    id: 'estrutura',
+    rotulo: 'Estrutura por área',
+    titulo: 'Estrutura por área',
+    descricao: 'Cargo de cada pessoa em cada área (Coordenador, Gestor, Gerente, Head, Diretor), usado pelos fluxos de aprovação.'
+  },
+  // Planilha "Controle de certificações": certificações de fabricante,
+  // registros CREA/CFT, declarações dos fabricantes e terceiros.
+  {
+    id: 'fabricantes',
+    rotulo: 'Fabricantes e terceiros',
+    titulo: 'Certificações de fabricante, declarações e terceiros',
+    descricao: 'Controle das certificações dos fabricantes (de colaboradores e de terceiros sem acesso ao portal), registros CREA/CFT e declarações emitidas pelos fabricantes.'
+  }
 ];
 
 type FiltroStatus = 'todos' | StatusColaboradorRh;
@@ -311,7 +330,7 @@ const exportarCsv = (colaboradores: IColaboradorRh[]): void => {
     c.certificados.forEach(i => {
       linhas.push([
         c.nome, c.email, c.cargo, STATUS[c.status].rotulo,
-        i.origem === 'plataforma' ? 'Plataforma' : 'Externo',
+        i.origem === 'plataforma' ? 'Plataforma' : i.origem === 'fabricante' ? 'Fabricante' : 'Externo',
         i.tipo,
         `${i.treinamentoCodigo ? `${i.treinamentoCodigo} - ` : ''}${i.treinamento}`,
         i.instituicao,
@@ -344,6 +363,7 @@ const CertificadoCard: React.FC<{
 }> = ({ item, onRemover }) => {
 
   const externo = item.origem === 'externo';
+  const fabricante = item.origem === 'fabricante';
 
   return (
     <div
@@ -368,11 +388,11 @@ const CertificadoCard: React.FC<{
             textTransform: 'uppercase',
             padding: '2px 8px',
             borderRadius: '999px',
-            color: externo ? COR.roxo : COR.azulBotao,
-            background: externo ? COR.roxoClaro : '#E8F2FF'
+            color: externo ? COR.roxo : fabricante ? COR.ciano : COR.azulBotao,
+            background: externo ? COR.roxoClaro : fabricante ? COR.cianoClaro : '#E8F2FF'
           }}
         >
-          {externo ? 'Externo' : 'Plataforma'}
+          {externo ? 'Externo' : fabricante ? 'Fabricante' : 'Plataforma'}
         </span>
         <SeloSituacao item={item} />
       </div>
@@ -412,7 +432,7 @@ const CertificadoCard: React.FC<{
           )
           : (
             <span style={{ fontSize: '12px', color: COR.sec }}>
-              {externo ? 'Sem documento anexado' : 'PDF em geração'}
+              {externo || fabricante ? 'Sem documento anexado' : 'PDF em geração'}
             </span>
           )}
         <span style={{ marginLeft: 'auto', fontSize: '11px', color: COR.sec }}>{item.registradoPor}</span>
@@ -625,6 +645,7 @@ const PainelColaborador: React.FC<{
 
   const plataforma = colaborador.certificados.filter(c => c.origem === 'plataforma');
   const externos = colaborador.certificados.filter(c => c.origem === 'externo');
+  const deFabricante = colaborador.certificados.filter(c => c.origem === 'fabricante');
   const s = STATUS[colaborador.status];
 
   const remover = (item: ICertificadoRh): void => {
@@ -723,6 +744,17 @@ const PainelColaborador: React.FC<{
           {externos.length > 0
             ? grade(externos, true)
             : <p style={{ fontSize: '12.5px', color: COR.sec, margin: 0 }}>Nenhum certificado externo cadastrado.</p>}
+
+          {deFabricante.length > 0 && (
+            <>
+              <h3 style={{ margin: '22px 0 10px', fontSize: '14px', color: COR.azul, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: COR.ciano, display: 'inline-block' }} />
+                Certificações de fabricante e registros ({deFabricante.length})
+              </h3>
+              <p style={{ fontSize: '12.5px', color: COR.sec, margin: '-4px 0 10px' }}>Gerenciadas na aba Fabricantes e terceiros.</p>
+              {grade(deFabricante, false)}
+            </>
+          )}
         </div>
       </div>
     </div>,
@@ -956,6 +988,7 @@ const AbaCertificados: React.FC<IRhPessoasPageProps> = ({
 const RhPessoasPage: React.FC<IRhPessoasPageProps> = props => {
 
   const [aba, setAba] = React.useState<Aba>('certificados');
+  const abaAtual = ABAS.filter(item => item.id === aba)[0] || ABAS[0];
 
   return (
     <section>
@@ -993,14 +1026,24 @@ const RhPessoasPage: React.FC<IRhPessoasPageProps> = props => {
           color: '#FFFFFF'
         }}
       >
-        <h1 style={{ margin: 0, fontSize: '22px' }}>Certificados dos colaboradores</h1>
-        <p style={{ margin: '4px 0 0', fontSize: '13px', opacity: 0.9 }}>
-          Clique em um colaborador para ver todos os certificados — da plataforma e externos — e cadastrar novos documentos.
+        {/* Cor inline: o CSS do portal força ".content h1/p" em azul-escuro
+            e cinza, ilegíveis sobre o degradê. */}
+        <h1 style={{ margin: 0, fontSize: '22px', color: '#FFFFFF' }}>{abaAtual.titulo}</h1>
+        <p style={{ margin: '4px 0 0', fontSize: '13.5px', color: '#FFFFFF', opacity: 0.92 }}>
+          {abaAtual.descricao}
         </p>
       </div>
 
       {aba === 'certificados' && <AbaCertificados {...props} />}
       {aba === 'estrutura' && <EstruturaAreaAba dataverseService={props.dataverseService} />}
+      {aba === 'fabricantes' && (
+        <FabricantesTerceirosAba
+          dataverseService={props.dataverseService}
+          spHttpClient={props.spHttpClient}
+          siteUrl={props.siteUrl}
+          usuarioNome={props.usuarioNome}
+        />
+      )}
     </section>
   );
 };

@@ -166,6 +166,9 @@ const regras:
     // "kits". Alterar é só para Administrador / administrador do
     // módulo (controlado na tela e nas Security Roles).
     { rota: 'kits', perfis: LICITACOES },
+
+    // Cálculo de HH: entrada controlada pelo módulo "hh".
+    { rota: 'calculoHH', perfis: LICITACOES },
     { rota: 'licitacoesTeste', perfis: LICITACOES },
 
     // Planejamento orçamentário

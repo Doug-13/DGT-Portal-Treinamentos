@@ -5,6 +5,8 @@ import {
   CAMERAS_VIDEO,
   CONTROLADORES_PORTA,
   ESTRUTURAS,
+  IInfoKit,
+  KITS,
   SWITCHES,
   idCamera,
   idSwitch
@@ -16,13 +18,15 @@ import {
   IPontoKit,
   ISelecaoKit,
   ISoftwaresKit,
-  TIPOS_PONTO,
   TipoPonto,
+  chaveKitDoPonto,
   csvDoBom,
   ehBridgefy,
   kitsAplicados,
   montarBom,
+  nomeKitDoPonto,
   normalizarSelecao,
+  parametrosDoPonto,
   novoPonto,
   selecaoVazia,
   switchDe
@@ -83,6 +87,23 @@ const NOME_CURTO: Record<TipoPonto, string> = {
   portaEletroduto: 'Porta — eletroduto',
   portaDutotec: 'Porta — dutotec',
   catraca: 'Catraca'
+};
+
+// Kits que o arquiteto pode escolher: os do sistema e os configurados
+// na aba Kits (ativos), na ordem definida lá. O kit atual do ponto
+// aparece mesmo se tiver sido desativado depois.
+const kitsDoGrupo = (grupo: IInfoKit['grupo'], atual?: string): IInfoKit[] =>
+  KITS.filter(k => k.grupo === grupo && (k.ativo || k.chave === atual));
+
+const descricaoKit = (k: IInfoKit): string => {
+  if (k.sistema) {
+    return DESCRICAO_TIPO[k.modelo];
+  }
+  if (k.modelo === 'torre' || k.modelo === 'box' || k.modelo === 'mini') {
+    const p = parametrosDoPonto({ tipo: k.modelo, kit: k.chave });
+    return p ? `Base ${NOME_CURTO[k.modelo]} · até ${p.maxCameras} câmeras${p.aceitaOcr ? ' · aceita LPR' : ' · só vídeo'}${k.ativo ? '' : ' · desativado'}` : NOME_CURTO[k.modelo];
+  }
+  return `Base ${NOME_CURTO[k.modelo]}${k.ativo ? '' : ' · desativado'}`;
 };
 
 // ------------------------------------------------------------
@@ -353,8 +374,8 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
     setAlterado(true);
   };
 
-  const adicionarPonto = (tipo: TipoPonto): void => {
-    const novo = { ...novoPonto(tipo, 0), nome: `Ponto ${selecao.pontos.length + 1}` };
+  const adicionarPonto = (kit: IInfoKit): void => {
+    const novo = { ...novoPonto(kit.modelo, 0, kit.chave), nome: `Ponto ${selecao.pontos.length + 1}` };
     setSelecao(atual => ({ ...atual, pontos: [...atual.pontos, novo] }));
     setPontoId(novo.id);
     setVisaoKit('ponto');
@@ -362,12 +383,17 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
     setAlterado(true);
   };
 
-  // Troca o tipo do ponto: mantém nome e quantidade.
-  const trocarTipo = (tipo: TipoPonto): void => {
-    if (!ponto || ponto.tipo === tipo) {
+  // Troca o kit do ponto. Mesmo modelo: mantém a configuração (câmeras,
+  // soluções...). Outro modelo: recomeça, mantendo nome e quantidade.
+  const trocarKit = (kit: IInfoKit): void => {
+    if (!ponto || chaveKitDoPonto(ponto) === kit.chave) {
       return;
     }
-    mudarPonto({ ...novoPonto(tipo, 0), id: ponto.id, nome: ponto.nome, quantidade: ponto.quantidade });
+    if (ponto.tipo === kit.modelo) {
+      mudarPonto({ kit: kit.chave === kit.modelo ? undefined : kit.chave });
+      return;
+    }
+    mudarPonto({ ...novoPonto(kit.modelo, 0, kit.chave), kit: kit.chave === kit.modelo ? undefined : kit.chave, id: ponto.id, nome: ponto.nome, quantidade: ponto.quantidade });
   };
 
   const duplicarPonto = (): void => {
@@ -395,7 +421,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
     if (!ponto || !ehBridgefy(ponto.tipo)) {
       return;
     }
-    const estrutura = ESTRUTURAS[ponto.tipo];
+    const estrutura = parametrosDoPonto(ponto) || ESTRUTURAS[ponto.tipo];
     const novo = !ponto[chave];
     const parcial: Partial<IPontoKit> = { [chave]: novo };
 
@@ -520,7 +546,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
         const ativo = !!ponto && p.id === ponto.id;
         const nErros = errosDoPonto(p);
         const resumo = ehBridgefy(p.tipo)
-          ? `${p.camerasVideo} vídeo · ${ESTRUTURAS[p.tipo].aceitaOcr ? p.camerasOcr : 0} LPR`
+          ? `${p.camerasVideo} vídeo · ${(parametrosDoPonto(p) || ESTRUTURAS[p.tipo]).aceitaOcr ? p.camerasOcr : 0} LPR`
           : p.tipo === 'catraca'
             ? `${p.catracas + p.catracasPne} catraca(s)`
             : '1 leitora';
@@ -539,14 +565,14 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
             <span style={{ width: '34px', height: '34px', borderRadius: '9px', background: ativo ? COR.azul : COR.fundo, color: ativo ? '#FFFFFF' : COR.azul, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <IconeKit nome={p.tipo as NomeIconeKit} tamanho={19} />
             </span>
-            <span style={{ minWidth: 0 }}>
+            <span style={{ minWidth: 0 }} title={nomeKitDoPonto(p)}>
               <strong style={{ display: 'block', fontSize: '13px', color: COR.azul, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px' }}>
                 {p.nome}{p.quantidade > 1 ? ` ×${p.quantidade}` : ''}
               </strong>
               <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', color: nErros ? VERMELHO : COR.texto2, whiteSpace: 'nowrap' }}>
                 {nErros > 0
                   ? <><IconeKit nome="alerta" tamanho={12} /> {nErros} erro(s)</>
-                  : `${NOME_CURTO[p.tipo]} · ${resumo}`}
+                  : `${chaveKitDoPonto(p) === p.tipo ? NOME_CURTO[p.tipo] : nomeKitDoPonto(p)} · ${resumo}`}
               </span>
             </span>
           </button>
@@ -585,21 +611,21 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
         )}
       />
       <p style={{ fontSize: '13px', color: COR.texto2, margin: '-6px 0 14px' }}>
-        Escolha o tipo de ponto. Depois informe as soluções e quantas câmeras ou leitoras ele tem — o kit é montado automaticamente.
+        Escolha o kit do ponto (os kits configurados na aba Kits aparecem aqui). Depois informe as soluções e quantas câmeras ou leitoras ele tem — a lista é montada automaticamente.
       </p>
       {(['Bridgefy', 'Controle de acesso'] as const).map(grupo => (
         <div key={grupo} style={{ marginBottom: '12px' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: COR.texto2, marginBottom: '6px' }}>{grupo}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
-            {TIPOS_PONTO.filter(t => t.grupo === grupo).map(t => (
+            {kitsDoGrupo(grupo).map(k => (
               <Ladrilho
-                key={t.tipo}
-                icone={t.tipo as NomeIconeKit}
-                titulo={NOME_CURTO[t.tipo]}
-                descricao={DESCRICAO_TIPO[t.tipo]}
+                key={k.chave}
+                icone={k.modelo as NomeIconeKit}
+                titulo={k.sistema ? NOME_CURTO[k.modelo] : k.nome}
+                descricao={descricaoKit(k)}
                 marcado={false}
                 desabilitado={bloqueado}
-                onClick={() => adicionarPonto(t.tipo)}
+                onClick={() => adicionarPonto(k)}
               />
             ))}
           </div>
@@ -619,7 +645,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
     }
 
     const bridgefy = ehBridgefy(ponto.tipo);
-    const estrutura = bridgefy ? ESTRUTURAS[ponto.tipo as 'torre' | 'box' | 'mini'] : undefined;
+    const estrutura = parametrosDoPonto(ponto);
     const usaVideo = bridgefy && (ponto.safeCity || ponto.faceDetect || sw.vms === 'digifort');
     const usaLpr = bridgefy && !!estrutura && estrutura.aceitaOcr && ponto.safeWay;
     const swPonto = switchDe(ponto.switchId);
@@ -654,17 +680,17 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
         </div>
 
         {/* tipo */}
-        <label style={rotuloCampo}>{bridgefy ? 'Estrutura' : 'Tipo de ponto'}</label>
+        <label style={rotuloCampo}>{bridgefy ? 'Kit (estrutura)' : 'Kit (tipo de ponto)'}</label>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginBottom: '16px' }}>
-          {TIPOS_PONTO.filter(t => t.grupo === (bridgefy ? 'Bridgefy' : 'Controle de acesso')).map(t => (
+          {kitsDoGrupo(bridgefy ? 'Bridgefy' : 'Controle de acesso', chaveKitDoPonto(ponto)).map(k => (
             <Ladrilho
-              key={t.tipo}
-              icone={t.tipo as NomeIconeKit}
-              titulo={NOME_CURTO[t.tipo]}
-              descricao={DESCRICAO_TIPO[t.tipo]}
-              marcado={ponto.tipo === t.tipo}
+              key={k.chave}
+              icone={k.modelo as NomeIconeKit}
+              titulo={k.sistema ? NOME_CURTO[k.modelo] : k.nome}
+              descricao={descricaoKit(k)}
+              marcado={chaveKitDoPonto(ponto) === k.chave}
               desabilitado={bloqueado}
-              onClick={() => trocarTipo(t.tipo)}
+              onClick={() => trocarKit(k)}
             />
           ))}
         </div>
@@ -802,7 +828,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
     }
 
     const bridgefy = ehBridgefy(ponto.tipo);
-    const estrutura = bridgefy ? ESTRUTURAS[ponto.tipo as 'torre' | 'box' | 'mini'] : undefined;
+    const estrutura = parametrosDoPonto(ponto);
     const nO = estrutura && estrutura.aceitaOcr ? ponto.camerasOcr : 0;
     const sensores = ponto.camerasVideo + nO;
 

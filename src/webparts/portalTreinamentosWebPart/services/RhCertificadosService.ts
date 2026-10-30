@@ -34,7 +34,9 @@ export type SituacaoCertificadoRh =
   | 'vencido'
   | 'semValidade';
 
-export type OrigemCertificadoRh = 'plataforma' | 'externo';
+// fabricante = certificação de fabricante / registro CREA-CFT da aba
+// "Fabricantes e terceiros" (dgt_certificacaofabricante).
+export type OrigemCertificadoRh = 'plataforma' | 'externo' | 'fabricante';
 
 export interface ICertificadoRh {
   chave: string;
@@ -233,7 +235,7 @@ export class RhCertificadosService {
 
     let externosDisponivel = true;
 
-    const [usuarios, atribuicoes, treinamentos, certificados, arquivos, externos] =
+    const [usuarios, atribuicoes, treinamentos, certificados, arquivos, externos, deFabricante] =
       await Promise.all([
         this.dataverse.listarRegistros(
           'dgt_usuario',
@@ -271,7 +273,16 @@ export class RhCertificadosService {
               return [] as IDataverseRecord[];
             }
             throw erro;
-          })
+          }),
+        // Aba Fabricantes e terceiros (tabela opcional).
+        this.dataverse
+          .listarRegistros(
+            'dgt_certificacaofabricante',
+            '$select=dgt_certificacaofabricanteid,dgt_name,_dgt_usuario_value,dgt_categoria,dgt_emissor,dgt_statusmanual,' +
+            'dgt_dataemissao,dgt_datavencimento,dgt_numeroregistro,dgt_observacoes,dgt_arquivourl,dgt_responsavelnome' +
+            '&$filter=dgt_ativo eq true and _dgt_usuario_value ne null'
+          )
+          .catch(() => [] as IDataverseRecord[])
       ]);
 
     // Treinamentos
@@ -397,6 +408,43 @@ export class RhCertificadosService {
       });
     });
 
+    // ---- Certificações de fabricante e registros profissionais
+    deFabricante.forEach(e => {
+      const usuarioId = guid(e._dgt_usuario_value);
+      const colaborador = mapa[usuarioId];
+      if (!colaborador) {
+        return;
+      }
+      const manual = texto(e, 'dgt_statusmanual');
+      const validade = texto(e, 'dgt_datavencimento').substring(0, 10);
+      // "N/A" não entra no status do colaborador.
+      if (manual === 'N/A') {
+        return;
+      }
+      const { situacao, dias } = situacaoPelaValidade(validade);
+      colaborador.certificados.push({
+        chave: guid(e.dgt_certificacaofabricanteid),
+        origem: 'fabricante',
+        usuarioId,
+        colaborador: colaborador.nome,
+        email: colaborador.email,
+        cargo: colaborador.cargo,
+        treinamentoId: '',
+        treinamentoCodigo: '',
+        treinamento: texto(e, 'dgt_name'),
+        tipo: texto(e, 'dgt_categoria') || 'Certificação de fabricante',
+        instituicao: texto(e, 'dgt_emissor'),
+        observacoes: [manual === 'Em andamento' ? 'Renovação em andamento.' : '', texto(e, 'dgt_observacoes')].filter(Boolean).join(' '),
+        realizacao: texto(e, 'dgt_dataemissao').substring(0, 10),
+        validade,
+        numero: texto(e, 'dgt_numeroregistro'),
+        arquivoUrl: texto(e, 'dgt_arquivourl'),
+        registradoPor: texto(e, 'dgt_responsavelnome') || 'RH',
+        situacao,
+        diasParaVencer: dias
+      });
+    });
+
     const colaboradores = Object.keys(mapa)
       .map(id => {
         const c = mapa[id];
@@ -501,22 +549,41 @@ export class RhCertificadosService {
     tipo: string,
     arquivo: File
   ): Promise<{ url: string; nome: string }> {
+    return this.enviarDocumentoEm(['Externos', usuarioId], tipo, arquivo);
+  }
+
+  // Envia um documento para Certificados/<segmentos...>/<prefixo>_<data-hora>.<ext>.
+  // Usado também pela aba Fabricantes e terceiros.
+  public async enviarDocumentoEm(
+    segmentos: string[],
+    tipo: string,
+    arquivo: File
+  ): Promise<{ url: string; nome: string }> {
 
     if (!this.spHttpClient || !this.siteUrl) {
       throw new Error('Conexão com o SharePoint indisponível para enviar o documento.');
     }
 
+    if (arquivo.size > TAMANHO_MAXIMO_ARQUIVO_MB * 1024 * 1024) {
+      throw new Error(`O arquivo ultrapassa ${TAMANHO_MAXIMO_ARQUIVO_MB} MB.`);
+    }
+
     const origem = origemDe(this.siteUrl);
     const caminhoSite = this.siteUrl.substring(origem.length);
 
-    const pastas = [
-      `${caminhoSite}/${BIBLIOTECA}/Externos`,
-      `${caminhoSite}/${BIBLIOTECA}/Externos/${usuarioId}`
-    ];
+    const pastas: string[] = [];
+    let atual = `${caminhoSite}/${BIBLIOTECA}`;
+    segmentos
+      .map(seg => String(seg || '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'geral')
+      .forEach(seg => {
+        atual = `${atual}/${seg}`;
+        pastas.push(atual);
+      });
 
     for (const pasta of pastas) {
       await this.garantirPasta(pasta);
     }
+    const destino = pastas[pastas.length - 1];
 
     const extensao = (/\.[A-Za-z0-9]{1,8}$/.exec(arquivo.name) || [''])[0].toLowerCase();
     const tipoSeguro = (tipo || 'certificado')
@@ -536,7 +603,7 @@ export class RhCertificadosService {
     });
 
     const resposta = await this.spHttpClient.post(
-      `${this.siteUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${escaparOData(pastas[1])}')` +
+      `${this.siteUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${escaparOData(destino)}')` +
       `/Files/AddUsingPath(decodedurl='${escaparOData(nome)}',overwrite=false)`,
       SPHttpClient.configurations.v1,
       {
@@ -560,7 +627,7 @@ export class RhCertificadosService {
     const dados = (await resposta.json()) as { ServerRelativeUrl?: string; Name?: string };
 
     return {
-      url: `${origem}${dados.ServerRelativeUrl || `${pastas[1]}/${nome}`}`,
+      url: `${origem}${dados.ServerRelativeUrl || `${destino}/${nome}`}`,
       nome: dados.Name || nome
     };
   }

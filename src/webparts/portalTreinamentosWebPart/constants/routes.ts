@@ -39,6 +39,8 @@ export type Pagina =
   | 'arquiteturaROs'
   // Kits: catálogo do montador de B.O.M. (equipamentos e composição)
   | 'kits'
+  // Cálculo de HH (homem-hora) por área — alimenta o B.O.M.
+  | 'calculoHH'
   // RH e Pessoas (por enquanto: certificados dos colaboradores)
   | 'rhPessoas'
   // Planejamento orçamentário (Gestor e Administrador)
@@ -80,6 +82,7 @@ export const ROTAS = {
   ARQUITETURA: 'arquitetura',
   ARQUITETURA_ROS: 'arquiteturaROs',
   KITS: 'kits',
+  CALCULO_HH: 'calculoHH',
   RH_PESSOAS: 'rhPessoas',
   PLANEJAMENTO_ORCAMENTARIO: 'planejamentoOrcamentario',
 } as const;

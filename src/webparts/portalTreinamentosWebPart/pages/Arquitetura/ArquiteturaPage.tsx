@@ -45,6 +45,8 @@ import {
   garantirCatalogoKitsAplicado
 } from '../../services/bom/KitsService';
 
+import EtapaHHBom from './EtapaHHBom';
+
 import {
   COR,
   DECISAO,
@@ -65,7 +67,7 @@ import {
 // Fase 1: Visão geral dos B.O.M., Novo B.O.M., etapa 1 (Dados da
 // demanda) e etapa 2 (Matriz Go/No-Go).
 // Fase 2: etapa 3 (Seleção de kit — montador de B.O.M.).
-// Etapa 4 (Cálculo de HH): aguardando as planilhas de HH.
+// Etapa 4 (Cálculo de HH): prévia com o HH vigente de cada área (menu Cálculo de HH).
 // Etapa 5 (B.O.M. pronto): em definição.
 // ============================================================
 
@@ -735,31 +737,13 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
         }
 
         {
-          aba === 'hh' && (() => {
-            const resumoKit = selecaoKit ? montarBom(selecaoKit) : undefined;
-            return (
-              <div style={cartao}>
-                <h3 style={{ margin: '0 0 6px', color: COR.azul }}>⏳ Cálculo de HH — aguardando as planilhas de HH</h3>
-                <p style={{ fontSize: '13px', color: COR.texto2, margin: '0 0 10px' }}>
-                  A Seleção de kit está definida. O cálculo de HH (homem-hora) será construído quando as planilhas de HH
-                  de implantação estiverem disponíveis — hoje há apenas a planilha de <strong>suporte</strong>.
-                </p>
-                {resumoKit && (
-                  <div style={{ fontSize: '13px', color: COR.azul, background: COR.fundo, borderRadius: '8px', padding: '10px 12px', marginBottom: '10px' }}>
-                    Kit deste B.O.M.: <strong>{resumoKit.totais.pontos}</strong> ponto(s) ·{' '}
-                    <strong>{resumoKit.totais.camerasVideo}</strong> câmera(s) de vídeo ·{' '}
-                    <strong>{resumoKit.totais.camerasOcr}</strong> OCR/LPR ·{' '}
-                    <strong>{resumoKit.totais.leitoras}</strong> leitora(s) ·{' '}
-                    <strong>{resumoKit.itens.length}</strong> itens na lista
-                    {resumoKit.itens.some(i => i.pendente) ? ' · há itens sem código CIGAM' : ''}
-                  </div>
-                )}
-                <button type="button" style={botao('secundario')} onClick={() => { setAba('kit'); window.scrollTo(0, 0); }}>
-                  ← Ver / ajustar a Seleção de kit
-                </button>
-              </div>
-            );
-          })()
+          aba === 'hh' && (
+            <EtapaHHBom
+              dataverseService={dataverseService}
+              resumoKit={selecaoKit ? montarBom(selecaoKit) : undefined}
+              aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
+            />
+          )
         }
       </section>
     );

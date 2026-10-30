@@ -335,6 +335,9 @@ New-SimNao     'dgt_kitkit' 'dgt_AceitaOcr'   'Aceita câmera OCR/LPR' $false
 New-Texto      'dgt_kitkit' 'dgt_Sinalizacao' 'Sinalização' 200
 New-TextoLongo 'dgt_kitkit' 'dgt_Descricao'   'Descrição' 2000
 New-SimNao     'dgt_kitkit' 'dgt_Ativo'       'Ativo' $true
+# Kits configurados na aba Kits (rodar de novo o script cria só estas).
+New-Texto      'dgt_kitkit' 'dgt_Modelo'      'Modelo de cálculo' 50
+New-Inteiro    'dgt_kitkit' 'dgt_Ordem'       'Ordem de exibição'
 
 Write-Host "`n4) Colunas de dgt_kitcomposicao" -ForegroundColor Cyan
 New-Texto      'dgt_kitcomposicao' 'dgt_Kit'        'Kit' 50

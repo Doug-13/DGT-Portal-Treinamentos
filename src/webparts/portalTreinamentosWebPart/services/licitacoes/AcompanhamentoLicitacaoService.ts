@@ -513,7 +513,9 @@ export class AcompanhamentoLicitacaoService {
       `| **Encerramento das propostas** | **${data(item.encerramento)}**${prazoTexto} |`,
       `| **Situação no PNCP** | ${acompanhamento.situacao || (detalhe && detalhe.situacao) || '—'} |`,
       detalhe && detalhe.amparoLegalNome ? `| **Amparo legal** | ${limpo(detalhe.amparoLegalNome)} |` : '',
-      item.score >= 0 ? `| **Aderência da busca** | ${item.score}%${item.motivos.length ? ` (${item.motivos.join('; ')})` : ''} |` : '',
+      contexto.analiseIa
+        ? `| **Aderência (IA)** | ${contexto.analiseIa.compatibilidade}% |`
+        : item.score >= 0 ? `| **Aderência** | ${item.score}%${item.motivos.length ? ` (${item.motivos.join('; ')})` : ''} |` : '',
       '',
       '## Objeto',
       limpo(item.objeto) || '—'
@@ -632,7 +634,10 @@ export class AcompanhamentoLicitacaoService {
       compatibilidade: contexto.analiseIa ? contexto.analiseIa.compatibilidade : null,
       // score < 0 = tarefa criada pela aba Acompanhamento, sem a busca:
       // a aderência fica em branco (e não 0).
-      aderencia: item.score >= 0 ? item.score : null,
+      // Mesma aderência do portal: a da IA quando houver.
+      aderencia: contexto.analiseIa
+        ? contexto.analiseIa.compatibilidade
+        : item.score >= 0 ? item.score : null,
       parecer: `Participar — ${contexto.responsavel || 'equipe DGT'} em ${new Date().toLocaleDateString('pt-BR')}: ` +
         (limpo(contexto.justificativa) || '—').substring(0, 1800),
       plataforma: detalhe && detalhe.sistemaOrigem ? limpo(detalhe.sistemaOrigem) : '',

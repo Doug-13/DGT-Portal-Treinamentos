@@ -11,6 +11,9 @@ import {
   CategoriaItem,
   ESTRUTURAS,
   EstruturaBridgefy,
+  IParametrosEstrutura,
+  infoKit,
+  parametrosDoKit,
   ICameraCatalogo,
   IComponenteKit,
   ISwitchCatalogo,
@@ -66,10 +69,27 @@ export const TIPOS_PONTO: Array<{ tipo: TipoPonto; nome: string; grupo: 'Bridgef
 export const ehBridgefy = (tipo: TipoPonto): tipo is EstruturaBridgefy =>
   tipo === 'torre' || tipo === 'box' || tipo === 'mini';
 
+// Kit do ponto (configurado na aba Kits) ou o do próprio modelo.
+export const chaveKitDoPonto = (ponto: { tipo: TipoPonto; kit?: string }): string =>
+  ponto.kit && infoKit(ponto.kit) ? ponto.kit : ponto.tipo;
+
+export const nomeKitDoPonto = (ponto: { tipo: TipoPonto; kit?: string }): string => {
+  const info = infoKit(chaveKitDoPonto(ponto), ponto.tipo);
+  return info ? info.nome : (TIPOS_PONTO.filter(t => t.tipo === ponto.tipo)[0] || { nome: ponto.tipo }).nome;
+};
+
+// Máx. de câmeras, OCR e sinalização do kit do ponto (Bridgefy).
+export const parametrosDoPonto = (ponto: { tipo: TipoPonto; kit?: string }): IParametrosEstrutura | undefined =>
+  ehBridgefy(ponto.tipo) ? parametrosDoKit(chaveKitDoPonto(ponto), ponto.tipo) : undefined;
+
 export interface IPontoKit {
   id: string;
   nome: string;
+  // Modelo de cálculo (regras do montador).
   tipo: TipoPonto;
+  // Kit escolhido na Seleção de kit (aba Kits). Vazio = o kit do
+  // sistema do próprio modelo (seleções antigas).
+  kit?: string;
   // Pontos iguais a este.
   quantidade: number;
 
@@ -156,13 +176,14 @@ export interface IResultadoBom {
 
 let contador = 0;
 
-export const novoPonto = (tipo: TipoPonto, indice: number): IPontoKit => {
+export const novoPonto = (tipo: TipoPonto, indice: number, kit?: string): IPontoKit => {
   contador++;
   const nomeTipo = (TIPOS_PONTO.find(t => t.tipo === tipo) || { nome: tipo }).nome;
   return {
     id: `p${Date.now().toString(36)}${contador}`,
     nome: `${nomeTipo} ${indice}`,
     tipo,
+    ...(kit && kit !== tipo ? { kit } : {}),
     quantidade: 1,
     camerasVideo: tipo === 'torre' || tipo === 'box' || tipo === 'mini' ? 2 : 0,
     camerasOcr: 0,
@@ -287,20 +308,32 @@ export const condicaoAtendida = (
   }
 };
 
+// Kit configurado sem composição gravada usa a do seu modelo.
 export const composicaoDoKit = (
   kit: string,
-  opcoes?: IOpcoesMontagem
+  opcoes?: IOpcoesMontagem,
+  modelo?: string
 ): IComponenteKit[] =>
-  (opcoes && opcoes.composicoes && opcoes.composicoes[kit]) || COMPOSICAO_KITS[kit] || [];
+  (opcoes && opcoes.composicoes && opcoes.composicoes[kit]) ||
+  COMPOSICAO_KITS[kit] ||
+  (modelo ? (opcoes && opcoes.composicoes && opcoes.composicoes[modelo]) || COMPOSICAO_KITS[modelo] : undefined) ||
+  [];
 
 const aplicarComposicao = (
   lista: Lista,
-  kit: string,
+  ponto: IPontoKit,
   contexto: IContextoComposicao,
   opcoes: IOpcoesMontagem | undefined,
   avisar: (mensagem: string) => void
 ): void => {
-  composicaoDoKit(kit, opcoes).forEach(componente => {
+  const chave = chaveKitDoPonto(ponto);
+  const info = infoKit(chave, ponto.tipo);
+  if (ponto.kit && !infoKit(ponto.kit)) {
+    avisar(`O kit escolhido (${ponto.kit}) não existe mais no catálogo: usado o kit padrão do modelo.`);
+  } else if (info && !info.ativo) {
+    avisar(`O kit "${info.nome}" está desativado na aba Kits.`);
+  }
+  composicaoDoKit(chave, opcoes, ponto.tipo).forEach(componente => {
     if (!condicaoAtendida(componente, contexto)) {
       return;
     }
@@ -325,7 +358,8 @@ const montarBridgefy = (
 ): IItemBom[] => {
 
   const tipo = ponto.tipo as EstruturaBridgefy;
-  const estrutura = ESTRUTURAS[tipo];
+  const chaveKit = chaveKitDoPonto(ponto);
+  const estrutura = parametrosDoKit(chaveKit, tipo);
   const lista = new Lista(ponto.nome);
   const avisar = (nivel: 'erro' | 'aviso', mensagem: string): void => {
     alertas.push({ nivel, origem: ponto.nome, mensagem });
@@ -347,7 +381,7 @@ const montarBridgefy = (
     avisar('erro', `${estrutura.nome} comporta até ${estrutura.maxCameras} câmeras (informadas: ${total}).`);
   }
   if (!estrutura.aceitaOcr && inteiro(ponto.camerasOcr) > 0) {
-    avisar('erro', 'O Box não comporta câmera OCR/LPR (tamanho). Use Torre ou Mini.');
+    avisar('erro', chaveKit === 'box' ? 'O Box não comporta câmera OCR/LPR (tamanho). Use Torre ou Mini.' : `${estrutura.nome} não comporta câmera OCR/LPR (parâmetro do kit na aba Kits).`);
   }
   if (ponto.safeWay && nO === 0) {
     avisar('erro', 'Safe Way marcado sem câmera OCR/LPR: informe as câmeras de leitura de placas.');
@@ -402,7 +436,7 @@ const montarBridgefy = (
   // serviços, adesivos e opcionais (ex.: comunicação bidirecional).
   aplicarComposicao(
     lista,
-    tipo,
+    ponto,
     {
       camerasVideo: nV,
       camerasOcr: nO,
@@ -447,7 +481,7 @@ const montarPorta = (
   // instalação, cabo UTP e licença de leitora entram só com W-Access.
   aplicarComposicao(
     lista,
-    ponto.tipo,
+    ponto,
     {
       camerasVideo: 0,
       camerasOcr: 0,
@@ -590,11 +624,17 @@ export const normalizarSelecao = (selecao: ISelecaoKit): ISelecaoKit => {
 // Nome do kit cadastrado (base) + adicionais, para exibição.
 export const kitsAplicados = (ponto: IPontoKit): string[] => {
   if (!ehBridgefy(ponto.tipo)) {
-    return [(TIPOS_PONTO.find(t => t.tipo === ponto.tipo) || { nome: ponto.tipo }).nome];
+    return [nomeKitDoPonto(ponto)];
   }
 
   const nV = inteiro(ponto.camerasVideo);
-  const nO = ESTRUTURAS[ponto.tipo].aceitaOcr ? inteiro(ponto.camerasOcr) : 0;
+  const parametros = parametrosDoKit(chaveKitDoPonto(ponto), ponto.tipo);
+  const nO = parametros.aceitaOcr ? inteiro(ponto.camerasOcr) : 0;
+
+  // Kit configurado na aba Kits: o nome dele, sem os kits prontos.
+  if (chaveKitDoPonto(ponto) !== ponto.tipo) {
+    return [nomeKitDoPonto(ponto)];
+  }
 
   const bases: Record<EstruturaBridgefy, Array<{ v: number; o: number; nome: string }>> = {
     torre: [
@@ -612,7 +652,7 @@ export const kitsAplicados = (ponto: IPontoKit): string[] => {
 
   const base = bases[ponto.tipo].find(b => b.v <= nV && b.o <= nO);
   if (!base) {
-    return [`${ESTRUTURAS[ponto.tipo].nome} (sob medida)`];
+    return [`${parametros.nome} (sob medida)`];
   }
 
   const extras: string[] = [];
@@ -665,7 +705,7 @@ export const montarBom = (
 
     if (ehBridgefy(ponto.tipo)) {
       camerasVideo += inteiro(ponto.camerasVideo) * qtd;
-      camerasOcr += (ESTRUTURAS[ponto.tipo].aceitaOcr ? inteiro(ponto.camerasOcr) : 0) * qtd;
+      camerasOcr += ((parametrosDoPonto(ponto) || ESTRUTURAS[ponto.tipo]).aceitaOcr ? inteiro(ponto.camerasOcr) : 0) * qtd;
     } else {
       pontosAcesso += qtd;
       leitoras += (ponto.tipo === 'catraca' ? 2 * (inteiro(ponto.catracas) + inteiro(ponto.catracasPne)) : 1) * qtd;

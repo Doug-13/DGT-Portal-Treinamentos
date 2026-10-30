@@ -1,7 +1,3 @@
-import {
-  vincularDocumentoAoTreinamento
-} from '../services/referencias/ReferenciasDocumentoService';
-
 import * as React from 'react';
 
 import Icones, { IconeChave } from './common/Icones';
@@ -400,21 +396,6 @@ const PortalTreinamentos:
       React.useState<
         ITreinamento[]
       >([]);
-
-    // Recarrega os dados do usuário (ex.: depois da avaliação, para
-    // trazer a conclusão e o próximo treinamento liberado).
-    const [
-      versaoDadosUsuario,
-      setVersaoDadosUsuario
-    ] =
-      React.useState(0);
-
-    // Próximo treinamento a abrir assim que os dados recarregarem.
-    const [
-      proximoTreinamentoPendente,
-      setProximoTreinamentoPendente
-    ] =
-      React.useState('');
 
     const [
       historico,
@@ -1816,8 +1797,7 @@ const gestaoAreas =
       trilhaService,
       documentoService,
       userEmail,
-      userName,
-      versaoDadosUsuario
+      userName
     ]);
 
     // ==========================================================
@@ -2003,9 +1983,7 @@ const gestaoAreas =
       React.useCallback(
         async (
           dados:
-            INovoTreinamento,
-          documentosReferencia:
-            string[] = []
+            INovoTreinamento
         ): Promise<void> => {
 
           // ======================================================
@@ -2116,40 +2094,6 @@ const gestaoAreas =
           }
 
           // ======================================================
-          // 1.2 DOCUMENTOS DE REFERÊNCIA (dgt_treinamentodocumento)
-          //     Falha aqui NÃO desfaz o treinamento: só avisa (os
-          //     vínculos podem ser refeitos na etapa 1, em edição).
-          // ======================================================
-
-          if (
-            documentosReferencia.length > 0 &&
-            dataverseService
-          ) {
-            const falharam: string[] = [];
-
-            for (const documentoId of documentosReferencia) {
-              try {
-                await vincularDocumentoAoTreinamento(
-                  dataverseService,
-                  treinamentoCriado.id,
-                  documentoId,
-                  'Vínculo criado no cadastro do treinamento.'
-                );
-              } catch (erroVinculo) {
-                console.error(erroVinculo);
-                falharam.push(documentoId);
-              }
-            }
-
-            if (falharam.length > 0) {
-              window.alert(
-                `O treinamento foi criado, mas ${falharam.length} documento(s) de referência não puderam ser vinculados. ` +
-                'Abra o treinamento em edição (etapa 1) para vincular novamente.'
-              );
-            }
-          }
-
-          // ======================================================
           // 2. GUARDAR O TREINAMENTO DO FLUXO
           // ======================================================
 
@@ -2183,7 +2127,6 @@ const gestaoAreas =
         [
           autorizacao.contexto,
           controleDocumentalService,
-          dataverseService,
           gestaoModulos,
           gestaoTreinamentos,
           userName
@@ -3504,90 +3447,6 @@ const gestaoAreas =
       );
 
     // ==========================================================
-    // PRÓXIMO MÓDULO (pela ordem do treinamento)
-    // ==========================================================
-
-    const proximoModuloExecucao =
-      React.useMemo(
-        (): IModuloTreinamento | undefined => {
-          if (!moduloSelecionadoExecucao) {
-            return undefined;
-          }
-          const ordenados =
-            modulos.modulos
-              .slice()
-              .sort((a, b) => a.ordem - b.ordem);
-          const indice =
-            ordenados.findIndex(item => item.id === moduloSelecionadoExecucao.id);
-          return indice >= 0 ? ordenados[indice + 1] : undefined;
-        },
-        [modulos.modulos, moduloSelecionadoExecucao]
-      );
-
-    // Conclui o módulo aberto e já abre o próximo. Se a conclusão
-    // falhar, fica no módulo atual (o erro aparece na tela).
-    // Em revisão (módulo já concluído) só navega: nada é gravado.
-    const concluirModuloEIrParaProximo =
-      React.useCallback(
-        async (): Promise<void> => {
-
-          if (
-            !moduloSelecionadoExecucao ||
-            !proximoModuloExecucao
-          ) {
-            return;
-          }
-
-          const proximo =
-            proximoModuloExecucao;
-
-          if (!moduloEmRevisao) {
-
-            if (!moduloExecucao.podeConcluir) {
-              return;
-            }
-
-            const concluiu =
-              await modulos.concluir(
-                moduloSelecionadoExecucao
-              );
-
-            if (!concluiu) {
-              return;
-            }
-          }
-
-          moduloExecucao.limpar();
-
-          await abrirModuloExecucao(
-            proximo
-          );
-
-          window.scrollTo(0, 0);
-        },
-        [
-          abrirModuloExecucao,
-          moduloEmRevisao,
-          moduloExecucao,
-          moduloSelecionadoExecucao,
-          modulos,
-          proximoModuloExecucao
-        ]
-      );
-
-    const irParaProximoModulo =
-      React.useCallback(
-        (): void => {
-          concluirModuloEIrParaProximo()
-            .catch(
-              (error: unknown) =>
-                console.error(error)
-            );
-        },
-        [concluirModuloEIrParaProximo]
-      );
-
-    // ==========================================================
     // REFAZER (revisão de módulo concluído)
     // ==========================================================
 
@@ -3693,100 +3552,6 @@ const gestaoAreas =
     // ==========================================================
     // ENVIAR AVALIAÇÃO
     // ==========================================================
-
-    // ==========================================================
-    // RESULTADO DA AVALIAÇÃO: SAIR / PRÓXIMO TREINAMENTO
-    // ==========================================================
-
-    const sairDaAvaliacao =
-      React.useCallback(
-        (): void => {
-          // Atualiza a lista (status Concluído / Reprovado) e volta.
-          setVersaoDadosUsuario(
-            atual => atual + 1
-          );
-          navegar(
-            'treinamentos'
-          );
-          window.scrollTo(0, 0);
-        },
-        [navegar]
-      );
-
-    // Só abre o próximo DEPOIS de uma recarga completa (evita usar a
-    // lista antiga, em que o próximo ainda aparece bloqueado).
-    const recargaProximoIniciadaRef =
-      React.useRef(false);
-
-    const irParaProximoTreinamento =
-      React.useCallback(
-        (
-          nomeTreinamento: string
-        ): void => {
-          recargaProximoIniciadaRef.current = false;
-          setProximoTreinamentoPendente(
-            nomeTreinamento
-          );
-          setVersaoDadosUsuario(
-            atual => atual + 1
-          );
-        },
-        []
-      );
-
-    // Dados recarregados: abre o próximo treinamento (se encontrado e
-    // liberado); senão, vai para Meus treinamentos.
-    React.useEffect(
-      () => {
-        if (!proximoTreinamentoPendente) {
-          return;
-        }
-
-        if (carregandoDataverse) {
-          recargaProximoIniciadaRef.current = true;
-          return;
-        }
-
-        if (!recargaProximoIniciadaRef.current) {
-          return;
-        }
-
-        recargaProximoIniciadaRef.current = false;
-
-        const nome =
-          proximoTreinamentoPendente
-            .trim()
-            .toLowerCase();
-
-        setProximoTreinamentoPendente('');
-
-        const proximo =
-          meusTreinamentos.find(
-            t =>
-              (t.nome || '').trim().toLowerCase() === nome &&
-              t.status !== 'Bloqueado' &&
-              t.status !== 'Concluído'
-          );
-
-        if (proximo) {
-          abrirTreinamento(proximo)
-            .catch(
-              (error: unknown) =>
-                console.error(error)
-            );
-        } else {
-          navegar('treinamentos');
-        }
-
-        window.scrollTo(0, 0);
-      },
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [
-        proximoTreinamentoPendente,
-        carregandoDataverse,
-        meusTreinamentos
-      ]
-    );
 
     const enviarAvaliacao =
       React.useCallback(
@@ -4033,6 +3798,43 @@ const gestaoAreas =
           ]
           : []
       ),
+
+      // Kits (catálogo do B.O.M.) — visível só com o módulo "kits"
+      // liberado (o filtro do menu usa podeAcessarRota).
+      {
+        label:
+          'Kits',
+
+        icon:
+          'package' as IconeChave,
+
+        pagina:
+          'kits',
+
+        modulo:
+          'outro',
+
+        novo:
+          true
+      },
+
+      // Cálculo de HH — visível só com o módulo "hh" liberado.
+      {
+        label:
+          'Cálculo de HH',
+
+        icon:
+          'clock' as IconeChave,
+
+        pagina:
+          'calculoHH',
+
+        modulo:
+          'outro',
+
+        novo:
+          true
+      },
 
       // Planejamento orçamentário — Gestor e Administrador (o item
       // some do menu para quem não pode acessar a rota).
@@ -4927,20 +4729,6 @@ const gestaoAreas =
                   concluirModuloExecucao
                 }
 
-                proximoModuloExecucaoTitulo={
-                  proximoModuloExecucao
-                    ? proximoModuloExecucao.titulo
-                    : undefined
-                }
-
-                concluirModuloEIrParaProximo={
-                  concluirModuloEIrParaProximo
-                }
-
-                irParaProximoModulo={
-                  irParaProximoModulo
-                }
-
                 iniciarAvaliacao={() => {
 
                   iniciarAvaliacao()
@@ -4985,14 +4773,6 @@ const gestaoAreas =
 
                 enviarAvaliacao={
                   enviarAvaliacao
-                }
-
-                sairDaAvaliacao={
-                  sairDaAvaliacao
-                }
-
-                irParaProximoTreinamento={
-                  irParaProximoTreinamento
                 }
 
                 salvarNovoTreinamento={

@@ -110,7 +110,7 @@ const VisaoGeralKits: React.FC<IVisaoGeralKitsProps> = ({ catalogo, abrirItem, a
             key={n.rotulo}
             type="button"
             onClick={n.acao}
-            style={{ textAlign: 'left', padding: '16px 18px', border: 0, borderLeft: i ? `1px solid ${COR.cinzaClaro}` : 0, background: COR.branco, cursor: 'pointer', fontFamily: 'inherit' }}
+            style={{ textAlign: 'left', fontSize: '14px', fontWeight: 400, padding: '16px 18px', border: 0, borderRadius: 0, borderLeft: i ? `1px solid ${COR.cinzaClaro}` : 0, background: COR.branco, cursor: 'pointer', fontFamily: 'inherit' }}
           >
             <div style={{ fontSize: '28px', fontWeight: 700, color: i === 2 && n.valor > 0 ? COR.indigo : COR.azul, lineHeight: 1.1 }}>{n.valor}</div>
             <div style={{ fontSize: '13px', color: COR.texto2, marginTop: '4px' }}>{n.rotulo}</div>
@@ -125,16 +125,16 @@ const VisaoGeralKits: React.FC<IVisaoGeralKitsProps> = ({ catalogo, abrirItem, a
           <div style={{ fontSize: '13px', color: COR.texto2, marginBottom: '10px' }}>Escolha um kit para ver ou alterar o que vai nele.</div>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {KITS.map((k, i) => {
-              const linhas = catalogo.composicoes[k.chave] || [];
+              const linhas = catalogo.composicoes[k.chave] || catalogo.composicoes[k.modelo] || [];
               const parametros = catalogo.kits.find(x => x.chave === k.chave);
               return (
                 <li key={k.chave} style={{ borderTop: i ? `1px solid ${COR.azulClaro}` : 0 }}>
-                  <button type="button" onClick={() => abrirKit(k.chave)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 4px', border: 0, background: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', color: COR.azul }}>
-                    <IconeKit nome={k.chave as NomeIconeKit} tamanho={24} cor={COR.azul} />
+                  <button type="button" onClick={() => abrirKit(k.chave)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 4px', fontSize: '14px', fontWeight: 400, border: 0, background: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', color: COR.azul }}>
+                    <IconeKit nome={k.modelo as NomeIconeKit} tamanho={24} cor={COR.azul} />
                     <span style={{ flex: 1 }}>
                       <span style={{ display: 'block', fontWeight: 700, fontSize: '14px' }}>{parametros ? parametros.nome : k.nome}</span>
                       <span style={{ display: 'block', fontSize: '12.5px', color: COR.texto2 }}>
-                        {k.editavel ? `${linhas.length} itens no kit-base` : 'calculado por fórmula'}
+                        {k.modelo !== 'catraca' ? `${linhas.length} itens no kit-base` : 'calculado por fórmula'}{!k.sistema ? (k.ativo ? ' · configurado' : ' · desativado') : ''}
                         {parametros && parametros.maxCameras ? `, até ${parametros.maxCameras} câmeras` : ''}
                         {parametros && parametros.codigoCigam ? `, kit ${parametros.codigoCigam}` : ''}
                       </span>

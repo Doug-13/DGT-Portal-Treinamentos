@@ -213,6 +213,22 @@ export class LicitacaoParecerService {
       .filter(parecer => !!parecer.chaveEdital);
   }
 
+  // Parecer mais recente de UM edital, lido agora do Dataverse
+  // (para avisar se outra pessoa registrou enquanto a tela estava aberta).
+  public async obterVigente(chaveEdital: string): Promise<IParecerLicitacao | undefined> {
+    const registros =
+      await this.dataverse.listarRegistros(
+        TABELA_PARECER,
+        '$select=' +
+        [C.id, C.chaveEdital, C.decisao, C.justificativa, C.orgao, C.local, C.modalidade,
+          C.numero, C.objeto, C.valorEstimado, C.encerramento, C.aderencia, C.responsavel,
+          'createdon', '_createdby_value'].join(',') +
+        `&$filter=statecode eq 0 and ${C.chaveEdital} eq '${chaveEdital.replace(/'/g, "''")}'` +
+        '&$orderby=createdon desc&$top=1'
+      );
+    return registros.length > 0 ? mapear(registros[0]) : undefined;
+  }
+
   public async registrar(
     item: ILicitacaoResultado,
     decisao: DecisaoParecer,

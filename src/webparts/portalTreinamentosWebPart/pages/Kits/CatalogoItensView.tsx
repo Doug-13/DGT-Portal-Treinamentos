@@ -29,6 +29,8 @@ import {
   ajuda,
   botao,
   campo,
+  celula,
+  celulaCabecalho,
   painel,
   rotulo
 } from './kitsComum';
@@ -350,17 +352,17 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
       </div>
 
       <div style={{ ...painel, padding: 0, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', color: COR.azul, minWidth: '760px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', color: COR.azul, minWidth: '760px', boxShadow: 'none', borderRadius: 0 }}>
           <thead>
-            <tr style={{ background: COR.azul, color: COR.branco, textAlign: 'left' }}>
+            <tr>
               {['Item', 'Código CIGAM', 'Tipo', 'Situação', 'Usado em', ''].map(h => (
-                <th key={h} style={{ padding: '10px 14px', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `3px solid ${COR.ciano}` }}>{h}</th>
+                <th key={h} style={celulaCabecalho}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {visiveis.length === 0 && (
-              <tr><td colSpan={6} style={{ padding: '28px', textAlign: 'center', color: COR.texto2 }}>
+              <tr><td colSpan={6} style={{ ...celula, padding: '28px', textAlign: 'center', color: COR.texto2 }}>
                 Nenhum item com esses filtros.{podeEditar && ' Use "+ Novo item" para cadastrar.'}
               </td></tr>
             )}
@@ -368,22 +370,22 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
               const usos = usosDoItem(item.chave, catalogo.composicoes);
               const resumo = resumoAtributos(item);
               return (
-                <tr key={item.chave} style={{ borderTop: `1px solid ${COR.cinzaClaro}`, opacity: item.ativo ? 1 : 0.55 }}>
-                  <td style={{ padding: '10px 14px' }}>
+                <tr key={item.chave} style={{ opacity: item.ativo ? 1 : 0.55 }}>
+                  <td style={celula}>
                     <div style={{ fontWeight: 600 }}>{item.descricao}</div>
-                    {(resumo || item.observacao) && <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '2px' }}>{[resumo, item.observacao].filter(Boolean).join(' — ')}</div>}
+                    {(resumo || item.observacao) && <div style={{ fontSize: '13px', color: COR.texto2, marginTop: '3px' }}>{[resumo, item.observacao].filter(Boolean).join(' — ')}</div>}
                   </td>
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                  <td style={{ ...celula, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                     {item.codigo.trim() ? item.codigo : <Selo tom="indigo" titulo="Entra no B.O.M. como pendente">! sem código</Selo>}
                   </td>
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{item.tipo === 'item' ? item.categoria : nomeTipo(item.tipo)}</td>
-                  <td style={{ padding: '10px 14px' }}>
+                  <td style={{ ...celula, whiteSpace: 'nowrap' }}>{item.tipo === 'item' ? item.categoria : nomeTipo(item.tipo)}</td>
+                  <td style={celula}>
                     {item.ativo ? <Selo tom={TOM_SITUACAO[item.situacao]}>{item.situacao}</Selo> : <Selo tom="cinza">Desativado</Selo>}
                   </td>
-                  <td style={{ padding: '10px 14px', fontSize: '12.5px', color: usos.length ? COR.azul : COR.texto2 }}>
+                  <td style={{ ...celula, fontSize: '13px', color: usos.length ? COR.azul : COR.texto2 }}>
                     {item.tipo === 'item' ? (usos.length ? usos.join(', ') : 'nenhum kit') : 'escolha no ponto'}
                   </td>
-                  <td style={{ padding: '6px 14px', textAlign: 'right' }}>
+                  <td style={{ ...celula, padding: '6px 14px', textAlign: 'right' }}>
                     <button type="button" style={botao('secundario')} onClick={() => setEditando(item)}>{podeEditar ? 'Alterar' : 'Ver'}</button>
                   </td>
                 </tr>

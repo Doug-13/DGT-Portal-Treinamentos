@@ -9,12 +9,14 @@ import {
 } from '../../services/AutorizacaoService';
 
 import {
-  ChaveKit
+  ChaveKit,
+  IComponenteKit
 } from '../../services/bom/catalogoKits';
 
 import {
   ICatalogoKitsCarregado,
   IItemKit,
+  IKitParametros,
   KitsService,
   aplicarNoMontador,
   invalidarCatalogoKits
@@ -152,6 +154,15 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
     avisar('Kit salvo. Os próximos cálculos de B.O.M. já usam a composição nova.');
   };
 
+  const criarKit = async (kit: IKitParametros, composicao: IComponenteKit[], motivo: string): Promise<void> => {
+    if (!servico) {
+      return;
+    }
+    await servico.criarKit(kit, composicao, motivo, usuarioNome);
+    await carregar();
+    avisar(`Kit "${kit.nome}" criado. Ele já aparece na Seleção de kit da Arquitetura de Soluções.`);
+  };
+
   const importar = async (): Promise<void> => {
     if (!servico || !catalogo) {
       return;
@@ -263,6 +274,7 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
               kitInicial={kitFoco}
               aoSalvar={salvarKit}
               aoMudarPendencia={setPendente}
+              aoCriarKit={criarKit}
             />
           )}
           {aba === 'logica' && <LogicaKitsView />}

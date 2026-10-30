@@ -64,7 +64,7 @@ export const montarHtmlRelatorio = (
     ['Assunto', filtros.assunto],
     ['Tipo de filtro', MODO[filtros.modoBusca] || filtros.modoBusca],
     ['Período', periodo],
-    ['UF', filtros.uf || 'Brasil inteiro'],
+    ['UF', (filtros.ufs && filtros.ufs.length > 0 ? filtros.ufs.join(', ') : filtros.uf) || 'Brasil inteiro'],
     ['Modalidades', filtros.modalidades.map(codigo => MODALIDADES_PNCP[codigo] || String(codigo)).join(', ')],
     ['Palavras obrigatórias', lista(filtros.palavrasObrigatorias)],
     ['Palavras relacionadas', lista(filtros.palavrasRelacionadas)],

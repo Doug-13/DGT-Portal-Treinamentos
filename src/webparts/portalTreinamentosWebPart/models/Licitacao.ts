@@ -63,6 +63,9 @@ export type ModoBuscaAssunto = '1' | '2' | '3' | '4';
 export interface IFiltrosLicitacao {
   assunto: string;
   uf?: string;
+  // Várias UFs (o PNCP aceita uma por consulta: o portal consulta cada
+  // uma). Vazio/ausente = usa "uf" (ou Brasil inteiro).
+  ufs?: string[];
   diasBusca: number;
   modalidades: number[];
   modoBusca: ModoBuscaAssunto;

@@ -43,6 +43,7 @@ export interface IUseParecerLicitacoes {
   obter: (item: ILicitacaoResultado) => ISituacaoParecer | undefined;
   // Histórico de um edital pela chave (mais recente primeiro).
   historicoDe: (chaveEdital: string) => IParecerLicitacao[];
+  consultarNovoDeOutraPessoa: (item: ILicitacaoResultado) => Promise<IParecerLicitacao | undefined>;
   registrar: (
     item: ILicitacaoResultado,
     decisao: DecisaoParecer,
@@ -114,6 +115,28 @@ export const useParecerLicitacoes = (
     [porEdital]
   );
 
+  // Lê do Dataverse o parecer vigente do edital. Se outra pessoa
+  // registrou depois que esta tela carregou, ele entra na tela e é
+  // devolvido para a página avisar antes de registrar de novo.
+  const consultarNovoDeOutraPessoa = React.useCallback(
+    async (item: ILicitacaoResultado): Promise<IParecerLicitacao | undefined> => {
+      if (!servico) {
+        return undefined;
+      }
+      const vigente = await servico.obterVigente(gerarChaveEdital(item)).catch(() => undefined);
+      if (!vigente) {
+        return undefined;
+      }
+      const local = porEdital[gerarChaveEdital(item)];
+      if (local && local.atual.id === vigente.id) {
+        return undefined;
+      }
+      setPareceres(atual => (atual.some(p => p.id === vigente.id) ? atual : [vigente].concat(atual)));
+      return vigente;
+    },
+    [servico, porEdital]
+  );
+
   const registrar = React.useCallback(
     async (
       item: ILicitacaoResultado,
@@ -154,6 +177,7 @@ export const useParecerLicitacoes = (
     obter,
     historicoDe: (chave: string) => (porEdital[chave] ? porEdital[chave].historico : []),
     registrar,
+    consultarNovoDeOutraPessoa,
     recarregar
   };
 };

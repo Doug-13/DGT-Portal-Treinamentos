@@ -55,7 +55,8 @@ import {
 } from '../../hooks/useAnaliseIaLicitacoes';
 
 import {
-  IEstadoAnaliseIa
+  IEstadoAnaliseIa,
+  aderenciaDoEdital
 } from '../../models/LicitacaoIa';
 
 import {
@@ -157,8 +158,61 @@ const FILTROS_PARECER: Array<{ id: FiltroParecer; rotulo: string }> = [
   { id: 'NaoParticipar', rotulo: '✕ Não participar' }
 ];
 
+const ufsDoForm = (valor: string): string[] =>
+  (valor || '').split(',').map(u => u.trim()).filter(u => u.length > 0);
+
+// Seletor de várias UFs (abre uma lista com caixas de seleção).
+const SeletorUfs: React.FC<{ valor: string; onChange: (novo: string) => void; disabled: boolean }> = ({ valor, onChange, disabled }) => {
+  const [aberto, setAberto] = React.useState<boolean>(false);
+  const selecionadas = ufsDoForm(valor);
+  const definir = (lista: string[]): void => onChange(UFS_BRASIL.filter(u => lista.indexOf(u) >= 0).join(','));
+  const alternar = (uf: string): void =>
+    definir(selecionadas.indexOf(uf) >= 0 ? selecionadas.filter(u => u !== uf) : selecionadas.concat(uf));
+  const rotuloAtual = selecionadas.length === 0
+    ? 'Brasil inteiro'
+    : selecionadas.length <= 6 ? selecionadas.join(', ') : `${selecionadas.length} estados`;
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        id="lic-uf"
+        type="button"
+        disabled={disabled}
+        aria-expanded={aberto}
+        onClick={() => setAberto(!aberto)}
+        style={{ ...campo, textAlign: 'left', cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+      >
+        <span>{rotuloAtual}</span>
+        <span aria-hidden="true">{aberto ? '▴' : '▾'}</span>
+      </button>
+      {aberto && (
+        <div
+          style={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, marginTop: 4, background: '#ffffff', border: `1px solid ${COR.cinzaClaro}`, borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,.12)', padding: 10, minWidth: 260 }}
+        >
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            <button type="button" style={chip(selecionadas.length === 0)} onClick={() => definir([])}>Brasil inteiro</button>
+            <button type="button" style={chip(false)} onClick={() => definir(['RS', 'SC', 'PR'])}>Sul</button>
+            <button type="button" style={chip(false)} onClick={() => definir(['SP', 'RJ', 'MG', 'ES'])}>Sudeste</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
+            {UFS_BRASIL.map(uf => (
+              <label key={uf} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, cursor: 'pointer' }}>
+                <input type="checkbox" checked={selecionadas.indexOf(uf) >= 0} onChange={() => alternar(uf)} />
+                {uf}
+              </label>
+            ))}
+          </div>
+          <div style={{ textAlign: 'right', marginTop: 8 }}>
+            <button type="button" style={botaoSecundario} onClick={() => setAberto(false)}>OK</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface IFormulario {
   assunto: string;
+  // UFs separadas por vírgula ("RS,SC"); vazio = Brasil inteiro.
   uf: string;
   diasBusca: string;
   modalidades: number[];
@@ -209,7 +263,7 @@ const urlAbsoluta = (
 // Barra de score
 // ------------------------------------------------------------
 
-const BarraScore: React.FC<{ score: number }> = ({ score }) => (
+const BarraScore: React.FC<{ score: number; daIa?: boolean }> = ({ score, daIa }) => (
   <div style={{ minWidth: 120 }}>
     <div
       style={{
@@ -220,7 +274,9 @@ const BarraScore: React.FC<{ score: number }> = ({ score }) => (
         marginBottom: 4
       }}
     >
-      <span>Aderência</span>
+      <span title={daIa ? 'Compatibilidade calculada pela IA' : 'Pontuação da busca (ainda sem análise da IA)'}>
+        Aderência{daIa ? ' (IA)' : ''}
+      </span>
       <strong>{score}%</strong>
     </div>
     <div
@@ -283,7 +339,7 @@ const CartaoLicitacao: React.FC<{
   <div
     style={{
       ...cartao,
-      borderLeft: `4px solid ${parecer && parecer.atual.decisao === 'NaoParticipar' ? '#C0392B' : item.score >= 50 ? COR.ciano : COR.indigo}`,
+      borderLeft: `4px solid ${parecer && parecer.atual.decisao === 'NaoParticipar' ? '#C0392B' : aderenciaDoEdital(item.score, estadoIa).valor >= 50 ? COR.ciano : COR.indigo}`,
       marginBottom: 12,
       // Edital já descartado: fica visível, mas em segundo plano.
       opacity: parecer && parecer.atual.decisao === 'NaoParticipar' ? 0.72 : 1
@@ -307,7 +363,7 @@ const CartaoLicitacao: React.FC<{
         </h3>
       </div>
 
-      <BarraScore score={item.score} />
+      <BarraScore score={aderenciaDoEdital(item.score, estadoIa).valor} daIa={aderenciaDoEdital(item.score, estadoIa).daIa} />
     </div>
 
     <p
@@ -525,6 +581,24 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
     if (!dialogo) {
       return;
     }
+
+    // Outra pessoa registrou parecer neste edital depois que a tela
+    // abriu? Avisa antes (evita duas pessoas tocando o mesmo edital).
+    const deOutraPessoa = await pareceres.consultarNovoDeOutraPessoa(dialogo.item);
+    if (deOutraPessoa) {
+      const quando = new Date(deOutraPessoa.registradoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const decisaoOutra = deOutraPessoa.decisao === 'Participar' ? 'PARTICIPAR' : 'NÃO PARTICIPAR';
+      const seguir = window.confirm(
+        `Atenção: ${deOutraPessoa.responsavel} registrou "${decisaoOutra}" para este edital em ${quando}.\n\n` +
+        `Justificativa: ${deOutraPessoa.justificativa}\n\n` +
+        'Deseja registrar o seu parecer mesmo assim?'
+      );
+      if (!seguir) {
+        setDialogo(undefined);
+        return;
+      }
+    }
+
     await pareceres.registrar(dialogo.item, decisao, justificativa);
     // "Participar": acompanha o edital e cria a tarefa no ClickUp.
     if (decisao === 'Participar' && acompanhamento.situacao === 'ok') {
@@ -633,7 +707,8 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
 
     return {
       assunto,
-      uf: form.uf || undefined,
+      uf: ufsDoForm(form.uf).length === 1 ? ufsDoForm(form.uf)[0] : undefined,
+      ufs: ufsDoForm(form.uf),
       diasBusca: dias,
       modalidades: form.modalidades.slice(),
       modoBusca: form.modoBusca,
@@ -653,86 +728,6 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       busca.iniciar(filtros);
     }
   };
-
-  // ---------------- Baixar documentos sem buscar antes ----------------
-  // O download precisa do identificador do PNCP, que só existe no
-  // resultado de uma busca. Se o edital acompanhado não está na busca
-  // atual, o portal busca ESTE edital (modo Edital específico) e, ao
-  // encontrá-lo, baixa os documentos sozinho.
-  const [downloadPendente, setDownloadPendente] =
-    React.useState<{ chave: string; pastaUrl: string } | undefined>(undefined);
-  const [avisoDownload, setAvisoDownload] = React.useState<string>('');
-
-  const baixarDocumentosDoAcompanhamento = (acomp: IAcompanhamento): void => {
-
-    if (!acomp.pastaUrl) {
-      return;
-    }
-
-    const item = resultados.find(r => {
-      const a = acompanhamento.obter(r);
-      return !!a && a.chaveEdital === acomp.chaveEdital && !!r.idPncp;
-    });
-
-    if (item) {
-      setAvisoDownload('');
-      acompanhamento.baixarDocumentos(item, acomp.pastaUrl).catch(() => undefined);
-      return;
-    }
-
-    const uf = (acomp.local || '').split('/')[1];
-    const codigoModalidade = Object.keys(MODALIDADES_PNCP)
-      .map(Number)
-      .find(codigo => MODALIDADES_PNCP[codigo] === acomp.modalidade);
-
-    // Janela curta = busca rápida: o edital é publicado antes da
-    // abertura das propostas. Busca de (abertura − 20 dias) até hoje.
-    const abertura = acomp.abertura ? new Date(acomp.abertura) : undefined;
-    const diasDesdeAbertura = abertura && !isNaN(abertura.getTime())
-      ? Math.ceil((Date.now() - abertura.getTime()) / 86400000)
-      : 40;
-    const diasBusca = Math.min(365, Math.max(10, diasDesdeAbertura + 20));
-
-    const filtros: IFiltrosLicitacao = {
-      assunto: acomp.numero && acomp.numero !== '-' ? acomp.numero : acomp.orgao,
-      uf: uf ? uf.trim() : undefined,
-      diasBusca,
-      modalidades: codigoModalidade ? [codigoModalidade] : Object.keys(MODALIDADES_PNCP).map(Number),
-      modoBusca: '4',
-      palavrasObrigatorias: [],
-      palavrasRelacionadas: [],
-      palavrasNegativas: [],
-      scoreMinimo: 0
-    };
-
-    setForm(atual => ({ ...atual, assunto: filtros.assunto, modoBusca: '4', uf: filtros.uf || atual.uf }));
-    setDownloadPendente({ chave: acomp.chaveEdital, pastaUrl: acomp.pastaUrl });
-    setAvisoDownload(`Procurando o edital ${acomp.numero || ''} no PNCP para baixar os documentos…`);
-    setFiltroLista('');
-    busca.iniciar(filtros);
-  };
-
-  React.useEffect(() => {
-    if (!downloadPendente) {
-      return;
-    }
-    const item = resultados.find(r => {
-      const a = acompanhamento.obter(r);
-      return !!a && a.chaveEdital === downloadPendente.chave && !!r.idPncp;
-    });
-    if (item) {
-      const pasta = downloadPendente.pastaUrl;
-      setDownloadPendente(undefined);
-      setAvisoDownload('');
-      busca.cancelar();
-      acompanhamento.baixarDocumentos(item, pasta).catch(() => undefined);
-      return;
-    }
-    if (!busca.buscando && busca.resumo) {
-      setDownloadPendente(undefined);
-      setAvisoDownload('O edital não foi encontrado na busca automática. Busque-o manualmente (aba Buscar editais, modo Edital específico) e clique de novo em “Baixar documentos”.');
-    }
-  }, [resultados, busca.buscando, busca.resumo, downloadPendente]);
 
   const aoTeclar = (evento: React.KeyboardEvent<HTMLInputElement>): void => {
     if (evento.key === 'Enter' && !busca.buscando) {
@@ -850,18 +845,11 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         ))}
       </div>
 
-      {avisoDownload && (
-        <div role="status" style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: '#FFF4E5', color: COR.azul, fontSize: 13 }}>
-          {downloadPendente ? '⏳ ' : ''}{avisoDownload}
-        </div>
-      )}
 
       {aba === 'acompanhamento' && (
         <AcompanhamentoPainel
           acompanhamento={acompanhamento}
           ehAdministrador={ehAdministrador}
-          podeBaixarDocumentos={() => !busca.buscando}
-          onBaixarDocumentos={baixarDocumentosDoAcompanhamento}
           onCriarTarefaClickUp={(acomp, atualizar) => {
             const parecer = pareceres.atuais.find(p => p.chaveEdital === acomp.chaveEdital);
             const item = resultados.find(r => acompanhamento.obter(r) === acomp);
@@ -1028,18 +1016,11 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
 
           <div>
             <label style={rotulo} htmlFor="lic-uf">UF</label>
-            <select
-              id="lic-uf"
-              style={campo}
-              value={form.uf}
-              onChange={evento => alterar('uf', evento.target.value)}
+            <SeletorUfs
+              valor={form.uf}
               disabled={busca.buscando}
-            >
-              <option value="">Brasil inteiro</option>
-              {UFS_BRASIL.map(uf => (
-                <option key={uf} value={uf}>{uf}</option>
-              ))}
-            </select>
+              onChange={novo => alterar('uf', novo)}
+            />
           </div>
 
           <div>

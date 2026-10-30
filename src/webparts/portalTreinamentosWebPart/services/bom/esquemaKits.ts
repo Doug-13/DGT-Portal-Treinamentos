@@ -44,7 +44,11 @@ export const COL_KIT = {
   aceitaOcr: 'dgt_aceitaocr',
   sinalizacao: 'dgt_sinalizacao',
   descricao: 'dgt_descricao',
-  ativo: 'dgt_ativo'
+  ativo: 'dgt_ativo',
+  // Kits configurados (criados na aba Kits): modelo de cálculo e ordem
+  // de exibição na Seleção de kit.
+  modelo: 'dgt_modelo',
+  ordem: 'dgt_ordem'
 };
 
 export const COL_COMPOSICAO = {

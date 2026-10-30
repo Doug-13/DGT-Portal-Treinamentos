@@ -6,6 +6,23 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: módulo de HH para cadastro, consulta e utilização de horas na composição de soluções e B.O.M.
+- Novo: etapa de HH no fluxo de Arquitetura de Soluções, permitindo complementar o B.O.M. com esforço estimado.
+- Novo: cadastro e gestão de fabricantes e terceiros no módulo de RH.
+- Novo: estrutura de dados no Dataverse para fabricantes, terceiros e informações de HH.
+- Novo: opção para remover fluxos de processos, com validações para evitar exclusões indevidas.
+- Melhoria: módulo de Kits ampliado com ajustes no catálogo de itens, composição de kits, visão geral e integração com a montagem do B.O.M.
+- Melhoria: seleção de kits na Arquitetura de Soluções aprimorada para utilizar a estrutura atualizada de itens e composição.
+- Melhoria: acompanhamento de licitações aprimorado, incluindo ajustes nos pareceres, análise por IA e informações da oportunidade.
+- Melhoria: integração das licitações com pastas e documentos no SharePoint.
+- Melhoria: pré-visualização de editais e relatório de licitações atualizados para apresentar as informações de forma mais completa.
+- Melhoria: serviços de consulta ao PNCP e acompanhamento de licitações revisados para melhorar o tratamento dos dados retornados.
+- Melhoria: gestão de certificados e informações de RH atualizada para suportar os novos cadastros relacionados a fabricantes e terceiros.
+- Melhoria: permissões e rotas do Portal DGT atualizadas para contemplar os novos módulos e funcionalidades.
+- Novo: menu ⋮ nos cartões de Fluxos (Administrador) com "Remover fluxo": com documentos vinculados, oferece a transferência para outro fluxo; sem documentos, remove o fluxo e todos os dados ligados a ele (versões, metadados, pendências, histórico do fluxo e exceções); se revisões já passaram pelo fluxo, ele é arquivado para preservar o histórico.
+
+## [1.4.15] - 2026-10-28
+
 - Novo: metadado do tipo Usuário nos processos — o campo busca os usuários ativos da plataforma por nome ou e-mail e grava nome e e-mail junto, para o histórico continuar legível.
 - Novo: responsável de etapa "Usuário de um metadado" — a etapa vai para a pessoa escolhida num campo do tipo Usuário (ex.: "Responsável pelo processo"); se o campo estiver vazio, vai para o autor da revisão.
 - Novo: metadados "Documento referenciado" (um) e "Documentos referenciados (vários)", com filtro por área e por processo, busca por código ou título e link para abrir o documento.
@@ -22,7 +39,6 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Novo: Arquitetura de Soluções — cadastro de Kits (B.O.M.). Requer scripts/dataverse/criar-tabelas-kits.ps1.
 
 ## [1.4.14] - 2026-10-26
-
 
 - Novo: "⟳ Atualizar todos os módulos por JSON" na etapa de edição dos módulos — um JSON com todos os módulos atualiza cada módulo existente correspondente (sugestão pelo título e, depois, pela posição, ajustável na prévia em "Atualiza") e cria os que não têm correspondência; módulos fora do JSON ficam como estão.
 

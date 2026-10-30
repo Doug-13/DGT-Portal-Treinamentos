@@ -306,9 +306,10 @@ export const useAcompanhamentoLicitacoes = (
         publicacao: acomp.criadoEm
       });
       await servico.salvarPasta(acomp.id, pasta.url);
+      const relativo = pasta.caminho.split('/Shared Documents/')[1] || pasta.caminho;
       setMensagem(pasta.criada
-        ? `Pasta criada no SharePoint: ${pasta.caminho.split('/Shared Documents/')[1] || pasta.caminho}`
-        : 'A pasta do edital já existia no SharePoint e foi vinculada.');
+        ? `Pasta criada no SharePoint: ${relativo}${pasta.clienteExistia ? ' (cliente já existia: pasta própria do edital)' : ''}`
+        : `A pasta do edital já existia no SharePoint e foi vinculada: ${relativo}`);
       recarregar();
       return pasta.url;
     } catch (falha) {

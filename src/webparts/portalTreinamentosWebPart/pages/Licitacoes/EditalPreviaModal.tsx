@@ -30,7 +30,8 @@ import {
 } from './AnaliseIaLicitacao';
 
 import {
-  IEstadoAnaliseIa
+  IEstadoAnaliseIa,
+  aderenciaDoEdital
 } from '../../models/LicitacaoIa';
 
 import {
@@ -696,9 +697,11 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
         <div style={{ minWidth: 0 }}>
           {/* Aderência */}
           <div style={secao}>
-            <h3 style={tituloSecao}>Aderência à busca — {item.score}%</h3>
+            <h3 style={tituloSecao}>
+              Aderência{aderenciaDoEdital(item.score, estadoIa).daIa ? ' (IA)' : ' à busca'} — {aderenciaDoEdital(item.score, estadoIa).valor}%
+            </h3>
             <div style={{ height: 6, borderRadius: 3, background: COR.neutro, overflow: 'hidden', marginBottom: 10 }}>
-              <div style={{ width: `${item.score}%`, height: '100%', background: item.score >= 50 ? COR.ciano : COR.indigo }} />
+              <div style={{ width: `${aderenciaDoEdital(item.score, estadoIa).valor}%`, height: '100%', background: aderenciaDoEdital(item.score, estadoIa).valor >= 50 ? COR.ciano : COR.indigo }} />
             </div>
             {item.motivos.map(motivo => (
               <span key={motivo} style={etiqueta}>{motivo}</span>
@@ -1124,10 +1127,10 @@ const EditalPreviaModal: React.FC<IEditalPreviaModalProps> = ({
               destaque={COR.cinzaClaro}
             />
             <Indicador
-              titulo="Aderência"
-              valor={`${item.score}%`}
-              detalhe={`${item.motivos.length} critério(s) atendido(s)`}
-              destaque={item.score >= 50 ? COR.ciano : COR.indigo}
+              titulo={aderenciaDoEdital(item.score, estadoIa).daIa ? 'Aderência (IA)' : 'Aderência'}
+              valor={`${aderenciaDoEdital(item.score, estadoIa).valor}%`}
+              detalhe={`${item.motivos.length} critério(s) da busca atendido(s)`}
+              destaque={aderenciaDoEdital(item.score, estadoIa).valor >= 50 ? COR.ciano : COR.indigo}
             />
             {onRegistrarParecer && (
               <Indicador

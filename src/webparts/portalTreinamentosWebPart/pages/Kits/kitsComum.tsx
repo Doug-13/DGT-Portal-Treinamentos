@@ -24,7 +24,36 @@ export const COR = {
   texto2: '#5B6275'
 };
 
-export const FONTE = "Barlow, Arial, sans-serif";
+// Barlow quando estiver instalada; no SharePoint quase sempre cai na
+// Segoe UI (a mesma do portal), mais legível em tela que a Arial.
+export const FONTE = "Barlow, 'Segoe UI', Arial, sans-serif";
+
+// O portal (PortalTreinamentos.module.scss) força em toda tabela
+// ".content th/td { font-size: 10px }" e um fundo claro no cabeçalho.
+// Nas telas de Kits o tamanho e as cores vêm SEMPRE inline daqui.
+export const celulaCabecalho: React.CSSProperties = {
+  padding: '11px 14px',
+  textAlign: 'left',
+  background: COR.azul,
+  color: COR.branco,
+  fontWeight: 600,
+  fontSize: '12.5px',
+  letterSpacing: '.04em',
+  textTransform: 'uppercase',
+  whiteSpace: 'nowrap',
+  borderBottom: `3px solid ${COR.ciano}`,
+  fontFamily: FONTE
+};
+
+export const celula: React.CSSProperties = {
+  padding: '11px 14px',
+  fontSize: '14px',
+  lineHeight: 1.4,
+  color: COR.azul,
+  borderBottom: `1px solid ${COR.cinzaClaro}`,
+  verticalAlign: 'middle',
+  fontFamily: FONTE
+};
 
 export const painel: React.CSSProperties = {
   background: COR.branco,
@@ -104,7 +133,7 @@ export const Selo: React.FC<{ tom: TomSelo; children: React.ReactNode; titulo?: 
       borderRadius: '999px',
       background: TONS[tom].fundo,
       color: TONS[tom].cor,
-      fontSize: '12px',
+      fontSize: '12.5px',
       fontWeight: 600,
       whiteSpace: 'nowrap'
     }}
@@ -138,7 +167,7 @@ export const Numero: React.FC<{
   rotuloAcessivel?: string;
 }> = ({ valor, aoMudar, minimo = 0, maximo = 9999, passo = 1, desabilitado, rotuloAcessivel }) => {
   const limitar = (n: number): number => Math.min(maximo, Math.max(minimo, Math.round(n * 100) / 100));
-  const botaoPasso: React.CSSProperties = { width: '32px', border: 0, background: COR.azulClaro, color: COR.azul, fontSize: '16px', fontWeight: 700, cursor: desabilitado ? 'not-allowed' : 'pointer', fontFamily: FONTE };
+  const botaoPasso: React.CSSProperties = { width: '32px', padding: 0, borderRadius: 0, border: 0, background: COR.azulClaro, color: COR.azul, fontSize: '16px', fontWeight: 700, cursor: desabilitado ? 'not-allowed' : 'pointer', fontFamily: FONTE };
   return (
     <div style={{ display: 'inline-flex', height: '34px', border: `1px solid ${COR.cinzaClaro}`, borderRadius: '6px', overflow: 'hidden', opacity: desabilitado ? 0.5 : 1 }}>
       <button type="button" aria-label="Diminuir" style={botaoPasso} disabled={desabilitado || valor <= minimo} onClick={() => aoMudar(limitar(valor - passo))}>−</button>

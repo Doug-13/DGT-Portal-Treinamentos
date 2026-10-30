@@ -259,6 +259,12 @@ import MeuPerfilPage from
 import ArquiteturaPage from
   '../pages/Arquitetura/ArquiteturaPage';
 
+import KitsPage from
+  '../pages/Kits/KitsPage';
+
+import HHPage from
+  '../pages/HH/HHPage';
+
 import RegistrosOportunidadePage from
   '../pages/Arquitetura/RegistrosOportunidadePage';
 
@@ -749,9 +755,7 @@ export interface IPortalRouterProps {
   salvarNovoTreinamento:
   (
     dados:
-      INovoTreinamento,
-    documentosReferencia?:
-      string[]
+      INovoTreinamento
   ) => Promise<void>;
 
   fluxoCriacaoTreinamentoId:
@@ -890,16 +894,6 @@ export interface IPortalRouterProps {
 
   concluirModuloExecucao:
   () => Promise<void>;
-
-  // Próximo módulo (pela ordem) do treinamento aberto.
-  proximoModuloExecucaoTitulo?:
-  string;
-
-  concluirModuloEIrParaProximo?:
-  () => Promise<void>;
-
-  irParaProximoModulo?:
-  () => void;
 
   // ============================================================
   // DOCUMENTOS
@@ -1081,15 +1075,6 @@ export interface IPortalRouterProps {
         string,
         string[]
       >
-  ) => void;
-
-  // Resultado da avaliação: "Sair" e "Próximo treinamento".
-  sairDaAvaliacao?:
-  () => void;
-
-  irParaProximoTreinamento?:
-  (
-    nomeTreinamento: string
   ) => void;
 
   modulosAdministrativos:
@@ -1477,44 +1462,6 @@ const PortalRouter:
                 'gestao'
               )
             }
-
-            // Minhas pendências: etapas de fluxo (treinamentos e
-            // documentos) aguardando o usuário.
-            dataverseService={
-              props.dataverseService
-            }
-
-            contexto={
-              props.contextoAcesso
-            }
-
-            usuariosAreas={
-              props.usuariosAreasAdministrativos
-            }
-
-            documentos={
-              props.documentos
-            }
-
-            documentosControle={
-              props.documentosControle
-            }
-
-            onAbrirDocumento={
-              props.abrirDocumento
-            }
-
-            onAbrirGestaoPendencias={
-              podeAcessarRota(
-                'gestao',
-                props.contextoAcesso
-              )
-                ? () =>
-                  props.navegar(
-                    'gestao'
-                  )
-                : undefined
-            }
           />
         );
 
@@ -1771,18 +1718,6 @@ const PortalRouter:
             onConcluir={
               props.concluirModuloExecucao
             }
-
-            proximoModuloTitulo={
-              props.proximoModuloExecucaoTitulo
-            }
-
-            onConcluirEProximo={
-              props.concluirModuloEIrParaProximo
-            }
-
-            onProximoModulo={
-              props.irParaProximoModulo
-            }
           />
         );
       // ========================================================
@@ -2029,11 +1964,6 @@ const PortalRouter:
               solicitarAberturaProcesso(processoId);
               props.navegar('fluxos');
             }}
-
-            // Links dos documentos referenciados.
-            onAbrirDocumento={
-              props.abrirDocumentoPorId
-            }
 
             onVoltar={() =>
               props.navegar(
@@ -2572,20 +2502,6 @@ const PortalRouter:
             onEtapaClick={
               props.navegarEtapaFluxoTreinamento
             }
-
-            // Documentos de referência do treinamento.
-            dataverseService={
-              props.dataverseService
-            }
-
-            onAbrirDocumento={
-              props.abrirDocumentoPorId
-                ? (documentoId: string) => {
-                  (props.abrirDocumentoPorId as (id: string) => Promise<boolean>)(documentoId)
-                    .catch(falha => console.error(falha));
-                }
-                : undefined
-            }
           />
         );
 
@@ -2744,14 +2660,6 @@ const PortalRouter:
 
             onEnviar={
               props.enviarAvaliacao
-            }
-
-            onSair={
-              props.sairDaAvaliacao
-            }
-
-            onProximo={
-              props.irParaProximoTreinamento
             }
           />
         );
@@ -3482,6 +3390,32 @@ const PortalRouter:
             contexto={props.contextoAcesso}
             spHttpClient={props.spHttpClient}
             siteUrl={props.siteUrl}
+          />
+        );
+
+      // ========================================================
+      // KITS (catálogo do montador de B.O.M.)
+      // ========================================================
+
+      case 'kits':
+
+        return (
+          <KitsPage
+            dataverseService={props.dataverseService}
+            contexto={props.contextoAcesso}
+          />
+        );
+
+      // ========================================================
+      // CÁLCULO DE HH
+      // ========================================================
+
+      case 'calculoHH':
+
+        return (
+          <HHPage
+            dataverseService={props.dataverseService}
+            contexto={props.contextoAcesso}
           />
         );
 

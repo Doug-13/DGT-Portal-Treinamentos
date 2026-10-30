@@ -36,6 +36,8 @@ import {
 
 import TransferirDocumentosModal from './TransferirDocumentosModal';
 
+import RemoverFluxoModal from './RemoverFluxoModal';
+
 import AtualizarDocumentosFluxoModal from './AtualizarDocumentosFluxoModal';
 
 import {
@@ -310,6 +312,33 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
     transferirAberto,
     setTransferirAberto
   ] = React.useState(false);
+
+  // Menu ⋮ dos cartões e remoção de fluxo (somente Administrador).
+  const podeRemover =
+    ehAdministrador(contexto) && !!dataverseService && !dados.local;
+
+  const [menuCartaoId, setMenuCartaoId] =
+    React.useState('');
+
+  const [removerProcesso, setRemoverProcesso] =
+    React.useState<IProcesso | undefined>(undefined);
+
+  // Transferência aberta a partir da remoção (cartão).
+  const [transferirDoCartao, setTransferirDoCartao] =
+    React.useState<IProcesso | undefined>(undefined);
+
+  // Fecha o menu ⋮ ao clicar fora.
+  React.useEffect(
+    () => {
+      if (!menuCartaoId) {
+        return undefined;
+      }
+      const fechar = (): void => setMenuCartaoId('');
+      document.addEventListener('click', fechar);
+      return () => document.removeEventListener('click', fechar);
+    },
+    [menuCartaoId]
+  );
 
   // Atualizar as revisões em andamento para a versão publicada
   // (abre sozinho depois de publicar; também pelo botão).
@@ -788,6 +817,50 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
 
       {avisoTeste}
 
+      {/* REMOVER FLUXO (menu ⋮ dos cartões) */}
+      {
+        removerProcesso && dataverseService && (
+          <RemoverFluxoModal
+            dataverseService={dataverseService}
+            processo={removerProcesso}
+            onTransferir={() => {
+              setTransferirDoCartao(removerProcesso);
+              setRemoverProcesso(undefined);
+            }}
+            onFechar={alterou => {
+              setRemoverProcesso(undefined);
+              if (alterou) {
+                dados.recarregar(true).catch(tratarErro);
+              }
+            }}
+          />
+        )
+      }
+
+      {/* Transferência pedida pela remoção: ao terminar, volta para a remoção. */}
+      {
+        transferirDoCartao && dataverseService && (
+          <TransferirDocumentosModal
+            dataverseService={dataverseService}
+            origem={transferirDoCartao}
+            processos={dados.processos}
+            fluxosPorProcesso={dados.fluxosPorProcesso}
+            vinculos={dados.vinculos}
+            documentos={documentos}
+            usuario={{ id: contexto ? contexto.usuarioId : '', nome: contexto ? contexto.nome : '' }}
+            onFechar={alterou => {
+              const origem = transferirDoCartao;
+              setTransferirDoCartao(undefined);
+              if (alterou) {
+                dados.recarregar(true)
+                  .then(() => setRemoverProcesso(origem))
+                  .catch(tratarErro);
+              }
+            }}
+          />
+        )
+      }
+
       <section style={{ ...estiloCartao, padding: '14px 20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ flexGrow: 1, minWidth: '240px', maxWidth: '480px' }}>
           <label htmlFor="filtro-processos" style={estiloRotulo}>Buscar processo</label>
@@ -979,9 +1052,12 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                     const resumo =
                       resumoFluxo(dados.fluxosPorProcesso[processo.id]);
 
+                    const comMenu =
+                      podeRemover && processo.origem !== 'teste';
+
                     return (
+                      <div key={processo.id} style={{ position: 'relative', display: 'flex' }}>
                       <button
-                        key={processo.id}
                         type="button"
                         onClick={() => {
                           setProcessoId(processo.id);
@@ -989,8 +1065,9 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                         }}
                         style={{
                           ...estiloCartao,
+                          flex: 1,
                           textAlign: 'left',
-                          padding: '16px 18px',
+                          padding: comMenu ? '16px 40px 16px 18px' : '16px 18px',
                           cursor: 'pointer',
                           fontFamily: 'inherit',
                           color: COR_AZUL,
@@ -1017,6 +1094,86 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                           {processo.origem === 'teste' && selo('Teste (local)', false)}
                         </span>
                       </button>
+
+                      {/* MENU ⋮ (somente Administrador) */}
+                      {
+                        comMenu && (
+                          <div style={{ position: 'absolute', top: '8px', right: '8px' }}>
+                            <button
+                              type="button"
+                              aria-label={`Ações do fluxo ${processo.codigo || processo.nome}`}
+                              aria-haspopup="menu"
+                              aria-expanded={menuCartaoId === processo.id}
+                              title="Ações"
+                              onClick={evento => {
+                                evento.stopPropagation();
+                                setMenuCartaoId(menuCartaoId === processo.id ? '' : processo.id);
+                              }}
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                border: 0,
+                                borderRadius: '6px',
+                                background: menuCartaoId === processo.id ? '#EDF0F5' : 'transparent',
+                                color: COR_AZUL,
+                                fontSize: '18px',
+                                fontWeight: 800,
+                                lineHeight: '28px',
+                                cursor: 'pointer',
+                                fontFamily: 'inherit'
+                              }}
+                            >
+                              ⋮
+                            </button>
+
+                            {
+                              menuCartaoId === processo.id && (
+                                <div
+                                  role="menu"
+                                  onClick={evento => evento.stopPropagation()}
+                                  style={{
+                                    position: 'absolute',
+                                    top: '32px',
+                                    right: 0,
+                                    zIndex: 20,
+                                    minWidth: '190px',
+                                    padding: '4px',
+                                    background: '#FFFFFF',
+                                    border: `1px solid ${COR_BORDA}`,
+                                    borderRadius: '8px',
+                                    boxShadow: '0 8px 24px rgba(32, 42, 68, .14)'
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setMenuCartaoId('');
+                                      setProcessoId(processo.id);
+                                      setAba('fluxo');
+                                    }}
+                                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 0, background: 'transparent', borderRadius: '6px', cursor: 'pointer', fontFamily: 'inherit', fontSize: '13px', color: COR_AZUL }}
+                                  >
+                                    Abrir fluxo
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setMenuCartaoId('');
+                                      setRemoverProcesso(processo);
+                                    }}
+                                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 0, background: 'transparent', borderRadius: '6px', cursor: 'pointer', fontFamily: 'inherit', fontSize: '13px', fontWeight: 700, color: '#B42318' }}
+                                  >
+                                    🗑 Remover fluxo
+                                  </button>
+                                </div>
+                              )
+                            }
+                          </div>
+                        )
+                      }
+                      </div>
                     );
                   }
                 )

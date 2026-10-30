@@ -34,10 +34,6 @@ export interface IAcompanhamentoPainelProps {
   // Cria a tarefa no ClickUp (ou, com atualizar = true, regrava os
   // campos personalizados da tarefa que já existe).
   onCriarTarefaClickUp?: (acompanhamento: IAcompanhamento, atualizar?: boolean) => void;
-  // Baixa os documentos do PNCP para a pasta (só quando o edital está
-  // na busca atual; sem ele, o botão não aparece).
-  onBaixarDocumentos?: (acompanhamento: IAcompanhamento) => void;
-  podeBaixarDocumentos?: (acompanhamento: IAcompanhamento) => boolean;
 }
 
 type Filtro = 'todos' | 'novidades';
@@ -146,9 +142,7 @@ const ItemLinhaTempo: React.FC<{ alteracao: IAlteracaoLicitacao }> = ({ alteraca
 const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
   acompanhamento,
   ehAdministrador,
-  onCriarTarefaClickUp,
-  onBaixarDocumentos,
-  podeBaixarDocumentos
+  onCriarTarefaClickUp
 }) => {
 
   const [selecionadoId, setSelecionadoId] = React.useState<string>('');
@@ -340,19 +334,6 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
                           </a>
                         )
                         : null}
-                      {selecionado.pastaUrl && onBaixarDocumentos && (
-                        <button
-                          type="button"
-                          style={{ ...botao(false, acompanhamento.processandoChave !== '' || !(podeBaixarDocumentos && podeBaixarDocumentos(selecionado))), background: 'transparent', color: '#ffffff', borderColor: 'rgba(255,255,255,.5)' }}
-                          disabled={acompanhamento.processandoChave !== '' || !(podeBaixarDocumentos && podeBaixarDocumentos(selecionado))}
-                          onClick={() => onBaixarDocumentos(selecionado)}
-                          title={podeBaixarDocumentos && podeBaixarDocumentos(selecionado)
-                            ? 'Baixa do PNCP os documentos do edital para a pasta (não sobrescreve os que já estão lá)'
-                            : 'Aguarde a busca em andamento terminar'}
-                        >
-                          ⬇ Baixar documentos para a pasta
-                        </button>
-                      )}
                       {!selecionado.pastaUrl
                         && (
                           <button

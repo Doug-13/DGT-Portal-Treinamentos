@@ -444,13 +444,19 @@ export const buscarLicitacoes = async (
       progresso.pagina = 0;
       progresso.totalPaginasModalidade = undefined;
 
+      // Uma consulta por UF (o PNCP aceita uma UF por vez).
+      const listaUfs: Array<string | undefined> =
+        filtros.ufs && filtros.ufs.length > 0 ? filtros.ufs : [filtros.uf];
+
+      for (const ufAtual of listaUfs) {
+
       let pagina = 1;
 
       // eslint-disable-next-line no-constant-condition
       while (true) {
 
         progresso.pagina = pagina;
-        emitir(`Consultando ${nomeModalidade} — página ${pagina}...`);
+        emitir(`Consultando ${nomeModalidade}${ufAtual && listaUfs.length > 1 ? ` (${ufAtual})` : ''} — página ${pagina}...`);
 
         const resultado = await consultarPagina(
           {
@@ -458,7 +464,7 @@ export const buscarLicitacoes = async (
             dataFinal,
             modalidade,
             pagina,
-            uf: filtros.uf
+            uf: ufAtual
           },
           signal,
           mensagem => emitir(mensagem)
@@ -528,6 +534,12 @@ export const buscarLicitacoes = async (
 
         pagina++;
         await esperar(CONFIG_PNCP.intervaloEntreRequisicoesMs, signal);
+      }
+
+      // Pausa entre UFs (limite do PNCP).
+      if (listaUfs.length > 1 && ufAtual !== listaUfs[listaUfs.length - 1]) {
+        await esperar(CONFIG_PNCP.intervaloEntreRequisicoesMs, signal);
+      }
       }
 
       if (i < filtros.modalidades.length - 1) {

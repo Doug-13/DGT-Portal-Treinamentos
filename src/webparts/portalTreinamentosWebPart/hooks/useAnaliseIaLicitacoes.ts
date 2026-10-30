@@ -38,8 +38,8 @@ import {
 // LICITAÇÕES — ESTADO DAS ANÁLISES DE IA
 //
 // Ao chegar um resultado da busca:
-//   • já tem parecer (Participar / Não participar) → NÃO analisa;
-//     a tela mostra a marcação do parecer;
+//   • já tem parecer (Participar / Não participar) → analisa por
+//     último (só para a aderência); a tela mostra o parecer;
 //   • tem análise guardada (cache)                  → mostra;
 //   • senão, e com "análise automática" ligada     → entra na fila
 //     (uma por vez, para não sobrecarregar a API).
@@ -203,10 +203,12 @@ export const useAnaliseIaLicitacoes = (
       return;
     }
 
-    resultados.forEach(item => {
-      if (obterParecer(item)) {
-        return; // já decidido: não gasta análise
-      }
+    // Primeiro os editais SEM parecer; depois os já decididos (a
+    // aderência mostrada no portal e no ClickUp é a da IA). Cada edital
+    // é analisado uma vez só (fica guardado).
+    const semParecer = resultados.filter(item => !obterParecer(item));
+    const comParecer = resultados.filter(item => !!obterParecer(item));
+    semParecer.concat(comParecer).forEach(item => {
       const chave = gerarChaveEdital(item);
       const estado = estadosRef.current[chave];
       if (!estado) {

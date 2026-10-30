@@ -7,6 +7,8 @@ import {
   IComponenteKit,
   ITENS,
   KITS,
+  MODELOS_KIT,
+  ModeloKit,
   REGRAS_QUANTIDADE,
   RegraQuantidade,
   catalogoPadrao
@@ -68,7 +70,7 @@ const comChave = (linhas: IComponenteKit[]): ILinha[] =>
 const semChave = (linhas: ILinha[]): IComponenteKit[] =>
   linhas.map(l => ({ id: l.id, chaveItem: l.chaveItem, quantidade: l.quantidade, regra: l.regra, condicao: l.condicao, observacao: l.observacao }));
 
-const ehBridgefy = (kit: ChaveKit): boolean => kit === 'torre' || kit === 'box' || kit === 'mini';
+const ehBridgefy = (modelo: string): boolean => modelo === 'torre' || modelo === 'box' || modelo === 'mini';
 
 const frasesRegra: Record<RegraQuantidade, string> = {
   fixa: 'por ponto',
@@ -101,7 +103,7 @@ export const resumoDiferencas = (antes: IComponenteKit[], depois: IComponenteKit
 };
 
 const mesmosParametros = (a: IKitParametros, b: IKitParametros): boolean =>
-  a.nome === b.nome && a.codigoCigam === b.codigoCigam && a.maxCameras === b.maxCameras &&
+  a.ativo === b.ativo && a.nome === b.nome && a.codigoCigam === b.codigoCigam && a.maxCameras === b.maxCameras &&
   a.aceitaOcr === b.aceitaOcr && a.sinalizacao === b.sinalizacao && a.descricao === b.descricao;
 
 // ------------------------------------------------------------
@@ -116,9 +118,9 @@ interface IPrevia {
   usaWAccess: boolean;
 }
 
-const selecaoDaPrevia = (kit: ChaveKit, previa: IPrevia): ISelecaoKit => {
+const selecaoDaPrevia = (kit: ChaveKit, modelo: ModeloKit, previa: IPrevia): ISelecaoKit => {
   const ponto = {
-    ...novoPonto(kit as TipoPonto, 1),
+    ...novoPonto(modelo as TipoPonto, 1, kit),
     id: 'previa',
     nome: 'Prévia',
     camerasVideo: previa.camerasVideo,
@@ -169,9 +171,120 @@ export interface IComposicaoKitViewProps {
   }) => Promise<void>;
   // Avisa a página que há alterações não salvas (para confirmar ao sair).
   aoMudarPendencia?: (pendente: boolean) => void;
+  // Novo kit configurado (cópia de um kit do mesmo modelo).
+  aoCriarKit?: (kit: IKitParametros, composicao: IComponenteKit[], motivo: string) => Promise<void>;
 }
 
-const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEditar, kitInicial, aoSalvar, aoMudarPendencia }) => {
+// ------------------------------------------------------------
+// Novo kit configurado
+// ------------------------------------------------------------
+
+const gerarChaveKit = (nome: string, existentes: string[]): string => {
+  const base = 'k_' + (nome
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+    .substring(0, 40) || 'kit');
+  let chave = base;
+  let n = 2;
+  while (existentes.indexOf(chave) >= 0) {
+    chave = `${base}_${n++}`;
+  }
+  return chave;
+};
+
+const nomeModelo = (modelo: string): string =>
+  (KITS.filter(k => k.sistema && k.chave === modelo)[0] || { nome: modelo }).nome;
+
+const NovoKitModal: React.FC<{
+  catalogo: ICatalogoKitsCarregado;
+  aoFechar: () => void;
+  aoCriar: (kit: IKitParametros, composicao: IComponenteKit[], motivo: string) => Promise<void>;
+}> = ({ catalogo, aoFechar, aoCriar }) => {
+
+  const modelos: string[] = MODELOS_KIT.filter(m => m !== 'catraca');
+  const [nome, setNome] = React.useState('');
+  const [origem, setOrigem] = React.useState<string>('torre');
+  const [codigo, setCodigo] = React.useState('');
+  const [motivo, setMotivo] = React.useState('');
+  const [salvando, setSalvando] = React.useState(false);
+  const [erro, setErro] = React.useState('');
+
+  const kitOrigem = catalogo.kits.filter(k => k.chave === origem)[0];
+  const opcoesOrigem = catalogo.kits.filter(k => k.modelo !== 'catraca' && modelos.length > 0);
+
+  const criar = async (): Promise<void> => {
+    if (!nome.trim()) {
+      setErro('Dê um nome ao kit: é o que aparece na Seleção de kit.');
+      return;
+    }
+    if (catalogo.kits.some(k => k.nome.trim().toLowerCase() === nome.trim().toLowerCase())) {
+      setErro('Já existe um kit com esse nome.');
+      return;
+    }
+    if (!motivo.trim()) {
+      setErro('Informe o motivo: ele vai para o histórico.');
+      return;
+    }
+    if (!kitOrigem) {
+      return;
+    }
+    setSalvando(true);
+    setErro('');
+    try {
+      await aoCriar({
+        ...kitOrigem,
+        id: undefined,
+        chave: gerarChaveKit(nome, catalogo.kits.map(k => k.chave)),
+        sistema: false,
+        ativo: true,
+        ordem: kitOrigem.ordem + 1,
+        nome: nome.trim(),
+        codigoCigam: codigo.trim(),
+        descricao: `Configurado a partir de ${kitOrigem.nome}.`
+      }, catalogo.composicoes[kitOrigem.chave] || catalogo.composicoes[kitOrigem.modelo] || [], motivo.trim());
+      aoFechar();
+    } catch (e) {
+      setErro(String((e as Error)?.message || e));
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Modal
+      titulo="Novo kit"
+      subtitulo="O kit novo começa como cópia de um kit existente. Depois é só ajustar os itens e os parâmetros."
+      aoFechar={aoFechar}
+      rodape={(
+        <>
+          <button type="button" style={botao('secundario')} onClick={aoFechar}>Cancelar</button>
+          <button type="button" style={botao('principal', salvando)} disabled={salvando} onClick={() => { criar().catch(() => undefined); }}>{salvando ? 'Criando…' : 'Criar kit'}</button>
+        </>
+      )}
+    >
+      {erro && <Aviso tipo="alerta">{erro}</Aviso>}
+      <label style={rotulo} htmlFor="novo-kit-nome">Nome do kit</label>
+      <input id="novo-kit-nome" style={campo} value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex.: Torre Bridgefy 3 câmeras — municipal" />
+      <div style={ajuda}>É o nome que o arquiteto vê ao escolher o kit do ponto.</div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginTop: '14px' }}>
+        <div>
+          <label style={rotulo} htmlFor="novo-kit-origem">Copiar de</label>
+          <select id="novo-kit-origem" style={campo} value={origem} onChange={e => setOrigem(e.target.value)}>
+            {opcoesOrigem.map(k => <option key={k.chave} value={k.chave}>{k.nome}{k.sistema ? '' : ' (configurado)'}</option>)}
+          </select>
+          <div style={ajuda}>O kit novo herda os itens, os parâmetros e as regras de cálculo ({kitOrigem ? nomeModelo(kitOrigem.modelo) : ''}).</div>
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="novo-kit-codigo">Código do kit no CIGAM</label>
+          <input id="novo-kit-codigo" style={campo} value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="Opcional" />
+        </div>
+      </div>
+      <CampoMotivo valor={motivo} aoMudar={setMotivo} desabilitado={salvando} />
+    </Modal>
+  );
+};
+
+const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEditar, kitInicial, aoSalvar, aoMudarPendencia, aoCriarKit }) => {
 
   const [kit, setKit] = React.useState<ChaveKit>(kitInicial || 'torre');
   const gravada = React.useMemo(() => catalogo.composicoes[kit] || [], [catalogo, kit]);
@@ -201,8 +314,10 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
     setErro('');
   }, [gravada, parametrosGravados]);
 
+  const [novoKit, setNovoKit] = React.useState(false);
   const info = KITS.find(k => k.chave === kit) || KITS[0];
-  const bridgefy = ehBridgefy(kit);
+  const modelo = info.modelo;
+  const bridgefy = ehBridgefy(modelo);
   const editavel = podeEditar && info.editavel;
   const diferencas = resumoDiferencas(gravada, semChave(linhas));
   const parametrosMudaram = !!parametros && !!parametrosGravados && !mesmosParametros(parametros, parametrosGravados);
@@ -252,7 +367,7 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
     if (!window.confirm('Trocar o rascunho pela composição padrão do sistema? Nada é gravado até você salvar.')) {
       return;
     }
-    const padrao = catalogoPadrao().composicoes[kit] || [];
+    const padrao = catalogoPadrao().composicoes[modelo] || [];
     // Reaproveita os ids gravados das linhas equivalentes (mesmo item e condição).
     const usados: string[] = [];
     setLinhas(padrao.map(l => {
@@ -287,13 +402,13 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
   // ---------------- prévia ----------------
 
   const resultadoGravado = React.useMemo(
-    () => montarBom(selecaoDaPrevia(kit, previa)),
+    () => montarBom(selecaoDaPrevia(kit, modelo, previa)),
     // catalogo: depois de gravar, o montador já usa o catálogo novo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [kit, previa, catalogo]);
 
   const resultadoRascunho = React.useMemo(
-    () => montarBom(selecaoDaPrevia(kit, previa), { composicoes: { [kit]: semChave(linhas) } }),
+    () => montarBom(selecaoDaPrevia(kit, modelo, previa), { composicoes: { [kit]: semChave(linhas) } }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [kit, previa, linhas, catalogo]);
 
@@ -338,15 +453,15 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
   }, [catalogo]);
 
   const regrasDoKit = REGRAS_QUANTIDADE.filter(r => bridgefy || !r.soBridgefy);
-  const condicoesDoKit = CONDICOES.filter(c => c.kits.indexOf(kit) >= 0);
+  const condicoesDoKit = CONDICOES.filter(c => c.kits.indexOf(modelo) >= 0);
 
   // ---------------- renderização ----------------
 
   const seletorKits = (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 1fr))', gap: '10px', marginBottom: '16px' }} role="tablist" aria-label="Kits">
-      {KITS.map(k => {
+      {catalogo.kits.map(k => {
         const ativo = k.chave === kit;
-        const qtd = (catalogo.composicoes[k.chave] || []).length;
+        const qtd = (catalogo.composicoes[k.chave] || catalogo.composicoes[k.modelo] || []).length;
         return (
           <button
             key={k.chave}
@@ -356,6 +471,8 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
             onClick={() => trocarKit(k.chave)}
             style={{
               textAlign: 'left',
+              fontSize: '14px',
+              fontWeight: 400,
               padding: '12px 14px',
               borderRadius: '10px',
               border: `1px solid ${ativo ? COR.azul : COR.cinzaClaro}`,
@@ -363,24 +480,47 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
               color: ativo ? COR.branco : COR.azul,
               cursor: 'pointer',
               fontFamily: 'inherit',
-              boxShadow: ativo ? `inset 0 -3px 0 ${COR.ciano}` : 'none'
+              boxShadow: ativo ? `inset 0 -3px 0 ${COR.ciano}` : 'none',
+              opacity: k.ativo ? 1 : 0.55
             }}
           >
-            <IconeKit nome={k.chave as NomeIconeKit} tamanho={22} cor={ativo ? COR.ciano : COR.azul} />
+            <IconeKit nome={k.modelo as NomeIconeKit} tamanho={22} cor={ativo ? COR.ciano : COR.azul} />
             <div style={{ fontWeight: 700, fontSize: '14px', marginTop: '6px' }}>{k.nome}</div>
             <div style={{ fontSize: '12px', opacity: 0.75, marginTop: '2px' }}>
-              {k.editavel ? `${qtd} ${qtd === 1 ? 'item no kit-base' : 'itens no kit-base'}` : 'calculado por fórmula'}
+              {k.modelo === 'catraca' ? 'calculado por fórmula' : `${qtd} ${qtd === 1 ? 'item no kit-base' : 'itens no kit-base'}`}
+              {!k.sistema && (k.ativo ? ' · configurado' : ' · desativado')}
             </div>
           </button>
         );
       })}
+      {podeEditar && aoCriarKit && (
+        <button
+          type="button"
+          onClick={() => setNovoKit(true)}
+          style={{ textAlign: 'left', fontSize: '14px', fontWeight: 600, padding: '12px 14px', borderRadius: '10px', border: `1px dashed ${COR.indigo}`, background: COR.indigoClaro, color: COR.indigo, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '8px' }}
+        >
+          <IconeKit nome="mais" tamanho={20} /> Novo kit
+        </button>
+      )}
     </div>
+  );
+
+  const modalNovoKit = novoKit && aoCriarKit && (
+    <NovoKitModal
+      catalogo={catalogo}
+      aoFechar={() => setNovoKit(false)}
+      aoCriar={async (k, comp, m) => {
+        await aoCriarKit(k, comp, m);
+        setKit(k.chave);
+      }}
+    />
   );
 
   if (!info.editavel) {
     return (
       <div>
         {seletorKits}
+        {modalNovoKit}
         <div style={painel}>
           <h3 style={{ margin: '0 0 8px', fontSize: '16px', color: COR.azul, textTransform: 'uppercase' }}>{info.nome}</h3>
           <p style={{ margin: '0 0 12px', color: COR.texto2, fontSize: '14px', lineHeight: 1.5, maxWidth: '75ch' }}>
@@ -405,7 +545,7 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
     ? [
       'Câmeras de vídeo e OCR/LPR, no modelo escolhido no ponto.',
       'Switch escolhido no ponto (o montador confere o orçamento PoE).',
-      kit === 'torre'
+      modelo === 'torre'
         ? 'Fontes 12 V: 1 por câmera sem PoE, mais 1 do giroled.'
         : 'Fontes 12 V: 1 por câmera quando o switch não é PoE.',
       'Licenças por câmera: Safe City, Face Detect; Safe Way por faixa monitorada.'
@@ -469,7 +609,9 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
         <div style={{ flex: 1, minWidth: '220px' }}>
           <h3 style={{ margin: 0, fontSize: '16px', color: COR.azul, textTransform: 'uppercase', letterSpacing: '.02em' }}>{parametros ? parametros.nome : info.nome}</h3>
-          <div style={{ ...ajuda, marginTop: '3px' }}>{info.resumo}</div>
+          <div style={{ ...ajuda, marginTop: '3px' }}>
+            {parametros && !parametros.sistema ? `${parametros.descricao} Regras de cálculo: ${nomeModelo(modelo)}.` : info.resumo}
+          </div>
         </div>
         {catalogo.composicaoGravada[kit] ? <Selo tom="ciano">✓ gravado no Dataverse</Selo> : <Selo tom="cinza">usando o padrão do sistema</Selo>}
       </div>
@@ -480,6 +622,12 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
             <label style={rotulo}>Código do kit no CIGAM</label>
             <input style={campo} value={parametros.codigoCigam} disabled={!editavel} onChange={e => setParametros({ ...parametros, codigoCigam: e.target.value })} />
           </div>
+          {!parametros.sistema && (
+            <div>
+              <label style={rotulo}>Nome do kit</label>
+              <input style={campo} value={parametros.nome} disabled={!editavel} onChange={e => setParametros({ ...parametros, nome: e.target.value })} />
+            </div>
+          )}
           {bridgefy && (
             <>
               <div>
@@ -494,6 +642,11 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
                 <Interruptor marcado={parametros.aceitaOcr} desabilitado={!editavel} texto="Aceita câmera OCR/LPR" aoMudar={v => setParametros({ ...parametros, aceitaOcr: v })} />
               </div>
             </>
+          )}
+          {!parametros.sistema && (
+            <div style={{ paddingBottom: '8px' }}>
+              <Interruptor marcado={parametros.ativo} desabilitado={!editavel} texto={parametros.ativo ? 'Disponível na Seleção de kit' : 'Desativado'} aoMudar={v => setParametros({ ...parametros, ativo: v })} />
+            </div>
           )}
         </div>
       )}
@@ -560,12 +713,12 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
                 <Numero valor={previa.camerasOcr} maximo={parametros.maxCameras} rotuloAcessivel="Câmeras OCR" aoMudar={n => setPrevia({ ...previa, camerasOcr: n })} />
               </div>
             )}
-            {kit === 'torre' && <Interruptor marcado={previa.bidirecional} texto="Comunicação bidirecional" aoMudar={v => setPrevia({ ...previa, bidirecional: v })} />}
+            {modelo === 'torre' && <Interruptor marcado={previa.bidirecional} texto="Comunicação bidirecional" aoMudar={v => setPrevia({ ...previa, bidirecional: v })} />}
           </>
         ) : (
           <>
             <Interruptor marcado={previa.usaWAccess} texto="Usa W-Access" aoMudar={v => setPrevia({ ...previa, usaWAccess: v })} />
-            {kit === 'portaDutotec' && <Interruptor marcado={previa.portaVidro} texto="Porta de vidro" aoMudar={v => setPrevia({ ...previa, portaVidro: v })} />}
+            {modelo === 'portaDutotec' && <Interruptor marcado={previa.portaVidro} texto="Porta de vidro" aoMudar={v => setPrevia({ ...previa, portaVidro: v })} />}
           </>
         )}
       </div>
@@ -599,6 +752,7 @@ const ComposicaoKitView: React.FC<IComposicaoKitViewProps> = ({ catalogo, podeEd
   return (
     <div>
       {seletorKits}
+      {modalNovoKit}
 
       {!podeEditar && <Aviso tipo="info">Modo consulta: você vê como cada kit é montado. Alterações ficam com o administrador do módulo Kits.</Aviso>}
 

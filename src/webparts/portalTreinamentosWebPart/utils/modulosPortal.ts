@@ -38,7 +38,8 @@ export type ChaveModuloPortal =
   | 'indicadores'
   | 'orcamento'
   | 'rh'
-  | 'kits';
+  | 'kits'
+  | 'hh';
 
 export interface IModuloPortal {
   chave: ChaveModuloPortal;
@@ -58,6 +59,7 @@ export const MODULOS_PORTAL: IModuloPortal[] = [
   { chave: 'indicadores', nome: 'Indicadores', descricao: 'Indicadores consolidados (Power BI). Dados sensíveis: Colaborador e Editor só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] },
   { chave: 'orcamento', nome: 'Planejamento orçamentário', descricao: 'Planilha de orçamento anual. Cada um vê só a sua; o Administrador vê todas. Padrão para Gestor; demais só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] },
   { chave: 'kits', nome: 'Kits (catálogo do B.O.M.)', descricao: 'Equipamentos homologados, composição dos kits e regras do montador de B.O.M. Liberar para Arquitetura (consulta). Alterar: Administrador do módulo.', padrao: false, padraoPerfis: ['Administrador'] },
+  { chave: 'hh', nome: 'Cálculo de HH', descricao: 'Homem-hora por área (Implantação, Suporte...) com as fórmulas das planilhas de HH. A versão vigente alimenta o B.O.M. Alterar: Administrador do módulo.', padrao: false, padraoPerfis: ['Administrador'] },
   { chave: 'rh', nome: 'RH e Pessoas', descricao: 'Certificados e validades de todos os colaboradores. Liberar só para o RH.', padrao: false, padraoPerfis: ['Administrador'] }
 ];
 
@@ -81,6 +83,10 @@ export const moduloDaPagina = (
 
   if (pagina === 'kits') {
     return 'kits';
+  }
+
+  if (pagina === 'calculoHH') {
+    return 'hh';
   }
 
   const modulo =

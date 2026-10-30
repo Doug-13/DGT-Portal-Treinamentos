@@ -7,10 +7,15 @@ import {
 //
 // Ao "Participar", cria (se ainda não existir) a estrutura:
 //
-//   Documentos › General › {Estado} › Público › Clientes ›
-//     {Cidade} › {Ano} › Edital
+//   CLIENTE NOVO (a pasta da cidade ainda não existe):
+//     General › {Estado} › Público › Clientes › {Cidade} › {Ano} › Edital
+//     ex.: General/Rio Grande do Sul/Público/Clientes/Mostardas/2026/Edital
 //
-//   ex.: General/Rio Grande do Sul/Público/Clientes/Mostardas/2026/Edital
+//   CLIENTE QUE JÁ EXISTE (a pasta da cidade já existe):
+//     … › {Cidade} › {Ano} › Edital {número}
+//     ex.: …/Clientes/Mostardas/2026/Edital PE 44-2026
+//   Assim os arquivos de cada edital ficam numa pasta própria e não se
+//   misturam com o que já estava na pasta do cliente.
 //
 // Pastas que já existem são reaproveitadas (nada é sobrescrito).
 // Usa a sessão do SharePoint de quem clicou: a pessoa precisa de
@@ -22,7 +27,17 @@ export const PASTA_EDITAIS = {
   // Caminho do servidor da biblioteca "Documentos" (Shared Documents)
   biblioteca: '/sites/DGT-Comercial2/Shared Documents',
   // {estado} {cidade} {ano} são substituídos; o resto é fixo.
-  modelo: ['General', '{estado}', 'Público', 'Clientes', '{cidade}', '{ano}', 'Edital']
+  modelo: ['General', '{estado}', 'Público', 'Clientes', '{cidade}', '{ano}'],
+  // Última pasta: cliente novo → "Edital"; cliente existente → "Edital {número}".
+  pastaEdital: 'Edital',
+  // Posição da pasta da cidade no modelo (para saber se o cliente já existe).
+  indiceCidade: 4
+};
+
+// "PE 44/2026" → "PE 44-2026" ("/" não é aceito em nome de pasta).
+export const nomePastaEditalNumerado = (numero: string): string => {
+  const limpo = (numero || '').replace(/[/\\]/g, '-').replace(/\s+/g, ' ').trim();
+  return limpo ? `${PASTA_EDITAIS.pastaEdital} ${limpo}` : `${PASTA_EDITAIS.pastaEdital} ${new Date().toISOString().substring(0, 10)}`;
 };
 
 const ESTADOS: { [uf: string]: string } = {
@@ -58,6 +73,9 @@ export interface IPastaEdital {
   caminho: string;   // caminho no servidor (/sites/.../Edital)
   url: string;       // link para abrir a pasta no navegador
   criada: boolean;   // false = já existia
+  // true = a pasta do cliente (cidade) já existia: os arquivos foram
+  // para "Edital {número}" dentro do ano.
+  clienteExistia?: boolean;
 }
 
 export const montarSegmentosPasta = (item: Pick<ILicitacaoResultado, 'local' | 'orgao' | 'numero' | 'publicacao'>): string[] => {
@@ -156,16 +174,32 @@ export class PastaSharePointLicitacaoService {
     const segmentos = montarSegmentosPasta(item);
     let caminho = PASTA_EDITAIS.biblioteca;
     let criada = false;
+    let clienteExistia = false;
 
-    for (const segmento of segmentos) {
-      caminho = `${caminho}/${segmento}`;
-      if (!(await this.existe(caminho))) {
+    for (let i = 0; i < segmentos.length; i++) {
+      caminho = `${caminho}/${segmentos[i]}`;
+      const existia = await this.existe(caminho);
+      if (i === PASTA_EDITAIS.indiceCidade) {
+        clienteExistia = existia;
+      }
+      if (!existia) {
         await this.criar(caminho);
         criada = true;
       }
     }
 
-    return { caminho, url: urlDaPasta(caminho), criada };
+    // Cliente que já existe: pasta própria com o número do edital.
+    const ultima = segmentoSeguro(
+      clienteExistia ? nomePastaEditalNumerado(item.numero || '') : PASTA_EDITAIS.pastaEdital
+    );
+
+    caminho = `${caminho}/${ultima}`;
+    if (!(await this.existe(caminho))) {
+      await this.criar(caminho);
+      criada = true;
+    }
+
+    return { caminho, url: urlDaPasta(caminho), criada, clienteExistia };
   }
 
   private async existe(caminho: string): Promise<boolean> {

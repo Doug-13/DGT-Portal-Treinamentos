@@ -105,6 +105,17 @@ export type SituacaoAnaliseIa =
   | 'pronta'
   | 'erro';
 
+// Aderência mostrada em TODO o portal (cartão, painel e ClickUp):
+// a compatibilidade da IA quando existe (mais precisa); senão, a
+// pontuação da busca.
+export const aderenciaDoEdital = (
+  scoreBusca: number,
+  estado?: { analise?: { compatibilidade: number } }
+): { valor: number; daIa: boolean } =>
+  estado && estado.analise && typeof estado.analise.compatibilidade === 'number'
+    ? { valor: estado.analise.compatibilidade, daIa: true }
+    : { valor: Math.max(0, scoreBusca), daIa: false };
+
 export interface IEstadoAnaliseIa {
   situacao: SituacaoAnaliseIa;
   analise?: IAnaliseIaLicitacao;
