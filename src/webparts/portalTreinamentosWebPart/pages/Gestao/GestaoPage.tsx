@@ -77,6 +77,9 @@ import AnaliseTreinamentoPanel from
 import RevisaoTreinamentoModal from
   './RevisaoTreinamentoModal';
 
+import AtribuidosTreinamentoModal from
+  './AtribuidosTreinamentoModal';
+
 // Descrição resumida com "Ver mais" / "Ver menos".
 const LIMITE_DESCRICAO = 160;
 
@@ -1462,6 +1465,18 @@ const GestaoPage:
         undefined
       );
 
+    // ---------------- Pessoas atribuídas ----------------
+
+    const [
+      atribuidosDe,
+      setAtribuidosDe
+    ] =
+      React.useState<
+        ITreinamentoAdmin | undefined
+      >(
+        undefined
+      );
+
     // ---------------- Histórico ----------------
 
     const [
@@ -2799,6 +2814,27 @@ const GestaoPage:
                                   ),
 
                                   ...(
+                                    props.dataverseService
+                                      ? [
+                                        {
+                                          rotulo:
+                                            'Pessoas atribuídas',
+
+                                          titulo:
+                                            props.onAtribuirTreinamento
+                                              ? 'Ver quem tem este treinamento atribuído e remover atribuições'
+                                              : 'Ver quem tem este treinamento atribuído',
+
+                                          onClick: () =>
+                                            setAtribuidosDe(
+                                              treinamento
+                                            )
+                                        }
+                                      ]
+                                      : []
+                                  ),
+
+                                  ...(
                                     props.onCarregarHistorico
                                       ? [
                                         {
@@ -3169,6 +3205,41 @@ const GestaoPage:
             );
           })()
         }
+
+        {props.dataverseService && atribuidosDe && (
+          <AtribuidosTreinamentoModal
+            treinamento={{
+              id:
+                atribuidosDe.id,
+              nome:
+                atribuidosDe.nome,
+              codigo:
+                atribuidosDe.codigo ||
+                '',
+              ativo:
+                atribuidosDe.ativo
+            }}
+            dataverseService={
+              props.dataverseService
+            }
+            // Mesmo critério do botão "Atribuir": só quem pode
+            // atribuir pode remover.
+            podeRemover={
+              !!props.onAtribuirTreinamento
+            }
+            responsavelId={
+              props.usuarioId
+            }
+            responsavelNome={
+              props.usuarioNome
+            }
+            onFechar={() =>
+              setAtribuidosDe(
+                undefined
+              )
+            }
+          />
+        )}
 
         <HistoricoTreinamentoModal
           aberto={

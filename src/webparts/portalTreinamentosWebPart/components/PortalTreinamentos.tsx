@@ -843,7 +843,10 @@ const gestaoAreas =
             // CATÁLOGO
             // ==================================================
 
-            const catalogo:
+            // Catálogo completo (inclusive treinamentos desativados):
+            // usado para identificar as atribuições e montar
+            // histórico/certificados com nome, código e carga corretos.
+            const catalogoCompleto:
               ITreinamento[] =
               dadosTreinamentos
                 .map(
@@ -984,7 +987,12 @@ const gestaoAreas =
                         imagemUrl
                     };
                   }
-                )
+                );
+
+            // Catálogo de treinamentos ativos (comportamento anterior).
+            const catalogo:
+              ITreinamento[] =
+              catalogoCompleto
                 .filter(
                   item =>
                     item.ativo
@@ -1089,7 +1097,7 @@ const gestaoAreas =
                     );
 
                   const item =
-                    catalogo.find(
+                    catalogoCompleto.find(
                       t =>
                         t.id
                           .replace(
@@ -1099,7 +1107,7 @@ const gestaoAreas =
                           .toLowerCase() ===
                         lookup
                     ) ||
-                    catalogo.find(
+                    catalogoCompleto.find(
                       t =>
                         t.nome
                           .trim()
@@ -1255,7 +1263,7 @@ const gestaoAreas =
                       .toLowerCase();
 
                   const item =
-                    catalogo.find(
+                    catalogoCompleto.find(
                       t =>
                         t.id
                           .replace(
@@ -1605,8 +1613,17 @@ const gestaoAreas =
               );
             }
 
+            // Treinamento desativado: some de "Meus treinamentos"
+            // (e das telas que usam esta lista). O certificado e o
+            // histórico continuam, pois vêm de certificadosUsuario e
+            // historicoUsuario, montados com todas as atribuições.
             setMeusTreinamentos(
               treinamentosUsuario
+                .filter(
+                  t =>
+                    t.ativo !==
+                    false
+                )
             );
 
             setHistorico(

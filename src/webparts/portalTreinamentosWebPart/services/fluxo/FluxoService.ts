@@ -92,6 +92,89 @@ export class FluxoService {
 
   // Definição EXATA (id + versão) com que a revisão começou, com os
   // metadados ATUAIS do processo (rótulos, tipos, colunas e ordem).
+  // ----------------------------------------------------------
+  // AJUSTE ADMINISTRATIVO DOS METADADOS
+  //
+  // Só o Administrador (a tela confere). Altera os valores de qualquer
+  // campo da revisão, mesmo de etapas já concluídas, SEM mudar a etapa.
+  // O ajuste fica no histórico do fluxo com o motivo e os valores
+  // anteriores → novos (rastreabilidade).
+  // ----------------------------------------------------------
+  public async ajustarValoresAdministrador(
+    revisaoId: string,
+    novosValores: Record<string, string>,
+    ajuste: {
+      motivo: string;
+      usuarioId: string;
+      usuarioNome: string;
+      rotuloRevisao?: string;
+      // rótulo de cada campo, para o texto do histórico
+      rotulos?: Record<string, string>;
+    }
+  ): Promise<{ instancia: IFluxoInstancia; avisos: string[]; alterados: string[] }> {
+
+    const instancia =
+      await this.repositorio.obter(revisaoId);
+
+    if (!instancia) {
+      throw new Error('Esta revisão não tem fluxo iniciado: não há metadados para ajustar.');
+    }
+
+    const definicao =
+      await this.definicaoDaInstancia(instancia);
+
+    if (!definicao) {
+      throw new Error('A versão do fluxo desta revisão não foi encontrada.');
+    }
+
+    const alterados =
+      Object.keys(novosValores)
+        .filter(chave => (instancia.valores[chave] || '') !== (novosValores[chave] || ''));
+
+    if (alterados.length === 0) {
+      return { instancia, avisos: [], alterados };
+    }
+
+    const resumo =
+      alterados
+        .map(chave => (ajuste.rotulos && ajuste.rotulos[chave]) || chave)
+        .join(', ');
+
+    alterados.forEach(chave => {
+      if (novosValores[chave]) {
+        instancia.valores[chave] = novosValores[chave];
+      } else {
+        delete instancia.valores[chave];
+      }
+    });
+
+    const etapa =
+      definicao.elementos.find(item => item.id === instancia.elementoAtualId);
+
+    instancia.historico.unshift({
+      revisao: instancia.revisao,
+      id: `hist-adm-${new Date().getTime().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      data: new Date().toISOString(),
+      elementoId: instancia.elementoAtualId,
+      elementoNome: etapa ? etapa.nome : '',
+      acaoChave: 'ajusteAdministrativo',
+      acaoRotulo: `Ajuste administrativo dos metadados: ${resumo}`,
+      resultado: 'ajuste',
+      comentario: ajuste.motivo,
+      executadoPorId: ajuste.usuarioId,
+      executadoPorNome: ajuste.usuarioNome,
+      sistema: false
+    });
+
+    const avisos =
+      await this.repositorio.salvar(
+        instancia,
+        this.contextoGravacao(definicao, instancia, { rotuloRevisao: ajuste.rotuloRevisao } as IContextoExecucaoFluxo)
+      );
+
+    return { instancia, avisos, alterados };
+  }
+
   public async definicaoDaInstancia(
     instancia: IFluxoInstancia
   ): Promise<IFluxoDefinicao | undefined> {

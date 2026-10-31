@@ -767,6 +767,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
             multiplo={campo.tipo === 'documentos'}
             desabilitado={true}
             dataverseService={dataverseService}
+            tiposPermitidos={campo.opcoes}
             onAbrirDocumento={onAbrirDocumento}
             onAlterar={() => undefined}
           />
@@ -918,6 +919,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
           desabilitado={desabilitado}
           dataverseService={dataverseService}
           documentoAtualId={documento.id}
+          tiposPermitidos={campo.opcoes}
           onAbrirDocumento={onAbrirDocumento}
           onAlterar={novo => definirValor(campo.chave, novo)}
         />

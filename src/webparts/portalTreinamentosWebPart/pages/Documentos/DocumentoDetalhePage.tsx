@@ -89,6 +89,9 @@ import AcoesFluxoRevisao from
 import DocumentoReferenciasTab from
   './DocumentoReferenciasTab';
 
+import EdicaoAdministradorModal from
+  './EdicaoAdministradorModal';
+
 import FluxoRevisaoTab from
   './FluxoRevisaoTab';
 
@@ -705,6 +708,19 @@ const DocumentoDetalhePage:
       setMostrarExclusao
     ] = React.useState(false);
 
+    // Edição como administrador (documento completamente editável).
+    const [
+      mostrarEdicaoAdmin,
+      setMostrarEdicaoAdmin
+    ] = React.useState(false);
+
+    // Remonta a aba do fluxo depois da edição administrativa (relê os
+    // metadados e a tramitação).
+    const [
+      versaoEdicaoAdmin,
+      setVersaoEdicaoAdmin
+    ] = React.useState(0);
+
     const servicoExclusao =
       React.useMemo(
         () =>
@@ -1145,6 +1161,29 @@ const DocumentoDetalhePage:
         return ok;
       };
 
+    // Revisão cujos metadados a edição administrativa ajusta: a em
+    // andamento ou, sem ela, a mais recente (não cancelada).
+    const revisaoParaEdicaoAdmin: IDocumentoRevisao | undefined =
+      revisaoEmAndamento ||
+      revisoes
+        .filter(item => estagioRevisao(item.status) !== 'cancelada')
+        .slice()
+        .sort((a, b) => compararRevisoes(b.revisao, a.revisao))[0];
+
+    // Regra normal (sem o privilégio de administrador).
+    const podeAbrirParaEditarPelaEtapa = (
+      revisao: IDocumentoRevisao | undefined
+    ): boolean => {
+
+      if (!revisao || !podeEditar || !revisaoEmAndamento || revisao.id !== revisaoEmAndamento.id) {
+        return false;
+      }
+
+      return segueFluxo.segue
+        ? segueFluxo.permiteEditarDocumento
+        : estagioRevisao(revisao.status) === 'elaboracao';
+    };
+
     // ==========================================================
     // ABRIR O ARQUIVO PARA EDIÇÃO
     // Só a revisão em andamento, na etapa que permite editar:
@@ -1157,13 +1196,13 @@ const DocumentoDetalhePage:
       revisao: IDocumentoRevisao | undefined
     ): boolean => {
 
-      if (!revisao || !podeEditar || !revisaoEmAndamento || revisao.id !== revisaoEmAndamento.id) {
-        return false;
+      // Administrador: pode abrir o arquivo de qualquer revisão para
+      // edição, em qualquer etapa (edição como administrador).
+      if (revisao && revisao.arquivoUrl && ehAdministrador(contexto)) {
+        return true;
       }
 
-      return segueFluxo.segue
-        ? segueFluxo.permiteEditarDocumento
-        : estagioRevisao(revisao.status) === 'elaboracao';
+      return podeAbrirParaEditarPelaEtapa(revisao);
     };
 
     // Documento vinculado a processo SEM fluxo publicado: não avança
@@ -1332,6 +1371,28 @@ const DocumentoDetalhePage:
           acao={
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               {
+                dataverseService &&
+                ehAdministrador(contexto) && (
+                  <button
+                    type="button"
+                    onClick={() => setMostrarEdicaoAdmin(true)}
+                    title="Editar dados do documento e todos os metadados da revisão, em qualquer etapa (fica no histórico)"
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: 0,
+                      background: COR_AZUL,
+                      color: '#FFFFFF',
+                      fontWeight: 700,
+                      fontSize: '12.5px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🛡 Editar como administrador
+                  </button>
+                )
+              }
+              {
                 // Só administrador e só documento que nunca foi
                 // vigente (o modal confere as demais condições).
                 servicoExclusao &&
@@ -1365,6 +1426,31 @@ const DocumentoDetalhePage:
             </div>
           }
         />
+
+        {
+          mostrarEdicaoAdmin && dataverseService && (
+            <EdicaoAdministradorModal
+              dataverseService={dataverseService}
+              documento={documento}
+              revisaoId={revisaoParaEdicaoAdmin ? revisaoParaEdicaoAdmin.id : undefined}
+              revisaoRotulo={revisaoParaEdicaoAdmin ? revisaoParaEdicaoAdmin.revisao : undefined}
+              usuarioId={contexto ? contexto.usuarioId : ''}
+              usuarioNome={contexto ? contexto.nome : ''}
+              onAbrirDocumento={abrirDocumentoReferenciado}
+              onFechar={alterou => {
+                setMostrarEdicaoAdmin(false);
+                if (alterou) {
+                  // Recarrega a lista de documentos (dados do cadastro)
+                  // e o fluxo da revisão (metadados e histórico).
+                  Promise.resolve(onDocumentoExcluido ? onDocumentoExcluido() : undefined)
+                    .catch((error: unknown) => console.error(error));
+                  setVersaoEdicaoAdmin(atual => atual + 1);
+                  setVersaoFluxo(atual => atual + 1);
+                }
+              }}
+            />
+          )
+        }
 
         {
           mostrarExclusao && servicoExclusao && (
@@ -1753,12 +1839,14 @@ const DocumentoDetalhePage:
                 documento={documento}
                 dataverseService={dataverseService}
                 onAbrirDocumento={abrirDocumentoReferenciado}
+                podeAdministrar={ehAdministrador(contexto)}
               />
             )
             : aba === 'fluxo' &&
           FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
             ? (
               <FluxoRevisaoTab
+                key={`fluxo-aba-${versaoEdicaoAdmin}`}
                 documento={documento}
                 revisoes={revisoes}
                 contexto={contexto}
@@ -2355,7 +2443,11 @@ const DocumentoDetalhePage:
                                             href={urlParaAbrir(revisao.arquivoUrl)}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            title="Abre o arquivo no Office online para edição (permitido nesta etapa)"
+                                            title={
+                                              podeAbrirParaEditarPelaEtapa(revisao)
+                                                ? 'Abre o arquivo no Office online para edição (permitido nesta etapa)'
+                                                : 'Edição como administrador: a etapa não permite edição, mas o administrador pode alterar o arquivo. A alteração não gera nova revisão.'
+                                            }
                                             style={{
                                               display: 'inline-block',
                                               padding: '9px 14px',
@@ -2367,7 +2459,11 @@ const DocumentoDetalhePage:
                                               fontSize: '13px'
                                             }}
                                           >
-                                            ✎ Abrir documento para edição
+                                            {
+                                              podeAbrirParaEditarPelaEtapa(revisao)
+                                                ? '✎ Abrir documento para edição'
+                                                : '🛡 Abrir para edição (administrador)'
+                                            }
                                           </a>
                                         )
                                         : (
@@ -2419,6 +2515,7 @@ const DocumentoDetalhePage:
                                     segueFluxo.segue
                                       ? (
                                         <FluxoRevisaoTab
+                                          key={`fluxo-etapa-${versaoEdicaoAdmin}`}
                                           compacto={true}
                                           documento={documento}
                                           revisoes={revisoes}

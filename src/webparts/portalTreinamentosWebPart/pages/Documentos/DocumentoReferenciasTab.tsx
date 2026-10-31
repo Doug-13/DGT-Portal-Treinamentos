@@ -15,8 +15,14 @@ import {
   IVinculosTreinamentoDocumento,
   carregarReferenciasDocumento,
   carregarVinculosTreinamento,
-  ehDocumentoControle
+  desvincularDocumentoDoTreinamento,
+  ehDocumentoControle,
+  sincronizarVinculosTreinamento
 } from '../../services/referencias/ReferenciasDocumentoService';
+
+import {
+  gravarValorDocumentos
+} from '../../services/fluxo/valorDocumento';
 
 import {
   StatusDocumentoBadge
@@ -35,6 +41,9 @@ export interface IDocumentoReferenciasTabProps {
   documento: IDocumento;
   dataverseService?: DataverseService;
   onAbrirDocumento?: (documentoId: string) => void;
+
+  // Administrador: pode desvincular treinamentos (desativa o vínculo).
+  podeAdministrar?: boolean;
 }
 
 const COR = {
@@ -131,6 +140,7 @@ const TabelaReferencias: React.FC<{
     <thead>
       <tr>
         <th style={th}>Documento</th>
+        <th style={th}>Tipo</th>
         <th style={th}>Título</th>
         <th style={th}>Campo</th>
         <th style={th}>Revisão</th>
@@ -148,6 +158,7 @@ const TabelaReferencias: React.FC<{
                 <span style={{ marginLeft: '6px', fontSize: '10.5px', fontWeight: 700, color: '#485CC7' }}>🎓 TREINAMENTO</span>
               )}
             </td>
+            <td style={{ ...td, color: COR.texto2, whiteSpace: 'nowrap' }}>{item.documento.tipo || '—'}</td>
             <td style={td}>{item.documento.titulo}</td>
             <td style={{ ...td, color: COR.texto2 }}>{item.campo}</td>
             <td style={{ ...td, whiteSpace: 'nowrap', color: COR.texto2 }}>
@@ -165,8 +176,12 @@ const TabelaReferencias: React.FC<{
 const DocumentoReferenciasTab: React.FC<IDocumentoReferenciasTabProps> = ({
   documento,
   dataverseService,
-  onAbrirDocumento
+  onAbrirDocumento,
+  podeAdministrar
 }) => {
+
+  const [desvinculando, setDesvinculando] =
+    React.useState('');
 
   const [referencias, setReferencias] =
     React.useState<IReferenciasDocumento>({ referencia: [], referenciadoPor: [] });
@@ -178,6 +193,11 @@ const DocumentoReferenciasTab: React.FC<IDocumentoReferenciasTabProps> = ({
     React.useState(false);
 
   const [erro, setErro] =
+    React.useState('');
+
+  // Vínculo com treinamento que a referência exige mas não foi criado
+  // (ex.: referência gravada antes da correção, sem permissão...).
+  const [avisoVinculo, setAvisoVinculo] =
     React.useState('');
 
   const controle =
@@ -208,7 +228,77 @@ const DocumentoReferenciasTab: React.FC<IDocumentoReferenciasTabProps> = ({
           ]);
 
         setReferencias(refs);
-        setTreinamentos(vinculos);
+
+        // ------------------------------------------------------------
+        // Concilia: referência que envolve um treinamento (TRN) precisa
+        // do vínculo treinamento × documento. Se faltar, cria agora
+        // (idempotente — já vinculado não duplica).
+        // ------------------------------------------------------------
+        const envolveTreinamento =
+          (outro: { tipo: string }): boolean =>
+            controle !== ehDocumentoControle(outro.tipo);
+
+        const pares: Array<Promise<number>> = [];
+
+        const citadosComTreinamento =
+          refs.referencia.filter(item => envolveTreinamento(item.documento));
+
+        if (citadosComTreinamento.length > 0) {
+          pares.push(
+            sincronizarVinculosTreinamento(
+              dataverseService,
+              { id: documento.id, codigo: documento.codigo, tipo: documento.tipo },
+              { referencias: gravarValorDocumentos(citadosComTreinamento.map(item => item.documento)) }
+            )
+          );
+        }
+
+        refs.referenciadoPor
+          .filter(item => envolveTreinamento(item.documento))
+          .forEach(item => {
+            pares.push(
+              sincronizarVinculosTreinamento(
+                dataverseService,
+                { id: item.documento.id, codigo: item.documento.codigo, tipo: item.documento.tipo },
+                { referencias: gravarValorDocumentos([{ id: documento.id, codigo: documento.codigo, titulo: documento.titulo }]) }
+              )
+            );
+          });
+
+        let vinculosFinais = vinculos;
+        setAvisoVinculo('');
+
+        const mensagensFalha: string[] = [];
+
+        if (pares.length > 0) {
+          const resultados =
+            await Promise.all(
+              pares.map(par => par.catch(falha => {
+                console.error(falha);
+                mensagensFalha.push(falha instanceof Error ? falha.message : String(falha));
+                return -1;
+              }))
+            );
+
+          if (resultados.some(qtd => qtd > 0)) {
+            // Vínculo criado agora: relê os treinamentos vinculados.
+            vinculosFinais =
+              await carregarVinculosTreinamento(dataverseService, {
+                id: documento.id,
+                codigo: documento.codigo,
+                tipo: documento.tipo
+              }).catch(() => vinculos);
+          }
+
+          if (resultados.some(qtd => qtd < 0)) {
+            setAvisoVinculo(
+              'Há referência a treinamento sem o vínculo treinamento × documento, e não foi possível criá-lo agora: ' +
+              mensagensFalha.join(' ')
+            );
+          }
+        }
+
+        setTreinamentos(vinculosFinais);
       } catch (falha) {
         console.error(falha);
         setErro(`Não foi possível carregar as referências: ${falha instanceof Error ? falha.message : String(falha)}`);
@@ -216,7 +306,7 @@ const DocumentoReferenciasTab: React.FC<IDocumentoReferenciasTabProps> = ({
         setCarregando(false);
       }
     },
-    [dataverseService, documento.id, documento.codigo, documento.tipo]
+    [dataverseService, documento.id, documento.codigo, documento.tipo, documento.titulo, controle]
   );
 
   React.useEffect(
@@ -253,6 +343,7 @@ const DocumentoReferenciasTab: React.FC<IDocumentoReferenciasTabProps> = ({
       </div>
 
       {erro && <div style={{ color: '#B42318', fontSize: '13px', marginBottom: '12px' }}>{erro}</div>}
+      {avisoVinculo && <div style={{ color: '#B54708', background: '#FFFAEB', padding: '8px 12px', borderRadius: '8px', fontSize: '12.5px', marginBottom: '12px' }}>{avisoVinculo}</div>}
 
       <Secao
         icone="↗"
@@ -326,17 +417,88 @@ const DocumentoReferenciasTab: React.FC<IDocumentoReferenciasTabProps> = ({
                     <th style={th}>Código</th>
                     <th style={th}>Treinamento</th>
                     <th style={th}>Obrigatório</th>
+                    <th style={th}>Origem</th>
+                    {podeAdministrar && <th style={th} />}
                   </tr>
                 </thead>
                 <tbody>
                   {
-                    treinamentos.treinamentos.map(item => (
-                      <tr key={item.id}>
-                        <td style={{ ...td, fontWeight: 700, whiteSpace: 'nowrap' }}>{item.codigo || '—'}</td>
-                        <td style={td}>{item.nome}</td>
-                        <td style={{ ...td, color: COR.texto2 }}>{item.obrigatorio ? 'Sim' : 'Não'}</td>
-                      </tr>
-                    ))
+                    treinamentos.treinamentos.map(item => {
+                      // Treinamentos que as referências pedem (código do
+                      // documento TRN citado = código do treinamento).
+                      const codigosReferenciados =
+                        referencias.referencia
+                          .concat(referencias.referenciadoPor)
+                          .filter(ref => ehDocumentoControle(ref.documento.tipo))
+                          .map(ref => ref.documento.codigo.trim().toUpperCase());
+
+                      const corresponde =
+                        codigosReferenciados.indexOf((item.codigo || '').trim().toUpperCase()) >= 0;
+
+                      const suspeito =
+                        item.automatico && !corresponde;
+
+                      return (
+                        <tr key={item.relacaoId || item.id} style={suspeito ? { background: '#FEF3F2' } : undefined}>
+                          <td style={{ ...td, fontWeight: 700, whiteSpace: 'nowrap' }}>{item.codigo || '—'}</td>
+                          <td style={td}>{item.nome}</td>
+                          <td style={{ ...td, color: COR.texto2 }}>{item.obrigatorio ? 'Sim' : 'Não'}</td>
+                          <td style={{ ...td, fontSize: '12px', color: suspeito ? '#B42318' : COR.texto2 }} title={item.observacao || undefined}>
+                            {
+                              suspeito
+                                ? '⚠ Automático, mas não corresponde às referências'
+                                : item.automatico
+                                  ? '✓ Pela referência'
+                                  : 'Manual'
+                            }
+                          </td>
+                          {
+                            podeAdministrar && (
+                              <td style={{ ...td, textAlign: 'right' }}>
+                                <button
+                                  type="button"
+                                  disabled={!!desvinculando || !dataverseService || !item.relacaoId}
+                                  onClick={() => {
+                                    if (!dataverseService || !item.relacaoId) {
+                                      return;
+                                    }
+                                    if (!window.confirm(
+                                      `Desvincular o treinamento ${item.codigo} de ${documento.codigo}?\n\n` +
+                                      'Novas revisões deste documento deixarão de gerar retreinamento desse curso. ' +
+                                      'O vínculo é desativado (o histórico é preservado).'
+                                    )) {
+                                      return;
+                                    }
+                                    setDesvinculando(item.relacaoId);
+                                    desvincularDocumentoDoTreinamento(dataverseService, item.relacaoId)
+                                      .then(() => carregar())
+                                      .catch(falha => {
+                                        console.error(falha);
+                                        setErro(`Não foi possível desvincular: ${falha instanceof Error ? falha.message : String(falha)}`);
+                                      })
+                                      .then(() => setDesvinculando(''), () => setDesvinculando(''));
+                                  }}
+                                  style={{
+                                    border: `1px solid ${suspeito ? '#B42318' : '#CBD5E1'}`,
+                                    background: '#FFFFFF',
+                                    color: suspeito ? '#B42318' : COR.azul,
+                                    borderRadius: '6px',
+                                    padding: '4px 10px',
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {desvinculando === item.relacaoId ? 'Desvinculando...' : 'Desvincular'}
+                                </button>
+                              </td>
+                            )
+                          }
+                        </tr>
+                      );
+                    })
                   }
                 </tbody>
               </table>

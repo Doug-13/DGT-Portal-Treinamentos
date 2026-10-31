@@ -6,26 +6,36 @@ import {
 } from '../../services/DataverseService';
 
 import {
-  carregarDadosProcessos
-} from '../../services/processos/ProcessoService';
+  ProcessoNegocioService
+} from '../../services/processos/ProcessoNegocioService';
 
 import {
   IValorDocumento,
+  codigoTipoDocumento,
   gravarValorDocumentos,
-  lerValorDocumentos
+  lerValorDocumentos,
+  tipoPermitido
 } from '../../services/fluxo/valorDocumento';
 
 import {
-  CONTROLE_DOCUMENTAL
-} from '../../constants/controleDocumental';
+  ajustarOpcoesTreinamento,
+  carregarTreinamentosPorCodigo
+} from '../../services/referencias/ReferenciasDocumentoService';
 
 // ============================================================
 // CAMPO "DOCUMENTO REFERENCIADO" DO FLUXO
 //
 // Busca os documentos ATIVOS da plataforma (dgt_documento) por código
-// ou título, com filtro por ÁREA e por PROCESSO (vínculo
-// dgt_documentoprocesso). Documentos de controle de treinamento
-// (tipo TRN) e o próprio documento não são oferecidos.
+// ou título, com filtro por ÁREA, por PROCESSO (processo de negócio do
+// documento — dgt_documento.dgt_processonegocio) e por TIPO.
+//
+// Tipos oferecidos: os listados nas opções do metadado (ex.: POP; IT).
+// Sem lista, todos, EXCETO os documentos de controle de treinamento
+// (TRN). O próprio documento nunca é oferecido.
+//
+// Documento TRN (treinamento) só é oferecido se existir um treinamento
+// ATIVO com o MESMO código; o título mostrado é o nome do treinamento.
+// Treinamentos inativos (em elaboração ou desativados) não aparecem.
 //
 //   multiplo = false → tipo 'documento'  (um)
 //   multiplo = true  → tipo 'documentos' (vários)
@@ -53,6 +63,10 @@ export interface ICampoDocumentoFluxoProps {
 
   // Abre o documento referenciado (link no código).
   onAbrirDocumento?: (documentoId: string) => void;
+
+  // Tipos de documento aceitos (opções do metadado). Vazio = todos,
+  // exceto TRN.
+  tiposPermitidos?: string[];
 }
 
 interface IDocumentoOpcao extends IValorDocumento {
@@ -132,16 +146,19 @@ const carregarBase = (
 
     const registros = await dataverse.getDocumentos();
 
-    // Processos e vínculos documento ↔ processo. Se falhar, o filtro
-    // por processo fica indisponível, mas o campo continua funcionando.
+    // Processos de NEGÓCIO (Área → Processo) e o processo de cada
+    // documento. Se falhar, o filtro por processo fica indisponível,
+    // mas o campo continua funcionando.
     let processos: IProcessoOpcao[] = [];
     const processosPorDocumento: Record<string, string[]> = {};
 
     try {
-      const dados = await carregarDadosProcessos(dataverse);
+      const servico = new ProcessoNegocioService(dataverse);
+      const [lista, porDocumento] =
+        await Promise.all([servico.listar(), servico.processoPorDocumento()]);
 
       processos =
-        dados.processos
+        lista
           .filter(processo => processo.ativo !== false)
           .map(processo => ({
             id: guid(processo.id),
@@ -151,12 +168,11 @@ const carregarBase = (
           }))
           .sort((a, b) => (a.codigo || a.nome).localeCompare(b.codigo || b.nome));
 
-      dados.vinculos.forEach(vinculo => {
-        const documentoId = guid(vinculo.documentoId);
-        if (!documentoId) {
-          return;
+      Object.keys(porDocumento).forEach(documentoId => {
+        const processoId = guid(porDocumento[documentoId]);
+        if (processoId) {
+          processosPorDocumento[guid(documentoId)] = [processoId];
         }
-        processosPorDocumento[documentoId] = (processosPorDocumento[documentoId] || []).concat(guid(vinculo.processoId));
       });
     } catch (erro) {
       console.error(erro);
@@ -170,19 +186,28 @@ const carregarBase = (
             id,
             codigo: texto(registro, 'dgt_codigo'),
             titulo: texto(registro, 'dgt_titulo') || texto(registro, 'dgt_name'),
-            tipo: texto(registro, 'dgt_tipo').toUpperCase(),
+            // dgt_tipo é escolha: o código vem do valor formatado.
+            tipo: codigoTipoDocumento(registro),
             status: formatado(registro, 'dgt_status'),
             areaId: guid(registro._dgt_area_value),
             areaNome: formatado(registro, '_dgt_area_value'),
             processoIds: processosPorDocumento[id] || []
           };
         })
-        .filter(doc =>
-          !!doc.id &&
-          doc.tipo !== CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO
-        );
+        .filter(doc => !!doc.id);
 
-    return { documentos, processos };
+    // Treinamentos (TRN): só os que têm treinamento ATIVO de mesmo
+    // código, mostrando o nome do treinamento. Se a leitura dos
+    // treinamentos falhar, nenhum TRN é oferecido (nunca um inativo).
+    let treinamentos = {};
+
+    try {
+      treinamentos = await carregarTreinamentosPorCodigo(dataverse, true);
+    } catch (erro) {
+      console.error('[Referências] Não foi possível ler os treinamentos ativos.', erro);
+    }
+
+    return { documentos: ajustarOpcoesTreinamento(documentos, treinamentos), processos };
   })();
 
   base.catch(() => { cacheBase = undefined; });
@@ -227,6 +252,26 @@ const CampoDocumentoFluxo: React.FC<ICampoDocumentoFluxoProps> = (props) => {
 
   const [processoId, setProcessoId] =
     React.useState('');
+
+  const [tipoFiltro, setTipoFiltro] =
+    React.useState('');
+
+  // Documentos dos tipos aceitos por este campo.
+  const permitidos =
+    React.useMemo(
+      () => base.documentos.filter(doc => tipoPermitido(doc.tipo, props.tiposPermitidos)),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [base.documentos, (props.tiposPermitidos || []).join('|')]
+    );
+
+  const tipos =
+    React.useMemo(
+      () => permitidos
+        .map(doc => doc.tipo)
+        .filter((tipo, indice, lista) => !!tipo && lista.indexOf(tipo) === indice)
+        .sort(),
+      [permitidos]
+    );
 
   const [aberto, setAberto] =
     React.useState(false);
@@ -284,7 +329,7 @@ const CampoDocumentoFluxo: React.FC<ICampoDocumentoFluxoProps> = (props) => {
     React.useMemo(
       () => {
         const mapa: Record<string, string> = {};
-        base.documentos.forEach(doc => {
+        permitidos.forEach(doc => {
           if (doc.areaId) {
             mapa[doc.areaId] = doc.areaNome || doc.areaId;
           }
@@ -293,7 +338,7 @@ const CampoDocumentoFluxo: React.FC<ICampoDocumentoFluxoProps> = (props) => {
           .map(id => ({ id, nome: mapa[id] }))
           .sort((a, b) => a.nome.localeCompare(b.nome));
       },
-      [base.documentos]
+      [permitidos]
     );
 
   // Processos oferecidos: com área escolhida, os da área, os sem área
@@ -306,7 +351,7 @@ const CampoDocumentoFluxo: React.FC<ICampoDocumentoFluxoProps> = (props) => {
         }
 
         const daArea: Record<string, boolean> = {};
-        base.documentos
+        permitidos
           .filter(doc => doc.areaId === areaId)
           .forEach(doc => doc.processoIds.forEach(id => { daArea[id] = true; }));
 
@@ -316,7 +361,7 @@ const CampoDocumentoFluxo: React.FC<ICampoDocumentoFluxoProps> = (props) => {
           !!daArea[processo.id]
         );
       },
-      [base, areaId]
+      [base.processos, permitidos, areaId]
     );
 
   // Se o processo escolhido saiu da lista (troca de área), limpa.
@@ -339,9 +384,10 @@ const CampoDocumentoFluxo: React.FC<ICampoDocumentoFluxoProps> = (props) => {
     React.useMemo(
       () => {
         const termo = normalizar(busca.trim());
-        return base.documentos.filter(doc =>
+        return permitidos.filter(doc =>
           doc.id !== atual &&
           idsSelecionados.indexOf(doc.id) < 0 &&
+          (!tipoFiltro || doc.tipo === tipoFiltro) &&
           (!areaId || doc.areaId === areaId) &&
           (!processoId || doc.processoIds.indexOf(processoId) >= 0) &&
           (
@@ -352,7 +398,7 @@ const CampoDocumentoFluxo: React.FC<ICampoDocumentoFluxoProps> = (props) => {
         );
       },
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [base.documentos, busca, areaId, processoId, atual, props.valor]
+      [permitidos, busca, tipoFiltro, areaId, processoId, atual, props.valor]
     );
 
   const resultados =
@@ -530,11 +576,29 @@ const CampoDocumentoFluxo: React.FC<ICampoDocumentoFluxoProps> = (props) => {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                gridTemplateColumns: tipos.length > 1
+                  ? 'minmax(0, 0.7fr) minmax(0, 1fr) minmax(0, 1fr)'
+                  : 'minmax(0, 1fr) minmax(0, 1fr)',
                 gap: '8px',
                 marginBottom: '8px'
               }}
             >
+              {
+                tipos.length > 1 &&
+                (
+                  <select
+                    aria-label="Filtrar por tipo"
+                    value={tipoFiltro}
+                    disabled={carregando}
+                    onChange={evento => { setTipoFiltro(evento.target.value); setAberto(true); setDestaque(0); }}
+                    style={estiloSelect}
+                  >
+                    <option value="">Todos os tipos</option>
+                    {tipos.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
+                  </select>
+                )
+              }
+
               <select
                 aria-label="Filtrar por área"
                 value={areaId}

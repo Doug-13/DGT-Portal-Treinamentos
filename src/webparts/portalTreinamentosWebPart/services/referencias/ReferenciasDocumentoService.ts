@@ -5,6 +5,7 @@ import {
 
 import {
   IValorDocumento,
+  codigoTipoDocumento,
   lerReferenciasGravadas
 } from '../fluxo/valorDocumento';
 
@@ -42,8 +43,10 @@ import {
 //   PRO-TRN-003 referencia POP-001  → treinamento TRN-003 ↔ POP-001
 //
 // O vínculo é o mesmo usado pelo retreinamento por revisão documental.
-// Nada é apagado: tirar a referência NÃO desfaz o vínculo (pode ser
-// desativado na Gestão de documentos).
+// Nada é apagado. O treinamento de um TRN é sempre o de MESMO código
+// (resolverTreinamentoDoControle). Vínculos criados automaticamente
+// pelas referências que não correspondem mais a elas são DESATIVADOS
+// na próxima execução de etapa; vínculos manuais não são tocados.
 // ============================================================
 
 export interface IDocumentoResumoReferencia {
@@ -72,7 +75,17 @@ export interface IReferenciasDocumento {
 
 export interface IVinculosTreinamentoDocumento {
   // Documento comum: treinamentos ligados a ele.
-  treinamentos: Array<{ id: string; codigo: string; nome: string; obrigatorio: boolean }>;
+  // relacaoId/observacao/automatico: usados pela aba Referências
+  // (botão "Desvincular" e alerta "não corresponde às referências").
+  treinamentos: Array<{
+    id: string;
+    codigo: string;
+    nome: string;
+    obrigatorio: boolean;
+    relacaoId: string;
+    observacao: string;
+    automatico: boolean;
+  }>;
   // Documento de controle (TRN): o treinamento e os documentos ligados a ele.
   treinamentoDoControle?: { id: string; codigo: string; nome: string };
   documentosDoTreinamento: IDocumentoResumoReferencia[];
@@ -97,6 +110,16 @@ const formatado = (
 ): string =>
   texto(registro, `${campo}@OData.Community.Display.V1.FormattedValue`) ||
   texto(registro, campo);
+
+// Início da observação gravada nos vínculos criados pelas referências.
+const PREFIXO_OBSERVACAO_AUTOMATICA =
+  'Vínculo criado pela referência no fluxo de ';
+
+export const ehVinculoAutomatico = (
+  observacao?: string
+): boolean =>
+  (observacao || '').trim().toUpperCase()
+    .indexOf(PREFIXO_OBSERVACAO_AUTOMATICA.toUpperCase()) === 0;
 
 export const ehDocumentoControle = (
   tipo?: string
@@ -125,7 +148,8 @@ export const carregarDocumentos = (
           id: guid(registro.dgt_documentoid),
           codigo: texto(registro, 'dgt_codigo'),
           titulo: texto(registro, 'dgt_titulo') || texto(registro, 'dgt_name'),
-          tipo: texto(registro, 'dgt_tipo').toUpperCase(),
+          // dgt_tipo é escolha: o código (POP, TRN…) vem do valor formatado.
+          tipo: codigoTipoDocumento(registro),
           status: formatado(registro, 'dgt_status'),
           areaNome: formatado(registro, '_dgt_area_value'),
           ativo: registro.dgt_ativo !== false
@@ -318,34 +342,156 @@ export const carregarReferenciasDocumento = async (
 // Treinamentos
 // ------------------------------------------------------------
 
-// Treinamento de um documento de controle (TRN): o vínculo com o
-// treinamento de mesmo código; se não houver, busca pelo código.
-const treinamentoDoControle = async (
+export interface ITreinamentoResolvido {
+  id: string;
+  codigo: string;
+  nome: string;
+  ativo: boolean;
+}
+
+const normalizarCodigo = (
+  valor: string
+): string =>
+  (valor || '').trim().toUpperCase();
+
+// Treinamento de um documento de controle (TRN) — resolução ESTRITA.
+//
+// Regra única: o treinamento é o dgt_treinamento com o MESMO código do
+// documento (ARQ-TRN-002 ↔ ARQ-TRN-002). Sem treinamento com esse
+// código, não há treinamento — nada de "qualquer vínculo do documento",
+// vínculo de controle antigo ou nome/título (os três já ligaram o
+// treinamento errado quando documento e treinamento ficaram com
+// códigos diferentes).
+export const resolverTreinamentoDoControle = async (
   dataverse: DataverseService,
   documento: { id: string; codigo: string }
-): Promise<{ id: string; codigo: string; nome: string } | undefined> => {
+): Promise<ITreinamentoResolvido | undefined> => {
 
-  const vinculos =
-    await new TreinamentoDocumentoAdminService(dataverse).listarPorDocumento(documento.id);
+  const codigo = normalizarCodigo(documento.codigo);
 
-  const proprio =
-    vinculos.find(item => item.ativo && item.treinamentoCodigo.toUpperCase() === documento.codigo.toUpperCase()) ||
-    vinculos.find(item => item.ativo);
-
-  if (proprio) {
-    return { id: guid(proprio.treinamentoId), codigo: proprio.treinamentoCodigo, nome: proprio.treinamentoNome };
+  if (!codigo) {
+    return undefined;
   }
 
   const registros =
     await dataverse.listarRegistros(
       'dgt_treinamento',
-      `$select=dgt_treinamentoid,dgt_codigo,dgt_name&$filter=dgt_codigo eq '${escaparOData(documento.codigo)}'`
+      '$select=dgt_treinamentoid,dgt_codigo,dgt_name,dgt_ativo' +
+      `&$filter=dgt_codigo eq '${escaparOData(codigo)}'`
     );
 
-  return registros[0]
-    ? { id: guid(registros[0].dgt_treinamentoid), codigo: texto(registros[0], 'dgt_codigo'), nome: texto(registros[0], 'dgt_name') }
+  const mesmoCodigo =
+    registros.filter(registro => normalizarCodigo(texto(registro, 'dgt_codigo')) === codigo);
+
+  if (mesmoCodigo.length > 1) {
+    console.warn(`[Referências] Há ${mesmoCodigo.length} treinamentos com o código ${codigo}. Usando o ativo (ou o primeiro).`);
+  }
+
+  const escolhido =
+    mesmoCodigo.find(registro => registro.dgt_ativo !== false) ||
+    mesmoCodigo[0];
+
+  return escolhido
+    ? {
+      id: guid(escolhido.dgt_treinamentoid),
+      codigo: texto(escolhido, 'dgt_codigo'),
+      nome: texto(escolhido, 'dgt_name'),
+      ativo: escolhido.dgt_ativo !== false
+    }
     : undefined;
 };
+
+// ------------------------------------------------------------
+// Opções de treinamento nos campos "Documento referenciado"
+// ------------------------------------------------------------
+//
+// Documento TRN só pode ser escolhido se existir um treinamento ATIVO
+// com o MESMO código. O título mostrado (e gravado na referência) passa
+// a ser o NOME DO TREINAMENTO, para que o que se vê na lista seja
+// exatamente o treinamento que será vinculado.
+
+export interface ITreinamentoPorCodigo {
+  id: string;
+  codigo: string;
+  nome: string;
+  ativo: boolean;
+}
+
+let cacheTreinamentos:
+  { lidoEm: number; mapa: Promise<Record<string, ITreinamentoPorCodigo>> } | undefined;
+
+export const carregarTreinamentosPorCodigo = (
+  dataverse: DataverseService,
+  forcar = false
+): Promise<Record<string, ITreinamentoPorCodigo>> => {
+
+  if (!forcar && cacheTreinamentos && Date.now() - cacheTreinamentos.lidoEm < 2 * 60 * 1000) {
+    return cacheTreinamentos.mapa;
+  }
+
+  const mapa =
+    dataverse.listarRegistros(
+      'dgt_treinamento',
+      '$select=dgt_treinamentoid,dgt_codigo,dgt_name,dgt_ativo'
+    ).then(registros => {
+      const resultado: Record<string, ITreinamentoPorCodigo> = {};
+
+      registros.forEach(registro => {
+        const codigo = normalizarCodigo(texto(registro, 'dgt_codigo'));
+        if (!codigo) {
+          return;
+        }
+
+        const item: ITreinamentoPorCodigo = {
+          id: guid(registro.dgt_treinamentoid),
+          codigo,
+          nome: texto(registro, 'dgt_name'),
+          ativo: registro.dgt_ativo !== false
+        };
+
+        // Código repetido: o ativo prevalece.
+        if (!resultado[codigo] || (!resultado[codigo].ativo && item.ativo)) {
+          resultado[codigo] = item;
+        }
+      });
+
+      return resultado;
+    });
+
+  mapa.catch(() => { cacheTreinamentos = undefined; });
+
+  cacheTreinamentos = { lidoEm: Date.now(), mapa };
+  return mapa;
+};
+
+// Mantém os documentos comuns como estão; dos TRN, só os que têm
+// treinamento ATIVO de mesmo código, com o título trocado pelo nome do
+// treinamento.
+export const ajustarOpcoesTreinamento = <T extends { codigo: string; titulo: string; tipo: string }>(
+  documentos: T[],
+  treinamentos: Record<string, ITreinamentoPorCodigo>
+): T[] => {
+
+  const resultado: T[] = [];
+
+  documentos.forEach(doc => {
+    if (!ehDocumentoControle(doc.tipo)) {
+      resultado.push(doc);
+      return;
+    }
+
+    const treinamento = treinamentos[normalizarCodigo(doc.codigo)];
+
+    if (treinamento && treinamento.ativo) {
+      resultado.push({ ...doc, titulo: treinamento.nome || doc.titulo });
+    }
+  });
+
+  return resultado;
+};
+
+// Nome antigo, mantido para o restante do arquivo.
+const treinamentoDoControle = resolverTreinamentoDoControle;
 
 export const carregarVinculosTreinamento = async (
   dataverse: DataverseService,
@@ -364,7 +510,10 @@ export const carregarVinculosTreinamento = async (
             id: guid(item.treinamentoId),
             codigo: item.treinamentoCodigo,
             nome: item.treinamentoNome,
-            obrigatorio: item.obrigatorio
+            obrigatorio: item.obrigatorio,
+            relacaoId: guid(item.id),
+            observacao: item.observacao || '',
+            automatico: ehVinculoAutomatico(item.observacao)
           })),
       documentosDoTreinamento: []
     };
@@ -400,56 +549,165 @@ export const carregarVinculosTreinamento = async (
 // ------------------------------------------------------------
 // Sincronização: referência → vínculo treinamento × documento
 // ------------------------------------------------------------
+//
+// Regras (versão corrigida):
+//   • o treinamento de cada TRN é resolvido de forma ESTRITA
+//     (resolverTreinamentoDoControle);
+//   • a lista de documentos é relida quando algum documento citado
+//     não está no cache (documento recém-criado era ignorado);
+//   • o código usado é o ATUAL do documento (não o gravado na
+//     referência, que pode estar desatualizado);
+//   • vínculos criados AUTOMATICAMENTE pelas referências deste
+//     documento que não correspondem mais às referências atuais são
+//     DESATIVADOS (nunca apagados) — corrige o vínculo errado que já
+//     foi gravado. Vínculos manuais e o de controle não são tocados.
 
-export const sincronizarVinculosTreinamento = async (
+export interface IResultadoSincronizacaoVinculos {
+  criados: number;
+  desativados: number;
+  avisos: string[];
+}
+
+const observacaoAutomatica = (
+  codigoDocumento: string,
+  rotuloRevisao?: string
+): string =>
+  `${PREFIXO_OBSERVACAO_AUTOMATICA}${codigoDocumento}` +
+  `${rotuloRevisao ? ` (${rotuloRevisao})` : ''}.`;
+
+// true se a observação foi gravada pela sincronização das referências
+// do documento informado (ARQ-MAP-001 não casa com ARQ-MAP-0011).
+const criadoPelasReferenciasDe = (
+  observacao: string,
+  codigoDocumento: string
+): boolean => {
+  const base = `${PREFIXO_OBSERVACAO_AUTOMATICA}${codigoDocumento}`.toUpperCase();
+  const obs = (observacao || '').trim().toUpperCase();
+  return obs === `${base}.` || obs.indexOf(`${base} (`) === 0;
+};
+
+export const sincronizarVinculosTreinamentoDetalhado = async (
   dataverse: DataverseService,
   documento: { id: string; codigo: string; tipo: string },
   valores: Record<string, string>,
   rotuloRevisao?: string
-): Promise<number> => {
+): Promise<IResultadoSincronizacaoVinculos> => {
+
+  const resultado: IResultadoSincronizacaoVinculos = { criados: 0, desativados: 0, avisos: [] };
+  const documentoId = guid(documento.id);
+  const codigoDocumento = normalizarCodigo(documento.codigo);
+
+  if (!documentoId || !codigoDocumento) {
+    return resultado;
+  }
 
   const citados: IValorDocumento[] = [];
 
   Object.keys(valores || {}).forEach(chave => {
     lerReferenciasGravadas(valores[chave]).forEach(item => {
-      if (!citados.some(atual => atual.id === item.id)) {
+      if (item.id && item.id !== documentoId && !citados.some(atual => atual.id === item.id)) {
         citados.push(item);
       }
     });
   });
 
-  if (citados.length === 0) {
-    return 0;
+  // Documento citado fora do cache (ex.: criado há pouco): relê.
+  let documentos = await carregarDocumentos(dataverse);
+
+  if (citados.some(item => !documentos.some(doc => doc.id === item.id))) {
+    documentos = await carregarDocumentos(dataverse, true);
   }
 
-  const documentos = await carregarDocumentos(dataverse);
-  const tipoDe = (id: string): string => {
-    const doc = documentos.find(item => item.id === id);
-    return doc ? doc.tipo : '';
-  };
+  const docDe = (id: string): IDocumentoResumoReferencia | undefined =>
+    documentos.find(item => item.id === id);
 
   const servico = new TreinamentoDocumentoAdminService(dataverse);
-  const pares: Array<{ documentoId: string; treinamento: { id: string; codigo: string } }> = [];
+  const observacao = observacaoAutomatica(documento.codigo.trim(), rotuloRevisao);
+
+  // Pares esperados documento × treinamento.
+  const pares: Array<{ documentoId: string; treinamento: ITreinamentoResolvido }> = [];
 
   if (ehDocumentoControle(documento.tipo)) {
-    // Treinamento citando documentos.
-    const treinamento = await treinamentoDoControle(dataverse, documento);
-    if (treinamento) {
-      citados
-        .filter(item => !ehDocumentoControle(tipoDe(item.id)))
-        .forEach(item => pares.push({ documentoId: item.id, treinamento }));
+
+    // Treinamento (TRN) citando documentos.
+    const treinamento = await treinamentoDoControle(dataverse, { id: documentoId, codigo: codigoDocumento });
+
+    if (!treinamento) {
+      if (citados.length > 0) {
+        resultado.avisos.push(`Não existe treinamento com o código ${codigoDocumento}: os documentos citados não foram vinculados.`);
+      }
+    } else {
+      citados.forEach(item => {
+        const doc = docDe(item.id);
+        if (!doc) {
+          resultado.avisos.push(`Documento ${item.codigo || item.id} não encontrado: vínculo não criado.`);
+          return;
+        }
+        if (!ehDocumentoControle(doc.tipo)) {
+          pares.push({ documentoId: doc.id, treinamento });
+        }
+      });
+
+      // Correção: documentos ligados a ESTE treinamento pelas referências
+      // DESTE documento que não são mais citados.
+      const esperados = pares.map(par => par.documentoId);
+      const ligados = await dataverse.getTreinamentoDocumentos(treinamento.id);
+
+      for (const registro of ligados) {
+        const ligadoId = guid(registro._dgt_documento_value);
+        if (
+          esperados.indexOf(ligadoId) < 0 &&
+          criadoPelasReferenciasDe(texto(registro, 'dgt_observacao'), codigoDocumento)
+        ) {
+          await servico.desativar(guid(registro.dgt_treinamentodocumentoid));
+          resultado.desativados++;
+        }
+      }
     }
+
   } else {
-    // Documento citando treinamentos.
-    for (const item of citados.filter(citado => ehDocumentoControle(tipoDe(citado.id)))) {
-      const treinamento = await treinamentoDoControle(dataverse, { id: item.id, codigo: item.codigo });
-      if (treinamento) {
-        pares.push({ documentoId: guid(documento.id), treinamento });
+
+    // Documento comum citando treinamentos (TRN).
+    for (const item of citados) {
+      const doc = docDe(item.id);
+
+      if (!doc || !ehDocumentoControle(doc.tipo)) {
+        continue;
+      }
+
+      const treinamento =
+        await treinamentoDoControle(dataverse, { id: doc.id, codigo: doc.codigo || item.codigo });
+
+      if (treinamento && !treinamento.ativo) {
+        resultado.avisos.push(
+          `O treinamento ${treinamento.codigo} (${treinamento.nome}) está inativo: vínculo não criado. Escolha um treinamento ativo.`
+        );
+      } else if (treinamento) {
+        pares.push({ documentoId, treinamento });
+      } else {
+        resultado.avisos.push(
+          `O documento ${doc.codigo || item.codigo} não tem treinamento com o mesmo código: vínculo não criado.`
+        );
+      }
+    }
+
+    // Correção: vínculos automáticos DESTE documento com treinamento que
+    // não corresponde às referências atuais (ex.: ARQ-TRN-001 no lugar
+    // de ARQ-TRN-002).
+    const esperados = pares.map(par => par.treinamento.id);
+    const atuais = await servico.listarPorDocumento(documentoId);
+
+    for (const vinculo of atuais) {
+      if (
+        vinculo.ativo &&
+        esperados.indexOf(guid(vinculo.treinamentoId)) < 0 &&
+        criadoPelasReferenciasDe(vinculo.observacao, codigoDocumento)
+      ) {
+        await servico.desativar(vinculo.id);
+        resultado.desativados++;
       }
     }
   }
-
-  let criados = 0;
 
   for (const par of pares) {
     try {
@@ -458,11 +716,9 @@ export const sincronizarVinculosTreinamento = async (
         treinamentoId: par.treinamento.id,
         obrigatorio: true,
         ordem: 0,
-        observacao:
-          `Vínculo criado pela referência no fluxo de ${documento.codigo}` +
-          `${rotuloRevisao ? ` (${rotuloRevisao})` : ''}.`
+        observacao
       });
-      criados++;
+      resultado.criados++;
     } catch (erro) {
       // "Já está vinculado" não é erro: o vínculo já existe.
       const mensagem = erro instanceof Error ? erro.message : String(erro);
@@ -472,8 +728,22 @@ export const sincronizarVinculosTreinamento = async (
     }
   }
 
-  return criados;
+  if (resultado.avisos.length > 0 || resultado.desativados > 0) {
+    console.warn('[Referências] Sincronização de vínculos:', resultado);
+  }
+
+  return resultado;
 };
+
+// Assinatura original (usada pelo fluxo de revisão): devolve o número de
+// vínculos criados. Avisos e correções ficam no console.
+export const sincronizarVinculosTreinamento = async (
+  dataverse: DataverseService,
+  documento: { id: string; codigo: string; tipo: string },
+  valores: Record<string, string>,
+  rotuloRevisao?: string
+): Promise<number> =>
+  (await sincronizarVinculosTreinamentoDetalhado(dataverse, documento, valores, rotuloRevisao)).criados;
 
 // ------------------------------------------------------------
 // Vínculo DIRETO treinamento × documentos (tela do treinamento)

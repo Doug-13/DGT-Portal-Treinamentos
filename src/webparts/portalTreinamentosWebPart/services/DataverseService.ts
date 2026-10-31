@@ -515,6 +515,14 @@ export class DataverseService {
   // ENTITY SET NAME
   // ==========================================================
 
+  // Nome do conjunto (entity set) de uma tabela — usado para montar
+  // "@odata.bind" fora deste serviço (ex.: edição administrativa).
+  public async obterNomeConjunto(
+    logicalName: string
+  ): Promise<string> {
+    return this.getEntitySetName(logicalName);
+  }
+
   private async getEntitySetName(
     logicalName: string
   ): Promise<string> {

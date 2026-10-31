@@ -1,5 +1,5 @@
 import {
-  sincronizarVinculosTreinamento
+  sincronizarVinculosTreinamentoDetalhado
 } from '../services/referencias/ReferenciasDocumentoService';
 
 import * as React from 'react';
@@ -1063,13 +1063,24 @@ export const useFluxoRevisaoTeste = (
         // ação: só avisa.
         if (!local && dataverseService && documento) {
           try {
-            const criados =
-              await sincronizarVinculosTreinamento(
+            const sincronizacao =
+              await sincronizarVinculosTreinamentoDetalhado(
                 dataverseService,
                 { id: documento.id, codigo: documento.codigo, tipo: documento.tipo },
                 resultado.instancia.valores,
                 revisaoAlvo.revisao
               );
+
+            const criados = sincronizacao.criados;
+
+            if (sincronizacao.avisos.length > 0 || sincronizacao.desativados > 0) {
+              setAvisos(atual => atual.concat(
+                sincronizacao.avisos,
+                sincronizacao.desativados > 0
+                  ? [`${sincronizacao.desativados} vínculo(s) automático(s) que não correspondiam às referências foram desativados.`]
+                  : []
+              ));
+            }
 
             if (criados > 0) {
               setAvisos(atual => atual.concat(

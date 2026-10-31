@@ -314,7 +314,7 @@ const PainelMetadados: React.FC<IPainelMetadadosProps> = ({
                 <span style={estiloRotuloPainel}>Ordem</span>
                 <span style={estiloRotuloPainel}>Nome do campo</span>
                 <span style={estiloRotuloPainel}>Tipo</span>
-                <span style={estiloRotuloPainel}>Opções (lista, separadas por ;)</span>
+                <span style={estiloRotuloPainel} title="Lista de opções: valores separados por ;. Documento referenciado: tipos de documento aceitos (ex.: POP; IT; MAP); vazio = todos, exceto treinamentos (TRN).">Opções / tipos aceitos (separados por ;)</span>
                 <span style={estiloRotuloPainel}>Ajuda</span>
                 <span />
               </div>
@@ -399,10 +399,24 @@ const PainelMetadados: React.FC<IPainelMetadadosProps> = ({
 
                           <input
                             type="text"
-                            aria-label="Opções da lista"
+                            aria-label={metadado.tipo === 'documento' || metadado.tipo === 'documentos' ? 'Tipos de documento aceitos' : 'Opções da lista'}
+                            title={
+                              metadado.tipo === 'documento' || metadado.tipo === 'documentos'
+                                ? 'Tipos de documento que podem ser referenciados (ex.: POP; IT; MAP). Vazio = todos, exceto treinamentos (TRN). Para aceitar treinamentos, inclua TRN.'
+                                : undefined
+                            }
                             value={(metadado.opcoes || []).join('; ')}
-                            disabled={!editavel || metadado.tipo !== 'lista'}
-                            placeholder={metadado.tipo === 'lista' ? 'Ex.: Baixo; Médio; Alto' : '—'}
+                            disabled={
+                              !editavel ||
+                              (metadado.tipo !== 'lista' && metadado.tipo !== 'documento' && metadado.tipo !== 'documentos')
+                            }
+                            placeholder={
+                              metadado.tipo === 'lista'
+                                ? 'Ex.: Baixo; Médio; Alto'
+                                : metadado.tipo === 'documento' || metadado.tipo === 'documentos'
+                                  ? 'Tipos aceitos (ex.: POP; IT) — vazio = todos, exceto TRN'
+                                  : '—'
+                            }
                             onChange={evento => alterar(indice, { opcoes: lerOpcoes(evento.target.value) })}
                             style={estiloEntradaPainel}
                           />

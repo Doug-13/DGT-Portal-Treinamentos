@@ -1,3 +1,7 @@
+import {
+  CONTROLE_DOCUMENTAL
+} from '../../constants/controleDocumental';
+
 // ============================================================
 // METADADOS DO TIPO "DOCUMENTO REFERENCIADO"
 //
@@ -145,4 +149,40 @@ export const lerReferenciasGravadas = (
   } catch {
     return [];
   }
+};
+
+// ------------------------------------------------------------
+// TIPO DO DOCUMENTO
+// ------------------------------------------------------------
+
+// dgt_tipo é uma escolha (número). O código (POP, IT, TRN...) vem do
+// valor formatado — ex.: "TRN" ou "TRN - Treinamento" → "TRN".
+export const codigoTipoDocumento = (
+  registro: Record<string, unknown>
+): string => {
+  const formatado =
+    registro['dgt_tipo@OData.Community.Display.V1.FormattedValue'];
+  const texto =
+    String(formatado === undefined || formatado === null ? '' : formatado).trim();
+  return texto.split(/[\s\-–—]+/)[0].toUpperCase();
+};
+
+// Tipos permitidos num metadado "Documento referenciado" (opções do
+// metadado, ex.: ["POP", "IT"]). Lista vazia = todos, exceto TRN
+// (documentos de controle de treinamento só entram se listados).
+export const tipoPermitido = (
+  tipo: string,
+  tiposPermitidos?: string[]
+): boolean => {
+  const permitidos = (tiposPermitidos || [])
+    .map(item => item.split(/[\s\-–—]+/)[0].trim().toUpperCase())
+    .filter(item => !!item);
+
+  const codigo = (tipo || '').trim().toUpperCase();
+
+  if (permitidos.length > 0) {
+    return permitidos.indexOf(codigo) >= 0;
+  }
+
+  return codigo !== CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO;
 };

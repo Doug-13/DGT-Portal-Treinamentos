@@ -193,8 +193,14 @@ export class UsuarioService {
           )
         );
 
+      // Atribuições removidas (dgt_ativo = Não) não contam
+      // como pendência da equipe.
       const atribuicoesUsuario =
         atribuicoes.filter(item => {
+
+          if (item.dgt_ativo === false) {
+            return false;
+          }
 
           const usuarioLookup =
             this.limparGuid(

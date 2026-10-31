@@ -399,6 +399,20 @@ export class AvisosService {
         `&$filter=_dgt_usuario_value eq ${guid(contexto.usuarioId)} and dgt_ativo eq true`
       );
 
+    // Treinamentos desativados não geram avisos (o colaborador não
+    // os vê mais). Se a consulta falhar, mantém o comportamento
+    // anterior (avisa de todos).
+    const desativados = new Set<string>();
+    try {
+      const inativos = await this.dataverse.listarRegistros(
+        'dgt_treinamento',
+        '$select=dgt_treinamentoid&$filter=dgt_ativo eq false'
+      );
+      inativos.forEach(item => desativados.add(guid(item.dgt_treinamentoid)));
+    } catch (erro) {
+      console.warn('[Avisos] Não foi possível ler os treinamentos desativados.', erro);
+    }
+
     const encerrados: number[] = [STATUS_USUARIO_TREINAMENTO.CONCLUIDO, STATUS_USUARIO_TREINAMENTO.CANCELADO];
     const agora = Date.now();
     const avisos: IAviso[] = [];
@@ -409,6 +423,10 @@ export class AvisosService {
       const status = Number(registro.dgt_status);
 
       if (encerrados.indexOf(status) >= 0) {
+        return;
+      }
+
+      if (desativados.has(guid(registro._dgt_treinamento_value))) {
         return;
       }
 
