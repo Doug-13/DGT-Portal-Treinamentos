@@ -70,6 +70,10 @@ export interface IPainelFluxoOrcamentoProps {
   observacaoAcoes?: string;
   // Começa com o diagrama aberto?
   diagramaAberto?: boolean;
+  // Textos do cabeçalho (o painel também é usado pelos Ambientes).
+  // Sem eles, ficam os textos do Orçamento.
+  rotuloFluxo?: string;
+  textoConcluido?: string;
 }
 
 const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
@@ -221,10 +225,10 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
         <div style={{ flex: 1, minWidth: '240px' }}>
           <div style={{ fontSize: '11.5px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px' }}>
-            Fluxo de aprovação · {instancia.processoNome || definicao.nome} · v{definicao.versao}
+            {props.rotuloFluxo || 'Fluxo de aprovação'} · {instancia.processoNome || definicao.nome} · v{definicao.versao}
           </div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: COR.azul, marginTop: '2px' }}>
-            {concluido ? '✓ Orçamento aprovado — fluxo concluído' : `Etapa atual: ${elemento ? elemento.nome : '—'}`}
+            {concluido ? (props.textoConcluido || '✓ Orçamento aprovado — fluxo concluído') : `Etapa atual: ${elemento ? elemento.nome : '—'}`}
           </div>
           {!concluido && responsaveis.length > 0 && (
             <div style={{ fontSize: '12.5px', color: COR.texto2, marginTop: '2px' }}>

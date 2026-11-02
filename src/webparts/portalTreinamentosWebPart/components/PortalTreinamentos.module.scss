@@ -137,6 +137,38 @@
 }
 
 .intranetMenuItem:hover .intranetIcon { color: #ffffff; }
+
+/* "+ Adicionar ambiente" (somente Administrador) — fim do menu */
+.intranetMenuAdicionar {
+  width: calc(100% - 28px);
+  min-height: 40px;
+  margin: 8px 14px 0;
+  border: 1px dashed rgba(143, 230, 255, .55);
+  border-radius: 8px;
+  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #8fe6ff;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.intranetMenuAdicionar .intranetIcon {
+  font-size: 18px;
+  font-weight: 700;
+  color: #8fe6ff;
+}
+
+.intranetMenuAdicionar:hover {
+  background: rgba(255, 255, 255, .06);
+  border-style: solid;
+  color: #ffffff;
+}
 .intranetMenuActive .intranetIcon { color: #ffffff; opacity: 1; }
 
 .sidebarWords {

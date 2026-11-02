@@ -6,6 +6,10 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: "+ Adicionar ambiente" no menu lateral (Administrador) — cria ambientes como Processo, Licitações ou Compras sem código novo; cada ambiente ganha um processo com fluxo próprio, desenhado em Processos → Fluxos.
+- Novo: ambientes liberados em Usuários e acessos exatamente como os módulos atuais (módulo liberado, liberação padrão por perfil e Administrador do módulo).
+- Novo: registros de ambiente com código automático (PREFIXO-ANO-0001) que seguem o fluxo publicado: etapas, responsáveis, campos, prazos e histórico; abas Aguardando você, Meus registros, Todos e Configuração.
+- Novo: script scripts/dataverse/criar-tabelas-ambientes.ps1 e guia docs/ambientes.md.
 - Novo: módulo de HH para cadastro, consulta e utilização de horas na composição de soluções e B.O.M.
 - Novo: etapa de HH no fluxo de Arquitetura de Soluções, permitindo complementar o B.O.M. com esforço estimado.
 - Novo: cadastro e gestão de fabricantes e terceiros no módulo de RH.

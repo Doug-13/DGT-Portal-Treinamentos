@@ -29,7 +29,14 @@ import {
 // usam modulosEfetivos/moduloLiberado daqui.
 // ============================================================
 
+// AMBIENTES DINÂMICOS: ambientes criados pelo Administrador no portal
+// (botão "+ Adicionar ambiente", tabela dgt_ambiente) entram nesta
+// mesma lista com a chave "amb:<chave do ambiente>". Assim a
+// liberação por usuário, o "Administrador do módulo", o menu e as
+// telas Meu perfil / Usuários e acessos funcionam igual aos módulos
+// fixos, sem código novo por ambiente.
 export type ChaveModuloPortal =
+  | `amb:${string}`
   | 'treinamentos'
   | 'documentos'
   | 'processos'
@@ -50,6 +57,9 @@ export interface IModuloPortal {
   padraoPerfis?: string[];
 }
 
+// Fixos + ambientes registrados (registrarModulosAmbientes). As telas
+// leem esta lista na hora de desenhar, por isso ela é alterada no
+// lugar (mesma referência) quando os ambientes são carregados.
 export const MODULOS_PORTAL: IModuloPortal[] = [
   { chave: 'treinamentos', nome: 'Treinamentos', descricao: 'Trilhas, cursos, avaliações, certificados e gestão de treinamentos.', padrao: true },
   { chave: 'documentos', nome: 'Documentos', descricao: 'Procedimentos, políticas, revisões e aprovações.', padrao: true },
@@ -97,6 +107,28 @@ export const moduloDaPagina = (
     : modulo as ChaveModuloPortal;
 };
 
+export const PREFIXO_AMBIENTE = 'amb:';
+
+export const chaveModuloAmbiente = (
+  chaveAmbiente: string
+): ChaveModuloPortal =>
+  `${PREFIXO_AMBIENTE}${chaveAmbiente}` as ChaveModuloPortal;
+
+export const ehModuloAmbiente = (
+  chave: string
+): boolean =>
+  (chave || '').indexOf(PREFIXO_AMBIENTE) === 0 &&
+  chave.length > PREFIXO_AMBIENTE.length;
+
+// Chaves aceitas ao LER a lista do usuário. Ambientes são aceitos
+// mesmo antes de serem carregados (a leitura do usuário pode terminar
+// antes da lista de ambientes): uma liberação nunca é perdida.
+const chaveValida = (
+  chave: string
+): boolean =>
+  ehModuloAmbiente(chave) ||
+  MODULOS_PORTAL.some(item => item.chave === chave);
+
 // Lê o JSON gravado no Dataverse. Inválido/vazio = sem restrição.
 export const lerModulosAcesso = (
   valor: unknown
@@ -111,10 +143,9 @@ export const lerModulosAcesso = (
     if (!Array.isArray(lista)) {
       return undefined;
     }
-    const validas = MODULOS_PORTAL.map(item => item.chave as string);
     const filtrada = lista
       .map(item => String(item))
-      .filter(item => validas.indexOf(item) >= 0) as ChaveModuloPortal[];
+      .filter(item => chaveValida(item)) as ChaveModuloPortal[];
     return filtrada.length > 0 ? filtrada : undefined;
   } catch {
     return undefined;
@@ -135,12 +166,11 @@ export const lerModulosAdministrados = (
     if (!Array.isArray(lista)) {
       return [];
     }
-    const validas = MODULOS_PORTAL.map(item => item.chave as string);
     return lista
       .map(item => String(item))
       .filter(item => item.indexOf(PREFIXO_ADMIN_MODULO) === 0)
       .map(item => item.substring(PREFIXO_ADMIN_MODULO.length))
-      .filter((item, indice, todos) => validas.indexOf(item) >= 0 && todos.indexOf(item) === indice) as ChaveModuloPortal[];
+      .filter((item, indice, todos) => chaveValida(item) && todos.indexOf(item) === indice) as ChaveModuloPortal[];
   } catch {
     return [];
   }
@@ -154,8 +184,55 @@ export const administraModulo = (
 ): boolean =>
   perfil === 'Administrador' || (administrados || []).indexOf(chave) >= 0;
 
+// Também alterada no lugar quando os ambientes são registrados.
 export const MODULOS_PADRAO: ChaveModuloPortal[] =
   MODULOS_PORTAL.filter(item => item.padrao).map(item => item.chave);
+
+// ------------------------------------------------------------
+// Registro dos ambientes dinâmicos
+// ------------------------------------------------------------
+
+export interface IModuloAmbienteRegistro {
+  chave: string;
+  nome: string;
+  descricao: string;
+  // "Liberado para todos" (igual a padrao: true dos módulos fixos).
+  padrao: boolean;
+  // Perfis que recebem o ambiente sem liberação explícita.
+  padraoPerfis?: string[];
+}
+
+// Substitui os ambientes registrados pelos informados (os módulos
+// fixos não mudam). Chamada ao carregar e ao criar/editar ambientes.
+export const registrarModulosAmbientes = (
+  ambientes: IModuloAmbienteRegistro[]
+): void => {
+
+  for (let indice = MODULOS_PORTAL.length - 1; indice >= 0; indice--) {
+    if (ehModuloAmbiente(MODULOS_PORTAL[indice].chave)) {
+      MODULOS_PORTAL.splice(indice, 1);
+    }
+  }
+
+  (ambientes || []).forEach(ambiente => {
+    const chave = chaveModuloAmbiente(ambiente.chave);
+    if (!ambiente.chave || MODULOS_PORTAL.some(item => item.chave === chave)) {
+      return;
+    }
+    MODULOS_PORTAL.push({
+      chave,
+      nome: ambiente.nome,
+      descricao: ambiente.descricao || 'Ambiente criado no portal (segue o fluxo configurado).',
+      padrao: ambiente.padrao,
+      padraoPerfis: ambiente.padraoPerfis && ambiente.padraoPerfis.length > 0 ? ambiente.padraoPerfis : undefined
+    });
+  });
+
+  MODULOS_PADRAO.splice(0, MODULOS_PADRAO.length);
+  MODULOS_PORTAL
+    .filter(item => item.padrao)
+    .forEach(item => MODULOS_PADRAO.push(item.chave));
+};
 
 const mesmoConjunto = (
   a: ChaveModuloPortal[],

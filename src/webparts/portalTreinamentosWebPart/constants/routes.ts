@@ -44,7 +44,10 @@ export type Pagina =
   // RH e Pessoas (por enquanto: certificados dos colaboradores)
   | 'rhPessoas'
   // Planejamento orçamentário (Gestor e Administrador)
-  | 'planejamentoOrcamentario';
+  | 'planejamentoOrcamentario'
+  // Ambiente dinâmico (criado pelo Administrador no portal). Qual
+  // ambiente está aberto fica no estado do portal (ambienteAtualChave).
+  | 'ambiente';
 
 export const ROTAS = {
   INICIO: 'inicio',
@@ -85,6 +88,7 @@ export const ROTAS = {
   CALCULO_HH: 'calculoHH',
   RH_PESSOAS: 'rhPessoas',
   PLANEJAMENTO_ORCAMENTARIO: 'planejamentoOrcamentario',
+  AMBIENTE: 'ambiente',
 } as const;
 
 

@@ -95,6 +95,10 @@ import { SharePointDocumentoService } from '../services/sharepoint/SharePointDoc
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
 import { TreinamentoDocumentoControleService } from '../services/TreinamentoDocumentoControleService';
 import { CONTROLE_DOCUMENTAL, controleDocumentalHabilitado } from '../constants/controleDocumental';
+import { IAmbiente, IEdicaoAmbiente } from '../models/Ambiente';
+import { AmbienteService, ambienteLiberado, podeCriarAmbiente, registrarAmbientesNoPortal } from '../services/ambientes/AmbienteService';
+import { solicitarAberturaProcesso as abrirProcessoNoEditor } from '../services/processos/ProcessoService';
+import AmbienteFormModal from '../pages/Ambientes/AmbienteFormModal';
 
 type DataverseRecord =
   IDataverseRecord;
@@ -494,6 +498,121 @@ const PortalTreinamentos:
           dataverseApiUrl
         ]
       );
+
+    // ==========================================================
+    // AMBIENTES DINÂMICOS (+ Adicionar ambiente)
+    //
+    // Lidos de dgt_ambiente ao abrir o portal. Os ativos entram no
+    // registro de módulos (amb:<chave>), por isso aparecem no menu e em
+    // Usuários e acessos como os módulos fixos. Sem as tabelas, a lista
+    // fica vazia e o portal funciona como antes.
+    // ==========================================================
+
+    const ambienteService =
+      React.useMemo(
+        () => new AmbienteService(dataverseService),
+        [dataverseService]
+      );
+
+    const [ambientes, setAmbientes] =
+      React.useState<IAmbiente[]>([]);
+
+    const [ambientesDisponivel, setAmbientesDisponivel] =
+      React.useState<boolean>(false);
+
+    const [avisoAmbientes, setAvisoAmbientes] =
+      React.useState<string>('');
+
+    const [ambienteAtualChave, setAmbienteAtualChave] =
+      React.useState<string>('');
+
+    // undefined = fechado; { ambiente: undefined } = novo.
+    const [formAmbiente, setFormAmbiente] =
+      React.useState<{ ambiente?: IAmbiente } | undefined>(undefined);
+
+    const [processandoAmbiente, setProcessandoAmbiente] =
+      React.useState<boolean>(false);
+
+    const aplicarAmbientes =
+      React.useCallback(
+        (lista: IAmbiente[]): void => {
+          registrarAmbientesNoPortal(lista);
+          setAmbientes(lista);
+        },
+        []
+      );
+
+    const carregarAmbientes =
+      React.useCallback(
+        async (): Promise<void> => {
+          const resultado = await ambienteService.listar();
+          setAmbientesDisponivel(resultado.disponivel);
+          setAvisoAmbientes(resultado.aviso);
+          if (resultado.aviso) {
+            console.warn('[Ambientes]', resultado.aviso);
+          }
+          aplicarAmbientes(resultado.ambientes);
+        },
+        [ambienteService, aplicarAmbientes]
+      );
+
+    React.useEffect(
+      () => {
+        carregarAmbientes().catch(erro => console.error('[Ambientes]', erro));
+      },
+      [carregarAmbientes]
+    );
+
+    const ambienteAtual =
+      ambientes.filter(item => item.ativo && item.chave === ambienteAtualChave)[0];
+
+    const salvarAmbiente =
+      async (dados: IEdicaoAmbiente): Promise<string[]> => {
+
+        const original =
+          formAmbiente ? formAmbiente.ambiente : undefined;
+
+        setProcessandoAmbiente(true);
+
+        try {
+          const resultado =
+            original
+              ? await ambienteService.atualizar(original, dados, ambientes)
+              : await ambienteService.criar(dados, ambientes);
+
+          if (!resultado.ok || !resultado.ambiente) {
+            return resultado.erros;
+          }
+
+          const gravado = resultado.ambiente;
+
+          const lista =
+            (original
+              ? ambientes.map(item => (item.id === gravado.id ? gravado : item))
+              : ambientes.concat(gravado))
+              .slice()
+              .sort((x, y) => x.ordem - y.ordem || x.nome.localeCompare(y.nome));
+
+          aplicarAmbientes(lista);
+          setFormAmbiente(undefined);
+
+          if (gravado.ativo) {
+            // Novo (ou editado): abre o ambiente; o Administrador
+            // segue para a aba Configuração e desenha o fluxo.
+            setAmbienteAtualChave(gravado.chave);
+            setPaginaAtual('ambiente');
+            window.scrollTo(0, 0);
+          } else if (ambienteAtualChave === gravado.chave) {
+            setPaginaAtual('inicio');
+          }
+
+          return [];
+        } catch (erro) {
+          return [erro instanceof Error ? erro.message : String(erro)];
+        } finally {
+          setProcessandoAmbiente(false);
+        }
+      };
 
     // Atribuição por área (regras dgt_treinamentoarea).
     const atribuicaoAreaService =
@@ -3677,10 +3796,12 @@ const gestaoAreas =
     // ficam ativos quando a própria página está aberta — antes,
     // abrir Indicadores destacava todos eles de uma vez.
     const itemMenuAtivo =
-      (item: { modulo: string; pagina?: Pagina }): boolean =>
-        item.modulo === 'outro'
-          ? !!item.pagina && item.pagina === paginaAtual
-          : moduloAtual === item.modulo;
+      (item: { modulo: string; pagina?: Pagina; ambienteChave?: string }): boolean =>
+        item.ambienteChave
+          ? paginaAtual === 'ambiente' && ambienteAtualChave === item.ambienteChave
+          : item.modulo === 'outro'
+            ? !!item.pagina && item.pagina === paginaAtual
+            : moduloAtual === item.modulo;
 
     const menuIntranet:
       Array<{
@@ -3705,6 +3826,10 @@ const gestaoAreas =
         // Destaque "NOVO" ao lado do nome no menu lateral
         novo?:
         boolean;
+
+        // Item de um ambiente dinâmico (chave do ambiente).
+        ambienteChave?:
+        string;
 }> = [
 
       {
@@ -3815,6 +3940,27 @@ const gestaoAreas =
           ]
           : []
       ),
+
+      // Ambientes dinâmicos (+ Adicionar ambiente) — cada um visível
+      // só para quem tem o módulo "amb:<chave>" liberado.
+      ...ambientes
+        .filter(item => item.ativo)
+        .map(item => ({
+          label:
+            item.nome,
+
+          icon:
+            (Icones[item.icone] ? item.icone : 'workflow') as IconeChave,
+
+          pagina:
+            'ambiente' as Pagina,
+
+          modulo:
+            'outro' as const,
+
+          ambienteChave:
+            item.chave
+        })),
 
       // Kits (catálogo do B.O.M.) — visível só com o módulo "kits"
       // liberado (o filtro do menu usa podeAcessarRota).
@@ -3981,18 +4127,29 @@ const gestaoAreas =
 
             {menuIntranet
               .filter(
-                item =>
-                  !autorizacao.contexto ||
-                  !item.pagina ||
-                  item.modulo === 'inicio' ||
-                  podeAcessarRota(item.pagina, autorizacao.contexto)
+                item => {
+                  // Ambiente: só aparece com o módulo liberado (e nunca
+                  // antes de as permissões serem lidas).
+                  if (item.ambienteChave) {
+                    const ambiente = ambientes.filter(amb => amb.chave === item.ambienteChave)[0];
+                    return !!ambiente && ambienteLiberado(autorizacao.contexto, ambiente);
+                  }
+                  return (
+                    !autorizacao.contexto ||
+                    !item.pagina ||
+                    item.modulo === 'inicio' ||
+                    podeAcessarRota(item.pagina, autorizacao.contexto)
+                  );
+                }
               )
               .map(
               item => (
 
                 <button
                   key={
-                    item.label
+                    item.ambienteChave
+                      ? `amb:${item.ambienteChave}`
+                      : item.label
                   }
                   type="button"
                   className={
@@ -4006,6 +4163,14 @@ const gestaoAreas =
                       : 'Módulo da Intranet DGT'
                   }
                   onClick={() => {
+
+                    if (
+                      item.ambienteChave
+                    ) {
+                      setAmbienteAtualChave(
+                        item.ambienteChave
+                      );
+                    }
 
                     if (
                       item.pagina
@@ -4057,6 +4222,44 @@ const gestaoAreas =
               )
             )}
 
+            {
+              // Somente o Administrador global cria ambientes.
+              podeCriarAmbiente(autorizacao.contexto) &&
+              (
+                <button
+                  type="button"
+                  className={
+                    styles.intranetMenuAdicionar
+                  }
+                  title={
+                    ambientesDisponivel
+                      ? 'Criar um novo ambiente (ex.: Licitações, Compras) com fluxo próprio'
+                      : avisoAmbientes || 'As tabelas de ambientes ainda não existem no Dataverse.'
+                  }
+                  onClick={() =>
+                    setFormAmbiente({})
+                  }
+                >
+                  <span
+                    className={
+                      styles.intranetIcon
+                    }
+                    aria-hidden="true"
+                  >
+                    +
+                  </span>
+
+                  <span
+                    className={
+                      styles.intranetLabel
+                    }
+                  >
+                    Adicionar ambiente
+                  </span>
+                </button>
+              )
+            }
+
           </nav>
 
           <div
@@ -4082,6 +4285,23 @@ const gestaoAreas =
           </div>
 
         </aside>
+
+        {/* ADICIONAR / EDITAR AMBIENTE (Administrador) */}
+
+        {
+          formAmbiente &&
+          (
+            <AmbienteFormModal
+              ambiente={formAmbiente.ambiente}
+              existentes={ambientes}
+              disponivel={ambientesDisponivel}
+              avisoIndisponivel={avisoAmbientes}
+              processando={processandoAmbiente}
+              onSalvar={salvarAmbiente}
+              onFechar={() => setFormAmbiente(undefined)}
+            />
+          )
+        }
 
         {/* WORKSPACE */}
 
@@ -4414,6 +4634,22 @@ const gestaoAreas =
 
                 pagina={
                   paginaAtual
+                }
+
+                // Ambientes dinâmicos
+                ambienteAtual={
+                  ambienteAtual
+                }
+
+                onDesenharFluxoAmbiente={processoId => {
+                  abrirProcessoNoEditor(processoId);
+                  navegar('fluxos');
+                }}
+
+                onEditarAmbiente={
+                  ambienteAtual && podeCriarAmbiente(autorizacao.contexto)
+                    ? () => setFormAmbiente({ ambiente: ambienteAtual })
+                    : undefined
                 }
 
                 // Licitações: análise por IA (Claude via Dataverse).

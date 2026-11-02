@@ -172,7 +172,12 @@ const regras:
     { rota: 'licitacoesTeste', perfis: LICITACOES },
 
     // Planejamento orçamentário
-    { rota: 'planejamentoOrcamentario', perfis: ORCAMENTO }
+    { rota: 'planejamentoOrcamentario', perfis: ORCAMENTO },
+
+    // Ambientes dinâmicos: qualquer perfil. A entrada em CADA ambiente
+    // é decidida pelo módulo "amb:<chave>" (Usuários e acessos), no
+    // menu e na própria página (AmbienteService.ambienteLiberado).
+    { rota: 'ambiente', perfis: TODOS }
   ];
 
 const mensagemNegado = (

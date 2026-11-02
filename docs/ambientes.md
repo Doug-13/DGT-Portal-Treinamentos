@@ -1,0 +1,140 @@
+# Ambientes dinâmicos (+ Adicionar ambiente)
+
+Permite criar novos ambientes no portal — ex.: **Processo**, **Licitações**,
+**Compras**, **Jurídico** — **sem escrever código novo**. Cada ambiente:
+
+- aparece no **menu lateral** para quem tem o ambiente liberado;
+- é liberado em **Usuários e acessos** exatamente como os módulos atuais
+  (checkbox do módulo + "Administrador do módulo");
+- tem um **fluxo próprio**, desenhado no mesmo editor de Processos → Fluxos;
+- cada registro do ambiente (solicitação, processo licitatório, pedido...)
+  **segue esse fluxo**: etapas, responsáveis, campos, prazos e botões vêm do desenho.
+
+Ordem de implantação: **1. tabelas → 2. permissões → 3. pacote → 4. teste**.
+
+---
+
+## 1. Criar as tabelas
+
+Pré-requisito: as tabelas do fluxo configurável já existem
+(`criar-tabelas-fluxo.ps1`).
+
+```powershell
+cd scripts\dataverse
+.\criar-tabelas-ambientes.ps1 -UrlAmbiente https://suaorg.crm2.dynamics.com -Solucao NOME_DA_SOLUCAO
+```
+
+Pode ser executado de novo: o que já existe é mantido.
+
+| Tabela | Para que serve |
+|---|---|
+| `dgt_ambiente` | Cadastro do ambiente: nome, chave, ícone, ordem, liberação padrão, prefixo do código, processo do fluxo (`dgt_Processo`). |
+| `dgt_ambienteregistro` | Cada registro do ambiente: código, título, área, quem abriu, situação, etapa atual, prazo, responsáveis da etapa e o **estado do fluxo** (`dgt_fluxoestado`, JSON com o histórico). |
+
+> Enquanto as tabelas não existirem, o portal funciona exatamente como antes:
+> nenhum ambiente aparece e o botão "+ Adicionar ambiente" explica o que falta.
+
+---
+
+## 2. Permissões (perfis de segurança)
+
+Power Platform admin center → ambiente → *Configurações* → *Usuários + permissões*
+→ *Perfis de segurança* → aba **Entidades personalizadas**:
+
+| Tabela | Colaboradores / Gestores / Editores | Administradores |
+|---|---|---|
+| `dgt_ambiente` | Ler (Org.) | Criar, Ler, Gravar, Acrescentar, Acrescentar a (Org.) |
+| `dgt_ambienteregistro` | Criar, Ler, Gravar, Acrescentar, **Acrescentar a** (Org.) | idem |
+| `dgt_processo` | Ler (Org.) | + **Criar** (o portal cria o processo do ambiente) |
+| `dgt_area`, `dgt_usuario` | + **Acrescentar a** (Org.) | idem |
+
+- **Ninguém** deve ter *Excluir* em `dgt_ambienteregistro` (histórico).
+- `dgt_ambiente` não precisa de *Excluir*: ambientes são **desativados**.
+- Quem executa etapas precisa **Gravar** no registro, porque o estado do fluxo fica nele.
+- Para restringir quem lê os registros (ex.: só a equipe de Licitações),
+  use o nível **Unidade de negócios / Usuário** nos perfis — a tela
+  respeita o que o Dataverse devolver.
+
+---
+
+## 3. Pacote do portal
+
+```powershell
+Remove-Item -Recurse -Force lib, lib-commonjs, temp -ErrorAction SilentlyContinue
+npm run build
+```
+
+Envie o `.sppkg` ao Catálogo de Aplicativos e abra o portal com **Ctrl+F5**.
+
+`FEATURE_FLAGS.FLUXO_PERSISTENCIA` precisa estar em `'dataverse'`
+(ambientes não funcionam no modo de teste local).
+
+---
+
+## 4. Roteiro de teste
+
+1. Entre como **Administrador** → menu lateral → **+ Adicionar ambiente**.
+2. Preencha: nome "Licitações", ícone, "Como cada registro é chamado" =
+   *Processo licitatório*, prefixo `LIC`. Marque a liberação padrão (ou deixe sem).
+   → **Criar ambiente**. O portal cria o processo `AMB-LICITACOES` e abre o ambiente.
+3. Aba **Configuração** → **Desenhar fluxo**. Abre Processos → Fluxos já no processo:
+   - aba **Metadados**: crie os campos (ex.: *Órgão*, *Valor estimado*, *Data da sessão*);
+   - aba **Fluxo**: crie as etapas, responsáveis, campos por etapa e caminhos →
+     *Verificar fluxo* → **Publicar**.
+4. Volte ao ambiente pelo menu → aba Configuração mostra *Fluxo vN publicado*.
+5. **Usuários e acessos** → um colaborador → o ambiente aparece em
+   *Módulos liberados*, com a opção *Administrador do módulo*. Libere.
+6. Como o colaborador: o ambiente aparece no menu → **+ Novo(a) processo licitatório**
+   → título, descrição e área → **Criar e iniciar fluxo**. O código sai
+   como `LIC-2026-0001` e o registro vai para a 1ª etapa.
+7. Com o responsável de cada etapa (aba **Aguardando você**), preencha os campos
+   e use os botões do desenho até concluir.
+8. Confira no Dataverse (`dgt_ambienteregistro`): situação, etapa atual, prazo,
+   responsáveis e `dgt_fluxoestado` (histórico completo).
+9. Como Administrador: **Cancelar registro** (motivo obrigatório) e, em
+   *Editar dados do ambiente*, desativar/reativar o ambiente.
+
+---
+
+## Regras
+
+| Regra | Como funciona |
+|---|---|
+| Quem cria ambientes | Somente o **Administrador** global. |
+| Quem configura o fluxo | Quem edita fluxos em Processos → Fluxos (Editor/Administrador). |
+| Quem vê o ambiente | Módulo `amb:<chave>` liberado — mesma regra dos módulos fixos (lista do usuário; sem lista, a liberação padrão do ambiente). Administrador vê todos. |
+| Administrador do ambiente | "Administrador do módulo" em Usuários e acessos: vê a aba *Todos*, a *Configuração* e pode cancelar registros. |
+| Chave do ambiente | Permanente (as liberações apontam para ela). Nome, ícone, ordem e liberação podem mudar. |
+| Versão do fluxo | O registro segue a versão publicada **quando começou**. Uma nova versão vale para os próximos registros. |
+| Responsáveis | "Autor da revisão" = quem abriu o registro; "Gestor da área" = gestores da área informada no registro. Os demais tipos funcionam como em Documentos. |
+| Histórico | Nada é apagado: ambiente é desativado, registro é cancelado; o histórico do fluxo fica no registro. |
+| Códigos | `<PREFIXO>-<ANO>-<0001>`, sequencial por ambiente e ano. |
+
+> **Atenção à liberação "para todos":** como nos módulos fixos, ela vale para
+> quem **não tem lista própria** de módulos. Usuários que já têm uma lista
+> personalizada precisam receber o ambiente em Usuários e acessos.
+
+---
+
+## Avisos (Power Automate) — opcional
+
+Fluxo "Nova etapa em ambiente":
+
+- Gatilho: **Dataverse – Quando uma linha é adicionada ou modificada** ·
+  tabela *Registros de Ambiente* · colunas de filtro `dgt_etapaatual`.
+- **Analisar JSON** de `dgt_responsaveisetapa` (mesmo formato de
+  `dgt_responsaveisjson` das pendências de documentos — ver `docs/fluxo-dataverse.md`).
+- Envie e-mail/Teams com código (`dgt_codigo`), título (`dgt_name`), etapa e prazo.
+
+---
+
+## Limitações atuais
+
+- Como nos fluxos de documentos, quem pode agir é verificado **no navegador**;
+  a proteção dos dados é a das Security Roles. Use em piloto antes de
+  restringir por Custom API.
+- A aba *Aguardando você* lê o estado de cada registro em andamento; com
+  centenas de registros abertos por ambiente, a próxima melhoria é filtrar
+  por `dgt_responsaveisetapa` direto na consulta.
+- O código sequencial é calculado no portal: dois registros criados no mesmo
+  segundo no mesmo ambiente podem colidir (raro; o próximo segue normalmente).
