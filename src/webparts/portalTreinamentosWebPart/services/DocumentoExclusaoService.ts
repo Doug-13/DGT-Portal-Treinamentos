@@ -24,6 +24,10 @@ import {
   SharePointDocumentoService
 } from './sharepoint/SharePointDocumentoService';
 
+import {
+  treinamentosDosDocumentos
+} from './controle/DocumentoControleLookup';
+
 // ============================================================
 // EXCLUSÃO DE DOCUMENTO (administrador) — LIBERA O CÓDIGO
 //
@@ -116,7 +120,14 @@ export class DocumentoExclusaoService {
           `$select=dgt_treinamentoid,dgt_name&$filter=dgt_codigo eq '${codigo}'&$top=1`
         );
 
-      if (treinamentoDoCodigo.length > 0) {
+      // Também pela chave: treinamento cuja coluna Documento de
+      // controle aponta para este documento.
+      const donoPelaColuna =
+        (await treinamentosDosDocumentos(this.dataverse, [documento.id]))[
+          String(documento.id || '').replace(/[{}]/g, '').trim().toLowerCase()
+        ];
+
+      if (treinamentoDoCodigo.length > 0 || donoPelaColuna) {
         motivos.push(
           `Este é o documento de controle do treinamento ${documento.codigo}. ` +
           'Excluí-lo tiraria o treinamento do fluxo de treinamentos. Para descontinuar, inative o treinamento.'

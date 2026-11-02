@@ -67,26 +67,22 @@ export interface INovoTreinamento {
 
   tipoTreinamento?:
     TipoTreinamentoAdmin;
+
+  // Sequencial escolhido NA CRIAÇÃO (ÁREA-TRN-000). Sem valor, o
+  // plugin GerarCodigoTreinamento usa a sugestão. Depois de criado,
+  // o código nunca muda.
+  sequencial?:
+    number;
 }
 
 export interface ITreinamentoAdmin
   extends INovoTreinamento {
   id: string;
-
-  // Parte numérica do código (ex.: PRO-TRN-007 → 7).
-  sequencial?:
-    number;
 }
 
 export interface IEditarTreinamento
   extends INovoTreinamento {
   id: string;
-
-  // Somente Administrador. Quando informado, o plugin
-  // GerarCodigoTreinamentoPlugin valida a permissão e a unicidade
-  // e recalcula o código (ÁREA-TRN-SEQUENCIAL).
-  sequencial?:
-    number;
 }
 
 export class TreinamentoAdminService {
@@ -372,7 +368,20 @@ export class TreinamentoAdminService {
             dados.ativo,
 
           dgt_imagemurl:
-            dados.imagemUrl.trim()
+            dados.imagemUrl.trim(),
+
+          // Sequencial escolhido na tela (o plugin valida e monta o
+          // código). Sem valor, o plugin usa a sugestão.
+          ...(
+            dados.sequencial !== undefined
+              ? {
+                dgt_sequencial:
+                  Math.round(
+                    dados.sequencial
+                  )
+              }
+              : {}
+          )
         });
 
     const criado =
@@ -433,20 +442,10 @@ export class TreinamentoAdminService {
             dados.ativo,
 
           dgt_imagemurl:
-            dados.imagemUrl.trim(),
+            dados.imagemUrl.trim()
 
-          // O código (dgt_codigo) nunca é enviado pelo portal: ele é
-          // recalculado no servidor a partir do sequencial.
-          ...(
-            dados.sequencial !== undefined
-              ? {
-                dgt_sequencial:
-                  Math.round(
-                    dados.sequencial
-                  )
-              }
-              : {}
-          )
+          // Código e sequencial nunca são enviados na edição: são
+          // definidos na criação e o plugin recusa qualquer alteração.
         }
       );
   }

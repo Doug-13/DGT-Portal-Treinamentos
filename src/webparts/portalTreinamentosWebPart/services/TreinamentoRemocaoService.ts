@@ -2,6 +2,10 @@ import {
   DataverseService
 } from './DataverseService';
 
+import {
+  documentoControleDoTreinamento
+} from './controle/DocumentoControleLookup';
+
 // ============================================================
 // REMOÇÃO DE TREINAMENTO (somente Administrador)
 //
@@ -212,7 +216,7 @@ export class TreinamentoRemocaoService {
       this.listarSeguro('dgt_treinamentorevisao', 'dgt_treinamento', id)
     ]);
 
-    // Documento de controle (mesmo código, tipo TRN).
+    // Documento de controle (coluna Documento de controle).
     let documentoId = '';
     let documentoCodigo = '';
     let revisoesDocumento: string[] = [];
@@ -224,26 +228,24 @@ export class TreinamentoRemocaoService {
       const lido = await this.dataverse.obterRegistro('dgt_treinamento', treinamentoId, ['dgt_codigo']);
       const codigo = lido ? String(lido.registro.dgt_codigo || '').trim().toUpperCase() : '';
 
-      if (codigo) {
-        const docs = await this.dataverse.listarRegistros(
-          'dgt_documento',
-          `$select=dgt_documentoid,dgt_codigo&$filter=dgt_codigo eq '${codigo.replace(/'/g, "''")}'&$top=1`
-        );
+      // Documento de controle DESTE treinamento (coluna Documento de
+      // controle; pelo código só se não for controle de outro).
+      const controleId =
+        await documentoControleDoTreinamento(this.dataverse, { id: treinamentoId, codigo });
 
-        if (docs.length > 0) {
-          documentoId = String(docs[0].dgt_documentoid || '').replace(/[{}]/g, '').toLowerCase();
-          documentoCodigo = codigo;
+      if (controleId) {
+        documentoId = controleId;
+        documentoCodigo = codigo;
 
-          [revisoesDocumento, vinculosProcesso] = await Promise.all([
-            this.listarSeguro('dgt_documentorevisao', 'dgt_documento', [documentoId]),
-            this.listarSeguro('dgt_documentoprocesso', 'dgt_documento', [documentoId])
-          ]);
+        [revisoesDocumento, vinculosProcesso] = await Promise.all([
+          this.listarSeguro('dgt_documentorevisao', 'dgt_documento', [documentoId]),
+          this.listarSeguro('dgt_documentoprocesso', 'dgt_documento', [documentoId])
+        ]);
 
-          [tarefasFluxo, historicoFluxo] = await Promise.all([
-            this.listarSeguro('dgt_tarefafluxo', 'dgt_documentorevisao', revisoesDocumento),
-            this.listarSeguro('dgt_historicofluxo', 'dgt_documentorevisao', revisoesDocumento)
-          ]);
-        }
+        [tarefasFluxo, historicoFluxo] = await Promise.all([
+          this.listarSeguro('dgt_tarefafluxo', 'dgt_documentorevisao', revisoesDocumento),
+          this.listarSeguro('dgt_historicofluxo', 'dgt_documentorevisao', revisoesDocumento)
+        ]);
       }
     } catch (erro) {
       console.error('Documento de controle não levantado:', erro);

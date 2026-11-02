@@ -9,37 +9,31 @@ namespace DGT.Treinamentos.Plugins
     // CÓDIGO DO TREINAMENTO (dgt_treinamento)
     //
     // Formato: <SIGLA DA ÁREA>-TRN-<SEQUENCIAL 3 dígitos>
-    // Exemplo: PRO-TRN-001, PRO-TRN-002, MAN-TRN-001
+    // Exemplo: PRO-TRN-001, ARQ-TRN-002
+    //
+    // REGRA DO CÓDIGO
+    //   • O sequencial é escolhido NA CRIAÇÃO. Sem número informado,
+    //     o plugin usa a sugestão (maior número já usado no prefixo + 1).
+    //   • Não é possível usar um código que JÁ EXISTE — em treinamentos
+    //     ou em documentos, ATIVOS OU INATIVOS. O treinamento e o seu
+    //     documento de controle têm o mesmo código.
+    //   • Depois de criado, o código NUNCA muda (nem por administrador).
+    //   • Só a EXCLUSÃO do registro libera o código.
     //
     // STEP 1 — Create, PreOperation (20), síncrono
-    //   Gera dgt_sequencial (próximo número da área) e dgt_codigo.
+    //   Valida/gera dgt_sequencial e dgt_codigo.
     //
     // STEP 2 — Update, PreOperation (20), síncrono
     //   Filtering attributes: dgt_sequencial, dgt_codigo
-    //   - Somente Administrador altera o sequencial depois da criação
-    //     (função "DGT - Treinamentos - Administrador" ou
-    //     "Administrador do Sistema", direta ou por equipe).
-    //   - dgt_codigo nunca é editado diretamente: é sempre recalculado
-    //     a partir da sigla da área + TRN + sequencial.
-    //   - Não permite dois treinamentos da mesma área com o mesmo
-    //     sequencial.
+    //   Recusa qualquer alteração. Telas que reenviam o mesmo valor
+    //   continuam funcionando (o valor igual é simplesmente ignorado).
     //
-    // O sequencial é POR ÁREA (independe do tipo do treinamento).
-    // A alteração fica registrada no histórico pelo
-    // AuditarTreinamentoPlugin.
+    // As consultas de unicidade rodam como SYSTEM, para enxergar todos
+    // os registros independentemente dos privilégios de quem cria.
     // ================================================================
     public sealed class GerarCodigoTreinamentoPlugin : IPlugin
     {
         private const int SequencialMaximo = 999;
-
-        // Nomes aceitos (comparação sem acento e sem diferenciar
-        // maiúsculas / tipo de traço).
-        private static readonly string[] FuncoesAdministrador =
-        {
-            "dgt - treinamentos - administrador",
-            "administrador do sistema",
-            "system administrator"
-        };
 
         public void Execute(IServiceProvider serviceProvider)
         {
@@ -75,12 +69,7 @@ namespace DGT.Treinamentos.Plugins
                 return;
             }
 
-            var service =
-                factory.CreateOrganizationService(
-                    context.UserId);
-
-            // Consultas de segurança/unicidade como SYSTEM, para não
-            // depender dos privilégios de leitura de quem executa.
+            // SYSTEM: enxerga todos os treinamentos e documentos.
             var sistema =
                 factory.CreateOrganizationService(
                     null);
@@ -91,7 +80,7 @@ namespace DGT.Treinamentos.Plugins
                     StringComparison.OrdinalIgnoreCase))
             {
                 ProcessarCriacao(
-                    service,
+                    sistema,
                     tracing,
                     target);
 
@@ -106,8 +95,7 @@ namespace DGT.Treinamentos.Plugins
                 ProcessarAlteracao(
                     sistema,
                     tracing,
-                    target,
-                    context.InitiatingUserId);
+                    target);
             }
         }
 
@@ -116,23 +104,10 @@ namespace DGT.Treinamentos.Plugins
         // ============================================================
 
         private static void ProcessarCriacao(
-            IOrganizationService service,
+            IOrganizationService sistema,
             ITracingService tracing,
             Entity target)
         {
-            var codigoExistente =
-                target.GetAttributeValue<string>(
-                    "dgt_codigo");
-
-            if (!string.IsNullOrWhiteSpace(
-                    codigoExistente))
-            {
-                tracing.Trace(
-                    "Registro já possui código. Nada será alterado.");
-
-                return;
-            }
-
             var areaRef =
                 target.GetAttributeValue<EntityReference>(
                     "dgt_area");
@@ -143,59 +118,108 @@ namespace DGT.Treinamentos.Plugins
                     "A área do treinamento é obrigatória.");
             }
 
-            var siglaArea =
+            var sigla =
                 ObterSiglaArea(
-                    service,
+                    sistema,
                     areaRef.Id,
                     validarAtiva: true);
 
-            var sequencial =
-                ObterUltimoSequencial(
-                    service,
-                    areaRef.Id) + 1;
+            var prefixo =
+                MontarPrefixo(
+                    sigla);
 
-            if (sequencial > SequencialMaximo)
+            var sequencial =
+                target.GetAttributeValue<int?>(
+                    "dgt_sequencial");
+
+            var codigoEnviado =
+                (target.GetAttributeValue<string>(
+                    "dgt_codigo") ?? string.Empty)
+                    .Trim()
+                    .ToUpperInvariant();
+
+            // Código enviado sem sequencial (ex.: carga de dados): precisa
+            // seguir o padrão da área; o número sai do próprio código.
+            if (sequencial == null &&
+                codigoEnviado.Length > 0)
+            {
+                int numero;
+
+                if (!codigoEnviado.StartsWith(prefixo, StringComparison.Ordinal) ||
+                    !int.TryParse(
+                        codigoEnviado.Substring(prefixo.Length),
+                        out numero))
+                {
+                    throw new InvalidPluginExecutionException(
+                        $"O código {codigoEnviado} não segue o padrão {prefixo}000 da área.");
+                }
+
+                sequencial = numero;
+            }
+
+            // Sem número informado: sugestão.
+            if (sequencial == null)
+            {
+                sequencial =
+                    SugerirSequencial(
+                        sistema,
+                        prefixo,
+                        areaRef.Id);
+            }
+
+            if (sequencial < 1 ||
+                sequencial > SequencialMaximo)
             {
                 throw new InvalidPluginExecutionException(
-                    "A área atingiu o limite de 999 treinamentos.");
+                    $"O sequencial deve ser um número inteiro entre 1 e {SequencialMaximo}.");
             }
 
             var codigo =
                 MontarCodigo(
-                    siglaArea,
-                    sequencial);
+                    prefixo,
+                    sequencial.Value);
+
+            var existente =
+                DescreverCodigoExistente(
+                    sistema,
+                    codigo);
+
+            if (existente != null)
+            {
+                throw new InvalidPluginExecutionException(
+                    $"O código {codigo} já existe ({existente}). Escolha outro sequencial.");
+            }
 
             tracing.Trace(
-                "Código gerado: {0}",
+                "Código definido na criação: {0}",
                 codigo);
 
             target["dgt_sequencial"] =
-                sequencial;
+                sequencial.Value;
 
             target["dgt_codigo"] =
                 codigo;
         }
 
         // ============================================================
-        // ALTERAÇÃO DO SEQUENCIAL (somente Administrador)
+        // ALTERAÇÃO: o código é imutável
         // ============================================================
 
         private static void ProcessarAlteracao(
             IOrganizationService sistema,
             ITracingService tracing,
-            Entity target,
-            Guid usuarioId)
+            Entity target)
         {
-            var alterouSequencial =
+            var enviouSequencial =
                 target.Contains(
                     "dgt_sequencial");
 
-            var alterouCodigo =
+            var enviouCodigo =
                 target.Contains(
                     "dgt_codigo");
 
-            if (!alterouSequencial &&
-                !alterouCodigo)
+            if (!enviouSequencial &&
+                !enviouCodigo)
             {
                 return;
             }
@@ -205,7 +229,6 @@ namespace DGT.Treinamentos.Plugins
                     "dgt_treinamento",
                     target.Id,
                     new ColumnSet(
-                        "dgt_area",
                         "dgt_sequencial",
                         "dgt_codigo"));
 
@@ -214,115 +237,271 @@ namespace DGT.Treinamentos.Plugins
                     "dgt_sequencial");
 
             var codigoAtual =
-                atual.GetAttributeValue<string>(
-                    "dgt_codigo");
+                (atual.GetAttributeValue<string>(
+                    "dgt_codigo") ?? string.Empty)
+                    .Trim();
 
-            // Código enviado sem sequencial: só é aceito se for igual
-            // ao atual (algumas telas reenviam todos os campos).
-            if (!alterouSequencial)
+            if (enviouSequencial)
             {
-                var codigoEnviado =
-                    target.GetAttributeValue<string>(
-                        "dgt_codigo");
+                var novoSequencial =
+                    target.GetAttributeValue<int?>(
+                        "dgt_sequencial");
 
-                if (string.Equals(
-                        (codigoEnviado ?? string.Empty).Trim(),
-                        (codigoAtual ?? string.Empty).Trim(),
+                if (novoSequencial != sequencialAtual)
+                {
+                    throw new InvalidPluginExecutionException(
+                        MensagemImutavel(
+                            codigoAtual));
+                }
+
+                // Mesmo valor reenviado pela tela: ignora.
+                target.Attributes.Remove(
+                    "dgt_sequencial");
+            }
+
+            if (enviouCodigo)
+            {
+                var novoCodigo =
+                    (target.GetAttributeValue<string>(
+                        "dgt_codigo") ?? string.Empty)
+                        .Trim();
+
+                if (!string.Equals(
+                        novoCodigo,
+                        codigoAtual,
                         StringComparison.OrdinalIgnoreCase))
                 {
-                    target.Attributes.Remove(
-                        "dgt_codigo");
-
-                    return;
+                    throw new InvalidPluginExecutionException(
+                        MensagemImutavel(
+                            codigoAtual));
                 }
 
-                throw new InvalidPluginExecutionException(
-                    "O código do treinamento não pode ser editado diretamente. " +
-                    "Um administrador pode alterar o sequencial, e o código é recalculado automaticamente.");
+                target.Attributes.Remove(
+                    "dgt_codigo");
             }
-
-            var novoSequencial =
-                target.GetAttributeValue<int?>(
-                    "dgt_sequencial");
-
-            // Nada mudou de fato: mantém o código atual.
-            if (novoSequencial == sequencialAtual)
-            {
-                if (alterouCodigo)
-                {
-                    target.Attributes.Remove(
-                        "dgt_codigo");
-                }
-
-                return;
-            }
-
-            if (!EhAdministrador(
-                    sistema,
-                    usuarioId))
-            {
-                throw new InvalidPluginExecutionException(
-                    "Somente administradores do Portal de Treinamentos podem alterar o sequencial de um treinamento.");
-            }
-
-            if (novoSequencial == null ||
-                novoSequencial < 1 ||
-                novoSequencial > SequencialMaximo)
-            {
-                throw new InvalidPluginExecutionException(
-                    "O sequencial deve ser um número inteiro entre 1 e 999.");
-            }
-
-            var areaRef =
-                atual.GetAttributeValue<EntityReference>(
-                    "dgt_area");
-
-            if (areaRef == null)
-            {
-                throw new InvalidPluginExecutionException(
-                    "O treinamento não possui área. Não é possível recalcular o código.");
-            }
-
-            if (ExisteSequencialNaArea(
-                    sistema,
-                    areaRef.Id,
-                    novoSequencial.Value,
-                    target.Id))
-            {
-                throw new InvalidPluginExecutionException(
-                    $"Já existe outro treinamento desta área com o sequencial {novoSequencial.Value:000}.");
-            }
-
-            var siglaArea =
-                ObterSiglaArea(
-                    sistema,
-                    areaRef.Id,
-                    validarAtiva: false);
-
-            var novoCodigo =
-                MontarCodigo(
-                    siglaArea,
-                    novoSequencial.Value);
 
             tracing.Trace(
-                "Sequencial alterado de {0} para {1}. Código: {2} -> {3}",
-                sequencialAtual,
-                novoSequencial,
-                codigoAtual,
-                novoCodigo);
-
-            target["dgt_codigo"] =
-                novoCodigo;
+                "Código {0} mantido (valor reenviado sem alteração).",
+                codigoAtual);
         }
+
+        private static string MensagemImutavel(
+            string codigoAtual) =>
+            $"O código {codigoAtual} é definido na criação e não pode ser alterado. " +
+            "Para usar outro código, crie um novo treinamento.";
 
         // ============================================================
         // AUXILIARES
         // ============================================================
 
+        private static string MontarPrefixo(
+            string siglaArea) =>
+            $"{siglaArea}-TRN-";
+
         private static string MontarCodigo(
-            string siglaArea,
+            string prefixo,
             int sequencial) =>
-            $"{siglaArea}-TRN-{sequencial:000}";
+            $"{prefixo}{sequencial:000}";
+
+        // Maior número já usado no prefixo (treinamentos E documentos,
+        // ativos ou inativos) + 1. Considera também o maior dgt_sequencial
+        // da área (treinamentos antigos). Pula números ocupados.
+        private static int SugerirSequencial(
+            IOrganizationService sistema,
+            string prefixo,
+            Guid areaId)
+        {
+            var maior =
+                Math.Max(
+                    MaiorNumeroNoPrefixo(sistema, "dgt_treinamento", prefixo),
+                    MaiorNumeroNoPrefixo(sistema, "dgt_documento", prefixo));
+
+            maior =
+                Math.Max(
+                    maior,
+                    MaiorSequencialDaArea(sistema, areaId));
+
+            var proximo =
+                maior + 1;
+
+            while (proximo <= SequencialMaximo &&
+                   DescreverCodigoExistente(
+                       sistema,
+                       MontarCodigo(prefixo, proximo)) != null)
+            {
+                proximo++;
+            }
+
+            if (proximo > SequencialMaximo)
+            {
+                throw new InvalidPluginExecutionException(
+                    $"Não há sequencial livre acima de {maior:000} para {prefixo}. Informe um número livre.");
+            }
+
+            return proximo;
+        }
+
+        private static int MaiorNumeroNoPrefixo(
+            IOrganizationService sistema,
+            string tabela,
+            string prefixo)
+        {
+            var query =
+                new QueryExpression(
+                    tabela)
+                {
+                    ColumnSet =
+                        new ColumnSet(
+                            "dgt_codigo"),
+
+                    NoLock =
+                        true
+                };
+
+            query.Criteria.AddCondition(
+                "dgt_codigo",
+                ConditionOperator.BeginsWith,
+                prefixo);
+
+            var maior = 0;
+
+            foreach (var registro in sistema.RetrieveMultiple(query).Entities)
+            {
+                var codigo =
+                    (registro.GetAttributeValue<string>(
+                        "dgt_codigo") ?? string.Empty)
+                        .Trim()
+                        .ToUpperInvariant();
+
+                int numero;
+
+                if (codigo.StartsWith(prefixo, StringComparison.Ordinal) &&
+                    int.TryParse(
+                        codigo.Substring(prefixo.Length),
+                        out numero) &&
+                    numero > maior)
+                {
+                    maior = numero;
+                }
+            }
+
+            return maior;
+        }
+
+        private static int MaiorSequencialDaArea(
+            IOrganizationService sistema,
+            Guid areaId)
+        {
+            var query =
+                new QueryExpression(
+                    "dgt_treinamento")
+                {
+                    ColumnSet =
+                        new ColumnSet(
+                            "dgt_sequencial"),
+
+                    TopCount =
+                        1,
+
+                    NoLock =
+                        true
+                };
+
+            query.Criteria.AddCondition(
+                "dgt_area",
+                ConditionOperator.Equal,
+                areaId);
+
+            query.Criteria.AddCondition(
+                "dgt_sequencial",
+                ConditionOperator.NotNull);
+
+            query.AddOrder(
+                "dgt_sequencial",
+                OrderType.Descending);
+
+            var ultimo =
+                sistema
+                    .RetrieveMultiple(
+                        query)
+                    .Entities
+                    .FirstOrDefault();
+
+            return ultimo?.GetAttributeValue<int?>(
+                "dgt_sequencial") ?? 0;
+        }
+
+        // Devolve a descrição de quem usa o código (null = livre).
+        // Considera registros ATIVOS E INATIVOS: só a exclusão libera.
+        private static string DescreverCodigoExistente(
+            IOrganizationService sistema,
+            string codigo)
+        {
+            var treinamento =
+                PrimeiroComCodigo(
+                    sistema,
+                    "dgt_treinamento",
+                    codigo,
+                    "dgt_name");
+
+            if (treinamento != null)
+            {
+                return $"treinamento \"{treinamento.GetAttributeValue<string>("dgt_name")}\"" +
+                       (treinamento.GetAttributeValue<bool?>("dgt_ativo") == false ? ", inativo" : string.Empty);
+            }
+
+            var documento =
+                PrimeiroComCodigo(
+                    sistema,
+                    "dgt_documento",
+                    codigo,
+                    "dgt_titulo");
+
+            if (documento != null)
+            {
+                var titulo =
+                    documento.GetAttributeValue<string>("dgt_titulo");
+
+                return $"documento \"{titulo}\"" +
+                       (documento.GetAttributeValue<bool?>("dgt_ativo") == false ? ", inativo" : string.Empty);
+            }
+
+            return null;
+        }
+
+        private static Entity PrimeiroComCodigo(
+            IOrganizationService sistema,
+            string tabela,
+            string codigo,
+            string colunaNome)
+        {
+            var query =
+                new QueryExpression(
+                    tabela)
+                {
+                    ColumnSet =
+                        new ColumnSet(
+                            colunaNome,
+                            "dgt_ativo"),
+
+                    TopCount =
+                        1,
+
+                    NoLock =
+                        true
+                };
+
+            query.Criteria.AddCondition(
+                "dgt_codigo",
+                ConditionOperator.Equal,
+                codigo);
+
+            return sistema
+                .RetrieveMultiple(
+                    query)
+                .Entities
+                .FirstOrDefault();
+        }
 
         private static string ObterSiglaArea(
             IOrganizationService service,
@@ -364,180 +543,6 @@ namespace DGT.Treinamentos.Plugins
 
             return NormalizarSigla(
                 sigla);
-        }
-
-        private static int ObterUltimoSequencial(
-            IOrganizationService service,
-            Guid areaId)
-        {
-            var query =
-                new QueryExpression(
-                    "dgt_treinamento")
-                {
-                    ColumnSet =
-                        new ColumnSet(
-                            "dgt_sequencial"),
-
-                    TopCount =
-                        1
-                };
-
-            query.Criteria.AddCondition(
-                "dgt_area",
-                ConditionOperator.Equal,
-                areaId);
-
-            query.Criteria.AddCondition(
-                "dgt_sequencial",
-                ConditionOperator.NotNull);
-
-            query.AddOrder(
-                "dgt_sequencial",
-                OrderType.Descending);
-
-            var ultimo =
-                service
-                    .RetrieveMultiple(
-                        query)
-                    .Entities
-                    .FirstOrDefault();
-
-            return ultimo?.GetAttributeValue<int?>(
-                "dgt_sequencial") ?? 0;
-        }
-
-        private static bool ExisteSequencialNaArea(
-            IOrganizationService service,
-            Guid areaId,
-            int sequencial,
-            Guid ignorarTreinamentoId)
-        {
-            var query =
-                new QueryExpression(
-                    "dgt_treinamento")
-                {
-                    ColumnSet =
-                        new ColumnSet(
-                            "dgt_treinamentoid"),
-
-                    TopCount =
-                        1
-                };
-
-            query.Criteria.AddCondition(
-                "dgt_area",
-                ConditionOperator.Equal,
-                areaId);
-
-            query.Criteria.AddCondition(
-                "dgt_sequencial",
-                ConditionOperator.Equal,
-                sequencial);
-
-            query.Criteria.AddCondition(
-                "dgt_treinamentoid",
-                ConditionOperator.NotEqual,
-                ignorarTreinamentoId);
-
-            return service
-                .RetrieveMultiple(
-                    query)
-                .Entities
-                .Any();
-        }
-
-        // Verifica funções diretas do usuário e funções das equipes
-        // (inclusive Group Teams do Entra ID) de que ele participa.
-        private static bool EhAdministrador(
-            IOrganizationService service,
-            Guid usuarioId)
-        {
-            var fetchDiretas =
-                $@"<fetch distinct='true'>
-                  <entity name='role'>
-                    <attribute name='name' />
-                    <link-entity name='systemuserroles' from='roleid' to='roleid' intersect='true'>
-                      <filter>
-                        <condition attribute='systemuserid' operator='eq' value='{usuarioId}' />
-                      </filter>
-                    </link-entity>
-                  </entity>
-                </fetch>";
-
-            var fetchEquipes =
-                $@"<fetch distinct='true'>
-                  <entity name='role'>
-                    <attribute name='name' />
-                    <link-entity name='teamroles' from='roleid' to='roleid' intersect='true'>
-                      <link-entity name='teammembership' from='teamid' to='teamid' intersect='true'>
-                        <filter>
-                          <condition attribute='systemuserid' operator='eq' value='{usuarioId}' />
-                        </filter>
-                      </link-entity>
-                    </link-entity>
-                  </entity>
-                </fetch>";
-
-            foreach (var fetch in new[] { fetchDiretas, fetchEquipes })
-            {
-                var funcoes =
-                    service
-                        .RetrieveMultiple(
-                            new FetchExpression(
-                                fetch))
-                        .Entities;
-
-                if (funcoes.Any(
-                        funcao =>
-                            FuncoesAdministrador.Contains(
-                                NormalizarNome(
-                                    funcao.GetAttributeValue<string>(
-                                        "name")))))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static string NormalizarNome(
-            string valor)
-        {
-            if (string.IsNullOrWhiteSpace(valor))
-            {
-                return string.Empty;
-            }
-
-            var decomposto =
-                valor
-                    .Trim()
-                    .ToLowerInvariant()
-                    .Normalize(
-                        System.Text.NormalizationForm.FormD);
-
-            var semAcento =
-                new string(
-                    decomposto
-                        .Where(
-                            c =>
-                                System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) !=
-                                System.Globalization.UnicodeCategory.NonSpacingMark)
-                        .ToArray());
-
-            // Padroniza traços (– — ‒) e espaços.
-            semAcento =
-                semAcento
-                    .Replace('\u2012', '-')
-                    .Replace('\u2013', '-')
-                    .Replace('\u2014', '-')
-                    .Replace('\u2015', '-');
-
-            return string.Join(
-                " ",
-                semAcento.Split(
-                    new[] { ' ' },
-                    StringSplitOptions.RemoveEmptyEntries));
         }
 
         private static string NormalizarSigla(

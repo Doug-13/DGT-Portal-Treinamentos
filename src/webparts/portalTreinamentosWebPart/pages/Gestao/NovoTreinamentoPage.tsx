@@ -34,6 +34,13 @@ import {
   lerValorDocumentos
 } from '../../services/fluxo/valorDocumento';
 
+import {
+  CodigoTreinamentoService,
+  ICodigosUsados,
+  SEQUENCIAL_MAXIMO,
+  normalizarSigla
+} from '../../services/CodigoTreinamentoService';
+
 import DocumentosReferenciaTreinamento from
   './DocumentosReferenciaTreinamento';
 
@@ -70,8 +77,9 @@ export interface INovoTreinamentoPageProps {
         1 | 2 | 3
     ) => void;
 
-  // Somente Administrador: permite alterar o sequencial do código
-  // (ÁREA-TRN-SEQUENCIAL) de um treinamento já criado.
+  // OBSOLETO: o código é definido na criação e nunca muda (regra
+  // validada pelo GerarCodigoTreinamentoPlugin). Mantido só para não
+  // quebrar quem ainda passa a propriedade; é ignorado.
   podeEditarSequencial?:
     boolean;
 
@@ -259,7 +267,6 @@ const NovoTreinamentoPage:
     treinamentoExistente,
     onAtualizar,
     onEtapaClick,
-    podeEditarSequencial,
     dataverseService,
     onAbrirDocumento
   }) => {
@@ -317,7 +324,8 @@ const NovoTreinamentoPage:
         return resultado.url;
       };
 
-    // Sequencial do código (somente edição por Administrador).
+    // Sequencial do código: escolhido SOMENTE NA CRIAÇÃO. Depois de
+    // criado, o código nunca muda (o plugin recusa a alteração).
     const [
       sequencial,
       setSequencial
@@ -325,8 +333,30 @@ const NovoTreinamentoPage:
       React.useState('');
 
     const sequencialEditavel =
-      modoEdicao &&
-      !!podeEditarSequencial;
+      !modoEdicao;
+
+    // Números já usados no prefixo da área (treinamentos e documentos,
+    // ativos ou inativos) e a sugestão.
+    const [
+      codigosUsados,
+      setCodigosUsados
+    ] =
+      React.useState<
+        ICodigosUsados | undefined
+      >(undefined);
+
+    const [
+      carregandoCodigos,
+      setCarregandoCodigos
+    ] =
+      React.useState(false);
+
+    // true depois que a pessoa digita: a sugestão não sobrescreve mais.
+    const [
+      sequencialDigitado,
+      setSequencialDigitado
+    ] =
+      React.useState(false);
 
     const [
       nome,
@@ -439,7 +469,7 @@ const NovoTreinamentoPage:
     // GerarCodigoTreinamentoPlugin. O tipo não faz parte do código.
     const codigoPreview =
       areaSelecionada
-        ? `${areaSelecionada.sigla}-TRN-XXX`
+        ? `${normalizarSigla(areaSelecionada.sigla)}-TRN-XXX`
         : 'AREA-TRN-XXX';
 
     // Código resultante quando o Administrador altera o sequencial.
@@ -459,15 +489,21 @@ const NovoTreinamentoPage:
       );
 
     const prefixoCodigo =
-      /-TRN$/.test(
-        prefixoCodigoAtual
-      )
-        ? prefixoCodigoAtual
-        : (
+      !modoEdicao
+        ? (
           areaSelecionada
-            ? `${areaSelecionada.sigla}-TRN`
+            ? `${normalizarSigla(areaSelecionada.sigla)}-TRN`
             : 'AREA-TRN'
-        );
+        )
+        : /-TRN$/.test(
+          prefixoCodigoAtual
+        )
+          ? prefixoCodigoAtual
+          : (
+            areaSelecionada
+              ? `${normalizarSigla(areaSelecionada.sigla)}-TRN`
+              : 'AREA-TRN'
+          );
 
     // Completa com zeros à esquerda (7 → 007). Sem padStart, que
     // não está disponível na biblioteca ES configurada no SPFx.
@@ -487,10 +523,94 @@ const NovoTreinamentoPage:
     const codigoComSequencial =
       `${prefixoCodigo}-${sequencialFormatado}`;
 
+    // Carrega os números usados da área escolhida e sugere o próximo.
+    const siglaArea =
+      areaSelecionada
+        ? areaSelecionada.sigla
+        : '';
+
+    React.useEffect(
+      () => {
+
+        if (
+          modoEdicao ||
+          !siglaArea ||
+          !dataverseService
+        ) {
+          setCodigosUsados(undefined);
+          return;
+        }
+
+        let ativo = true;
+
+        setCarregandoCodigos(true);
+
+        new CodigoTreinamentoService(dataverseService)
+          .levantar(siglaArea)
+          .then(dados => {
+            if (!ativo) {
+              return;
+            }
+            setCodigosUsados(dados);
+            if (!sequencialDigitado) {
+              setSequencial(String(dados.sugestao));
+            }
+          })
+          .catch(erroCodigos => {
+            // Sem a lista, o plugin continua validando ao salvar.
+            console.error('Não foi possível ler os códigos da área.', erroCodigos);
+            if (ativo) {
+              setCodigosUsados(undefined);
+            }
+          })
+          .then(() => {
+            if (ativo) {
+              setCarregandoCodigos(false);
+            }
+          })
+          .catch(() => undefined);
+
+        return () => {
+          ativo = false;
+        };
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [modoEdicao, siglaArea, dataverseService]
+    );
+
+    const numeroSequencial =
+      Number(sequencial);
+
+    const sequencialValido =
+      Number.isInteger(numeroSequencial) &&
+      numeroSequencial >= 1 &&
+      numeroSequencial <= SEQUENCIAL_MAXIMO;
+
+    const ocupadoPor =
+      sequencialEditavel &&
+      sequencialValido &&
+      codigosUsados
+        ? codigosUsados.usados[numeroSequencial] || ''
+        : '';
+
+    const mensagemSequencial =
+      !sequencialEditavel || !areaSelecionada
+        ? ''
+        : !sequencial
+          ? 'Informe o sequencial.'
+          : !sequencialValido
+            ? `Use um número de 1 a ${SEQUENCIAL_MAXIMO}.`
+            : ocupadoPor
+              ? `O código ${codigoComSequencial} já existe (${ocupadoPor}).`
+              : '';
+
     const limpar =
       (): void => {
 
         setDocumentosReferencia('');
+
+        setSequencial('');
+        setSequencialDigitado(false);
 
         setNome('');
         setAreaId('');
@@ -746,41 +866,17 @@ const NovoTreinamentoPage:
           return;
         }
 
-        // Sequencial: só é enviado quando o Administrador o altera.
-        let sequencialAlterado:
-          number | undefined;
-
+        // Sequencial: só na criação (na edição o código não muda).
         if (
-          sequencialEditavel
+          sequencialEditavel &&
+          mensagemSequencial
         ) {
 
-          const numeroSequencial =
-            Number(
-              sequencial
-            );
+          setErro(
+            mensagemSequencial
+          );
 
-          if (
-            !Number.isInteger(
-              numeroSequencial
-            ) ||
-            numeroSequencial < 1 ||
-            numeroSequencial > 999
-          ) {
-
-            setErro(
-              'O sequencial deve ser um número inteiro entre 1 e 999.'
-            );
-
-            return;
-          }
-
-          if (
-            numeroSequencial !==
-            treinamentoExistente?.sequencial
-          ) {
-            sequencialAlterado =
-              numeroSequencial;
-          }
+          return;
         }
 
         // EDIÇÃO: atualiza o registro existente.
@@ -832,10 +928,7 @@ const NovoTreinamentoPage:
               ativo,
 
               imagemUrl:
-                imagemFinal.url,
-
-              sequencial:
-                sequencialAlterado
+                imagemFinal.url
             });
 
           } catch (e) {
@@ -894,7 +987,13 @@ const NovoTreinamentoPage:
             ativo,
 
             imagemUrl:
-              imagemFinal.url
+              imagemFinal.url,
+
+            // Sequencial escolhido (o plugin valida de novo no servidor).
+            sequencial:
+              sequencialValido
+                ? numeroSequencial
+                : undefined
           },
           lerValorDocumentos(documentosReferencia).map(item => item.id));
 
@@ -1116,13 +1215,21 @@ const NovoTreinamentoPage:
                           sequencial
                         }
                         onChange={
-                          event =>
+                          event => {
+                            setSequencialDigitado(true);
                             setSequencial(
                               event.target.value
-                            )
+                            );
+                          }
+                        }
+                        disabled={
+                          !areaSelecionada
                         }
                         aria-label="Sequencial"
-                        title="Sequencial (somente Administrador)"
+                        aria-invalid={
+                          !!mensagemSequencial
+                        }
+                        title="Sequencial do código (escolhido na criação; depois não muda)"
                         style={
                           inputStyle
                         }
@@ -1151,16 +1258,23 @@ const NovoTreinamentoPage:
               }
 
               <span
-                style={
-                  helpStyle
-                }
+                style={{
+                  ...helpStyle,
+                  color:
+                    !modoEdicao && mensagemSequencial
+                      ? '#B42318'
+                      : helpStyle.color
+                }}
               >
                 {
-                  sequencialEditavel
-                    ? 'Somente administradores alteram o sequencial. O código é recalculado e a alteração fica registrada no histórico.'
-                    : modoEdicao
-                      ? 'Código gerado na criação. Somente administradores podem alterar o sequencial.'
-                      : 'Gerado automaticamente no formato ÁREA-TRN-SEQUENCIAL (ex.: PRO-TRN-001).'
+                  modoEdicao
+                    ? 'Código definido na criação. Não pode ser alterado.'
+                    : !areaSelecionada
+                      ? 'Selecione a área para escolher o sequencial (ÁREA-TRN-000).'
+                      : carregandoCodigos
+                        ? 'Verificando os números já usados na área...'
+                        : mensagemSequencial ||
+                          `Código ${codigoComSequencial} disponível. Sugestão: ${codigosUsados ? codigosUsados.sugestao : '—'}. Depois de criado, o código não muda.`
                 }
               </span>
 

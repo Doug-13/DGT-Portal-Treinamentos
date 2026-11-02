@@ -10,16 +10,17 @@ import {
 } from '../fluxo/valorDocumento';
 
 import {
-  escaparOData
-} from '../fluxo/dataverse/esquemaFluxo';
-
-import {
   TreinamentoDocumentoAdminService
 } from '../TreinamentoDocumentoAdminService';
 
 import {
   CONTROLE_DOCUMENTAL
 } from '../../constants/controleDocumental';
+
+import {
+  CONTROLE_COLUNA,
+  treinamentoDoDocumentoControle
+} from '../controle/DocumentoControleLookup';
 
 // ============================================================
 // REFERÊNCIAS ENTRE DOCUMENTOS (metadados "Documento referenciado")
@@ -356,47 +357,27 @@ const normalizarCodigo = (
 
 // Treinamento de um documento de controle (TRN) — resolução ESTRITA.
 //
-// Regra única: o treinamento é o dgt_treinamento com o MESMO código do
-// documento (ARQ-TRN-002 ↔ ARQ-TRN-002). Sem treinamento com esse
-// código, não há treinamento — nada de "qualquer vínculo do documento",
-// vínculo de controle antigo ou nome/título (os três já ligaram o
-// treinamento errado quando documento e treinamento ficaram com
-// códigos diferentes).
+// Pela CHAVE: o treinamento cuja coluna Documento de controle aponta
+// para este documento. Reserva pelo código só para registro antigo sem
+// a coluna (e nunca um treinamento que já tem outro documento de
+// controle). Nada de "qualquer vínculo do documento" nem nome/título.
 export const resolverTreinamentoDoControle = async (
   dataverse: DataverseService,
   documento: { id: string; codigo: string }
 ): Promise<ITreinamentoResolvido | undefined> => {
 
-  const codigo = normalizarCodigo(documento.codigo);
+  const treinamento =
+    await treinamentoDoDocumentoControle(dataverse, {
+      id: guid(documento.id),
+      codigo: normalizarCodigo(documento.codigo)
+    });
 
-  if (!codigo) {
-    return undefined;
-  }
-
-  const registros =
-    await dataverse.listarRegistros(
-      'dgt_treinamento',
-      '$select=dgt_treinamentoid,dgt_codigo,dgt_name,dgt_ativo' +
-      `&$filter=dgt_codigo eq '${escaparOData(codigo)}'`
-    );
-
-  const mesmoCodigo =
-    registros.filter(registro => normalizarCodigo(texto(registro, 'dgt_codigo')) === codigo);
-
-  if (mesmoCodigo.length > 1) {
-    console.warn(`[Referências] Há ${mesmoCodigo.length} treinamentos com o código ${codigo}. Usando o ativo (ou o primeiro).`);
-  }
-
-  const escolhido =
-    mesmoCodigo.find(registro => registro.dgt_ativo !== false) ||
-    mesmoCodigo[0];
-
-  return escolhido
+  return treinamento
     ? {
-      id: guid(escolhido.dgt_treinamentoid),
-      codigo: texto(escolhido, 'dgt_codigo'),
-      nome: texto(escolhido, 'dgt_name'),
-      ativo: escolhido.dgt_ativo !== false
+      id: treinamento.id,
+      codigo: treinamento.codigo,
+      nome: treinamento.nome,
+      ativo: treinamento.ativo
     }
     : undefined;
 };
@@ -415,10 +396,19 @@ export interface ITreinamentoPorCodigo {
   codigo: string;
   nome: string;
   ativo: boolean;
+  // Documento de controle (coluna Documento de controle), se houver.
+  documentoControleId: string;
 }
 
 let cacheTreinamentos:
   { lidoEm: number; mapa: Promise<Record<string, ITreinamentoPorCodigo>> } | undefined;
+
+// Chaves do mapa: o CÓDIGO do treinamento e "doc:<id do documento de
+// controle>" (coluna Documento de controle).
+export const chaveDocumentoControle = (
+  documentoId: string
+): string =>
+  `doc:${guid(documentoId)}`;
 
 export const carregarTreinamentosPorCodigo = (
   dataverse: DataverseService,
@@ -429,28 +419,40 @@ export const carregarTreinamentosPorCodigo = (
     return cacheTreinamentos.mapa;
   }
 
-  const mapa =
+  const ler = (): Promise<IDataverseRecord[]> =>
     dataverse.listarRegistros(
       'dgt_treinamento',
-      '$select=dgt_treinamentoid,dgt_codigo,dgt_name,dgt_ativo'
-    ).then(registros => {
+      `$select=dgt_treinamentoid,dgt_codigo,dgt_name,dgt_ativo,${CONTROLE_COLUNA}`
+    ).catch(() =>
+      // Ambiente sem a coluna Documento de controle.
+      dataverse.listarRegistros(
+        'dgt_treinamento',
+        '$select=dgt_treinamentoid,dgt_codigo,dgt_name,dgt_ativo'
+      )
+    );
+
+  const mapa =
+    ler().then(registros => {
       const resultado: Record<string, ITreinamentoPorCodigo> = {};
 
       registros.forEach(registro => {
         const codigo = normalizarCodigo(texto(registro, 'dgt_codigo'));
-        if (!codigo) {
-          return;
-        }
 
         const item: ITreinamentoPorCodigo = {
           id: guid(registro.dgt_treinamentoid),
           codigo,
           nome: texto(registro, 'dgt_name'),
-          ativo: registro.dgt_ativo !== false
+          // Estrito: só true é ativo.
+          ativo: registro.dgt_ativo === true,
+          documentoControleId: guid(registro[CONTROLE_COLUNA])
         };
 
+        if (item.documentoControleId) {
+          resultado[chaveDocumentoControle(item.documentoControleId)] = item;
+        }
+
         // Código repetido: o ativo prevalece.
-        if (!resultado[codigo] || (!resultado[codigo].ativo && item.ativo)) {
+        if (codigo && (!resultado[codigo] || (!resultado[codigo].ativo && item.ativo))) {
           resultado[codigo] = item;
         }
       });
@@ -464,10 +466,30 @@ export const carregarTreinamentosPorCodigo = (
   return mapa;
 };
 
-// Mantém os documentos comuns como estão; dos TRN, só os que têm
-// treinamento ATIVO de mesmo código, com o título trocado pelo nome do
-// treinamento.
-export const ajustarOpcoesTreinamento = <T extends { codigo: string; titulo: string; tipo: string }>(
+// Treinamento de um documento TRN, pelo mapa acima: pela chave do
+// documento; reserva pelo código só se o treinamento não tiver outro
+// documento de controle.
+export const treinamentoDaOpcao = (
+  doc: { id?: string; codigo: string },
+  treinamentos: Record<string, ITreinamentoPorCodigo>
+): ITreinamentoPorCodigo | undefined => {
+
+  const documentoId = guid(doc.id);
+
+  if (documentoId && treinamentos[chaveDocumentoControle(documentoId)]) {
+    return treinamentos[chaveDocumentoControle(documentoId)];
+  }
+
+  const porCodigo = treinamentos[normalizarCodigo(doc.codigo)];
+
+  return porCodigo && (!porCodigo.documentoControleId || porCodigo.documentoControleId === documentoId)
+    ? porCodigo
+    : undefined;
+};
+
+// Mantém os documentos comuns como estão; dos TRN, só os ligados a um
+// treinamento ATIVO, com o título trocado pelo nome do treinamento.
+export const ajustarOpcoesTreinamento = <T extends { id?: string; codigo: string; titulo: string; tipo: string }>(
   documentos: T[],
   treinamentos: Record<string, ITreinamentoPorCodigo>
 ): T[] => {
@@ -480,7 +502,7 @@ export const ajustarOpcoesTreinamento = <T extends { codigo: string; titulo: str
       return;
     }
 
-    const treinamento = treinamentos[normalizarCodigo(doc.codigo)];
+    const treinamento = treinamentoDaOpcao(doc, treinamentos);
 
     if (treinamento && treinamento.ativo) {
       resultado.push({ ...doc, titulo: treinamento.nome || doc.titulo });

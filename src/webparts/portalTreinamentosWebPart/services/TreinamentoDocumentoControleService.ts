@@ -44,6 +44,14 @@ import {
   TreinamentoConteudoRevisaoService
 } from './TreinamentoConteudoRevisaoService';
 
+import {
+  definirDocumentoControle,
+  documentoControleDoTreinamento,
+  documentosDeControle,
+  treinamentoDoDocumentoControle,
+  treinamentosDosDocumentos
+} from './controle/DocumentoControleLookup';
+
 // ============================================================
 // TREINAMENTO TRATADO COMO DOCUMENTO
 //
@@ -66,6 +74,10 @@ import {
 //     que lê os treinamentos vinculados ao documento.
 //   • Nada é apagado: todas as operações são idempotentes (podem ser
 //     repetidas sem duplicar registros).
+//   • Treinamento e documento de controle ficam ligados pela CHAVE
+//     (coluna dgt_treinamento.dgt_documentocontrole). O código só é
+//     usado como reserva para registro antigo sem a coluna, e nunca
+//     aceita documento que já é controle de outro treinamento.
 // ============================================================
 
 export interface IUsuarioControle {
@@ -175,29 +187,72 @@ export class TreinamentoDocumentoControleService {
     treinamentos: Array<{ id: string; codigo: string }>
   ): Promise<Record<string, IControleTreinamento>> {
 
-    const porCodigo: Record<string, string> = {};
+    const validos =
+      treinamentos
+        .map(item => ({ id: guid(item.id), codigo: (item.codigo || '').trim().toUpperCase() }))
+        .filter(item => ehGuid(item.id));
 
-    treinamentos.forEach(item => {
-      const codigo = (item.codigo || '').trim().toUpperCase();
-      if (codigo && ehGuid(guid(item.id))) {
-        porCodigo[codigo] = guid(item.id);
-      }
-    });
-
-    const codigos = Object.keys(porCodigo);
-
-    if (codigos.length === 0) {
+    if (validos.length === 0) {
       return {};
     }
 
+    // 1) Pela chave: coluna Documento de controle.
+    const pelaColuna =
+      await documentosDeControle(this.dataverse, validos.map(item => item.id));
+
+    // { documentoId → treinamentoId }
+    const treinamentoDoDocumento: Record<string, string> = {};
+
+    Object.keys(pelaColuna).forEach(treinamentoId => {
+      treinamentoDoDocumento[pelaColuna[treinamentoId]] = treinamentoId;
+    });
+
     const documentos: IDataverseRecord[] = [];
 
-    for (const lote of lotes(codigos, 20)) {
+    for (const lote of lotes(Object.keys(treinamentoDoDocumento), 20)) {
       (await this.dataverse.listarRegistros(
         'dgt_documento',
         '$select=dgt_documentoid,dgt_codigo,dgt_revisaoatual,dgt_status' +
-        '&$filter=' + lote.map(c => `dgt_codigo eq '${escaparOData(c)}'`).join(' or ')
+        '&$filter=' + lote.map(id => `dgt_documentoid eq ${id}`).join(' or ')
       )).forEach(r => documentos.push(r));
+    }
+
+    // 2) Reserva pelo código (registro antigo sem a coluna): só aceita
+    //    documento que não é controle de outro treinamento.
+    const semColuna =
+      validos.filter(item => !pelaColuna[item.id] && !!item.codigo);
+
+    if (semColuna.length > 0) {
+
+      const porCodigo: Record<string, string> = {};
+      semColuna.forEach(item => { porCodigo[item.codigo] = item.id; });
+
+      const candidatos: IDataverseRecord[] = [];
+
+      for (const lote of lotes(Object.keys(porCodigo), 20)) {
+        (await this.dataverse.listarRegistros(
+          'dgt_documento',
+          '$select=dgt_documentoid,dgt_codigo,dgt_revisaoatual,dgt_status' +
+          '&$filter=' + lote.map(c => `dgt_codigo eq '${escaparOData(c)}'`).join(' or ')
+        )).forEach(r => candidatos.push(r));
+      }
+
+      const donos =
+        await treinamentosDosDocumentos(
+          this.dataverse,
+          candidatos.map(r => guid(r.dgt_documentoid))
+        );
+
+      candidatos.forEach(r => {
+        const documentoId = guid(r.dgt_documentoid);
+        const treinamentoId = porCodigo[texto(r, 'dgt_codigo').toUpperCase()];
+        const dono = donos[documentoId];
+
+        if (treinamentoId && (!dono || dono.id === treinamentoId) && !treinamentoDoDocumento[documentoId]) {
+          treinamentoDoDocumento[documentoId] = treinamentoId;
+          documentos.push(r);
+        }
+      });
     }
 
     if (documentos.length === 0) {
@@ -213,11 +268,10 @@ export class TreinamentoDocumentoControleService {
 
     documentos.forEach(doc => {
 
-      const codigo = texto(doc, 'dgt_codigo').toUpperCase();
-      const treinamentoId = porCodigo[codigo];
       const documentoId = guid(doc.dgt_documentoid);
+      const treinamentoId = treinamentoDoDocumento[documentoId];
 
-      if (!treinamentoId || !documentoId) {
+      if (!treinamentoId || !documentoId || mapa[treinamentoId]) {
         return;
       }
 
@@ -228,7 +282,7 @@ export class TreinamentoDocumentoControleService {
       mapa[treinamentoId] = {
         treinamentoId,
         documentoId,
-        codigo,
+        codigo: texto(doc, 'dgt_codigo').toUpperCase(),
         statusDocumento: formatado(doc, 'dgt_status'),
         revisaoVigente: vigente ? revisaoInteira(vigente.revisao) : '',
         revisaoEmAndamento: andamento
@@ -287,8 +341,36 @@ export class TreinamentoDocumentoControleService {
     const areaId = guid(treinamento._dgt_area_value);
     const avisos: string[] = [];
 
-    // 1) Documento
-    let documentoId = await this.buscarDocumentoPorCodigo(codigo);
+    // 1) Documento: o da coluna Documento de controle; sem ela, o de
+    //    MESMO código — recusando documento que já é controle de outro
+    //    treinamento (nunca reaproveita documento alheio).
+    let documentoId =
+      (await documentosDeControle(this.dataverse, [treinamentoId]))[guid(treinamentoId)] || '';
+
+    if (!documentoId) {
+      const porCodigo = await this.buscarDocumentoPorCodigo(codigo);
+
+      if (porCodigo) {
+        const dono = (await treinamentosDosDocumentos(this.dataverse, [porCodigo]))[porCodigo];
+
+        if (dono && dono.id !== guid(treinamentoId)) {
+          throw new Error(
+            `O documento ${codigo} já é o documento de controle do treinamento "${dono.nome}" (${dono.codigo}). ` +
+            'Nenhum documento foi reaproveitado. Verifique os códigos antes de continuar.'
+          );
+        }
+
+        if (await this.ehControleDeOutroTreinamento(porCodigo, guid(treinamentoId))) {
+          throw new Error(
+            `O documento ${codigo} já está vinculado como controle de outro treinamento. ` +
+            'Nenhum documento foi reaproveitado. Verifique os códigos antes de continuar.'
+          );
+        }
+
+        documentoId = porCodigo;
+      }
+    }
+
     let criado = false;
 
     if (!documentoId) {
@@ -334,6 +416,21 @@ export class TreinamentoDocumentoControleService {
           }
         }
       }
+    }
+
+    // 2.1) Coluna Documento de controle (ligação pela chave)
+    try {
+      const atual =
+        (await documentosDeControle(this.dataverse, [treinamentoId]))[guid(treinamentoId)] || '';
+
+      if (atual !== documentoId) {
+        await definirDocumentoControle(this.dataverse, treinamentoId, documentoId);
+      }
+    } catch (erro) {
+      if (opcoes.exigirFluxo) {
+        throw new Error(`Não foi possível gravar o documento de controle no treinamento: ${mensagem(erro)}`);
+      }
+      avisos.push(`Não foi possível gravar o documento de controle no treinamento: ${mensagem(erro)}`);
     }
 
     // 3) Vínculo treinamento × documento (usado no retreinamento)
@@ -426,18 +523,17 @@ export class TreinamentoDocumentoControleService {
       return '';
     }
 
-    const treinamentos =
-      await this.dataverse.listarRegistros(
-        'dgt_treinamento',
-        `$select=dgt_treinamentoid,dgt_codigo,dgt_ativo&$filter=dgt_codigo eq '${escaparOData(codigo)}'&$top=1`
-      );
+    // Treinamento controlado por este documento: pela coluna Documento
+    // de controle (reserva pelo código só para registro antigo).
+    const controlado =
+      await treinamentoDoDocumentoControle(this.dataverse, { id: documentoId, codigo });
 
-    if (treinamentos.length === 0) {
+    if (!controlado) {
       return '';
     }
 
-    const treinamento = treinamentos[0];
-    const treinamentoId = guid(treinamento.dgt_treinamentoid);
+    const treinamento = { dgt_ativo: controlado.ativo };
+    const treinamentoId = controlado.id;
     const partes: string[] = [];
 
     // Garante o vínculo treinamento × documento (corrige documentos
@@ -583,7 +679,11 @@ export class TreinamentoDocumentoControleService {
     const id = guid(treinamentoId);
     const treinamento = await this.lerTreinamento(id);
     const codigo = texto(treinamento, 'dgt_codigo').toUpperCase();
-    const documentoId = codigo ? await this.buscarDocumentoPorCodigo(codigo) : '';
+
+    // Só o documento DESTE treinamento (nunca o de outro com o mesmo
+    // código).
+    const documentoId =
+      await documentoControleDoTreinamento(this.dataverse, { id, codigo });
 
     const apagar = async (tabela: string, filtro: string, chave: string): Promise<void> => {
       try {
@@ -635,6 +735,25 @@ export class TreinamentoDocumentoControleService {
       );
 
     return lido ? lido.registro : undefined;
+  }
+
+  // true se o documento tem vínculo de CONTROLE ativo com outro
+  // treinamento (dgt_treinamentodocumento com a observação padrão).
+  private async ehControleDeOutroTreinamento(
+    documentoId: string,
+    treinamentoId: string
+  ): Promise<boolean> {
+    const vinculos =
+      await this.dataverse.listarRegistros(
+        'dgt_treinamentodocumento',
+        '$select=_dgt_treinamento_value,dgt_observacao,dgt_ativo' +
+        `&$filter=_dgt_documento_value eq ${guid(documentoId)} and dgt_ativo eq true`
+      );
+
+    return vinculos.some(v =>
+      guid(v._dgt_treinamento_value) !== guid(treinamentoId) &&
+      texto(v, 'dgt_observacao') === CONTROLE_DOCUMENTAL.OBSERVACAO_VINCULO
+    );
   }
 
   private async buscarDocumentoPorCodigo(codigo: string): Promise<string> {
