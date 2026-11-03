@@ -232,7 +232,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
     setSucesso('');
     setFiltro('');
     carregar().catch(() => undefined);
-  }, [ambiente.id]);
+  }, [ambiente.id, ambiente.processoId]);
 
   const registroAberto =
     visao.tipo === 'registro'
@@ -512,12 +512,17 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
 
         {passo(
           !!disponibilidade && disponibilidade.ativo,
-          'Fluxo desenhado e publicado',
+          'Fluxo vinculado e publicado',
           <>
-            {disponibilidade && disponibilidade.ativo && disponibilidade.definicao
-              ? `Fluxo v${disponibilidade.definicao.versao} publicado no processo ${disponibilidade.processo ? disponibilidade.processo.codigo : ambiente.processoNome}. Novos registros seguem esta versão; os em andamento terminam na versão com que começaram.`
-              : (disponibilidade ? disponibilidade.motivo : 'Verificando...')}
-            <div style={{ marginTop: '8px' }}>
+            <div>
+              Fluxo vinculado: <strong>{disponibilidade && disponibilidade.processo ? `${disponibilidade.processo.codigo ? `${disponibilidade.processo.codigo} — ` : ''}${disponibilidade.processo.nome}` : (ambiente.processoNome || '—')}</strong>
+            </div>
+            <div style={{ marginTop: '4px' }}>
+              {disponibilidade && disponibilidade.ativo && disponibilidade.definicao
+                ? `Versão v${disponibilidade.definicao.versao} publicada. Novos registros seguem esta versão; os em andamento terminam na versão com que começaram.`
+                : (disponibilidade ? disponibilidade.motivo : 'Verificando...')}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
               <button
                 type="button"
                 disabled={!ambiente.processoId}
@@ -526,9 +531,23 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
               >
                 {disponibilidade && disponibilidade.ativo ? 'Editar fluxo (nova versão)' : 'Desenhar fluxo'}
               </button>
+              {adminGlobal && props.onEditarAmbiente && (
+                <button type="button" onClick={props.onEditarAmbiente} style={botao('secundario')}>
+                  Trocar fluxo
+                </button>
+              )}
             </div>
+            {disponibilidade && disponibilidade.avisos && disponibilidade.avisos.length > 0 && (
+              <div style={{ marginTop: '8px' }}>
+                <CaixaMensagem
+                  tipo="alerta"
+                  texto={`Este fluxo tem etapas próprias de documentos, que no ambiente são ignoradas (o fluxo segue adiante):\n${disponibilidade.avisos.map(item => `• ${item}`).join('\n')}`}
+                />
+              </div>
+            )}
             <div style={{ marginTop: '6px' }}>
-              Dica: na aba <strong>Metadados</strong> do processo crie os campos do registro (ex.: Valor estimado, Data de abertura) e use-os nas etapas.
+              O mesmo fluxo pode ser usado por mais de um ambiente: uma nova versão publicada vale para os novos registros de todos eles.
+              Na aba <strong>Metadados</strong> do processo ficam os campos do registro (ex.: Valor estimado, Data de abertura).
               Responsáveis: “Autor da revisão” = quem abriu o registro; “Gestor da área” = gestores da área informada no registro.
             </div>
           </>

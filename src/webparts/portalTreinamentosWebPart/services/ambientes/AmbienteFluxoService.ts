@@ -58,6 +58,10 @@ import {
 } from './AmbienteService';
 
 import {
+  avisosFluxoAmbiente
+} from './compatibilidadeFluxoAmbiente';
+
+import {
   REGISTRO,
   TABELAS_AMBIENTE
 } from './esquemaAmbientes';
@@ -177,6 +181,8 @@ export interface IDisponibilidadeFluxoAmbiente {
   motivo: string;
   processo?: IProcesso;
   definicao?: IFluxoDefinicao;
+  // Etapas do fluxo próprias de documentos (ignoradas no ambiente).
+  avisos?: string[];
 }
 
 export interface IResultadoAcaoAmbiente {
@@ -266,7 +272,7 @@ export class AmbienteFluxoService {
         };
       }
 
-      return { ativo: true, motivo: '', processo, definicao: publicada };
+      return { ativo: true, motivo: '', processo, definicao: publicada, avisos: avisosFluxoAmbiente(publicada) };
     } catch (erro) {
       return { ativo: false, motivo: `Não foi possível ler o fluxo do ambiente: ${mensagem(erro)}` };
     }

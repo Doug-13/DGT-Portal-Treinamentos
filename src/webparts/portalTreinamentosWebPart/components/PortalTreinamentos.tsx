@@ -4297,6 +4297,7 @@ const gestaoAreas =
               disponivel={ambientesDisponivel}
               avisoIndisponivel={avisoAmbientes}
               processando={processandoAmbiente}
+              carregarFluxos={() => ambienteService.listarFluxos(ambientes)}
               onSalvar={salvarAmbiente}
               onFechar={() => setFormAmbiente(undefined)}
             />

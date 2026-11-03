@@ -182,7 +182,8 @@ export const FormCondicaoLigacao: React.FC<IFormCondicaoLigacaoProps> = ({
                       item.tipo !== 'tabela' &&
                       item.tipo !== 'usuario' &&
                       item.tipo !== 'documento' &&
-                      item.tipo !== 'documentos'
+                      item.tipo !== 'documentos' &&
+                      item.tipo !== 'area'
                     )
                     .map(
                       item => <option key={item.chave} value={item.chave}>{item.rotulo}</option>

@@ -186,3 +186,53 @@ export const tipoPermitido = (
 
   return codigo !== CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO;
 };
+
+// Referências de um valor qualquer: o próprio campo "Documento
+// referenciado" OU as células de documento de uma TABELA (linhas
+// [{coluna: valor}], com o valor da célula no formato de referência).
+export const extrairReferencias = (
+  valor?: string
+): IValorDocumento[] => {
+
+  const diretas = lerReferenciasGravadas(valor);
+
+  if (diretas.length > 0) {
+    return diretas;
+  }
+
+  const texto = (valor || '').trim();
+
+  if (texto.charAt(0) !== '[') {
+    return [];
+  }
+
+  try {
+    const linhas = JSON.parse(texto) as unknown;
+
+    if (!Array.isArray(linhas)) {
+      return [];
+    }
+
+    const encontrados: IValorDocumento[] = [];
+
+    linhas.forEach(linha => {
+      if (!linha || typeof linha !== 'object') {
+        return;
+      }
+      Object.keys(linha as Record<string, unknown>).forEach(coluna => {
+        const celula = (linha as Record<string, unknown>)[coluna];
+        if (typeof celula === 'string') {
+          lerReferenciasGravadas(celula).forEach(item => {
+            if (!encontrados.some(atual => atual.id === item.id)) {
+              encontrados.push(item);
+            }
+          });
+        }
+      });
+    });
+
+    return encontrados;
+  } catch {
+    return [];
+  }
+};

@@ -74,3 +74,43 @@ describe('Cadastro de ambientes', () => {
     expect(validarDadosAmbiente(dados({ rotuloRegistro: ' ' }), []).length).toBeGreaterThan(0);
   });
 });
+
+// ------------------------------------------------------------
+// Fluxo existente: avisos de etapas próprias de documentos
+// ------------------------------------------------------------
+
+import {
+  avisosFluxoAmbiente
+} from './compatibilidadeFluxoAmbiente';
+
+import {
+  IFluxoDefinicao,
+  IFluxoElemento
+} from '../../models/Fluxo';
+
+describe('Fluxo de documentos usado num ambiente', () => {
+
+  const elemento = (parcial: Partial<IFluxoElemento>): IFluxoElemento => ({
+    id: 'x', tipo: 'tarefaHumana', nome: 'Etapa', responsaveis: [], acoes: [], campos: [],
+    posicao: { x: 0, y: 0, largura: 10, altura: 10 }, ...parcial
+  });
+
+  const definicao = (elementos: IFluxoElemento[]): IFluxoDefinicao => ({
+    id: 'f', nome: 'Fluxo', versao: 1, status: 'publicado', processoId: 'p', tiposDocumento: [],
+    larguraDiagrama: 100, alturaDiagrama: 100, elementos, transicoes: []
+  });
+
+  it('fluxo simples não gera avisos', () => {
+    expect(avisosFluxoAmbiente(definicao([elemento({ tipo: 'inicio' }), elemento({}), elemento({ tipo: 'fim' })]))).toEqual([]);
+  });
+
+  it('lista as etapas próprias de documentos', () => {
+    const avisos = avisosFluxoAmbiente(definicao([
+      elemento({ nome: 'Elaborar', anexoArquivo: 'obrigatorio' }),
+      elemento({ tipo: 'tarefaSistema', nome: 'Publicar', acaoSistema: 'publicarSemRetreinamento' }),
+      elemento({ tipo: 'eventoRevisao', nome: 'Nova revisão' })
+    ]));
+    expect(avisos).toHaveLength(3);
+    expect(avisos.join(' ')).toMatch(/Publicar/);
+  });
+});

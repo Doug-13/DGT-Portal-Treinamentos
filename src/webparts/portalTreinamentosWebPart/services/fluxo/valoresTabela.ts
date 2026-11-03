@@ -2,6 +2,21 @@ import {
   IColunaTabela
 } from '../../models/Fluxo';
 
+import {
+  formatarValorUsuario,
+  validarValorUsuario
+} from './valorUsuario';
+
+import {
+  formatarValorDocumentos,
+  validarValorDocumentos
+} from './valorDocumento';
+
+import {
+  formatarValorArea,
+  validarValorArea
+} from './valorArea';
+
 // ============================================================
 // VALORES DE METADADOS DO TIPO TABELA
 //
@@ -94,6 +109,21 @@ export const validarCelula = (
     return `"${coluna.rotulo}" precisa ser Sim ou Não`;
   }
 
+  // Tipos com valor JSON (mesmas regras dos metadados).
+  const erroJson =
+    coluna.tipo === 'usuario'
+      ? validarValorUsuario(coluna.rotulo, texto)
+      : coluna.tipo === 'documento' || coluna.tipo === 'documentos'
+        ? validarValorDocumentos(coluna.rotulo, coluna.tipo, texto)
+        : coluna.tipo === 'area'
+          ? validarValorArea(coluna.rotulo, texto)
+          : '';
+
+  if (erroJson) {
+    // Sem o ponto final (o chamador monta a frase).
+    return erroJson.replace(/\.$/, '');
+  }
+
   return undefined;
 };
 
@@ -147,6 +177,15 @@ export const formatarCelula = (
   if (coluna.tipo === 'data') {
     const partes = valor.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     return partes ? `${partes[3]}/${partes[2]}/${partes[1]}` : valor;
+  }
+  if (coluna.tipo === 'usuario') {
+    return formatarValorUsuario(valor);
+  }
+  if (coluna.tipo === 'documento' || coluna.tipo === 'documentos') {
+    return formatarValorDocumentos(valor);
+  }
+  if (coluna.tipo === 'area') {
+    return formatarValorArea(valor);
   }
 
   return valor;

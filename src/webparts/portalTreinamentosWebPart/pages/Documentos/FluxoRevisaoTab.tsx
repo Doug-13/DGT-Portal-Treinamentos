@@ -50,6 +50,9 @@ import CampoUsuarioFluxo from
 import CampoDocumentoFluxo from
   '../../components/fluxo/CampoDocumentoFluxo';
 
+import CampoAreaFluxo from
+  '../../components/fluxo/CampoAreaFluxo';
+
 import TabelaCampoFluxo from
   '../../components/fluxo/TabelaCampoFluxo';
 
@@ -853,6 +856,9 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
             colunas={campo.colunas || []}
             valor={valor}
             desabilitado={desabilitado}
+            dataverseService={dataverseService}
+            documentoAtualId={documento.id}
+            onAbrirDocumento={onAbrirDocumento}
             onAlterar={novo => definirValor(campo.chave, novo)}
           />
           {ajuda}
@@ -910,7 +916,17 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
     let entrada: React.ReactElement;
 
-    if (campo.tipo === 'documento' || campo.tipo === 'documentos') {
+    if (campo.tipo === 'area') {
+      entrada = (
+        <CampoAreaFluxo
+          id={idCampo}
+          valor={valor}
+          desabilitado={desabilitado}
+          dataverseService={dataverseService}
+          onAlterar={novo => definirValor(campo.chave, novo)}
+        />
+      );
+    } else if (campo.tipo === 'documento' || campo.tipo === 'documentos') {
       entrada = (
         <CampoDocumentoFluxo
           id={idCampo}

@@ -12,6 +12,18 @@ import {
   linhasPreenchidas
 } from '../../services/fluxo/valoresTabela';
 
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
+import {
+  IValorUsuario
+} from '../../services/fluxo/valorUsuario';
+
+import CampoUsuarioFluxo from './CampoUsuarioFluxo';
+import CampoDocumentoFluxo from './CampoDocumentoFluxo';
+import CampoAreaFluxo from './CampoAreaFluxo';
+
 // ============================================================
 // CAMPO DO TIPO TABELA (preenchimento e leitura)
 //
@@ -27,6 +39,17 @@ export interface ITabelaCampoFluxoProps {
   somenteLeitura?: boolean;
   desabilitado?: boolean;
   onAlterar?: (valor: string) => void;
+
+  // Colunas de Usuário, Documento e Área consultam a plataforma.
+  dataverseService?: DataverseService;
+
+  // Lista de usuários já carregada pela tela (opcional).
+  usuarios?: IValorUsuario[];
+
+  // Documento em revisão (não pode referenciar a si mesmo).
+  documentoAtualId?: string;
+
+  onAbrirDocumento?: (documentoId: string) => void;
 }
 
 const COR_AZUL = '#202A44';
@@ -64,7 +87,11 @@ const TabelaCampoFluxo: React.FC<ITabelaCampoFluxoProps> = ({
   valor,
   somenteLeitura = false,
   desabilitado = false,
-  onAlterar
+  onAlterar,
+  dataverseService,
+  usuarios,
+  documentoAtualId,
+  onAbrirDocumento
 }) => {
 
   const linhas =
@@ -154,6 +181,66 @@ const TabelaCampoFluxo: React.FC<ITabelaCampoFluxoProps> = ({
     const rotuloCelula =
       `${coluna.rotulo}, linha ${indice + 1}`;
 
+    const idCelula =
+      `${id}-${coluna.chave}-${indice}`;
+
+    if (coluna.tipo === 'usuario') {
+      return (
+        <CampoUsuarioFluxo
+          id={idCelula}
+          valor={atual}
+          desabilitado={desabilitado}
+          dataverseService={dataverseService}
+          usuarios={usuarios}
+          placeholder="🔍 Buscar usuário..."
+          onAlterar={alterar}
+        />
+      );
+    }
+
+    if (coluna.tipo === 'documento' || coluna.tipo === 'documentos') {
+      return (
+        <CampoDocumentoFluxo
+          id={idCelula}
+          valor={atual}
+          multiplo={coluna.tipo === 'documentos'}
+          desabilitado={desabilitado}
+          dataverseService={dataverseService}
+          documentoAtualId={documentoAtualId}
+          tiposPermitidos={coluna.opcoes}
+          onAbrirDocumento={onAbrirDocumento}
+          onAlterar={alterar}
+        />
+      );
+    }
+
+    if (coluna.tipo === 'area') {
+      return (
+        <CampoAreaFluxo
+          id={idCelula}
+          valor={atual}
+          desabilitado={desabilitado}
+          dataverseService={dataverseService}
+          rotuloAcessivel={rotuloCelula}
+          estilo={estiloCelula}
+          onAlterar={alterar}
+        />
+      );
+    }
+
+    if (coluna.tipo === 'textoLongo') {
+      return (
+        <textarea
+          aria-label={rotuloCelula}
+          rows={2}
+          value={atual}
+          disabled={desabilitado}
+          onChange={evento => alterar(evento.target.value)}
+          style={{ ...estiloCelula, resize: 'vertical', minHeight: '52px' }}
+        />
+      );
+    }
+
     if (coluna.tipo === 'simNao' || coluna.tipo === 'lista') {
       return (
         <select
@@ -195,7 +282,19 @@ const TabelaCampoFluxo: React.FC<ITabelaCampoFluxoProps> = ({
       <div style={{ overflowX: 'auto' }}>
         <table
           aria-label={rotulo}
-          style={{ borderCollapse: 'collapse', width: '100%', minWidth: `${Math.max(320, colunas.length * 140 + 80)}px`, fontSize: '13px' }}
+          style={{
+            borderCollapse: 'collapse',
+            width: '100%',
+            minWidth: `${Math.max(
+              320,
+              colunas.reduce(
+                (soma, coluna) =>
+                  soma + (coluna.tipo === 'documento' || coluna.tipo === 'documentos' || coluna.tipo === 'usuario' ? 280 : coluna.tipo === 'textoLongo' ? 220 : 140),
+                80
+              )
+            )}px`,
+            fontSize: '13px'
+          }}
         >
           <thead>
             <tr>
@@ -230,7 +329,7 @@ const TabelaCampoFluxo: React.FC<ITabelaCampoFluxoProps> = ({
                     {
                       colunas.map(
                         coluna => (
-                          <td key={coluna.chave} style={{ padding: '4px', borderBottom: `1px solid ${COR_BORDA}` }}>
+                          <td key={coluna.chave} style={{ padding: '4px', borderBottom: `1px solid ${COR_BORDA}`, verticalAlign: 'top' }}>
                             {celula(coluna, linha, indice)}
                           </td>
                         )

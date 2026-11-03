@@ -49,15 +49,22 @@ const TIPOS: Array<{ valor: TipoCampoFluxo; rotulo: string }> = [
   { valor: 'tabela', rotulo: 'Tabela' },
   { valor: 'usuario', rotulo: 'Usuário (busca na plataforma)' },
   { valor: 'documento', rotulo: 'Documento referenciado' },
-  { valor: 'documentos', rotulo: 'Documentos referenciados (vários)' }
+  { valor: 'documentos', rotulo: 'Documentos referenciados (vários)' },
+  { valor: 'area', rotulo: 'Área (cadastradas no portal)' }
 ];
 
+// Colunas da tabela: os mesmos tipos dos metadados (exceto Tabela).
 const TIPOS_COLUNA: Array<{ valor: TipoColunaTabela; rotulo: string }> = [
-  { valor: 'texto', rotulo: 'Texto' },
+  { valor: 'texto', rotulo: 'Texto curto' },
+  { valor: 'textoLongo', rotulo: 'Texto longo' },
   { valor: 'numero', rotulo: 'Número' },
   { valor: 'data', rotulo: 'Data' },
   { valor: 'simNao', rotulo: 'Sim / Não' },
-  { valor: 'lista', rotulo: 'Lista' }
+  { valor: 'lista', rotulo: 'Lista de opções' },
+  { valor: 'usuario', rotulo: 'Usuário (busca na plataforma)' },
+  { valor: 'documento', rotulo: 'Documento referenciado' },
+  { valor: 'documentos', rotulo: 'Documentos referenciados (vários)' },
+  { valor: 'area', rotulo: 'Área (cadastradas no portal)' }
 ];
 
 const lerOpcoes = (
@@ -211,8 +218,22 @@ const EditorColunas: React.FC<{
                 type="text"
                 aria-label={`Opções da coluna ${coluna.rotulo}`}
                 value={(coluna.opcoes || []).join('; ')}
-                disabled={!editavel || coluna.tipo !== 'lista'}
-                placeholder={coluna.tipo === 'lista' ? 'Opções separadas por ;' : '—'}
+                disabled={
+                  !editavel ||
+                  (coluna.tipo !== 'lista' && coluna.tipo !== 'documento' && coluna.tipo !== 'documentos')
+                }
+                title={
+                  coluna.tipo === 'documento' || coluna.tipo === 'documentos'
+                    ? 'Tipos de documento aceitos (ex.: POP; IT). Vazio = todos, exceto treinamentos (TRN).'
+                    : undefined
+                }
+                placeholder={
+                  coluna.tipo === 'lista'
+                    ? 'Opções separadas por ;'
+                    : coluna.tipo === 'documento' || coluna.tipo === 'documentos'
+                      ? 'Tipos aceitos (ex.: POP; IT)'
+                      : '—'
+                }
                 onChange={evento => alterar(indice, { opcoes: lerOpcoes(evento.target.value) })}
                 style={{ ...estiloEntradaPainel, minHeight: '32px' }}
               />

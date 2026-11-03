@@ -188,15 +188,25 @@ export type TipoCampoFluxo =
   // Documento(s) da plataforma (dgt_documento). Valor gravado como
   // JSON [{id, codigo, titulo}] — ver services/fluxo/valorDocumento.ts.
   | 'documento'
-  | 'documentos';
+  | 'documentos'
+  // Área cadastrada no portal (dgt_area). Valor gravado como JSON
+  // {id, nome, sigla} — ver services/fluxo/valorArea.ts.
+  | 'area';
 
-// Tipos permitidos numa coluna de tabela.
+// Tipos permitidos numa coluna de tabela: os mesmos dos metadados,
+// exceto tabela dentro de tabela. Em 'documento(s)', as opções da
+// coluna são os tipos de documento aceitos.
 export type TipoColunaTabela =
   | 'texto'
+  | 'textoLongo'
   | 'numero'
   | 'data'
   | 'simNao'
-  | 'lista';
+  | 'lista'
+  | 'usuario'
+  | 'documento'
+  | 'documentos'
+  | 'area';
 
 // Coluna de um metadado do tipo tabela.
 export interface IColunaTabela {

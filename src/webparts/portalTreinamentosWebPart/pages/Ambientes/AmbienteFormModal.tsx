@@ -3,7 +3,8 @@ import * as React from 'react';
 import {
   IAmbiente,
   ICONES_AMBIENTE,
-  IEdicaoAmbiente
+  IEdicaoAmbiente,
+  IFluxoOpcaoAmbiente
 } from '../../models/Ambiente';
 
 import {
@@ -49,6 +50,8 @@ export interface IAmbienteFormModalProps {
   disponivel: boolean;
   avisoIndisponivel?: string;
   processando: boolean;
+  // Fluxos de Processos → Fluxos que podem ser vinculados.
+  carregarFluxos?: () => Promise<IFluxoOpcaoAmbiente[]>;
   onSalvar: (dados: IEdicaoAmbiente) => Promise<string[]>;
   onFechar: () => void;
 }
@@ -94,6 +97,28 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
   const [ativo, setAtivo] = React.useState(original ? original.ativo : true);
   const [erros, setErros] = React.useState<string[]>([]);
 
+  // Fluxo do ambiente: novo (criado agora) ou um já existente.
+  const [modoFluxo, setModoFluxo] = React.useState<'novo' | 'existente'>('novo');
+  const [fluxoId, setFluxoId] = React.useState<string>(original ? original.processoId : '');
+  const [fluxos, setFluxos] = React.useState<IFluxoOpcaoAmbiente[]>([]);
+  const [carregandoFluxos, setCarregandoFluxos] = React.useState(false);
+  const [erroFluxos, setErroFluxos] = React.useState('');
+
+  React.useEffect(() => {
+    if (!props.carregarFluxos || !props.disponivel) {
+      return;
+    }
+    setCarregandoFluxos(true);
+    props.carregarFluxos()
+      .then(lista => setFluxos(lista))
+      .catch(erro => setErroFluxos(`Não foi possível listar os fluxos: ${erro instanceof Error ? erro.message : String(erro)}`))
+      .then(() => setCarregandoFluxos(false))
+      .catch(() => undefined);
+  }, []);
+
+  const fluxoEscolhido = fluxos.filter(item => item.id === fluxoId)[0];
+  const trocandoFluxo = !novo && !!original && !!fluxoId && fluxoId !== original.processoId;
+
   // Novo ambiente: chave e prefixo acompanham o nome até o
   // Administrador alterá-los à mão.
   const alterarNome = (valor: string): void => {
@@ -125,15 +150,27 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
     perfisPadrao: perfisPadrao.filter(item => item !== 'Administrador'),
     prefixoCodigo: prefixo.trim().toUpperCase(),
     rotuloRegistro: rotuloRegistro.trim(),
-    ativo
+    ativo,
+    processoId:
+      novo
+        ? (modoFluxo === 'existente' ? fluxoId : undefined)
+        : (trocandoFluxo ? fluxoId : undefined)
   });
 
   const salvar = async (): Promise<void> => {
     const valores = dados();
     const problemas = validarDadosAmbiente(valores, props.existentes, original ? original.id : undefined);
+    if (novo && modoFluxo === 'existente' && !fluxoId) {
+      problemas.push('Escolha o fluxo existente que o ambiente vai usar (ou marque “Criar um fluxo novo”).');
+    }
     if (problemas.length > 0) {
       setErros(problemas);
       return;
+    }
+    if (trocandoFluxo && original) {
+      if (!window.confirm(`Trocar o fluxo de "${original.nome}" para "${fluxoEscolhido ? fluxoEscolhido.nome : 'o fluxo escolhido'}"? Os registros em andamento terminam no fluxo em que começaram; os novos seguem o novo fluxo. O fluxo anterior não é apagado.`)) {
+        return;
+      }
     }
     if (!novo && original && original.ativo && !ativo) {
       if (!window.confirm(`Desativar o ambiente "${original.nome}"? Ele some do menu de todos os usuários. Nada é apagado: os registros e o histórico continuam no Dataverse e o ambiente pode ser reativado.`)) {
@@ -211,10 +248,8 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
             <CaixaMensagem
               tipo="info"
               texto={
-                'Ao criar, o portal cria também o processo do fluxo ' +
-                `(${PREFIXO_PROCESSO_AMBIENTE}${(chave || 'CHAVE').toUpperCase()}).\n` +
-                'Próximos passos: 1) desenhe e publique o fluxo (o botão aparece na aba Configuração do ambiente); ' +
-                '2) libere o ambiente em Usuários e acessos, como os demais módulos.'
+                'Cada ambiente fica vinculado a um fluxo de Processos → Fluxos: um novo, criado agora, ou um que já existe.\n' +
+                'Depois de criar: confira o fluxo na aba Configuração do ambiente e libere o ambiente em Usuários e acessos, como os demais módulos.'
               }
             />
           )}
@@ -279,6 +314,67 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
               <span style={ajuda}>Códigos: {(prefixo || 'XXX').toUpperCase()}-{new Date().getFullYear()}-0001</span>
             </label>
           </div>
+
+          <fieldset style={{ border: `1px solid ${COR.borda}`, borderRadius: '8px', padding: '10px 14px', marginTop: '16px' }}>
+            <legend style={{ ...rotulo, padding: '0 6px', marginBottom: 0 }}>Fluxo do ambiente</legend>
+
+            {novo && (
+              <>
+                <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '13px', color: COR.azul, cursor: 'pointer' }}>
+                  <input type="radio" name="modo-fluxo" checked={modoFluxo === 'novo'} onChange={() => setModoFluxo('novo')} />
+                  <span>
+                    <strong>Criar um fluxo novo para este ambiente</strong>
+                    <span style={ajuda}>O portal cria o processo {PREFIXO_PROCESSO_AMBIENTE}{(chave || 'CHAVE').toUpperCase()}; você desenha e publica o fluxo pela aba Configuração.</span>
+                  </span>
+                </label>
+                <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '13px', color: COR.azul, cursor: 'pointer', marginTop: '8px' }}>
+                  <input type="radio" name="modo-fluxo" checked={modoFluxo === 'existente'} onChange={() => setModoFluxo('existente')} />
+                  <span>
+                    <strong>Usar um fluxo que já existe</strong>
+                    <span style={ajuda}>Um fluxo criado em Processos → Fluxos (pode ser usado por mais de um ambiente).</span>
+                  </span>
+                </label>
+              </>
+            )}
+
+            {!novo && original && (
+              <div style={{ fontSize: '13px', color: COR.azul }}>
+                Fluxo atual: <strong>{original.processoNome || '—'}</strong>
+                <span style={ajuda}>Para trocar, escolha outro abaixo. Registros em andamento terminam no fluxo em que começaram.</span>
+              </div>
+            )}
+
+            {(!novo || modoFluxo === 'existente') && (
+              <div style={{ marginTop: '8px' }}>
+                <select
+                  aria-label="Fluxo do ambiente"
+                  value={fluxoId}
+                  disabled={carregandoFluxos}
+                  onChange={evento => setFluxoId(evento.target.value)}
+                  style={campo}
+                >
+                  <option value="">{carregandoFluxos ? 'Carregando fluxos...' : (novo ? 'Selecione o fluxo...' : '(manter o fluxo atual)')}</option>
+                  {fluxos.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.codigo ? `${item.codigo} — ` : ''}{item.nome}
+                      {item.publicado ? '' : ' (sem versão publicada)'}
+                      {item.ambientes.length > 0 ? ` · usado por: ${item.ambientes.join(', ')}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {erroFluxos && <span style={{ ...ajuda, color: '#B42318' }}>{erroFluxos}</span>}
+                {fluxoEscolhido && !fluxoEscolhido.publicado && (
+                  <span style={{ ...ajuda, color: '#B42318' }}>
+                    Este fluxo ainda não tem versão publicada: o ambiente só aceita registros depois da publicação.
+                  </span>
+                )}
+                <span style={ajuda}>
+                  Fluxos desenhados para documentos também podem ser usados; etapas próprias de documentos (publicar, anexar arquivo, subprocesso)
+                  são ignoradas no ambiente — a aba Configuração lista quais.
+                </span>
+              </div>
+            )}
+          </fieldset>
 
           <fieldset style={{ border: `1px solid ${COR.borda}`, borderRadius: '8px', padding: '10px 14px', marginTop: '16px' }}>
             <legend style={{ ...rotulo, padding: '0 6px', marginBottom: 0 }}>Liberação padrão (igual aos demais módulos)</legend>

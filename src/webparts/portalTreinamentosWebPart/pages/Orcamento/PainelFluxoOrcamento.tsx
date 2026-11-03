@@ -70,10 +70,6 @@ export interface IPainelFluxoOrcamentoProps {
   observacaoAcoes?: string;
   // Começa com o diagrama aberto?
   diagramaAberto?: boolean;
-  // Textos do cabeçalho (o painel também é usado pelos Ambientes).
-  // Sem eles, ficam os textos do Orçamento.
-  rotuloFluxo?: string;
-  textoConcluido?: string;
 }
 
 const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
@@ -151,6 +147,7 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
           valor={valor}
           somenteLeitura={somenteLeitura}
           desabilitado={props.processando}
+          usuarios={usuariosBusca}
           onAlterar={alterar}
         />
       );
@@ -174,8 +171,8 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
       );
     }
 
-    // Documento referenciado: escolhido na tela de Documentos; aqui só exibe.
-    if (item.tipo === 'documento' || item.tipo === 'documentos') {
+    // Documento referenciado e Área: aqui só exibe o valor.
+    if (item.tipo === 'documento' || item.tipo === 'documentos' || item.tipo === 'area') {
       return (
         <div style={{ fontSize: '13.5px', color: COR.azul }}>
           {formatarValorCampo(item.tipo, valor) || '—'}
@@ -225,10 +222,10 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
         <div style={{ flex: 1, minWidth: '240px' }}>
           <div style={{ fontSize: '11.5px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px' }}>
-            {props.rotuloFluxo || 'Fluxo de aprovação'} · {instancia.processoNome || definicao.nome} · v{definicao.versao}
+            Fluxo de aprovação · {instancia.processoNome || definicao.nome} · v{definicao.versao}
           </div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: COR.azul, marginTop: '2px' }}>
-            {concluido ? (props.textoConcluido || '✓ Orçamento aprovado — fluxo concluído') : `Etapa atual: ${elemento ? elemento.nome : '—'}`}
+            {concluido ? '✓ Orçamento aprovado — fluxo concluído' : `Etapa atual: ${elemento ? elemento.nome : '—'}`}
           </div>
           {!concluido && responsaveis.length > 0 && (
             <div style={{ fontSize: '12.5px', color: COR.texto2, marginTop: '2px' }}>

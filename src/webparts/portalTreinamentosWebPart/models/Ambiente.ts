@@ -103,6 +103,12 @@ export interface IAmbienteRegistro {
 }
 
 export interface INovoAmbiente {
+  // Fluxo do ambiente:
+  //   vazio → o portal cria um processo novo (AMB-<CHAVE>);
+  //   id    → usa um fluxo já existente em Processos → Fluxos.
+  // Na edição, um id diferente do atual TROCA o fluxo do ambiente
+  // (registros em andamento terminam no fluxo em que começaram).
+  processoId?: string;
   nome: string;
   chave: string;
   descricao: string;
@@ -144,3 +150,14 @@ export const ICONES_AMBIENTE: Array<{ chave: IconeChave; nome: string }> = [
   { chave: 'megaphone', nome: 'Megafone' },
   { chave: 'activity', nome: 'Atividade' }
 ];
+
+// Fluxo (dgt_processo) que pode ser escolhido para um ambiente.
+export interface IFluxoOpcaoAmbiente {
+  id: string;
+  codigo: string;
+  nome: string;
+  // Tem versão publicada (sem ela o ambiente não aceita registros).
+  publicado: boolean;
+  // Quantos ambientes já usam este fluxo.
+  ambientes: string[];
+}

@@ -28,6 +28,11 @@ import {
 } from './valorDocumento';
 
 import {
+  formatarValorArea,
+  validarValorArea
+} from './valorArea';
+
+import {
   ROTULO_HISTORICO_EVENTO_REVISAO,
   revisaoInteira,
   rotuloPeloEvento
@@ -313,6 +318,13 @@ export const validarAcao = (
           erros.push(erroDocumento);
         }
       }
+
+      if (campo.tipo === 'area') {
+        const erroArea = validarValorArea(campo.rotulo, valor);
+        if (erroArea) {
+          erros.push(erroArea);
+        }
+      }
     }
   );
 
@@ -342,6 +354,10 @@ export const formatarValorCampo = (
 
   if (ehTipoDocumento(tipo)) {
     return formatarValorDocumentos(valor);
+  }
+
+  if (tipo === 'area') {
+    return formatarValorArea(valor);
   }
 
   if (tipo === 'data') {

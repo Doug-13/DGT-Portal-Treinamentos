@@ -605,6 +605,10 @@ export const validarDefinicao = (
           erros.push(`A ligação "${nome}" não pode usar um documento referenciado como condição.`);
         }
 
+        if (metadadoCondicao && metadadoCondicao.tipo === 'area') {
+          erros.push(`A ligação "${nome}" não pode usar um campo de área como condição.`);
+        }
+
         if (!(transicao.valorEsperado || '').trim()) {
           erros.push(`Informe o valor esperado na ligação "${nome}".`);
         }

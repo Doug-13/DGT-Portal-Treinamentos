@@ -10,6 +10,7 @@ import {
   IAmbiente,
   IAmbienteRegistro,
   IEdicaoAmbiente,
+  IFluxoOpcaoAmbiente,
   INovoAmbiente,
   INovoRegistroAmbiente,
   SituacaoRegistroAmbiente
@@ -308,7 +309,52 @@ export class AmbienteService {
     }
   }
 
-  // Cria o processo do fluxo + o ambiente.
+  // Fluxos de Processos → Fluxos que podem ser ligados a um ambiente
+  // (ativos), com a indicação de versão publicada e de quais
+  // ambientes já os usam.
+  public async listarFluxos(
+    ambientes: IAmbiente[]
+  ): Promise<IFluxoOpcaoAmbiente[]> {
+
+    const persistencia = obterPersistenciaFluxo(this.dataverse);
+    const dados = await persistencia.processos.carregar(true, []);
+    const ativos = dados.processos.filter(item => item.ativo !== false);
+
+    const publicados =
+      await Promise.all(
+        ativos.map(async item => {
+          try {
+            return !!(await persistencia.catalogo.versaoPublicada(item.id));
+          } catch {
+            return false;
+          }
+        })
+      );
+
+    return ativos
+      .map((item, indice) => ({
+        id: guid(item.id),
+        codigo: item.codigo || '',
+        nome: item.nome,
+        publicado: publicados[indice],
+        ambientes: ambientes.filter(amb => guid(amb.processoId) === guid(item.id)).map(amb => amb.nome)
+      }))
+      .sort((a, b) => `${a.codigo} ${a.nome}`.localeCompare(`${b.codigo} ${b.nome}`, 'pt-BR'));
+  }
+
+  // Confere se o fluxo escolhido existe e está ativo.
+  private async fluxoExistente(
+    processoId: string
+  ): Promise<{ id: string; nome: string } | undefined> {
+    const persistencia = obterPersistenciaFluxo(this.dataverse);
+    const dados = await persistencia.processos.carregar(true, []);
+    const processo =
+      dados.processos.filter(item => guid(item.id) === guid(processoId) && item.ativo !== false)[0];
+    return processo ? { id: processo.id, nome: processo.nome } : undefined;
+  }
+
+  // Cria o ambiente. O fluxo é um já existente (dados.processoId) ou
+  // um processo novo criado agora (AMB-<CHAVE>).
   public async criar(
     dados: INovoAmbiente,
     existentes: IAmbiente[]
@@ -319,43 +365,57 @@ export class AmbienteService {
       return { ok: false, erros };
     }
 
-    // 1. Processo do ambiente (onde o fluxo é desenhado).
+    // 1. Fluxo do ambiente: existente ou novo processo.
     const persistencia = obterPersistenciaFluxo(this.dataverse);
     const codigoProcesso = `${PREFIXO_PROCESSO_AMBIENTE}${dados.chave.toUpperCase()}`.substring(0, 100);
 
     let processoId = '';
     let processoNome = '';
 
-    try {
-      const atuais = await persistencia.processos.carregar(true, []);
-      const jaExiste =
-        atuais.processos.filter(item => (item.codigo || '').toUpperCase() === codigoProcesso)[0];
-
-      if (jaExiste) {
-        // Reaproveita (ex.: tentativa anterior que criou o processo e
-        // falhou ao gravar o ambiente).
-        processoId = jaExiste.id;
-        processoNome = jaExiste.nome;
-      } else {
-        const criado =
-          await persistencia.processos.criarProcesso(
-            {
-              codigo: codigoProcesso,
-              nome: `Ambiente: ${dados.nome.trim()}`.substring(0, 200),
-              descricao: `Fluxo dos registros do ambiente "${dados.nome.trim()}" (criado pelo portal).`
-            },
-            atuais.processos
-          );
-
-        if (!criado.ok || !criado.processo) {
-          return { ok: false, erros: [criado.erro || 'Não foi possível criar o processo do ambiente.'] };
+    if (dados.processoId) {
+      try {
+        const existente = await this.fluxoExistente(dados.processoId);
+        if (!existente) {
+          return { ok: false, erros: ['O fluxo escolhido não foi encontrado ou está inativo. Escolha outro ou crie um fluxo novo.'] };
         }
-
-        processoId = criado.processo.id;
-        processoNome = criado.processo.nome;
+        processoId = existente.id;
+        processoNome = existente.nome;
+      } catch (erro) {
+        return { ok: false, erros: [`Não foi possível ler os fluxos: ${mensagem(erro)}`] };
       }
-    } catch (erro) {
-      return { ok: false, erros: [`Não foi possível criar o processo do fluxo: ${mensagem(erro)}`] };
+    } else {
+      // Fluxo novo, só deste ambiente.
+      try {
+        const atuais = await persistencia.processos.carregar(true, []);
+        const jaExiste =
+          atuais.processos.filter(item => (item.codigo || '').toUpperCase() === codigoProcesso)[0];
+
+        if (jaExiste) {
+          // Reaproveita (ex.: tentativa anterior que criou o processo e
+          // falhou ao gravar o ambiente).
+          processoId = jaExiste.id;
+          processoNome = jaExiste.nome;
+        } else {
+          const criado =
+            await persistencia.processos.criarProcesso(
+              {
+                codigo: codigoProcesso,
+                nome: `Ambiente: ${dados.nome.trim()}`.substring(0, 200),
+                descricao: `Fluxo dos registros do ambiente "${dados.nome.trim()}" (criado pelo portal).`
+              },
+              atuais.processos
+            );
+
+          if (!criado.ok || !criado.processo) {
+            return { ok: false, erros: [criado.erro || 'Não foi possível criar o processo do ambiente.'] };
+          }
+
+          processoId = criado.processo.id;
+          processoNome = criado.processo.nome;
+        }
+      } catch (erro) {
+        return { ok: false, erros: [`Não foi possível criar o processo do fluxo: ${mensagem(erro)}`] };
+      }
     }
 
     // 2. Ambiente.
@@ -397,14 +457,18 @@ export class AmbienteService {
       return {
         ok: false,
         erros: [
-          `O processo do fluxo (${codigoProcesso}) foi criado, mas o ambiente não foi gravado: ${mensagem(erro)}. Tente de novo: o processo será reaproveitado.`
+          dados.processoId
+            ? `O ambiente não foi gravado: ${mensagem(erro)}`
+            : `O processo do fluxo (${codigoProcesso}) foi criado, mas o ambiente não foi gravado: ${mensagem(erro)}. Tente de novo: o processo será reaproveitado.`
         ]
       };
     }
   }
 
   // Altera os dados do ambiente. A CHAVE nunca muda (as liberações
-  // dos usuários apontam para ela) e o processo também não.
+  // dos usuários apontam para ela). O fluxo pode ser trocado por outro
+  // já existente: registros em andamento continuam no fluxo (e versão)
+  // em que começaram; os novos seguem o novo fluxo.
   public async atualizar(
     ambiente: IAmbiente,
     dados: IEdicaoAmbiente,
@@ -418,14 +482,31 @@ export class AmbienteService {
       return { ok: false, erros };
     }
 
+    let processoId = ambiente.processoId;
+    let processoNome = ambiente.processoNome;
+    const trocarFluxo = !!dados.processoId && guid(dados.processoId) !== guid(ambiente.processoId);
+
     try {
+      const corpo: Record<string, unknown> = {
+        ...this.corpoAmbiente(dados),
+        [AMBIENTE.ativo]: dados.ativo
+      };
+
+      if (trocarFluxo) {
+        const existente = await this.fluxoExistente(dados.processoId as string);
+        if (!existente) {
+          return { ok: false, erros: ['O fluxo escolhido não foi encontrado ou está inativo.'] };
+        }
+        processoId = guid(existente.id);
+        processoNome = existente.nome;
+        corpo[AMBIENTE.processoBind] =
+          await this.dataverse.referenciaLookup(TABELAS_AMBIENTE.processo, processoId);
+      }
+
       await this.dataverse.atualizarRegistro(
         TABELAS_AMBIENTE.ambiente,
         ambiente.id,
-        {
-          ...this.corpoAmbiente(dados),
-          [AMBIENTE.ativo]: dados.ativo
-        }
+        corpo
       );
     } catch (erro) {
       return { ok: false, erros: [mensagem(erro)] };
@@ -436,6 +517,8 @@ export class AmbienteService {
       erros: [],
       ambiente: {
         ...ambiente,
+        processoId,
+        processoNome,
         nome: dados.nome.trim(),
         descricao: (dados.descricao || '').trim(),
         subtitulo: (dados.subtitulo || '').trim(),
