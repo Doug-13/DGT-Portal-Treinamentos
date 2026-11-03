@@ -229,6 +229,9 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
     }
   };
 
+  const [processandoRegra, setProcessandoRegra] =
+    React.useState('');
+
   const alternarRegra = async (
     regra: IRegraAtribuicaoArea
   ): Promise<void> => {
@@ -236,14 +239,111 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
     setSucesso('');
 
     try {
-      await props.service.definirAtiva(regra.id, !regra.ativo);
+
+      // Reativar: o plugin atribui de novo aos membros ativos da área.
+      if (!regra.ativo) {
+        setProcessandoRegra(regra.id);
+        await props.service.definirAtiva(regra.id, true);
+        setSucesso(
+          `Regra reativada. ${regra.treinamentoNome} será atribuído aos membros ativos de ${regra.areaNome} em instantes.`
+        );
+        await carregar();
+        return;
+      }
+
+      // Desativar: mostra o impacto e pede confirmação.
+      setProcessandoRegra(regra.id);
+
+      const impacto =
+        await props.service.impactoDesativacao(regra.id);
+
+      const confirmou =
+        window.confirm(
+          `Desativar a regra "${regra.treinamentoNome} → ${regra.areaNome}"?\n\n` +
+          `• ${impacto.pendentes} atribuição(ões) pendente(s) serão REMOVIDAS: o treinamento deixa de aparecer para essas pessoas.\n` +
+          `• ${impacto.concluidas} atribuição(ões) concluída(s) serão MANTIDAS (evidência e certificado).\n` +
+          '• Atribuições recebidas por outro caminho (individual, trilha ou outra regra) não são alteradas.\n\n' +
+          'Nada é apagado: as atribuições removidas ficam no histórico com o motivo.'
+        );
+
+      if (!confirmou) {
+        return;
+      }
+
+      const resultado =
+        await props.service.desativar(regra);
+
       await carregar();
+
+      setSucesso(
+        `Regra desativada. ${resultado.removidas} atribuição(ões) removida(s)` +
+        (resultado.concluidasMantidas ? `; ${resultado.concluidasMantidas} concluída(s) mantida(s)` : '') +
+        '.'
+      );
+
+      if (resultado.falhas.length > 0) {
+        setErro(
+          `Não foi possível remover ${resultado.falhas.length} atribuição(ões): ${resultado.falhas.join(' | ')}`
+        );
+      }
+
     } catch (e) {
       setErro(
         e instanceof Error
           ? e.message
           : 'Não foi possível alterar a regra.'
       );
+    } finally {
+      setProcessandoRegra('');
+    }
+  };
+
+  // Regra já inativa (desativada antes desta versão): remove as
+  // pendentes que ficaram.
+  const removerPendentes = async (
+    regra: IRegraAtribuicaoArea
+  ): Promise<void> => {
+    setErro('');
+    setSucesso('');
+    setProcessandoRegra(regra.id);
+
+    try {
+      const impacto =
+        await props.service.impactoDesativacao(regra.id);
+
+      if (impacto.pendentes === 0) {
+        setSucesso(`Não há atribuições pendentes criadas pela regra "${regra.treinamentoNome} → ${regra.areaNome}".`);
+        return;
+      }
+
+      const confirmou =
+        window.confirm(
+          `Remover ${impacto.pendentes} atribuição(ões) pendente(s) criada(s) pela regra "${regra.treinamentoNome} → ${regra.areaNome}"?\n\n` +
+          `As ${impacto.concluidas} concluída(s) serão mantidas. Nada é apagado: as removidas ficam no histórico com o motivo.`
+        );
+
+      if (!confirmou) {
+        return;
+      }
+
+      const resultado =
+        await props.service.removerPendentes(regra);
+
+      setSucesso(`${resultado.removidas} atribuição(ões) removida(s).`);
+
+      if (resultado.falhas.length > 0) {
+        setErro(
+          `Não foi possível remover ${resultado.falhas.length} atribuição(ões): ${resultado.falhas.join(' | ')}`
+        );
+      }
+    } catch (e) {
+      setErro(
+        e instanceof Error
+          ? e.message
+          : 'Não foi possível remover as atribuições.'
+      );
+    } finally {
+      setProcessandoRegra('');
     }
   };
 
@@ -371,7 +471,8 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
           Regras por área {treinamentoId ? 'deste treinamento' : ''}
         </h3>
         <p style={{ margin: '0 0 14px', color: C.secundario, fontSize: '13px' }}>
-          Desativar uma regra interrompe novas atribuições. As atribuições já feitas e o histórico são mantidos.
+          Desativar uma regra interrompe novas atribuições e remove as atribuições pendentes criadas por ela.
+          As concluídas e o histórico são mantidos.
         </p>
 
         {carregando && <div style={{ color: C.secundario, fontSize: '13px' }}>Carregando...</div>}
@@ -416,10 +517,25 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
                       <button
                         type="button"
                         onClick={() => { void alternarRegra(regra); }}
-                        style={{ ...btn, color: regra.ativo ? C.vermelho : C.verde }}
+                        disabled={!!processandoRegra}
+                        style={{ ...btn, color: regra.ativo ? C.vermelho : C.verde, opacity: processandoRegra && processandoRegra !== regra.id ? 0.5 : 1 }}
                       >
-                        {regra.ativo ? 'Desativar' : 'Reativar'}
+                        {processandoRegra === regra.id
+                          ? 'Processando...'
+                          : regra.ativo ? 'Desativar' : 'Reativar'}
                       </button>
+
+                      {!regra.ativo && (
+                        <button
+                          type="button"
+                          onClick={() => { removerPendentes(regra).catch(() => undefined); }}
+                          disabled={!!processandoRegra}
+                          title="Remove as atribuições pendentes que esta regra criou antes de ser desativada"
+                          style={{ ...btn, marginLeft: '8px', color: C.vermelho, opacity: processandoRegra ? 0.5 : 1 }}
+                        >
+                          Remover pendentes
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

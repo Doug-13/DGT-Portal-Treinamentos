@@ -271,13 +271,6 @@ import RegistrosOportunidadePage from
 import PlanejamentoOrcamentarioPage from
   '../pages/Orcamento/PlanejamentoOrcamentarioPage';
 
-import AmbientePage from
-  '../pages/Ambientes/AmbientePage';
-
-import {
-  IAmbiente
-} from '../models/Ambiente';
-
 import LicitacoesTesteConexaoPage from
   '../pages/Licitacoes/LicitacoesTesteConexaoPage';
 
@@ -642,24 +635,6 @@ export interface IPortalRouterProps {
     pagina:
       Pagina
   ) => void;
-
-  // ============================================================
-  // AMBIENTES DINÂMICOS
-  // ============================================================
-
-  // Ambiente aberto quando pagina = 'ambiente'.
-  ambienteAtual?:
-  IAmbiente;
-
-  // Abre o editor de fluxo (Processos → Fluxos) no processo informado.
-  onDesenharFluxoAmbiente?:
-  (
-    processoId: string
-  ) => void;
-
-  // Abre o modal de edição do ambiente atual (Administrador global).
-  onEditarAmbiente?:
-  () => void;
 
   // ============================================================
   // USUÁRIO
@@ -1419,6 +1394,24 @@ const PortalRouter:
 
             erroCalendario={
               props.erroCalendario
+            }
+
+            contextoAcesso={
+              props.contextoAcesso
+            }
+
+            dataverseService={
+              props.dataverseService
+            }
+
+            onNavegar={pagina =>
+              props.navegar(
+                pagina as Pagina
+              )
+            }
+
+            onAbrirDocumentoPorId={
+              props.abrirDocumentoPorId
             }
           />
           </>
@@ -3284,6 +3277,24 @@ const PortalRouter:
             erroCalendario={
               props.erroCalendario
             }
+
+            contextoAcesso={
+              props.contextoAcesso
+            }
+
+            dataverseService={
+              props.dataverseService
+            }
+
+            onNavegar={pagina =>
+              props.navegar(
+                pagina as Pagina
+              )
+            }
+
+            onAbrirDocumentoPorId={
+              props.abrirDocumentoPorId
+            }
           />
         );
 
@@ -3454,41 +3465,6 @@ const PortalRouter:
           <PlanejamentoOrcamentarioPage
             dataverseService={props.dataverseService}
             contexto={props.contextoAcesso}
-          />
-        );
-
-      // ========================================================
-      // AMBIENTE DINÂMICO (criado no portal pelo Administrador)
-      // ========================================================
-
-      case 'ambiente':
-
-        if (!props.ambienteAtual) {
-          return (
-            <AcessoNegadoPage
-              mensagem="Ambiente não encontrado ou desativado. Escolha um ambiente no menu lateral."
-              onVoltar={() => props.navegar('inicio')}
-            />
-          );
-        }
-
-        return (
-          <AmbientePage
-            ambiente={props.ambienteAtual}
-            contexto={props.contextoAcesso}
-            dataverseService={props.dataverseService}
-            areas={props.areasAdministrativas}
-            usuariosAreas={props.usuariosAreasAdministrativos}
-            navegar={props.navegar}
-            onDesenharFluxo={processoId => {
-              if (props.onDesenharFluxoAmbiente) {
-                props.onDesenharFluxoAmbiente(processoId);
-              } else {
-                solicitarAberturaProcesso(processoId);
-                props.navegar('fluxos');
-              }
-            }}
-            onEditarAmbiente={props.onEditarAmbiente}
           />
         );
 
