@@ -55,7 +55,7 @@ export interface IBpmnSnapshot {
 // Configuração de negócio de uma etapa (o que não está no desenho).
 export type IConfigElemento = Pick<
   IFluxoElemento,
-  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo' | 'permiteEditarDocumento'
+  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo' | 'permiteEditarDocumento' | 'subprocesso'
 >;
 
 // Configuração de negócio de uma ligação.
@@ -78,7 +78,10 @@ const MAPA_TIPOS: Record<string, TipoElementoFluxo> = {
   'bpmn:ServiceTask': 'tarefaSistema',
   'bpmn:ScriptTask': 'tarefaSistema',
   // Evento intermediário (círculo) = evento de revisão.
-  'bpmn:IntermediateThrowEvent': 'eventoRevisao'
+  'bpmn:IntermediateThrowEvent': 'eventoRevisao',
+  // Chamada de processo (borda grossa) = subprocesso: cria
+  // documentos que seguem outro fluxo.
+  'bpmn:CallActivity': 'subprocesso'
 };
 
 // Elementos que podem existir no desenho, mas não afetam o fluxo.
@@ -98,7 +101,6 @@ const NOME_TIPO_BPMN: Record<string, string> = {
   'bpmn:IntermediateCatchEvent': 'evento intermediário de captura',
   'bpmn:BoundaryEvent': 'evento de borda',
   'bpmn:SubProcess': 'subprocesso',
-  'bpmn:CallActivity': 'chamada de processo',
   'bpmn:SendTask': 'tarefa de envio',
   'bpmn:ReceiveTask': 'tarefa de recebimento',
   'bpmn:BusinessRuleTask': 'tarefa de regra de negócio',
@@ -120,7 +122,8 @@ const TIPO_BPMN_DO_FLUXO: Record<TipoElementoFluxo, string> = {
   tarefaHumana: 'bpmn:userTask',
   gateway: 'bpmn:exclusiveGateway',
   tarefaSistema: 'bpmn:serviceTask',
-  eventoRevisao: 'bpmn:intermediateThrowEvent'
+  eventoRevisao: 'bpmn:intermediateThrowEvent',
+  subprocesso: 'bpmn:callActivity'
 };
 
 // Tipo BPMN (como o editor informa) de um elemento da definição.
@@ -130,7 +133,8 @@ const TIPO_BPMN_EDITOR: Record<TipoElementoFluxo, string> = {
   tarefaHumana: 'bpmn:UserTask',
   gateway: 'bpmn:ExclusiveGateway',
   tarefaSistema: 'bpmn:ServiceTask',
-  eventoRevisao: 'bpmn:IntermediateThrowEvent'
+  eventoRevisao: 'bpmn:IntermediateThrowEvent',
+  subprocesso: 'bpmn:CallActivity'
 };
 
 export const tipoBpmnDoElemento = (
@@ -202,6 +206,25 @@ export const configPadraoElemento = (
     };
   }
 
+  if (tipo === 'subprocesso') {
+    return {
+      subtitulo: 'Subprocesso',
+      responsaveis: [],
+      acoes: [],
+      campos: [],
+      subprocesso: {
+        fluxoId: '',
+        origem: 'tabela',
+        campoTabela: '',
+        campoReferencias: '',
+        tipoDocumento: 'PDA',
+        titulo: '{pai.codigo} — Ação {n}',
+        autor: 'executor',
+        mapeamentos: []
+      }
+    };
+  }
+
   if (tipo === 'eventoRevisao') {
     return {
       tipoRevisao: 'revisao',
@@ -239,7 +262,8 @@ export const configDoElemento = (
   retreinamentoAoPublicar: elemento.retreinamentoAoPublicar,
   removerArquivo: elemento.removerArquivo,
   anexoArquivo: elemento.anexoArquivo,
-  permiteEditarDocumento: elemento.permiteEditarDocumento
+  permiteEditarDocumento: elemento.permiteEditarDocumento,
+  subprocesso: elemento.subprocesso
 });
 
 export const configDaTransicao = (
@@ -563,8 +587,10 @@ export const montarDefinicao = (
                 ? 'Fim'
                 : tipo === 'eventoRevisao'
                   ? NOME_PADRAO_EVENTO_REVISAO[config.tipoRevisao || 'revisao']
-                  : 'Etapa sem nome'),
-          subtitulo: humana || tipo === 'tarefaSistema' ? config.subtitulo : undefined,
+                  : tipo === 'subprocesso'
+                    ? 'Subprocesso'
+                    : 'Etapa sem nome'),
+          subtitulo: humana || tipo === 'tarefaSistema' || tipo === 'subprocesso' ? config.subtitulo : undefined,
           instrucoes: humana ? config.instrucoes : undefined,
           prazoDiasUteis: humana ? config.prazoDiasUteis : undefined,
           responsaveis: humana ? config.responsaveis : [],
@@ -577,6 +603,7 @@ export const montarDefinicao = (
           retreinamentoAoPublicar: undefined,
           tipoRevisao: tipo === 'eventoRevisao' ? (config.tipoRevisao || 'revisao') : undefined,
           removerArquivo: tipo === 'eventoRevisao' && config.removerArquivo ? true : undefined,
+          subprocesso: tipo === 'subprocesso' ? (config.subprocesso || configPadraoElemento('subprocesso').subprocesso) : undefined,
           anexoArquivo: humana && config.anexoArquivo && config.anexoArquivo !== 'nao' ? config.anexoArquivo : undefined,
           permiteEditarDocumento: humana && typeof config.permiteEditarDocumento === 'boolean' ? config.permiteEditarDocumento : undefined,
           posicao: mover({ x: forma.x, y: forma.y, largura: forma.largura, altura: forma.altura }),

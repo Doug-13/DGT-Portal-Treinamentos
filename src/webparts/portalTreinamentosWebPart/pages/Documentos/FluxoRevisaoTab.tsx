@@ -749,6 +749,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
         <div key={campo.chave}>
           <div style={estiloRotuloCampo}>{campo.rotulo}</div>
           <TabelaCampoFluxo
+            dataverseService={dataverseService}
             id={`fluxo-campo-${campo.chave}`}
             rotulo={campo.rotulo}
             colunas={campo.colunas || []}
@@ -1332,6 +1333,75 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                   }
 
                   {
+                    fluxo.subprocessoAguardando && (
+                      <div
+                        role="status"
+                        style={{
+                          border: '1px solid #05C3DD',
+                          background: '#EAF9FC',
+                          color: '#202A44',
+                          borderRadius: '6px',
+                          padding: '12px 14px',
+                          fontSize: '13.5px',
+                          lineHeight: 1.5
+                        }}
+                      >
+                        <strong>Aguardando o subprocesso “{fluxo.subprocessoAguardando.elementoNome}”.</strong>{' '}
+                        Este documento segue para a próxima etapa quando todos os documentos abaixo tiverem o fluxo concluído.
+                        <ul style={{ margin: '8px 0 0', paddingLeft: '20px' }}>
+                          {fluxo.subprocessoAguardando.filhos.map(filho => (
+                            <li key={filho.documentoId}>
+                              {onAbrirDocumento
+                                ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onAbrirDocumento(filho.documentoId)}
+                                    style={{ border: 0, background: 'transparent', padding: 0, color: '#0874CE', fontWeight: 700, cursor: 'pointer', fontSize: '13.5px' }}
+                                  >
+                                    {filho.codigo}
+                                  </button>
+                                )
+                                : <strong>{filho.codigo}</strong>}
+                              {' — '}{filho.titulo}{' · '}
+                              {filho.concluido
+                                ? <span style={{ color: '#0E7C56', fontWeight: 700 }}>✓ concluído</span>
+                                : <span style={{ color: '#9A6700', fontWeight: 700 }}>em andamento</span>}
+                            </li>
+                          ))}
+                          {fluxo.subprocessoAguardando.filhos.length === 0 && (
+                            <li>Nenhum documento foi criado (veja o histórico do fluxo).</li>
+                          )}
+                        </ul>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+                          <button
+                            type="button"
+                            disabled={fluxo.processando}
+                            onClick={() => { fluxo.verificarSubprocesso().catch(erro => console.error(erro)); }}
+                            style={{ border: '1px solid #202A44', borderRadius: '6px', padding: '7px 14px', background: '#FFFFFF', color: '#202A44', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Conferir agora
+                          </button>
+                          {fluxo.podeLiberarSubprocesso && (
+                            <button
+                              type="button"
+                              disabled={fluxo.processando}
+                              onClick={() => {
+                                const motivo = window.prompt('Liberar sem esperar os documentos do subprocesso. Informe o motivo (fica no histórico):');
+                                if (motivo !== null) {
+                                  fluxo.liberarSubprocesso(motivo).catch(erro => console.error(erro));
+                                }
+                              }}
+                              style={{ border: '1px solid #B42318', borderRadius: '6px', padding: '7px 14px', background: '#FFFFFF', color: '#B42318', fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              Liberar sem esperar (Administrador)
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  {
                     fluxo.publicacaoPendente && (
                       <div
                         role="alert"
@@ -1644,6 +1714,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                               item.tipo === 'tabela'
                                 ? (
                                   <TabelaCampoFluxo
+                                    dataverseService={dataverseService}
                                     id={`resumo-${item.chave}`}
                                     rotulo={item.rotulo}
                                     colunas={item.colunas}

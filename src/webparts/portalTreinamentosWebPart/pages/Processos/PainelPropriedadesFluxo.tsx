@@ -32,6 +32,14 @@ import {
   rotuloNivel
 } from '../../services/fluxo/hierarquiaArea';
 
+import PainelSubprocesso, {
+  IProcessoSubprocessoOpcao
+} from './PainelSubprocesso';
+
+import {
+  configPadraoElemento
+} from '../../services/fluxo/bpmn/bpmnConversao';
+
 import CaminhosSaida, {
   FormCondicaoLigacao,
   IResultadoDisponivel,
@@ -87,6 +95,9 @@ export interface IPainelPropriedadesFluxoProps {
   onDefinirPadraoSaida: (id: string | undefined) => void;
   onRenomearSaida: (id: string, nome: string) => void;
   onSelecionarSaida: (id: string) => void;
+  // Subprocesso: fluxos que podem ser chamados e o processo atual.
+  processosSubprocesso?: IProcessoSubprocessoOpcao[];
+  processoAtualId?: string;
 }
 
 const COR_AZUL = '#202A44';
@@ -257,7 +268,9 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   secao = 'tudo',
   extraCampos,
   areas = [],
-  usuarios = []
+  usuarios = [],
+  processosSubprocesso = [],
+  processoAtualId
 }) => {
 
   const ver = (
@@ -288,6 +301,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           <li><strong>Etapa</strong>: responsável, prazo, botões e campos.</li>
           <li><strong>Tarefa de sistema</strong> (troque o tipo da etapa pela chave inglesa): ação automática, como publicar.</li>
           <li><strong>Decisão</strong>: escolhe o caminho; mostra todos os caminhos que saem dela e a condição de cada um.</li>
+          <li><strong>Subprocesso</strong> (paleta): cria documentos que seguem outro fluxo — ex.: uma ação por linha de uma tabela.</li>
           <li><strong>Ligação</strong>: condição para seguir por ela.</li>
         </ul>
       </div>
@@ -438,6 +452,38 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   ): void => {
     onAlterarElemento({ ...config, ...parcial });
   };
+
+  // ----------------------------------------------------------
+  // SUBPROCESSO
+  // ----------------------------------------------------------
+
+  if (tipo === 'subprocesso') {
+    return (
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', color: COR_AZUL }}>
+        {campoNome}
+        <div>
+          <label htmlFor="prop-subtitulo-sub" style={estiloRotuloPainel}>Texto no diagrama</label>
+          <input
+            id="prop-subtitulo-sub"
+            type="text"
+            value={config.subtitulo || ''}
+            disabled={!editavel}
+            onChange={evento => alterar({ subtitulo: evento.target.value })}
+            style={estiloEntradaPainel}
+          />
+        </div>
+        <PainelSubprocesso
+          config={config.subprocesso || (configPadraoElemento('subprocesso').subprocesso as NonNullable<IConfigElemento['subprocesso']>)}
+          editavel={editavel}
+          metadados={metadados}
+          processos={processosSubprocesso}
+          processoAtualId={processoAtualId}
+          areas={areas}
+          onAlterar={subprocesso => alterar({ subprocesso })}
+        />
+      </div>
+    );
+  }
 
   // ----------------------------------------------------------
   // TAREFA DE SISTEMA

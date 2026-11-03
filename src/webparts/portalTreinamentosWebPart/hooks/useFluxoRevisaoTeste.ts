@@ -2,6 +2,10 @@ import {
   sincronizarVinculosTreinamentoDetalhado
 } from '../services/referencias/ReferenciasDocumentoService';
 
+import {
+  SubprocessoService
+} from '../services/fluxo/subprocesso/SubprocessoService';
+
 import * as React from 'react';
 
 import {
@@ -15,7 +19,8 @@ import {
   IFluxoDefinicao,
   IFluxoInstancia,
   IFluxoResponsavel,
-  IResponsavelResolvido
+  IResponsavelResolvido,
+  ISubprocessoFilho
 } from '../models/Fluxo';
 
 import {
@@ -50,6 +55,7 @@ import {
   CHAVE_ARQUIVO_ANTERIOR,
   IResultadoRetorno,
   publicacaoPendente,
+  subprocessoAguardando,
   retornarUmPasso as simularRetornoUmPasso
 } from '../services/fluxo/FluxoEngine';
 
@@ -180,6 +186,18 @@ export interface IUseFluxoRevisaoTeste {
   // versão do fluxo. concluirPublicacao() publica como o fluxo faria.
   publicacaoPendente: boolean;
   concluirPublicacao: () => Promise<boolean>;
+
+  // Subprocesso em modo "aguardar": o fluxo está parado esperando os
+  // documentos criados concluírem. verificarSubprocesso() confere os
+  // filhos e segue se todos concluíram; liberarSubprocesso(motivo)
+  // segue sem esperar (Administrador).
+  subprocessoAguardando?: {
+    elementoNome: string;
+    filhos: ISubprocessoFilho[];
+  };
+  verificarSubprocesso: () => Promise<boolean>;
+  podeLiberarSubprocesso: boolean;
+  liberarSubprocesso: (motivo: string) => Promise<boolean>;
 
   situacao: SituacaoFluxoRevisao;
   processando: boolean;
@@ -658,6 +676,41 @@ export const useFluxoRevisaoTeste = (
           }
         }
 
+        // 3) Subprocesso: cria os documentos filhos (outro fluxo) e grava
+        //    as referências no campo do pai ANTES de o estado ser
+        //    gravado. Nunca interrompe a ação: erros ficam no histórico.
+        if (
+          acoes.indexOf('criarSubprocessos') >= 0 &&
+          documento
+        ) {
+          try {
+            const definicaoSubprocesso =
+              definicaoAtual || await servico.definicaoDaInstancia(novaInstancia);
+
+            if (definicaoSubprocesso) {
+              await new SubprocessoService(dataverseService)
+                .executarPendentes(
+                  definicaoSubprocesso,
+                  novaInstancia,
+                  {
+                    documento: {
+                      id: documento.id,
+                      codigo: documento.codigo,
+                      titulo: documento.titulo,
+                      areaId: documento.areaId || ''
+                    },
+                    revisaoId: revisaoEmAndamento.id,
+                    autorPaiId: autorIdRef.current || revisaoEmAndamento.responsavelId,
+                    usuarioId: contexto ? contexto.usuarioId : '',
+                    usuarioNome: contexto ? contexto.nome : 'Sistema'
+                  }
+                );
+            }
+          } catch (error) {
+            console.error('Subprocesso: falha ao criar os documentos filhos:', error);
+          }
+        }
+
         const publicar =
           acoes.filter(acao => acao === 'publicarComRetreinamento' || acao === 'publicarSemRetreinamento');
 
@@ -953,6 +1006,139 @@ export const useFluxoRevisaoTeste = (
   const pendenteDePublicacao =
     !local && publicacaoPendente(definicao, instancia);
 
+  // ----------------------------------------------------------
+  // Subprocesso em modo "aguardar"
+  // ----------------------------------------------------------
+
+  const pedidoAguardando =
+    local ? undefined : subprocessoAguardando(definicao, instancia);
+
+  // Situação dos filhos lida na última conferência (o pedido gravado só
+  // é atualizado quando o fluxo é retomado).
+  const [filhosConferidos, setFilhosConferidos] =
+    React.useState<{ pedidoId: string; filhos: ISubprocessoFilho[] } | undefined>(undefined);
+
+  const conferenciaFeita =
+    React.useRef<string>('');
+
+  const aplicarRetomada =
+    async (novaInstancia: IFluxoInstancia, avisosRetomada: string[]): Promise<void> => {
+      setInstancia(novaInstancia);
+      setAvisos(avisosRetomada);
+      const definicaoAtual = await servico.definicaoDaInstancia(novaInstancia);
+      if (definicaoAtual) {
+        setDefinicao(definicaoAtual);
+        try {
+          await atualizarStatusDocumento(definicaoAtual, novaInstancia);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      if (onRevisaoAlterada) {
+        await onRevisaoAlterada();
+      }
+    };
+
+  const retomarSubprocesso =
+    async (forcarComentario?: string): Promise<boolean> => {
+
+      if (!revisaoAlvo || !atorSelecionado || !dataverseService || !pedidoAguardando) {
+        return false;
+      }
+
+      const subprocessos = new SubprocessoService(dataverseService);
+
+      const resultado =
+        await servico.retomarSubprocesso(
+          revisaoAlvo.id,
+          atorSelecionado.ator,
+          async pedido => {
+            const todos = await subprocessos.avaliarFilhos(pedido);
+            setFilhosConferidos({ pedidoId: pedido.id, filhos: pedido.filhos.map(item => ({ ...item })) });
+            return todos;
+          },
+          contextoExecucao(definicao),
+          forcarComentario
+        );
+
+      if (resultado.ok && resultado.instancia) {
+        await aplicarRetomada(resultado.instancia, resultado.avisos || []);
+        return true;
+      }
+
+      if (forcarComentario !== undefined && resultado.erros.length > 0) {
+        setErrosAcao(resultado.erros);
+      }
+
+      return false;
+    };
+
+  // Ao abrir o documento parado no subprocesso: confere os filhos uma
+  // vez (cobre o caso de o aviso do último filho ter falhado).
+  React.useEffect(
+    () => {
+      const chave =
+        pedidoAguardando && revisaoAlvo ? `${revisaoAlvo.id}:${pedidoAguardando.id}` : '';
+
+      if (!chave || conferenciaFeita.current === chave || !atorSelecionado) {
+        return;
+      }
+
+      conferenciaFeita.current = chave;
+
+      retomarSubprocesso()
+        .catch(error => console.error('Subprocesso: falha ao conferir os documentos:', error));
+    },
+    [pedidoAguardando ? pedidoAguardando.id : '', revisaoAlvo?.id, !!atorSelecionado]
+  );
+
+  const verificarSubprocesso =
+    async (): Promise<boolean> => {
+      setProcessando(true);
+      setErrosAcao([]);
+      try {
+        const retomou = await retomarSubprocesso();
+        if (!retomou) {
+          setAvisos(['Ainda há documentos do subprocesso em andamento.']);
+        }
+        return retomou;
+      } catch (error) {
+        setErrosAcao([`Erro ao conferir o subprocesso: ${error instanceof Error ? error.message : String(error)}`]);
+        return false;
+      } finally {
+        setProcessando(false);
+      }
+    };
+
+  const liberarSubprocessoAdmin =
+    async (motivo: string): Promise<boolean> => {
+      if (!(motivo || '').trim()) {
+        setErrosAcao(['Informe o motivo para liberar sem esperar os documentos.']);
+        return false;
+      }
+      setProcessando(true);
+      setErrosAcao([]);
+      try {
+        return await retomarSubprocesso(motivo.trim());
+      } catch (error) {
+        setErrosAcao([`Erro ao liberar o subprocesso: ${error instanceof Error ? error.message : String(error)}`]);
+        return false;
+      } finally {
+        setProcessando(false);
+      }
+    };
+
+  const subprocessoAguardandoInfo =
+    pedidoAguardando
+      ? {
+        elementoNome: pedidoAguardando.elementoNome,
+        filhos:
+          filhosConferidos && filhosConferidos.pedidoId === pedidoAguardando.id
+            ? filhosConferidos.filhos
+            : pedidoAguardando.filhos
+      }
+      : undefined;
+
   const concluirPublicacao =
     async (): Promise<boolean> => {
 
@@ -1055,6 +1241,26 @@ export const useFluxoRevisaoTeste = (
           } catch (error) {
             console.error(error);
             setAvisos(atual => atual.concat('O status do documento não pôde ser atualizado.'));
+          }
+        }
+
+        // Documento criado por um subprocesso que acabou de concluir o
+        // fluxo: avisa o documento de origem (que pode estar esperando
+        // todos os documentos para seguir).
+        if (
+          !local &&
+          dataverseService &&
+          resultado.instancia.status === 'concluido' &&
+          resultado.instancia.origemSubprocesso
+        ) {
+          const origem = resultado.instancia.origemSubprocesso;
+          const retomou =
+            await new SubprocessoService(dataverseService).avisarPai(
+              origem,
+              { id: atorSelecionado.ator.id, nome: atorSelecionado.ator.nome }
+            );
+          if (retomou) {
+            setAvisos(atual => atual.concat(`${origem.codigo}: todos os documentos do subprocesso foram concluídos e ele seguiu para a próxima etapa.`));
           }
         }
 
@@ -1556,6 +1762,10 @@ export const useFluxoRevisaoTeste = (
     atuandoComoAdministrador,
     publicacaoPendente: pendenteDePublicacao,
     concluirPublicacao,
+    subprocessoAguardando: subprocessoAguardandoInfo,
+    verificarSubprocesso,
+    podeLiberarSubprocesso: !local && ehAdministrador(contexto, moduloDoFluxo),
+    liberarSubprocesso: liberarSubprocessoAdmin,
     responsaveisEtapaAtual,
     selecionarAtor: (chave: string) => {
       setAtorChave(chave);

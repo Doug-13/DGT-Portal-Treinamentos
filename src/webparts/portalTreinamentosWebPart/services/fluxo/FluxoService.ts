@@ -1,4 +1,5 @@
 import {
+  ISubprocessoSolicitado,
   AcaoSistemaFluxo,
   IFluxoAtor,
   IFluxoDefinicao,
@@ -21,6 +22,8 @@ import {
 } from '../processos/MetadadosProcessoService';
 
 import {
+  liberarSubprocesso,
+  subprocessoAguardando,
   concluirPublicacaoPendente,
   executarAcao,
   IDadosInicioFluxo,
@@ -281,6 +284,20 @@ export class FluxoService {
       resultado.instancia.processoId = processo.id;
       resultado.instancia.processoNome = processo.nome;
 
+      // Subprocesso logo depois do Início: cria os documentos filhos
+      // antes de gravar (só esta tarefa automática roda no início).
+      if (
+        resultado.acoesSistema.indexOf('criarSubprocessos') >= 0 &&
+        contexto &&
+        contexto.executarAcoesSistema
+      ) {
+        try {
+          await contexto.executarAcoesSistema(['criarSubprocessos'], resultado.instancia);
+        } catch (error) {
+          console.error('Subprocesso no início do fluxo:', error);
+        }
+      }
+
       this.preencherResponsaveis(resultado.instancia, contexto);
 
       resultado.avisos =
@@ -403,6 +420,93 @@ export class FluxoService {
           return {
             ok: false,
             erros: [`A publicação não foi concluída: ${error instanceof Error ? error.message : String(error)}`],
+            acoesSistema: []
+          };
+        }
+      }
+
+      this.preencherResponsaveis(resultado.instancia, contexto);
+
+      resultado.avisos =
+        await this.repositorio.salvar(
+          resultado.instancia,
+          this.contextoGravacao(definicao, resultado.instancia, contexto)
+        );
+    }
+
+    return resultado;
+  }
+
+  // Subprocesso em modo "aguardar": relê o pai e, se TODOS os
+  // documentos filhos concluíram (avaliarFilhos marca cada filho), ou
+  // se um administrador liberou (forcarComentario), segue para a
+  // próxima etapa e grava. Sem pendência de subprocesso: ok = false,
+  // sem erro (nada a fazer).
+  public async retomarSubprocesso(
+    revisaoId: string,
+    ator: IFluxoAtor,
+    avaliarFilhos: (pedido: ISubprocessoSolicitado) => Promise<boolean>,
+    contexto?: IContextoExecucaoFluxo,
+    forcarComentario?: string
+  ): Promise<IResultadoExecucao> {
+
+    const instancia =
+      await this.repositorio.obter(revisaoId);
+
+    if (!instancia) {
+      return { ok: false, erros: [], acoesSistema: [] };
+    }
+
+    const definicao =
+      await this.definicaoDaInstancia(instancia);
+
+    const pedido =
+      subprocessoAguardando(definicao, instancia);
+
+    if (!definicao || !pedido) {
+      return { ok: false, erros: [], acoesSistema: [] };
+    }
+
+    const forcado = forcarComentario !== undefined;
+
+    if (!forcado) {
+      const todos = await avaliarFilhos(pedido);
+      if (!todos) {
+        const pendentes = pedido.filhos.filter(item => !item.concluido).length;
+        return {
+          ok: false,
+          erros: [`Aguardando ${pendentes} de ${pedido.filhos.length} documento(s) do subprocesso.`],
+          acoesSistema: []
+        };
+      }
+    }
+
+    const resultado =
+      liberarSubprocesso(
+        definicao,
+        instancia,
+        forcado ? 'administrador' : (pedido.filhos.length === 0 ? 'semDocumentos' : 'concluidos'),
+        ator,
+        forcarComentario
+      );
+
+    if (resultado.ok && resultado.instancia) {
+
+      if (
+        resultado.acoesSistema.length > 0 &&
+        contexto &&
+        contexto.executarAcoesSistema
+      ) {
+        try {
+          await contexto.executarAcoesSistema(resultado.acoesSistema, resultado.instancia);
+          if (this.repositorio.renovarVersao) {
+            await this.repositorio.renovarVersao(revisaoId);
+          }
+        } catch (error) {
+          console.error(error);
+          return {
+            ok: false,
+            erros: [`O fluxo não foi retomado porque a tarefa automática falhou: ${error instanceof Error ? error.message : String(error)}`],
             acoesSistema: []
           };
         }

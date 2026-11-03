@@ -6,7 +6,8 @@ Permite criar novos ambientes no portal — ex.: **Processo**, **Licitações**,
 - aparece no **menu lateral** para quem tem o ambiente liberado;
 - é liberado em **Usuários e acessos** exatamente como os módulos atuais
   (checkbox do módulo + "Administrador do módulo");
-- tem um **fluxo próprio**, desenhado no mesmo editor de Processos → Fluxos;
+- fica **vinculado a um fluxo** de Processos → Fluxos: um **novo**, criado junto com o
+  ambiente, ou um **já existente** (o mesmo fluxo pode servir a mais de um ambiente);
 - cada registro do ambiente (solicitação, processo licitatório, pedido...)
   **segue esse fluxo**: etapas, responsáveis, campos, prazos e botões vêm do desenho.
 
@@ -76,8 +77,13 @@ Envie o `.sppkg` ao Catálogo de Aplicativos e abra o portal com **Ctrl+F5**.
 1. Entre como **Administrador** → menu lateral → **+ Adicionar ambiente**.
 2. Preencha: nome "Licitações", ícone, "Como cada registro é chamado" =
    *Processo licitatório*, prefixo `LIC`. Marque a liberação padrão (ou deixe sem).
-   → **Criar ambiente**. O portal cria o processo `AMB-LICITACOES` e abre o ambiente.
-3. Aba **Configuração** → **Desenhar fluxo**. Abre Processos → Fluxos já no processo:
+   Em **Fluxo do ambiente** escolha:
+   - **Criar um fluxo novo** → o portal cria o processo `AMB-LICITACOES`; ou
+   - **Usar um fluxo que já existe** → escolha um fluxo de Processos → Fluxos
+     (a lista mostra se ele tem versão publicada e quais ambientes já o usam).
+   → **Criar ambiente**. O portal abre o ambiente.
+3. Aba **Configuração** mostra o fluxo vinculado. Se ainda não houver versão
+   publicada → **Desenhar fluxo**. Abre Processos → Fluxos já no processo:
    - aba **Metadados**: crie os campos (ex.: *Órgão*, *Valor estimado*, *Data da sessão*);
    - aba **Fluxo**: crie as etapas, responsáveis, campos por etapa e caminhos →
      *Verificar fluxo* → **Publicar**.
@@ -105,6 +111,8 @@ Envie o `.sppkg` ao Catálogo de Aplicativos e abra o portal com **Ctrl+F5**.
 | Quem vê o ambiente | Módulo `amb:<chave>` liberado — mesma regra dos módulos fixos (lista do usuário; sem lista, a liberação padrão do ambiente). Administrador vê todos. |
 | Administrador do ambiente | "Administrador do módulo" em Usuários e acessos: vê a aba *Todos*, a *Configuração* e pode cancelar registros. |
 | Chave do ambiente | Permanente (as liberações apontam para ela). Nome, ícone, ordem e liberação podem mudar. |
+| Fluxo do ambiente | Novo ou existente. Pode ser trocado em *Configuração → Trocar fluxo*: registros em andamento terminam no fluxo em que começaram; os novos seguem o novo fluxo. Um fluxo pode ser usado por vários ambientes. |
+| Fluxo feito para documentos | Pode ser usado. Etapas próprias de documentos (publicar, evento de revisão, anexar arquivo, editar documento, subprocesso) são ignoradas — o fluxo segue adiante — e a aba *Configuração* lista quais são. |
 | Versão do fluxo | O registro segue a versão publicada **quando começou**. Uma nova versão vale para os próximos registros. |
 | Responsáveis | "Autor da revisão" = quem abriu o registro; "Gestor da área" = gestores da área informada no registro. Os demais tipos funcionam como em Documentos. |
 | Histórico | Nada é apagado: ambiente é desativado, registro é cancelado; o histórico do fluxo fica no registro. |

@@ -67,6 +67,7 @@ const NOME_TIPO_DESTINO: Partial<Record<TipoElementoFluxo, string>> = {
   tarefaSistema: 'tarefa de sistema',
   gateway: 'decisão',
   eventoRevisao: 'evento de revisão',
+  subprocesso: 'subprocesso',
   fim: 'fim'
 };
 

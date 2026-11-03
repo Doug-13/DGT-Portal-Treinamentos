@@ -28,6 +28,12 @@ export type TipoElementoFluxo =
   // define o número da revisão — inteira (00 → 01) ou
   // sub-revisão (00 → 00A). Ver utils/numeracaoRevisao.ts.
   | 'eventoRevisao'
+  // Subprocesso (Call Activity no BPMN): ao ser percorrido, cria
+  // documentos que seguem OUTRO fluxo — um por linha de uma tabela
+  // (ex.: ações de uma auditoria) ou um só — e grava as referências
+  // a eles num campo "Documentos referenciados" deste fluxo. O fluxo
+  // atual segue adiante (não espera os filhos terminarem).
+  | 'subprocesso'
   | 'fim';
 
 // Quem pode executar uma etapa. Os tipos 'grupo', 'funcao',
@@ -142,7 +148,10 @@ export type AcaoSistemaFluxo =
   // Evento de revisão com "Remover o arquivo" marcado: a revisão
   // segue sem arquivo (o arquivo anterior continua no SharePoint e
   // no histórico) e o novo é anexado numa etapa seguinte.
-  | 'removerArquivoRevisao';
+  | 'removerArquivoRevisao'
+  // Subprocesso: cria os documentos filhos (ver IConfigSubprocesso e
+  // IFluxoInstancia.subprocessos).
+  | 'criarSubprocessos';
 
 // Arquivo da revisão numa etapa com responsável:
 //   'nao'         a etapa não mostra o anexo (padrão)
@@ -284,6 +293,134 @@ export interface IFluxoCampo {
   ajuda?: string;
 }
 
+// ------------------------------------------------------------
+// SUBPROCESSO
+// ------------------------------------------------------------
+
+// De onde vem o valor de um metadado do documento filho:
+//   'coluna:<chave>'  → célula da linha da tabela de origem
+//   'campo:<chave>'   → campo (metadado) do documento pai
+//   'pai:referencia'  → o próprio documento pai (para metadados do
+//                       tipo Documento referenciado do filho)
+//   'pai:codigo' | 'pai:titulo' → texto do documento pai
+export interface IMapeamentoSubprocesso {
+  origem: string;
+  // Chave do metadado do processo do filho.
+  destino: string;
+}
+
+export interface IFiltroLinhasSubprocesso {
+  // Chave da coluna da tabela de origem.
+  coluna: string;
+  // Valores aceitos (texto da opção da Lista; 'sim'/'nao' no Sim/Não).
+  valores: string[];
+}
+
+export interface IConfigSubprocesso {
+  // Fluxo (dgt_processo) que os documentos filhos seguem. Precisa ter
+  // versão publicada quando o subprocesso for executado.
+  fluxoId: string;
+  fluxoNome?: string;
+
+  // 'tabela' = um documento por linha preenchida da tabela;
+  // 'unico'  = um documento por passagem.
+  origem: 'tabela' | 'unico';
+
+  // origem = 'tabela': chave do metadado (tipo Tabela) deste fluxo.
+  campoTabela?: string;
+
+  // origem = 'tabela': só as linhas em que a coluna (tipo Lista ou
+  // Sim/Não) tem um dos valores escolhidos viram documento.
+  // Ex.: { coluna: 'conforme', valores: ['nao'] } → só não conformidades.
+  // Sem filtro = todas as linhas preenchidas.
+  filtroLinhas?: IFiltroLinhasSubprocesso;
+
+  // Metadado deste fluxo (tipo "Documentos referenciados") onde os
+  // filhos criados são gravados — é o que liga pai e filhos (aba
+  // Referências dos dois documentos).
+  campoReferencias: string;
+
+  // Sigla do tipo dos documentos filhos (ex.: PDA). Código gerado:
+  // ÁREA-TIPO-NNN, como em "Novo documento".
+  tipoDocumento: string;
+
+  // Área dos filhos: '' = a mesma do documento pai; senão o id da área.
+  areaId?: string;
+  areaNome?: string;
+
+  // Título dos filhos. Marcadores: {pai.codigo} {pai.titulo} {n}
+  // {coluna:<chave>} {campo:<chave>}.
+  titulo: string;
+
+  // Autor da revisão do filho (responsável "Autor da revisão" do
+  // fluxo filho):
+  //   'executor'        → quem concluiu a etapa que levou ao subprocesso
+  //   'autorPai'        → o autor da revisão do documento pai
+  //   'coluna:<chave>'  → usuário de uma coluna do tipo Usuário
+  autor: string;
+
+  // Valores iniciais dos metadados do filho.
+  mapeamentos: IMapeamentoSubprocesso[];
+
+  // Depois de criar os documentos:
+  //   'nao'   → o fluxo atual segue para a próxima etapa (padrão);
+  //   'todos' → o fluxo atual PARA no subprocesso e só segue quando
+  //             todos os documentos criados tiverem o fluxo concluído
+  //             (ex.: auditoria só fecha com as ações resolvidas).
+  aguardar?: 'nao' | 'todos';
+}
+
+// Documento filho criado por um subprocesso.
+export interface ISubprocessoFilho {
+  documentoId: string;
+  codigo: string;
+  titulo: string;
+  revisaoId?: string;
+  // Identifica a linha de origem (para não recriar o mesmo documento
+  // se o fluxo passar de novo pelo subprocesso).
+  assinatura: string;
+  linha?: number;
+  criadoEm: string;
+  // Fluxo do documento filho concluído (modo "aguardar").
+  concluido?: boolean;
+  concluidoEm?: string;
+}
+
+// Pedido de execução de um subprocesso, gravado no estado do fluxo do
+// pai (auditoria: quando, por qual etapa, o que foi criado e erros).
+export interface ISubprocessoSolicitado {
+  id: string;
+  elementoId: string;
+  elementoNome: string;
+  solicitadoEm: string;
+  status: 'pendente' | 'concluido' | 'parcial' | 'erro';
+  // Quem concluiu a etapa que levou ao subprocesso.
+  executorId?: string;
+  executorNome?: string;
+  filhos: ISubprocessoFilho[];
+  // Linhas que já tinham documento (não recriadas).
+  ignorados?: number;
+  // Modo "aguardar": o fluxo do pai está parado neste subprocesso até
+  // os filhos concluírem (ou até um administrador liberar).
+  aguardando?: boolean;
+  liberadoEm?: string;
+  // 'concluidos' = todos os filhos concluíram; 'administrador' = liberado
+  // sem esperar; 'semDocumentos' = nenhuma linha gerou documento.
+  liberadoPor?: 'concluidos' | 'administrador' | 'semDocumentos';
+  erros?: string[];
+  concluidoEm?: string;
+}
+
+// Documento filho: de onde ele veio.
+export interface IOrigemSubprocesso {
+  documentoId: string;
+  codigo: string;
+  titulo: string;
+  revisaoId?: string;
+  elementoNome?: string;
+  linha?: number;
+}
+
 // Posição do elemento no diagrama (px). Futuramente virá do
 // XML BPMN importado.
 export interface IFluxoPosicao {
@@ -343,6 +480,9 @@ export interface IFluxoElemento {
   // Não definido = padrão: só na etapa de Elaboração (status
   // "Elaboração" ou a 1ª etapa do fluxo com status automático).
   permiteEditarDocumento?: boolean;
+
+  // subprocesso: o que criar e como ligar ao documento atual.
+  subprocesso?: IConfigSubprocesso;
 
   // tarefaHumana com status 'Vigente': retreinamento na publicação.
   //   'nao' (padrão) · 'sim' · 'etapa:<id>' = sim, se o fluxo passou
@@ -537,6 +677,12 @@ export interface IFluxoInstancia {
 
   // true = estado simulado, não existe no Dataverse.
   simulado: boolean;
+
+  // Subprocessos pedidos por este fluxo (documentos filhos criados).
+  subprocessos?: ISubprocessoSolicitado[];
+
+  // Documento criado por um subprocesso: o documento pai.
+  origemSubprocesso?: IOrigemSubprocesso;
 }
 
 // Quem está executando a ação.

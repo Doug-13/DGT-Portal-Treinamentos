@@ -41,6 +41,8 @@ import {
 } from '../fluxo/persistenciaFluxo';
 
 import {
+  liberarSubprocessoNaInstancia,
+  subprocessoAguardando,
   atorPodeExecutar,
   obterElementoAtual,
   tarefaPendente
@@ -339,9 +341,19 @@ export class AmbienteFluxoService {
       resolverResponsaveis: (responsaveis, valores) =>
         resolverResponsaveis(responsaveis, { ...dados, valores }, this.vinculosCache),
       rotuloRevisao: `${registro.codigo} — ${registro.titulo}`.substring(0, 200),
-      // Ambientes não publicam documentos: tarefas de sistema do
-      // desenho (se houver) apenas seguem adiante.
-      executarAcoesSistema: async () => undefined
+      // Ambientes não publicam nem criam documentos: tarefas de sistema
+      // do desenho apenas seguem adiante. Um subprocesso em modo
+      // "aguardar" é liberado na hora (senão o registro pararia para
+      // sempre esperando documentos que nunca serão criados).
+      executarAcoesSistema: async (acoes, instancia) => {
+        if (acoes.indexOf('criarSubprocessos') < 0) {
+          return;
+        }
+        const definicao = await this.fluxo.definicaoDaInstancia(instancia);
+        if (definicao && subprocessoAguardando(definicao, instancia)) {
+          liberarSubprocessoNaInstancia(definicao, instancia, 'semDocumentos', { id: 'sistema', nome: 'Sistema' });
+        }
+      }
     };
   }
 

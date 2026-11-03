@@ -1,5 +1,8 @@
 import {
   AcaoSistemaFluxo,
+  IConfigSubprocesso,
+  IOrigemSubprocesso,
+  ISubprocessoSolicitado,
   IFluxoAcao,
   IFluxoAtor,
   IFluxoDefinicao,
@@ -57,6 +60,11 @@ export interface IDadosInicioFluxo {
   revisao: string;
   ator: IFluxoAtor;
   simulado: boolean;
+  // Valores já preenchidos ao iniciar (ex.: documento criado por um
+  // subprocesso recebe os dados da linha da tabela do pai).
+  valoresIniciais?: Record<string, string>;
+  // Documento criado por um subprocesso: de onde ele veio.
+  origemSubprocesso?: IOrigemSubprocesso;
 }
 
 export interface IExecucaoAcao {
@@ -131,7 +139,10 @@ const copiarInstancia = (
   percorridos: instancia.percorridos.slice(),
   transicoesPercorridas: instancia.transicoesPercorridas.slice(),
   tarefas: instancia.tarefas.map(tarefa => ({ ...tarefa })),
-  historico: instancia.historico.slice()
+  historico: instancia.historico.slice(),
+  subprocessos: instancia.subprocessos
+    ? instancia.subprocessos.map(item => ({ ...item, filhos: item.filhos.slice(), erros: item.erros ? item.erros.slice() : undefined }))
+    : undefined
 });
 
 export const obterElemento = (
@@ -668,6 +679,12 @@ const limparValoresForaDoCaminho = (
 
   const chavesDoCaminho: string[] = [];
 
+  // Campo onde um subprocesso grava os documentos filhos: nunca é
+  // limpo (os filhos já existem; a referência é a ligação com eles).
+  definicao.elementos
+    .filter(item => item.tipo === 'subprocesso' && !!item.subprocesso && !!item.subprocesso.campoReferencias)
+    .forEach(item => chavesDoCaminho.push((item.subprocesso as IConfigSubprocesso).campoReferencias));
+
   definicao.elementos
     .filter(item => instancia.percorridos.indexOf(item.id) >= 0)
     .forEach(item =>
@@ -715,7 +732,9 @@ const DESCRICAO_ACAO_SISTEMA: Record<AcaoSistemaFluxo, string> = {
   proximaRevisao:
     'Nova revisão',
   removerArquivoRevisao:
-    'Arquivo da revisão removido (o novo será anexado na próxima etapa)'
+    'Arquivo da revisão removido (o novo será anexado na próxima etapa)',
+  criarSubprocessos:
+    'Subprocesso: criação dos documentos solicitada'
 };
 
 // Avança automaticamente por gateways e tarefas de sistema até
@@ -913,6 +932,69 @@ const avancar = (
         'concluido';
     }
 
+    // Subprocesso: registra o pedido no estado do fluxo e segue (não
+    // espera os documentos filhos). Quem cria os filhos é a tarefa
+    // automática do documento (SubprocessoService), antes de gravar.
+    // No modo de teste a criação é apenas registrada.
+    if (destino.tipo === 'subprocesso') {
+
+      acoesSistema.push(
+        'criarSubprocessos'
+      );
+
+      const config =
+        destino.subprocesso;
+
+      if (!instancia.subprocessos) {
+        instancia.subprocessos = [];
+      }
+
+      const aguardar =
+        !!config && config.aguardar === 'todos';
+
+      instancia.subprocessos.push({
+        id: gerarId('sub'),
+        elementoId: destino.id,
+        elementoNome: destino.nome,
+        solicitadoEm: agora,
+        status: 'pendente',
+        filhos: [],
+        aguardando: aguardar ? true : undefined
+      });
+
+      instancia.historico.unshift({
+        revisao: instancia.revisao,
+        id: gerarId('hist'),
+        data: agora,
+        elementoId: destino.id,
+        elementoNome: destino.nome,
+        acaoChave: 'criarSubprocessos',
+        acaoRotulo:
+          `Subprocesso: criação de documentos no fluxo ${config && config.fluxoNome ? `"${config.fluxoNome}"` : 'configurado'}` +
+          (aguardar ? ' — aguardando a conclusão de todos' : '') +
+          (instancia.simulado ? ' (simulada)' : ''),
+        resultado: 'concluido',
+        executadoPorId: 'sistema',
+        executadoPorNome: 'Sistema',
+        sistema: true
+      });
+
+      // Modo "aguardar": o fluxo para aqui (sem tarefa humana) até
+      // liberarSubprocesso() — chamado quando os filhos concluem ou
+      // quando um administrador libera.
+      if (aguardar) {
+        limparTransicoesOrfas(
+          definicao,
+          instancia
+        );
+
+        return [];
+      }
+
+      resultadoAtual =
+        'concluido';
+    }
+
     // Evento de revisão: pede para renumerar a revisão e segue.
     // Mantém o resultado da última ação humana (como um gateway),
     // para que uma decisão logo depois continue funcionando.
@@ -1033,7 +1115,7 @@ export const iniciarInstancia = (
     fluxoVersao: definicao.versao,
     elementoAtualId: inicio.id,
     status: 'emAndamento',
-    valores: {},
+    valores: { ...(dados.valoresIniciais || {}) },
     percorridos: [inicio.id],
     transicoesPercorridas: [],
     tarefas: [],
@@ -1053,7 +1135,8 @@ export const iniciarInstancia = (
       }
     ],
     iniciadoEm: agora,
-    simulado: dados.simulado
+    simulado: dados.simulado,
+    origemSubprocesso: dados.origemSubprocesso
   };
 
   const acoesSistema: AcaoSistemaFluxo[] = [];
@@ -1067,6 +1150,14 @@ export const iniciarInstancia = (
       agora,
       acoesSistema
     );
+
+  // Subprocesso logo depois do início: o executor é quem iniciou.
+  (instancia.subprocessos || [])
+    .filter(item => !item.executorId)
+    .forEach(item => {
+      item.executorId = dados.ator.id;
+      item.executorNome = dados.ator.nome;
+    });
 
   return {
     ok: erros.length === 0,
@@ -1292,6 +1383,15 @@ export const executarAcao = (
       acoesSistema: []
     };
   }
+
+  // Subprocessos pedidos por esta ação: guarda quem concluiu a etapa
+  // (pode ser o autor dos documentos filhos).
+  (instancia.subprocessos || [])
+    .filter(item => item.status === 'pendente' && !item.executorId)
+    .forEach(item => {
+      item.executorId = execucao.ator.id;
+      item.executorNome = execucao.ator.nome;
+    });
 
   // Trava de segurança: reprovação nunca conclui nem publica.
   if (ehAcaoDeDevolucao(acao)) {
@@ -2181,3 +2281,114 @@ export const tarefaPendente = (
   instancia.tarefas.find(
     tarefa => tarefa.status === 'pendente'
   );
+
+// ============================================================
+// SUBPROCESSO EM MODO "AGUARDAR"
+// ============================================================
+
+// Pedido de subprocesso que segura o fluxo no elemento atual.
+export const subprocessoAguardando = (
+  definicao: IFluxoDefinicao | undefined,
+  instancia: IFluxoInstancia | undefined
+): ISubprocessoSolicitado | undefined => {
+
+  if (!definicao || !instancia || instancia.status !== 'emAndamento') {
+    return undefined;
+  }
+
+  const atual =
+    obterElemento(definicao, instancia.elementoAtualId);
+
+  if (!atual || atual.tipo !== 'subprocesso') {
+    return undefined;
+  }
+
+  return (instancia.subprocessos || [])
+    .filter(item => item.elementoId === atual.id && item.aguardando)
+    .slice(-1)[0];
+};
+
+// Libera o fluxo parado num subprocesso (ALTERA a instância recebida):
+// registra o motivo no histórico e segue para a próxima etapa.
+export const liberarSubprocessoNaInstancia = (
+  definicao: IFluxoDefinicao,
+  instancia: IFluxoInstancia,
+  motivo: 'concluidos' | 'administrador' | 'semDocumentos',
+  ator: { id: string; nome: string },
+  comentario?: string
+): { erros: string[]; acoesSistema: AcaoSistemaFluxo[] } => {
+
+  const pedido =
+    subprocessoAguardando(definicao, instancia);
+
+  if (!pedido) {
+    return { erros: ['O fluxo não está aguardando um subprocesso.'], acoesSistema: [] };
+  }
+
+  const agora = agoraIso();
+  const pendentes = pedido.filhos.filter(item => !item.concluido);
+
+  pedido.aguardando = false;
+  pedido.liberadoEm = agora;
+  pedido.liberadoPor = motivo;
+
+  const rotulo =
+    motivo === 'concluidos'
+      ? `Subprocesso: todos os ${pedido.filhos.length} documento(s) concluídos — fluxo retomado`
+      : motivo === 'semDocumentos'
+        ? 'Subprocesso: nenhum documento criado — fluxo retomado'
+        : `Subprocesso liberado sem esperar${pendentes.length > 0 ? ` (pendentes: ${pendentes.map(item => item.codigo).join(', ')})` : ''}`;
+
+  instancia.historico.unshift({
+    revisao: instancia.revisao,
+    id: gerarId('hist'),
+    data: agora,
+    elementoId: pedido.elementoId,
+    elementoNome: pedido.elementoNome,
+    acaoChave: motivo === 'administrador' ? 'liberarSubprocesso' : 'subprocessoRetomado',
+    acaoRotulo: rotulo,
+    resultado: 'concluido',
+    comentario: comentario || undefined,
+    executadoPorId: motivo === 'administrador' ? ator.id : 'sistema',
+    executadoPorNome: motivo === 'administrador' ? `${ator.nome} (Administrador)` : 'Sistema',
+    sistema: motivo !== 'administrador'
+  });
+
+  const acoesSistema: AcaoSistemaFluxo[] = [];
+
+  const erros =
+    avancar(
+      definicao,
+      instancia,
+      pedido.elementoId,
+      'concluido',
+      agora,
+      acoesSistema
+    );
+
+  return { erros, acoesSistema };
+};
+
+// Mesma liberação, sobre uma CÓPIA (padrão das demais operações).
+export const liberarSubprocesso = (
+  definicao: IFluxoDefinicao,
+  instanciaAtual: IFluxoInstancia,
+  motivo: 'concluidos' | 'administrador' | 'semDocumentos',
+  ator: { id: string; nome: string },
+  comentario?: string
+): IResultadoExecucao => {
+
+  if (motivo === 'administrador' && !(comentario || '').trim()) {
+    return { ok: false, erros: ['Informe o motivo para liberar sem esperar os documentos.'], acoesSistema: [] };
+  }
+
+  const instancia = copiarInstancia(instanciaAtual);
+  const resultado = liberarSubprocessoNaInstancia(definicao, instancia, motivo, ator, comentario);
+
+  return {
+    ok: resultado.erros.length === 0,
+    erros: resultado.erros,
+    instancia: resultado.erros.length === 0 ? instancia : undefined,
+    acoesSistema: resultado.acoesSistema
+  };
+};

@@ -179,13 +179,33 @@ RenderizadorEventoRevisao.prototype.getShapePath = function (this: any, elemento
 // O provedor devolve uma FUNÇÃO que recebe as entradas já montadas
 // pelo bpmn-js e retorna só as permitidas (devolver um objeto apenas
 // somaria entradas, sem remover as outras).
-function FiltroPaleta(this: any, palette: any): void {
+// Subprocesso: etapa automática que cria documentos em OUTRO fluxo.
+// No BPMN é uma chamada de processo (bpmn:CallActivity, borda grossa).
+const ICONE_SUBPROCESSO =
+  '<svg width="30" height="30" viewBox="0 0 26 26" aria-hidden="true">' +
+  '<rect x="2" y="5" width="22" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="3" />' +
+  '<rect x="10" y="14" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.5" />' +
+  '<path d="M13 15.5v3M11.5 17h3" stroke="currentColor" stroke-width="1.5" />' +
+  '</svg>';
+
+function FiltroPaleta(this: any, palette: any, create: any, elementFactory: any): void {
+  this._create = create;
+  this._elementFactory = elementFactory;
   palette.registerProvider(500, this);
 }
 
-FiltroPaleta.$inject = ['palette'];
+FiltroPaleta.$inject = ['palette', 'create', 'elementFactory'];
 
-FiltroPaleta.prototype.getPaletteEntries = function (): (entradas: Record<string, unknown>) => Record<string, unknown> {
+FiltroPaleta.prototype.getPaletteEntries = function (this: any): (entradas: Record<string, unknown>) => Record<string, unknown> {
+
+  const create = this._create;
+  const elementFactory = this._elementFactory;
+
+  const criarSubprocesso = (evento: any): void => {
+    const forma = elementFactory.createShape({ type: 'bpmn:CallActivity' });
+    create.start(evento, forma);
+  };
+
   return (entradas: Record<string, unknown>) => {
     const filtradas: Record<string, unknown> = {};
 
@@ -205,6 +225,16 @@ FiltroPaleta.prototype.getPaletteEntries = function (): (entradas: Record<string
         }
       }
     );
+
+    filtradas['create.subprocesso'] = {
+      group: 'activity',
+      title: 'Subprocesso (cria documentos em outro fluxo)',
+      html: `<div class="entry" draggable="true" style="display:flex;align-items:center;justify-content:center;color:#202A44">${ICONE_SUBPROCESSO}</div>`,
+      action: {
+        dragstart: criarSubprocesso,
+        click: criarSubprocesso
+      }
+    };
 
     return filtradas;
   };
@@ -307,7 +337,8 @@ const TRADUCOES: Record<string, string> = {
   'Script task': 'Tarefa de sistema (script)',
   'Exclusive gateway': 'Decisão (exclusiva)',
   'Start event': 'Início',
-  'End event': 'Fim'
+  'End event': 'Fim',
+  'Call activity': 'Subprocesso (cria documentos em outro fluxo)'
 };
 
 const traduzir = (

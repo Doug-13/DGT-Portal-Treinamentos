@@ -6,10 +6,15 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: subprocesso com condição por linha — cria documentos só para as linhas em que uma coluna Lista ou Sim/Não tem os valores escolhidos (ex.: só as não conformidades).
+- Novo: subprocesso com a opção "Aguardar todos serem concluídos" — o documento pai (ex.: auditoria) fica parado até o fluxo de todos os documentos criados (ex.: ações das não conformidades) chegar ao fim; a aba Fluxo mostra a situação de cada um, e o Administrador pode liberar sem esperar, com motivo.
+- Novo: ao criar um ambiente é possível usar um fluxo já existente de Processos → Fluxos (além de criar um novo); o fluxo do ambiente pode ser trocado em Configuração → Trocar fluxo, e a tela avisa quando o fluxo tem etapas próprias de documentos.
 - Novo: "+ Adicionar ambiente" no menu lateral (Administrador) — cria ambientes como Processo, Licitações ou Compras sem código novo; cada ambiente ganha um processo com fluxo próprio, desenhado em Processos → Fluxos.
 - Novo: ambientes liberados em Usuários e acessos exatamente como os módulos atuais (módulo liberado, liberação padrão por perfil e Administrador do módulo).
 - Novo: registros de ambiente com código automático (PREFIXO-ANO-0001) que seguem o fluxo publicado: etapas, responsáveis, campos, prazos e histórico; abas Aguardando você, Meus registros, Todos e Configuração.
 - Novo: script scripts/dataverse/criar-tabelas-ambientes.ps1 e guia docs/ambientes.md.
+- Novo: Subprocesso nos fluxos (paleta do editor) — ao passar por ele, o documento cria documentos que seguem outro fluxo, um por linha de uma tabela (ex.: ações de uma auditoria) ou um único, já com o fluxo iniciado, e os referencia num campo "Documentos referenciados" (ligação visível na aba Referências dos dois documentos).
+- Novo: coluna do tipo Usuário nas tabelas dos metadados (ex.: Responsável de cada ação, usado como autor do documento criado pelo subprocesso).
 - Novo: módulo de HH para cadastro, consulta e utilização de horas na composição de soluções e B.O.M.
 - Novo: etapa de HH no fluxo de Arquitetura de Soluções, permitindo complementar o B.O.M. com esforço estimado.
 - Novo: cadastro e gestão de fabricantes e terceiros no módulo de RH.

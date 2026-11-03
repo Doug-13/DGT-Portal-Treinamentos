@@ -1,4 +1,8 @@
 import {
+  validarConfigSubprocesso
+} from './subprocesso/regrasSubprocesso';
+
+import {
   IFluxoDefinicao,
   IFluxoElemento,
   IFluxoTransicao
@@ -138,7 +142,7 @@ const levaAoFimOuPublicacao = (
       return levaAoFimOuPublicacao(
         definicao,
         destino.id,
-        destino.tipo === 'tarefaSistema' ? 'concluido' : resultado,
+        (destino.tipo === 'tarefaSistema' || destino.tipo === 'subprocesso') ? 'concluido' : resultado,
         visitados.concat(origemId)
       );
     }
@@ -209,7 +213,7 @@ const etapasAlcancadas = (
         etapasAlcancadas(
           definicao,
           destino.id,
-          destino.tipo === 'tarefaSistema' ? 'concluido' : resultado,
+          (destino.tipo === 'tarefaSistema' || destino.tipo === 'subprocesso') ? 'concluido' : resultado,
           visitados.concat(origemId)
         )
       );
@@ -529,6 +533,16 @@ export const validarDefinicao = (
             'Deixe o status "Vigente" somente na última etapa (ex.: "Documento Vigente").'
           );
         }
+      }
+
+      if (item.tipo === 'subprocesso') {
+
+        if (saidas.length > 1) {
+          erros.push(`O subprocesso "${item.nome}" deve ter apenas uma ligação de saída. Para escolher caminhos, use uma decisão depois dele.`);
+        }
+
+        validarConfigSubprocesso(item, metadados, definicao.processoId)
+          .forEach(erro => erros.push(erro));
       }
 
       if (item.tipo === 'eventoRevisao') {

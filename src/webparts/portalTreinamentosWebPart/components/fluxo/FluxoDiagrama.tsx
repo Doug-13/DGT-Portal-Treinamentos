@@ -400,14 +400,24 @@ const renderizarElemento = (
   const estiloBase =
     estiloTarefa(status);
 
-  const estilo: IEstiloNo =
+  const estiloElemento: IEstiloNo =
     destacado
       ? { ...estiloBase, contorno: COR_CIANO, espessura: 4, tracejado: undefined, rotulo: 'EM EDIÇÃO' }
       : estiloBase;
 
+  // Subprocesso (chamada de processo no BPMN): borda grossa e o
+  // marcador "+" embaixo.
+  const subprocesso =
+    elemento.tipo === 'subprocesso';
+
+  const estilo: IEstiloNo =
+    subprocesso
+      ? { ...estiloElemento, espessura: Math.max(estiloElemento.espessura, 4) }
+      : estiloElemento;
+
   return (
     <g key={elemento.id}>
-      <title>{titulo}</title>
+      <title>{subprocesso && elemento.subprocesso && elemento.subprocesso.fluxoNome ? `${titulo} · cria documentos no fluxo "${elemento.subprocesso.fluxoNome}"` : titulo}</title>
       <rect
         x={x}
         y={y}
@@ -420,6 +430,14 @@ const renderizarElemento = (
         strokeWidth={estilo.espessura}
         strokeDasharray={estilo.tracejado}
       />
+      {
+        subprocesso && (
+          <g>
+            <rect x={x + largura / 2 - 7} y={y + altura - 16} width={14} height={14} fill="none" stroke={estilo.contorno} strokeWidth={1.5} />
+            <path d={`M${x + largura / 2} ${y + altura - 13}v8M${x + largura / 2 - 4} ${y + altura - 9}h8`} stroke={estilo.contorno} strokeWidth={1.5} />
+          </g>
+        )
+      }
       <foreignObject
         x={x + 4}
         y={y + 4}

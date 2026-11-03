@@ -1001,6 +1001,16 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       <PainelPropriedadesFluxo
         key={`${selecionado ? selecionado.id : 'nenhum'}-${secao}`}
         secao={secao}
+        processoAtualId={processo.id}
+        processosSubprocesso={
+          (fontesCopia || []).map(item => ({
+            id: item.processo.id,
+            codigo: item.processo.codigo,
+            nome: item.processo.nome,
+            publicado: item.versoes.some(versao => versao.status === 'publicado'),
+            metadados: item.metadados
+          }))
+        }
         extraCampos={extraCampos}
         areas={areas}
         usuarios={usuarios}
@@ -1086,6 +1096,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
           ? 'Etapa com responsável'
           : tipoSelecionado === 'tarefaSistema'
             ? 'Tarefa de sistema'
+            : tipoSelecionado === 'subprocesso'
+              ? 'Subprocesso'
             : tipoSelecionado === 'gateway'
               ? 'Decisão'
               : tipoSelecionado === 'eventoRevisao'
