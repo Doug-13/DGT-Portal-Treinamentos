@@ -6,6 +6,8 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.16] - 2026-11-04
+
 - Novo: subprocesso com condição por linha — cria documentos só para as linhas em que uma coluna Lista ou Sim/Não tem os valores escolhidos (ex.: só as não conformidades).
 - Novo: subprocesso com a opção "Aguardar todos serem concluídos" — o documento pai (ex.: auditoria) fica parado até o fluxo de todos os documentos criados (ex.: ações das não conformidades) chegar ao fim; a aba Fluxo mostra a situação de cada um, e o Administrador pode liberar sem esperar, com motivo.
 - Novo: ao criar um ambiente é possível usar um fluxo já existente de Processos → Fluxos (além de criar um novo); o fluxo do ambiente pode ser trocado em Configuração → Trocar fluxo, e a tela avisa quando o fluxo tem etapas próprias de documentos.
