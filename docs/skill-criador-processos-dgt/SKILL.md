@@ -26,6 +26,15 @@ Processos → Fluxos → **Importar JSON**. Antes de escrever, leia
 
 Se o usuário já deu as informações, não pergunte de novo: assuma o razoável e diga o que assumiu.
 
+### O que gerar
+
+- **Processo novo de solicitação** → `processo` + `metadados` + `fluxo` + `ambiente` (cria tudo).
+- **Processo de documento** → `processo` + `metadados` + `fluxo` (sem `ambiente`).
+- **Ambiente para um fluxo que já existe no portal** → só `ambiente`, com
+  `"fluxo": "<CÓDIGO do processo>"` (pergunte o código; se o usuário não souber, omita e
+  ele escolhe na importação). As `telas.etapas` usam os ids das etapas desse fluxo
+  (peça o JSON exportado dele, se precisar).
+
 ## 2. Montar o JSON
 
 - `"formato": "dgt-portal/pacote-processo@1"` sempre.

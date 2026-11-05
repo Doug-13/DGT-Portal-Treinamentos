@@ -4302,6 +4302,13 @@ const gestaoAreas =
             <ImportarPacoteModal
               dataverseService={dataverseService}
               ambientes={ambientes}
+              onAbrirAmbiente={chave => {
+                setImportarPacoteAberto(false);
+                setAmbienteImportadoChave('');
+                setAmbienteAtualChave(chave);
+                setPaginaAtual('ambiente');
+                window.scrollTo(0, 0);
+              }}
               onConcluido={resultado => {
                 carregarAmbientes().catch(erro => console.error('[Ambientes]', erro));
                 setAmbienteImportadoChave(resultado.ambiente ? resultado.ambiente.chave : '');
@@ -4686,6 +4693,12 @@ const gestaoAreas =
 
                 onAmbientesAlterados={() => {
                   carregarAmbientes().catch(erro => console.error('[Ambientes]', erro));
+                }}
+
+                onAbrirAmbiente={chave => {
+                  setAmbienteAtualChave(chave);
+                  setPaginaAtual('ambiente');
+                  window.scrollTo(0, 0);
                 }}
 
                 onLayoutAmbienteSalvo={(ambienteId, layoutJson) =>

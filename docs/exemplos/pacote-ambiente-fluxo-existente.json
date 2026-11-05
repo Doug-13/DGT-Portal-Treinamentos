@@ -1,0 +1,27 @@
+{
+  "formato": "dgt-portal/pacote-processo@1",
+  "ambiente": {
+    "nome": "Planos de ação",
+    "chave": "planos-de-acao",
+    "icone": "checkCircle",
+    "prefixoCodigo": "PLA",
+    "rotuloRegistro": "Plano de ação",
+    "subtitulo": "Ações corretivas acompanhadas até a verificação de eficácia.",
+    "perfisPadrao": ["Gestor"],
+    "fluxo": "QUA-PDA",
+    "telas": {
+      "visoes": [
+        { "nome": "Aguardando você", "icone": "bell", "cor": "#B45309", "filtro": { "tipo": "aguardandoVoce" } },
+        { "nome": "Em execução", "icone": "activity", "cor": "#0F6CBD", "filtro": { "tipo": "etapas", "etapas": ["executar"] } },
+        { "nome": "Em verificação", "icone": "search", "cor": "#6B4FBB", "filtro": { "tipo": "etapas", "etapas": ["verificar"] } },
+        { "nome": "Prazo vencido", "icone": "clock", "cor": "#B42318", "filtro": { "tipo": "atrasados" } },
+        { "nome": "Encerrados", "icone": "checkCircle", "cor": "#107C10", "filtro": { "tipo": "situacao", "situacoes": ["concluido"] } }
+      ],
+      "colunas": ["codigo", "titulo", "campo:prazo", "etapa", "prazo", "solicitante", "situacao"],
+      "etapas": [
+        { "id": "executar", "rotulo": "Execução" },
+        { "id": "verificar", "rotulo": "Verificação" }
+      ]
+    }
+  }
+}

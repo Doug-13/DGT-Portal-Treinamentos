@@ -665,6 +665,12 @@ export interface IPortalRouterProps {
   onAmbientesAlterados?:
   () => void;
 
+  // Abre um ambiente pela chave (ex.: recém-importado).
+  onAbrirAmbiente?:
+  (
+    chave: string
+  ) => void;
+
   // Telas do ambiente personalizadas (atualiza a lista do portal).
   onLayoutAmbienteSalvo?:
   (
@@ -2068,6 +2074,7 @@ const PortalRouter:
         return (
           <ProcessosPage
             onAmbientesAlterados={props.onAmbientesAlterados}
+            onAbrirAmbiente={props.onAbrirAmbiente}
             documentos={
               props.documentos
             }

@@ -61,7 +61,7 @@ describe('Pacote de processo (JSON)', () => {
     expect(executar && executar.responsaveis[0].referenciaId).toBe('auditorLider');
     // Campo herda rótulo e tipo do metadado.
     expect(executar && executar.campos[0].tipo).toBe('tabela');
-    expect(resultado.pacote && resultado.pacote.processo.areaId).toBe('a-qua');
+    expect(resultado.pacote && resultado.pacote.processo && resultado.pacote.processo.areaId).toBe('a-qua');
   });
 
   it('Auditoria sem o Plano de ação no portal: avisa para importar antes', () => {
@@ -77,7 +77,7 @@ describe('Pacote de processo (JSON)', () => {
     expect(ambiente && ambiente.prefixoCodigo).toBe('COM');
     expect(ambiente && ambiente.layout && ambiente.layout.etapas.filter(e => e.visivel).map(e => e.rotulo))
       .toEqual(['Solicitação', 'Gestor', 'Diretoria', 'Pedido']);
-    const comprar = resultado.pacote ? resultado.pacote.definicao.elementos.find(el => el.id === 'comprar') : undefined;
+    const comprar = resultado.pacote && resultado.pacote.definicao ? resultado.pacote.definicao.elementos.find(el => el.id === 'comprar') : undefined;
     expect(comprar && comprar.responsaveis[0].referenciaId).toBe('a-com');
   });
 
@@ -100,7 +100,8 @@ describe('Pacote de processo (JSON)', () => {
     const primeiro = interpretarPacote(exemplo('pacote-solicitacao-compra.json'), referencias);
     const pacote = primeiro.pacote;
     expect(pacote).toBeDefined();
-    if (!pacote) { return; }
+    if (!pacote || !pacote.processo || !pacote.definicao) { return; }
+    const definicaoOriginal = pacote.definicao;
     const exportado = exportarPacote({
       processo: { ...pacote.processo },
       metadados: pacote.metadados,
@@ -109,12 +110,63 @@ describe('Pacote de processo (JSON)', () => {
       layout: pacote.ambiente ? pacote.ambiente.layout : undefined
     }, referencias);
     expect(exportado.formato).toBe(FORMATO_PACOTE);
-    expect(exportado.processo.area).toBe('COM');
+    expect(exportado.processo && exportado.processo.area).toBe('COM');
     const segundo = interpretarPacote(JSON.stringify(exportado), referencias);
     expect(segundo.erros).toEqual([]);
-    const a = pacote.definicao.elementos.map(el => `${el.id}@${el.posicao.x},${el.posicao.y}`);
-    const b = segundo.pacote ? segundo.pacote.definicao.elementos.map(el => `${el.id}@${el.posicao.x},${el.posicao.y}`) : [];
+    const a = definicaoOriginal.elementos.map(el => `${el.id}@${el.posicao.x},${el.posicao.y}`);
+    const definicaoReimportada = segundo.pacote ? segundo.pacote.definicao : undefined;
+    const b = definicaoReimportada ? definicaoReimportada.elementos.map(el => `${el.id}@${el.posicao.x},${el.posicao.y}`) : [];
     expect(b).toEqual(a);
-    expect(segundo.pacote && segundo.pacote.definicao.transicoes.length).toBe(pacote.definicao.transicoes.length);
+    expect(definicaoReimportada && definicaoReimportada.transicoes.length).toBe(definicaoOriginal.transicoes.length);
+  });
+
+  it('sem fluxo: ambiente usa um fluxo existente (ambiente.fluxo) ou escolhido na tela', () => {
+    const soAmbiente = {
+      formato: FORMATO_PACOTE,
+      ambiente: {
+        nome: 'Planos de ação', prefixoCodigo: 'PDA', rotuloRegistro: 'Plano', fluxo: 'QUA-PDA',
+        telas: { etapas: [{ id: 'executar', rotulo: 'Execução' }] }
+      }
+    };
+    const resultado = interpretarPacote(soAmbiente, referencias);
+    expect(resultado.erros).toEqual([]);
+    const pacote = resultado.pacote;
+    expect(pacote && pacote.processo).toBeUndefined();
+    expect(pacote && pacote.definicao).toBeUndefined();
+    expect(pacote && pacote.ambiente && pacote.ambiente.processoExistenteId).toBe('p-pda');
+    // Etapas das telas ficam pelos ids informados (validadas no fluxo real).
+    expect(pacote && pacote.ambiente && pacote.ambiente.layout && pacote.ambiente.layout.etapas[0].elementoId).toBe('executar');
+
+    // Sem "ambiente.fluxo": válido — o fluxo é escolhido na importação.
+    expect(interpretarPacote({ ...soAmbiente, ambiente: { ...soAmbiente.ambiente, fluxo: undefined } }, referencias).erros).toEqual([]);
+    // Código inexistente: erro com a lista de códigos.
+    expect(interpretarPacote({ ...soAmbiente, ambiente: { ...soAmbiente.ambiente, fluxo: 'NAO-EXISTE' } }, referencias).erros.join(' ')).toMatch(/QUA-PDA/);
+  });
+
+  it('processo sem fluxo: cria só processo e campos; fluxo sem processo é erro', () => {
+    const soProcesso = { formato: FORMATO_PACOTE, processo: { codigo: 'ADM-X', nome: 'Processo X' }, metadados: [{ chave: 'campoA', rotulo: 'A', tipo: 'texto' }] };
+    const resultado = interpretarPacote(soProcesso, referencias);
+    expect(resultado.erros).toEqual([]);
+    expect(resultado.pacote && resultado.pacote.definicao).toBeUndefined();
+    expect(resultado.pacote && resultado.pacote.metadados.length).toBe(1);
+
+    const semProcesso = JSON.parse(exemplo('pacote-plano-de-acao.json'));
+    delete semProcesso.processo;
+    delete semProcesso.metadados;
+    expect(interpretarPacote(semProcesso, referencias).erros.join(' ')).toMatch(/precisa de "processo"/);
+  });
+
+  it('todos os exemplos da documentação são válidos', () => {
+    ['pacote-plano-de-acao.json', 'pacote-auditoria.json', 'pacote-solicitacao-compra.json', 'pacote-ambiente-fluxo-existente.json']
+      .forEach(nome => {
+        const resultado = interpretarPacote(exemplo(nome), referencias);
+        expect({ nome, erros: resultado.erros, publicacao: resultado.errosPublicacao }).toEqual({ nome, erros: [], publicacao: [] });
+      });
+  });
+
+  it('área não encontrada lista as siglas cadastradas', () => {
+    const base = JSON.parse(exemplo('pacote-solicitacao-compra.json'));
+    base.fluxo.elementos[5].responsaveis = [{ tipo: 'area', area: 'XPTO' }];
+    expect(interpretarPacote(base, referencias).erros.join(' ')).toMatch(/Siglas cadastradas: QUA, COM/);
   });
 });

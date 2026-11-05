@@ -64,6 +64,9 @@ export interface IOpcoesImportacao {
   publicar: boolean;
   criarAmbiente: boolean;
   substituirRascunho: boolean;
+  // Pacote SEM fluxo com ambiente: fluxo (dgt_processo) escolhido na
+  // tela. Vazio = o processo do pacote (ou, sem processo, um novo AMB-…).
+  fluxoAmbienteId?: string;
 }
 
 export interface IPassoImportacao {
@@ -119,92 +122,100 @@ export class PacoteProcessoService {
     };
 
     const persistencia = obterPersistenciaFluxo(this.dataverse);
-
-    // 1. Processo
     let processo: IProcesso | undefined;
-    try {
-      const dados = await persistencia.processos.carregar(true, []);
-      processo = dados.processos.find(item => (item.codigo || '').toUpperCase() === pacote.processo.codigo);
-      if (processo) {
-        passos.push({ ok: true, texto: `Processo ${processo.codigo} já existe — usado (nome e área não foram alterados).` });
-      } else {
-        const criado = await persistencia.processos.criarProcesso(
-          {
-            codigo: pacote.processo.codigo,
-            nome: pacote.processo.nome,
-            descricao: pacote.processo.descricao,
-            areaId: pacote.processo.areaId,
-            areaNome: pacote.processo.areaNome
-          },
-          dados.processos
-        );
-        if (!criado.ok || !criado.processo) {
-          return falha(`Processo não criado: ${criado.erro || 'erro desconhecido'}`);
-        }
-        processo = criado.processo;
-        passos.push({ ok: true, texto: `Processo ${processo.codigo} — ${processo.nome} criado.` });
-      }
-    } catch (erro) {
-      return falha(`Não foi possível ler/criar o processo: ${mensagem(erro)}`);
-    }
 
-    // 2. Metadados
-    let metadadosFinais: IFluxoMetadado[];
-    try {
-      const atuais = await persistencia.metadados.listar(processo.id);
-      const conflitos =
-        pacote.metadados.filter(meta => atuais.some(atual => atual.chave === meta.chave && atual.tipo !== meta.tipo));
-      if (conflitos.length > 0) {
-        return falha(
-          `Campos com o mesmo nome e tipo diferente no processo: ${conflitos.map(item => {
-            const atual = atuais.find(a => a.chave === item.chave);
-            return `${item.chave} (no processo: ${atual ? atual.tipo : '?'}; no JSON: ${item.tipo})`;
-          }).join(', ')}. Renomeie a chave no JSON.`,
-          processo
-        );
-      }
-      const novos = metadadosParaCopiar(pacote.metadados, atuais);
-      metadadosFinais = novos.length > 0 ? await persistencia.metadados.salvar(processo.id, atuais.concat(novos)) : atuais;
-      const mantidos = pacote.metadados.length - novos.length;
-      passos.push({ ok: true, texto: `Campos: ${novos.length} novo(s)${mantidos > 0 ? `, ${mantidos} já existia(m) e foram mantidos` : ''}.` });
-    } catch (erro) {
-      return falha(`Campos (metadados) não gravados: ${mensagem(erro)}`, processo);
-    }
+    if (pacote.processo) {
+      const dadosProcesso = pacote.processo;
 
-    // 3. Rascunho do fluxo
-    try {
-      const versoes = await persistencia.catalogo.listarVersoes(processo.id);
-      if (versoes.some(item => item.status === 'rascunho')) {
-        if (!opcoes.substituirRascunho) {
-          return falha('O processo já tem um rascunho de fluxo. Marque "substituir o rascunho existente" ou publique/descarte o rascunho no editor.', processo);
-        }
-        const descarte = await persistencia.catalogo.descartarRascunho(processo.id);
-        if (!descarte.ok) {
-          return falha(`Rascunho existente não descartado: ${descarte.erros.join(' ')}`, processo);
-        }
-        passos.push({ ok: true, texto: 'Rascunho anterior descartado.' });
-      }
-      const definicao: IFluxoDefinicao = { ...pacote.definicao, processoId: processo.id, metadados: metadadosFinais };
-      const copia = await persistencia.catalogo.criarCopia(processo, definicao, 'manter');
-      if (!copia.ok) {
-        return falha(`Fluxo não criado: ${copia.erros.join(' ')}`, processo);
-      }
-      passos.push({ ok: true, texto: `Fluxo criado como rascunho${copia.definicao ? ` (versão ${copia.definicao.versao})` : ''}, com ${pacote.definicao.elementos.length} elementos.` });
-    } catch (erro) {
-      return falha(`Fluxo não criado: ${mensagem(erro)}`, processo);
-    }
-
-    // 4. Publicar
-    if (opcoes.publicar) {
+      // 1. Processo
       try {
-        const publicado = await persistencia.catalogo.publicarRascunho(processo.id);
-        if (!publicado.ok) {
-          passos.push({ ok: false, texto: `Fluxo não publicado (fica como rascunho): ${publicado.erros.join(' ')}` });
+        const dados = await persistencia.processos.carregar(true, []);
+        processo = dados.processos.find(item => (item.codigo || '').toUpperCase() === dadosProcesso.codigo);
+        if (processo) {
+          passos.push({ ok: true, texto: `Processo ${processo.codigo} já existe — usado (nome e área não foram alterados).` });
         } else {
-          passos.push({ ok: true, texto: 'Fluxo publicado.' });
+          const criado = await persistencia.processos.criarProcesso(
+            {
+              codigo: dadosProcesso.codigo,
+              nome: dadosProcesso.nome,
+              descricao: dadosProcesso.descricao,
+              areaId: dadosProcesso.areaId,
+              areaNome: dadosProcesso.areaNome
+            },
+            dados.processos
+          );
+          if (!criado.ok || !criado.processo) {
+            return falha(`Processo não criado: ${criado.erro || 'erro desconhecido'}`);
+          }
+          processo = criado.processo;
+          passos.push({ ok: true, texto: `Processo ${processo.codigo} — ${processo.nome} criado.` });
         }
       } catch (erro) {
-        passos.push({ ok: false, texto: `Fluxo não publicado (fica como rascunho): ${mensagem(erro)}` });
+        return falha(`Não foi possível ler/criar o processo: ${mensagem(erro)}`);
+      }
+
+      // 2. Metadados
+      let metadadosFinais: IFluxoMetadado[];
+      try {
+        const atuais = await persistencia.metadados.listar(processo.id);
+        const conflitos =
+          pacote.metadados.filter(meta => atuais.some(atual => atual.chave === meta.chave && atual.tipo !== meta.tipo));
+        if (conflitos.length > 0) {
+          return falha(
+            `Campos com o mesmo nome e tipo diferente no processo: ${conflitos.map(item => {
+              const atual = atuais.find(a => a.chave === item.chave);
+              return `${item.chave} (no processo: ${atual ? atual.tipo : '?'}; no JSON: ${item.tipo})`;
+            }).join(', ')}. Renomeie a chave no JSON.`,
+            processo
+          );
+        }
+        const novos = metadadosParaCopiar(pacote.metadados, atuais);
+        metadadosFinais = novos.length > 0 ? await persistencia.metadados.salvar(processo.id, atuais.concat(novos)) : atuais;
+        const mantidos = pacote.metadados.length - novos.length;
+        passos.push({ ok: true, texto: `Campos: ${novos.length} novo(s)${mantidos > 0 ? `, ${mantidos} já existia(m) e foram mantidos` : ''}.` });
+      } catch (erro) {
+        return falha(`Campos (metadados) não gravados: ${mensagem(erro)}`, processo);
+      }
+
+      // 3. Rascunho do fluxo
+      if (pacote.definicao) {
+        try {
+          const versoes = await persistencia.catalogo.listarVersoes(processo.id);
+          if (versoes.some(item => item.status === 'rascunho')) {
+            if (!opcoes.substituirRascunho) {
+              return falha('O processo já tem um rascunho de fluxo. Marque "substituir o rascunho existente" ou publique/descarte o rascunho no editor.', processo);
+            }
+            const descarte = await persistencia.catalogo.descartarRascunho(processo.id);
+            if (!descarte.ok) {
+              return falha(`Rascunho existente não descartado: ${descarte.erros.join(' ')}`, processo);
+            }
+            passos.push({ ok: true, texto: 'Rascunho anterior descartado.' });
+          }
+          const definicao: IFluxoDefinicao = { ...pacote.definicao, processoId: processo.id, metadados: metadadosFinais };
+          const copia = await persistencia.catalogo.criarCopia(processo, definicao, 'manter');
+          if (!copia.ok) {
+            return falha(`Fluxo não criado: ${copia.erros.join(' ')}`, processo);
+          }
+          passos.push({ ok: true, texto: `Fluxo criado como rascunho${copia.definicao ? ` (versão ${copia.definicao.versao})` : ''}, com ${pacote.definicao.elementos.length} elementos.` });
+        } catch (erro) {
+          return falha(`Fluxo não criado: ${mensagem(erro)}`, processo);
+        }
+
+        // 4. Publicar
+        if (opcoes.publicar) {
+          try {
+            const publicado = await persistencia.catalogo.publicarRascunho(processo.id);
+            passos.push(
+              publicado.ok
+                ? { ok: true, texto: 'Fluxo publicado.' }
+                : { ok: false, texto: `Fluxo não publicado (fica como rascunho): ${publicado.erros.join(' ')}` }
+            );
+          } catch (erro) {
+            passos.push({ ok: false, texto: `Fluxo não publicado (fica como rascunho): ${mensagem(erro)}` });
+          }
+        }
+      } else {
+        passos.push({ ok: true, texto: 'Pacote sem fluxo: desenhe-o depois em Processos → Fluxos (ou importe um pacote com "fluxo").' });
       }
     }
 
@@ -213,12 +224,20 @@ export class PacoteProcessoService {
     if (pacote.ambiente && opcoes.criarAmbiente) {
       const dados = pacote.ambiente;
       const ambientes = new AmbienteService(this.dataverse);
+
+      // Fluxo do ambiente: o do pacote; senão o escolhido na tela / em
+      // "ambiente.fluxo"; senão o processo do pacote; senão um novo.
+      const processoDoAmbiente =
+        pacote.definicao && processo
+          ? processo.id
+          : opcoes.fluxoAmbienteId || dados.processoExistenteId || (processo ? processo.id : undefined);
+
       // Lista atual do Dataverse (evita chave/nome repetidos).
       const lidos = await ambientes.listar();
       const ambientesExistentes = lidos.disponivel ? lidos.ambientes : ambientesConhecidos;
       const resultado = await ambientes.criar(
         {
-          processoId: processo.id,
+          processoId: processoDoAmbiente,
           nome: dados.nome,
           chave: dados.chave || gerarChaveAmbiente(dados.nome),
           descricao: dados.descricao,
@@ -233,10 +252,15 @@ export class PacoteProcessoService {
         ambientesExistentes
       );
       if (!resultado.ok || !resultado.ambiente) {
-        passos.push({ ok: false, texto: `Ambiente não criado: ${resultado.erros.join(' ')}` });
+        passos.push({ ok: false, texto: `Ambiente NÃO criado: ${resultado.erros.join(' ')}` });
       } else {
         ambiente = resultado.ambiente;
-        passos.push({ ok: true, texto: `Ambiente "${ambiente.nome}" criado e ligado ao fluxo. Libere-o em Usuários e acessos.` });
+        passos.push({
+          ok: true,
+          texto: `Ambiente "${ambiente.nome}" criado no menu lateral, ligado ao fluxo ${ambiente.processoNome || ''}.` +
+            (processoDoAmbiente ? '' : ' (fluxo novo, vazio: desenhe-o na aba Configuração do ambiente).') +
+            ' Libere-o em Usuários e acessos (o Administrador já vê).'
+        });
         if (dados.layout) {
           try {
             const json = JSON.stringify(dados.layout);
@@ -248,6 +272,8 @@ export class PacoteProcessoService {
           }
         }
       }
+    } else if (pacote.ambiente) {
+      passos.push({ ok: true, texto: 'Ambiente não criado (opção desmarcada).' });
     }
 
     return { ok: passos.every(item => item.ok), passos, processo, ambiente };

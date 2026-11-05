@@ -20,6 +20,21 @@ ambiente com telas (opcional).
 }
 ```
 
+## O que cada combinação cria
+
+| O JSON tem | O portal cria |
+|---|---|
+| `processo` + `fluxo` + `ambiente` | **tudo**: processo, campos, fluxo (rascunho/publicado), ambiente no menu ligado a esse fluxo, telas |
+| `processo` + `fluxo` | processo, campos e fluxo (ex.: **documentos** — POP, auditoria, plano de ação) |
+| `processo` + `ambiente` (sem `fluxo`) | processo e campos + ambiente; na importação você **escolhe o fluxo** do ambiente: o do processo (desenhar depois) ou um **fluxo existente** |
+| só `ambiente` | só o ambiente, com um **fluxo existente** (`ambiente.fluxo` = código) ou escolhido na tela; sem escolha, cria um fluxo novo vazio |
+| só `processo` | processo e campos (o fluxo é desenhado depois) |
+
+Exemplos: `pacote-solicitacao-compra.json` (tudo), `pacote-plano-de-acao.json` e
+`pacote-auditoria.json` (documentos), `pacote-ambiente-fluxo-existente.json` (só ambiente).
+
+O fluxo do ambiente pode ser trocado depois em **Configuração → Trocar fluxo**.
+
 ## Regras gerais
 
 | Regra | Detalhe |
@@ -215,6 +230,7 @@ Cria um item no menu, ligado a este fluxo, com telas configuradas.
 | Campo | Valores |
 |---|---|
 | `chave` | minúsculas e hífen; permanente. Vazio = gerada do nome. |
+| `fluxo` | **só em pacote sem `fluxo`**: código de um processo existente cujo fluxo o ambiente usa. Omitido = escolher na tela. |
 | `icone` | `workflow, gavel, fileText, folder, building, package, wallet, users, checkCircle, barChart, grid, layers, settings, search, megaphone, activity, bell, clock, alertTriangle` |
 | `prefixoCodigo` | 2–6 letras/números maiúsculos (códigos `COM-2026-0001`) |
 | `perfisPadrao` | `Funcionario`, `Editor`, `Gestor` |

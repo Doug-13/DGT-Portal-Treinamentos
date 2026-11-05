@@ -85,6 +85,8 @@ export interface IProcessosPageProps {
   onAbrirDocumento: (documento: IDocumento) => void;
   // Importação de pacote JSON criou um ambiente (recarregar o menu).
   onAmbientesAlterados?: () => void;
+  // Abrir o ambiente recém-criado pela importação.
+  onAbrirAmbiente?: (chave: string) => void;
 }
 
 type AbaProcesso = 'fluxo' | 'metadados' | 'documentos';
@@ -216,7 +218,8 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
   contexto,
   dataverseService,
   onAbrirDocumento,
-  onAmbientesAlterados
+  onAmbientesAlterados,
+  onAbrirAmbiente
 }) => {
 
   const referencias =
@@ -320,6 +323,14 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
           dataverseService={dataverseService}
           ambientes={[]}
           onFechar={() => setImportarAberto(false)}
+          onAbrirAmbiente={
+            onAbrirAmbiente
+              ? chave => {
+                setImportarAberto(false);
+                onAbrirAmbiente(chave);
+              }
+              : undefined
+          }
           onConcluido={resultado => {
             dados.recarregar(true).catch((error: unknown) => console.error(error));
             if (resultado.ambiente && onAmbientesAlterados) {

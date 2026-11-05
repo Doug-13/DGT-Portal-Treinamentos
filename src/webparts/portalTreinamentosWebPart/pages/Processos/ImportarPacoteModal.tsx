@@ -36,6 +36,8 @@ export interface IImportarPacoteModalProps {
   onFechar: () => void;
   // Chamado após importar (para recarregar listas / abrir o ambiente).
   onConcluido?: (resultado: IResultadoImportacao) => void;
+  // Botão "Abrir o ambiente" no resultado.
+  onAbrirAmbiente?: (chave: string) => void;
 }
 
 const COR_AZUL = '#202A44';
@@ -73,6 +75,8 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
   const [publicar, setPublicar] = React.useState(true);
   const [criarAmbiente, setCriarAmbiente] = React.useState(true);
   const [substituirRascunho, setSubstituirRascunho] = React.useState(false);
+  // Pacote sem fluxo: fluxo escolhido para o ambiente ('' = padrão).
+  const [fluxoAmbienteId, setFluxoAmbienteId] = React.useState('');
   const [processando, setProcessando] = React.useState(false);
   const [resultado, setResultado] = React.useState<IResultadoImportacao | undefined>(undefined);
   const [erroGeral, setErroGeral] = React.useState('');
@@ -96,6 +100,7 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
       const lido = interpretarPacote(texto, refs);
       setAnalise(lido);
       setPublicar(lido.errosPublicacao.length === 0);
+      setFluxoAmbienteId(lido.pacote && lido.pacote.ambiente && lido.pacote.ambiente.processoExistenteId ? lido.pacote.ambiente.processoExistenteId : '');
     } catch (erro) {
       setErroGeral(erro instanceof Error ? erro.message : String(erro));
     } finally {
@@ -111,7 +116,7 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
     try {
       const feito = await servico.importar(
         analise.pacote,
-        { publicar: publicar && analise.errosPublicacao.length === 0, criarAmbiente, substituirRascunho },
+        { publicar: publicar && analise.errosPublicacao.length === 0, criarAmbiente, substituirRascunho, fluxoAmbienteId: fluxoAmbienteId || undefined },
         props.ambientes
       );
       setResultado(feito);
@@ -139,10 +144,14 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
   };
 
   const pacote = analise ? analise.pacote : undefined;
+  const processoDoPacote = pacote ? pacote.processo : undefined;
+  const definicaoDoPacote = pacote ? pacote.definicao : undefined;
   const processoExistente =
-    pacote && referencias
-      ? referencias.processos.find(item => item.codigo.toUpperCase() === pacote.processo.codigo)
+    processoDoPacote && referencias
+      ? referencias.processos.find(item => item.codigo.toUpperCase() === processoDoPacote.codigo)
       : undefined;
+  // Pacote sem fluxo e com ambiente: escolher o fluxo do ambiente.
+  const escolherFluxo = !!pacote && !!pacote.ambiente && !definicaoDoPacote && criarAmbiente;
 
   return (
     <div
@@ -206,15 +215,21 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
             <>
               <div style={{ border: `1px solid ${COR_BORDA}`, borderRadius: '8px', padding: '12px 14px', fontSize: '13px', lineHeight: '20px' }}>
                 <strong style={{ display: 'block', marginBottom: '6px' }}>O que será feito</strong>
-                <div>Processo <strong>{pacote.processo.codigo} — {pacote.processo.nome}</strong>: {processoExistente ? 'já existe (será usado)' : 'será criado'}{pacote.processo.areaNome ? ` · área ${pacote.processo.areaNome}` : ''}.</div>
-                <div>Campos: {pacote.metadados.length} no pacote (os que já existirem no processo são mantidos).</div>
-                <div>
-                  Fluxo: {pacote.definicao.elementos.filter(el => el.tipo === 'tarefaHumana').length} etapa(s),{' '}
-                  {pacote.definicao.elementos.filter(el => el.tipo === 'gateway').length} decisão(ões),{' '}
-                  {pacote.definicao.elementos.filter(el => el.tipo === 'subprocesso').length} subprocesso(s),{' '}
-                  {pacote.definicao.transicoes.length} caminho(s) — criado como rascunho.
-                </div>
-                {pacote.ambiente && <div>Ambiente <strong>{pacote.ambiente.nome}</strong> (registros “{pacote.ambiente.rotuloRegistro}”, código {pacote.ambiente.prefixoCodigo || 'automático'}-ANO-0001){pacote.ambiente.layout ? ', com telas configuradas' : ''}.</div>}
+                {processoDoPacote && (
+                  <div>Processo <strong>{processoDoPacote.codigo} — {processoDoPacote.nome}</strong>: {processoExistente ? 'já existe (será usado)' : 'será criado'}{processoDoPacote.areaNome ? ` · área ${processoDoPacote.areaNome}` : ''}.</div>
+                )}
+                {processoDoPacote && <div>Campos: {pacote.metadados.length} no pacote (os que já existirem no processo são mantidos).</div>}
+                {definicaoDoPacote
+                  ? (
+                    <div>
+                      Fluxo: {definicaoDoPacote.elementos.filter(el => el.tipo === 'tarefaHumana').length} etapa(s),{' '}
+                      {definicaoDoPacote.elementos.filter(el => el.tipo === 'gateway').length} decisão(ões),{' '}
+                      {definicaoDoPacote.elementos.filter(el => el.tipo === 'subprocesso').length} subprocesso(s),{' '}
+                      {definicaoDoPacote.transicoes.length} caminho(s) — criado como rascunho.
+                    </div>
+                  )
+                  : <div>Fluxo: <strong>não informado</strong> no pacote{pacote.ambiente ? ' — escolha abaixo qual fluxo o ambiente vai usar.' : ' — desenhe depois em Processos → Fluxos.'}</div>}
+                {pacote.ambiente && <div>Ambiente <strong>{pacote.ambiente.nome}</strong> (registros “{pacote.ambiente.rotuloRegistro}”, código {pacote.ambiente.prefixoCodigo || 'automático'}-ANO-0001){pacote.ambiente.layout ? ', com telas configuradas' : ''} — aparece no menu lateral.</div>}
               </div>
 
               {analise && analise.avisos.length > 0 && (
@@ -232,21 +247,52 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px' }}>
-                <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input type="checkbox" checked={publicar} disabled={!!analise && analise.errosPublicacao.length > 0} onChange={() => setPublicar(!publicar)} />
-                  Publicar o fluxo agora (senão fica como rascunho para revisar no editor)
-                </label>
+                {definicaoDoPacote && (
+                  <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="checkbox" checked={publicar} disabled={!!analise && analise.errosPublicacao.length > 0} onChange={() => setPublicar(!publicar)} />
+                    Publicar o fluxo agora (senão fica como rascunho para revisar no editor)
+                  </label>
+                )}
                 {pacote.ambiente && (
                   <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <input type="checkbox" checked={criarAmbiente} onChange={() => setCriarAmbiente(!criarAmbiente)} />
                     Criar o ambiente “{pacote.ambiente.nome}” no menu
                   </label>
                 )}
-                <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input type="checkbox" checked={substituirRascunho} onChange={() => setSubstituirRascunho(!substituirRascunho)} />
-                  Se o processo já tiver um rascunho de fluxo, substituí-lo
-                </label>
+                {definicaoDoPacote && (
+                  <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="checkbox" checked={substituirRascunho} onChange={() => setSubstituirRascunho(!substituirRascunho)} />
+                    Se o processo já tiver um rascunho de fluxo, substituí-lo
+                  </label>
+                )}
               </div>
+
+              {escolherFluxo && pacote && pacote.ambiente && referencias && (
+                <div style={{ border: `1px solid ${COR_BORDA}`, borderRadius: '8px', padding: '12px 14px' }}>
+                  <label htmlFor="fluxo-ambiente" style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                    Fluxo que o ambiente “{pacote.ambiente.nome}” vai usar
+                  </label>
+                  <select
+                    id="fluxo-ambiente"
+                    value={fluxoAmbienteId}
+                    onChange={evento => setFluxoAmbienteId(evento.target.value)}
+                    style={{ width: '100%', minHeight: '36px', border: `1px solid ${COR_BORDA}`, borderRadius: '6px', padding: '6px 8px', fontFamily: FONTE, fontSize: '13.5px', color: COR_AZUL }}
+                  >
+                    <option value="">
+                      {processoDoPacote
+                        ? `O processo deste pacote (${processoDoPacote.codigo}) — desenhar o fluxo depois`
+                        : 'Criar um fluxo novo, vazio — desenhar depois'}
+                    </option>
+                    {referencias.processos
+                      .slice()
+                      .sort((a, b) => a.codigo.localeCompare(b.codigo, 'pt-BR'))
+                      .map(item => <option key={item.id} value={item.id}>Usar o fluxo existente: {item.codigo} — {item.nome}</option>)}
+                  </select>
+                  <div style={{ fontSize: '12px', color: '#64748B', marginTop: '4px' }}>
+                    O fluxo precisa estar publicado para o ambiente aceitar registros. Dá para trocar depois em Configuração → Trocar fluxo.
+                  </div>
+                </div>
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                 <button type="button" disabled={processando} onClick={props.onFechar} style={botao(false, processando)}>Cancelar</button>
@@ -270,8 +316,13 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
               <div style={{ fontSize: '12.5px', color: '#64748B' }}>
                 Revise o desenho em Processos → Fluxos (o layout foi montado automaticamente; ajuste posições se quiser).
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={props.onFechar} style={botao(true)}>Fechar</button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                {resultado.ambiente && props.onAbrirAmbiente && (
+                  <button type="button" onClick={() => { if (props.onAbrirAmbiente && resultado.ambiente) { props.onAbrirAmbiente(resultado.ambiente.chave); } }} style={botao(true)}>
+                    Abrir o ambiente “{resultado.ambiente.nome}”
+                  </button>
+                )}
+                <button type="button" onClick={props.onFechar} style={botao(!resultado.ambiente)}>Fechar</button>
               </div>
             </>
           )}

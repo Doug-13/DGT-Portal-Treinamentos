@@ -133,6 +133,9 @@ export interface IPacoteAmbiente {
   rotuloRegistro?: string;
   liberadoParaTodos?: boolean;
   perfisPadrao?: string[];
+  // Pacote SEM "fluxo": código de um processo existente cujo fluxo o
+  // ambiente vai usar. Omitido = escolher na tela de importação.
+  fluxo?: string;
   telas?: {
     visoes?: Array<Omit<IVisaoAmbiente, 'id' | 'icone'> & { id?: string; icone?: string }>;
     colunas?: string[];
@@ -142,11 +145,17 @@ export interface IPacoteAmbiente {
   };
 }
 
+// Combinações aceitas:
+//   processo + fluxo (+ ambiente)  → cria tudo
+//   processo (sem fluxo) + ambiente → cria processo/campos; o ambiente usa
+//                                     ambiente.fluxo ou o escolhido na tela
+//   processo (sem fluxo)            → só processo e campos (desenhar depois)
+//   ambiente (sem processo/fluxo)   → só o ambiente, com fluxo existente
 export interface IPacoteProcesso {
   formato: string;
-  processo: { codigo: string; nome: string; descricao?: string; area?: string };
+  processo?: { codigo: string; nome: string; descricao?: string; area?: string };
   metadados?: IFluxoMetadado[];
-  fluxo: { elementos: IPacoteElemento[]; transicoes: IPacoteTransicao[] };
+  fluxo?: { elementos: IPacoteElemento[]; transicoes: IPacoteTransicao[] };
   ambiente?: IPacoteAmbiente;
 }
 
@@ -177,13 +186,18 @@ export interface IAmbienteDoPacote {
   perfisPadrao: string[];
   // Layout já ajustado ao fluxo do pacote (undefined = padrão).
   layout?: IAmbienteLayout;
+  // Fluxo existente indicado em "ambiente.fluxo" (pacote sem fluxo).
+  processoExistenteId?: string;
+  processoExistenteNome?: string;
 }
 
 export interface IPacoteInterpretado {
-  processo: { codigo: string; nome: string; descricao: string; areaId?: string; areaNome?: string };
+  // Ausente = pacote só de ambiente (usa um fluxo existente).
+  processo?: { codigo: string; nome: string; descricao: string; areaId?: string; areaNome?: string };
   metadados: IFluxoMetadado[];
-  // Definição SEM processo (processoId/id/versão são definidos na importação).
-  definicao: IFluxoDefinicao;
+  // Definição SEM processo (processoId/id/versão são definidos na
+  // importação). Ausente = pacote sem fluxo.
+  definicao?: IFluxoDefinicao;
   ambiente?: IAmbienteDoPacote;
 }
 
@@ -376,21 +390,39 @@ export const interpretarPacote = (
     return referencias.areas.find(item => texto(item.sigla).toLowerCase() === alvo || texto(item.nome).toLowerCase() === alvo);
   };
 
+  const siglasDisponiveis =
+    referencias.areas.length > 0
+      ? `Siglas cadastradas: ${referencias.areas.map(item => item.sigla || item.nome).filter(item => !!item).slice(0, 30).join(', ')}.`
+      : 'Nenhuma área cadastrada no portal.';
+
+  const temFluxo = !!bruto.fluxo;
+  const temProcesso = !!bruto.processo;
+
+  if (!temFluxo && !bruto.ambiente && !temProcesso) {
+    return falhar('Informe ao menos "processo" (com ou sem "fluxo") ou "ambiente".');
+  }
+  if (temFluxo && !temProcesso) {
+    erros.push('Pacote com "fluxo" precisa de "processo" (código e nome).');
+  }
+  if (!temProcesso && (bruto.metadados || []).length > 0) {
+    erros.push('"metadados" pertencem a um processo: informe "processo" ou remova os metadados.');
+  }
+
   // ---------------- processo ----------------
-  const processoBruto = bruto.processo || ({} as IPacoteProcesso['processo']);
+  const processoBruto = (bruto.processo || {}) as NonNullable<IPacoteProcesso['processo']>;
   const codigo = texto(processoBruto.codigo).toUpperCase();
   const nomeProcesso = texto(processoBruto.nome);
-  if (!/^[A-Z0-9][A-Z0-9._-]{1,29}$/.test(codigo)) {
+  if (temProcesso && !/^[A-Z0-9][A-Z0-9._-]{1,29}$/.test(codigo)) {
     erros.push('processo.codigo: use de 2 a 30 caracteres (letras, números, ponto, hífen), ex.: "QUA-AUD".');
   }
-  if (nomeProcesso.length < 3) {
+  if (temProcesso && nomeProcesso.length < 3) {
     erros.push('processo.nome: informe o nome do processo.');
   }
   let areaProcesso: { id: string; nome: string } | undefined;
-  if (processoBruto.area) {
+  if (temProcesso && processoBruto.area) {
     areaProcesso = areaPorSigla(processoBruto.area);
     if (!areaProcesso) {
-      avisos.push(`processo.area: a área "${processoBruto.area}" não foi encontrada — o processo fica sem área.`);
+      avisos.push(`processo.area: a área "${processoBruto.area}" não foi encontrada — o processo fica sem área. ${siglasDisponiveis}`);
     }
   }
 
@@ -444,7 +476,7 @@ export const interpretarPacote = (
   const metadado = (chave: string): IFluxoMetadado | undefined => metadados.find(item => item.chave === chave);
 
   // ---------------- fluxo: elementos ----------------
-  const fluxo = bruto.fluxo || ({ elementos: [], transicoes: [] } as IPacoteProcesso['fluxo']);
+  const fluxo = (bruto.fluxo || { elementos: [], transicoes: [] }) as NonNullable<IPacoteProcesso['fluxo']>;
   const elementos: IFluxoElemento[] = [];
   const mapaIds: Record<string, string> = {};
 
@@ -507,7 +539,7 @@ export const interpretarPacote = (
         if (resp.tipo === 'area' || ((resp.tipo === 'cargoArea' || resp.tipo === 'nivelHierarquico') && resp.area)) {
           const area = areaPorSigla(resp.area);
           if (!area) {
-            erros.push(`${ondeResp}: área "${resp.area || ''}" não encontrada (use a sigla cadastrada em Áreas).`);
+            erros.push(`${ondeResp}: área "${resp.area || ''}" não encontrada. ${siglasDisponiveis}`);
             return;
           }
           convertido.referenciaId = area.id;
@@ -639,7 +671,7 @@ export const interpretarPacote = (
       if (sub.area) {
         areaSub = areaPorSigla(sub.area);
         if (!areaSub) {
-          erros.push(`${onde} (${idOriginal}): subprocesso.area "${sub.area}" não encontrada.`);
+          erros.push(`${onde} (${idOriginal}): subprocesso.area "${sub.area}" não encontrada. ${siglasDisponiveis}`);
         }
       }
       elemento.subprocesso = {
@@ -662,10 +694,10 @@ export const interpretarPacote = (
     elementos.push(elemento);
   });
 
-  if (!elementos.some(item => item.tipo === 'inicio')) {
+  if (temFluxo && !elementos.some(item => item.tipo === 'inicio')) {
     erros.push('fluxo.elementos: inclua um elemento { "tipo": "inicio" }.');
   }
-  if (!elementos.some(item => item.tipo === 'fim')) {
+  if (temFluxo && !elementos.some(item => item.tipo === 'fim')) {
     erros.push('fluxo.elementos: inclua ao menos um elemento { "tipo": "fim" }.');
   }
 
@@ -703,22 +735,30 @@ export const interpretarPacote = (
     return { erros, avisos, errosPublicacao: [] };
   }
 
-  const tamanho = calcularLayout(elementos, transicoes);
+  let definicao: IFluxoDefinicao | undefined;
 
-  const definicao: IFluxoDefinicao = {
-    id: 'importado',
-    nome: `${codigo} — ${nomeProcesso}`,
-    versao: 1,
-    status: 'rascunho',
-    tiposDocumento: [],
-    larguraDiagrama: tamanho.larguraDiagrama,
-    alturaDiagrama: tamanho.alturaDiagrama,
-    elementos,
-    transicoes,
-    metadados
-  };
+  if (temFluxo) {
+    const tamanho = calcularLayout(elementos, transicoes);
+    definicao = {
+      id: 'importado',
+      nome: `${codigo} — ${nomeProcesso}`,
+      versao: 1,
+      status: 'rascunho',
+      tiposDocumento: [],
+      larguraDiagrama: tamanho.larguraDiagrama,
+      alturaDiagrama: tamanho.alturaDiagrama,
+      elementos,
+      transicoes,
+      metadados
+    };
+  }
 
-  const errosPublicacao = validarDefinicao(definicao);
+  const errosPublicacao = definicao ? validarDefinicao(definicao) : [];
+
+  // Ids das etapas nas telas: os do fluxo do pacote ou, sem fluxo, os
+  // informados (validados quando o ambiente abrir com o fluxo real).
+  const idEtapa = (id: string): string | undefined =>
+    temFluxo ? mapaIds[texto(id)] : (texto(id) ? idElementoValido(id) : undefined);
 
   // ---------------- ambiente ----------------
   let ambiente: IAmbienteDoPacote | undefined;
@@ -732,21 +772,33 @@ export const interpretarPacote = (
     if (amb.icone && icone !== amb.icone) {
       avisos.push(`ambiente.icone "${amb.icone}" não existe — usado "workflow". Opções: ${ICONES.join(', ')}.`);
     }
+    let processoExistente: { id: string; codigo: string; nome: string } | undefined;
+    if (amb.fluxo) {
+      if (temFluxo) {
+        avisos.push('ambiente.fluxo foi ignorado: o ambiente usa o fluxo deste pacote.');
+      } else {
+        processoExistente = referencias.processos.find(p => texto(p.codigo).toUpperCase() === texto(amb.fluxo).toUpperCase());
+        if (!processoExistente) {
+          erros.push(`ambiente.fluxo "${amb.fluxo}": nenhum processo com esse código no portal. Códigos: ${referencias.processos.map(p => p.codigo).slice(0, 30).join(', ') || '(nenhum)'}.`);
+        }
+      }
+    }
+
     let layout: IAmbienteLayout | undefined;
     if (amb.telas) {
       const telas = amb.telas;
       const base = layoutPadrao(definicao);
       const etapas: IEtapaLayout[] | undefined = telas.etapas
         ? telas.etapas
-          .filter(item => !!mapaIds[texto(item.id)])
-          .map(item => ({ elementoId: mapaIds[texto(item.id)], rotulo: texto(item.rotulo), visivel: item.visivel !== false }))
+          .filter(item => !!idEtapa(item.id))
+          .map(item => ({ elementoId: idEtapa(item.id) as string, rotulo: texto(item.rotulo), visivel: item.visivel !== false }))
         : undefined;
-      (telas.etapas || []).filter(item => !mapaIds[texto(item.id)]).forEach(item => avisos.push(`ambiente.telas.etapas: "${item.id}" não é um elemento do fluxo — ignorado.`));
+      (telas.etapas || []).filter(item => !idEtapa(item.id)).forEach(item => avisos.push(`ambiente.telas.etapas: "${item.id}" não é um elemento do fluxo — ignorado.`));
       const visoes: IVisaoAmbiente[] | undefined = telas.visoes
         ? telas.visoes.map((visao, v) => {
           const filtro = { ...visao.filtro } as IVisaoAmbiente['filtro'];
           if (filtro.tipo === 'etapas') {
-            filtro.etapas = (filtro.etapas || []).map(id => mapaIds[texto(id)] || id);
+            filtro.etapas = (filtro.etapas || []).map(id => idEtapa(id) || id);
           }
           return {
             id: texto(visao.id) || `vis-${v + 1}`,
@@ -777,7 +829,9 @@ export const interpretarPacote = (
       rotuloRegistro: texto(amb.rotuloRegistro) || 'Registro',
       liberadoParaTodos: !!amb.liberadoParaTodos,
       perfisPadrao: (amb.perfisPadrao || []).filter(item => ['Funcionario', 'Editor', 'Gestor'].indexOf(item) >= 0),
-      layout
+      layout,
+      processoExistenteId: processoExistente ? processoExistente.id : undefined,
+      processoExistenteNome: processoExistente ? `${processoExistente.codigo} — ${processoExistente.nome}` : undefined
     };
   }
 
@@ -786,7 +840,9 @@ export const interpretarPacote = (
     avisos,
     errosPublicacao,
     pacote: erros.length > 0 ? undefined : {
-      processo: { codigo, nome: nomeProcesso, descricao: texto(processoBruto.descricao), areaId: areaProcesso ? areaProcesso.id : undefined, areaNome: areaProcesso ? areaProcesso.nome : undefined },
+      processo: temProcesso
+        ? { codigo, nome: nomeProcesso, descricao: texto(processoBruto.descricao), areaId: areaProcesso ? areaProcesso.id : undefined, areaNome: areaProcesso ? areaProcesso.nome : undefined }
+        : undefined,
       metadados,
       definicao,
       ambiente
