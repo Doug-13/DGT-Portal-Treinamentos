@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: importar e exportar processos em JSON ("pacote de processo") — um arquivo cria o processo, os campos, o fluxo (rascunho ou publicado) e o ambiente com as telas; ideal para gerar fluxos por IA. Botões em Processos → Fluxos, no "+ Adicionar ambiente" e na Configuração do ambiente. Formato em docs/pacote-processo.md.
 - Novo: telas configuráveis nos ambientes (modelo Arquitetura de Soluções) — visão geral com cards de resumo (visões com filtro) e colunas escolhidas, tela do registro com barra de etapas do processo; tudo editável em "Personalizar telas" e gerado do fluxo quando não configurado.
 
 ## [1.4.18] - 2026-11-04

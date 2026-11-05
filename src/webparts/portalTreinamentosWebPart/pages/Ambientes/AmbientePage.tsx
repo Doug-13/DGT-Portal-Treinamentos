@@ -46,6 +46,11 @@ import RegistroAmbiente from './RegistroAmbiente';
 import AmbienteLayoutEditor from './AmbienteLayoutEditor';
 
 import {
+  PacoteProcessoService,
+  baixarJson
+} from '../../services/pacoteProcesso/PacoteProcessoService';
+
+import {
   IAmbienteLayout,
   lerLayout,
   normalizarLayout
@@ -129,6 +134,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
   const [layoutJson, setLayoutJson] = React.useState(ambiente.layoutJson || '');
   const [editorTelas, setEditorTelas] = React.useState(false);
   const [salvandoTelas, setSalvandoTelas] = React.useState(false);
+  const [exportando, setExportando] = React.useState(false);
   const [visao, setVisao] = React.useState<Visao>({ tipo: 'lista' });
   const [registros, setRegistros] = React.useState<IAmbienteRegistro[]>([]);
   const [pendencias, setPendencias] = React.useState<IPendenciaAmbiente[]>([]);
@@ -405,6 +411,21 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
       ? registros
       : registros.filter(item => guid(item.solicitanteId) === guid(contexto.usuarioId) || aguardandoIds.indexOf(item.id) >= 0);
 
+  const exportarPacote = async (): Promise<void> => {
+    if (!dataverseService || !ambiente.processoId) {
+      return;
+    }
+    setExportando(true);
+    try {
+      const pacote = await new PacoteProcessoService(dataverseService).exportar(ambiente.processoId, { ...ambiente, layoutJson });
+      baixarJson(`${ambiente.chave}.pacote.json`, pacote);
+    } catch (falha) {
+      setErro(`Não foi possível exportar: ${mensagem(falha)}`);
+    } finally {
+      setExportando(false);
+    }
+  };
+
   const salvarTelas = async (novo: IAmbienteLayout): Promise<string[]> => {
     if (!servico) {
       return ['Sem conexão com o Dataverse.'];
@@ -513,9 +534,18 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
         )}
 
         {adminGlobal && props.onEditarAmbiente && (
-          <div style={{ borderTop: `1px solid ${COR.borda}`, paddingTop: '12px', marginTop: '4px' }}>
+          <div style={{ borderTop: `1px solid ${COR.borda}`, paddingTop: '12px', marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             <button type="button" onClick={props.onEditarAmbiente} style={botao('secundario')}>
               Editar dados do ambiente
+            </button>
+            <button
+              type="button"
+              disabled={exportando || !ambiente.processoId}
+              onClick={() => { exportarPacote().catch(() => undefined); }}
+              style={botao('secundario', exportando || !ambiente.processoId)}
+              title="Baixar processo, campos, fluxo, ambiente e telas num pacote JSON (para versionar, copiar para outro ambiente ou ajustar com IA)"
+            >
+              {exportando ? 'Exportando...' : 'Exportar pacote JSON'}
             </button>
           </div>
         )}

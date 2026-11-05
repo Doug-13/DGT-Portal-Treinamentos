@@ -1,0 +1,227 @@
+{
+  "formato": "dgt-portal/pacote-processo@1",
+  "processo": {
+    "codigo": "QUA-AUD",
+    "nome": "Auditoria interna",
+    "descricao": "Planejamento, execução e encerramento de auditorias internas; cada não conformidade abre um plano de ação.",
+    "area": "QUA"
+  },
+  "metadados": [
+    {
+      "chave": "escopo",
+      "rotulo": "Escopo da auditoria",
+      "tipo": "textoLongo"
+    },
+    {
+      "chave": "dataAuditoria",
+      "rotulo": "Data da auditoria",
+      "tipo": "data"
+    },
+    {
+      "chave": "auditorLider",
+      "rotulo": "Auditor líder",
+      "tipo": "usuario"
+    },
+    {
+      "chave": "constatacoes",
+      "rotulo": "Constatações",
+      "tipo": "tabela",
+      "colunas": [
+        {
+          "chave": "descricao",
+          "rotulo": "Constatação",
+          "tipo": "texto",
+          "obrigatoria": true
+        },
+        {
+          "chave": "conforme",
+          "rotulo": "Conforme?",
+          "tipo": "simNao",
+          "obrigatoria": true
+        },
+        {
+          "chave": "responsavel",
+          "rotulo": "Responsável pela ação",
+          "tipo": "usuario"
+        },
+        {
+          "chave": "prazo",
+          "rotulo": "Prazo",
+          "tipo": "data"
+        }
+      ]
+    },
+    {
+      "chave": "acoesAbertas",
+      "rotulo": "Planos de ação abertos",
+      "tipo": "documentos"
+    },
+    {
+      "chave": "parecer",
+      "rotulo": "Parecer final",
+      "tipo": "textoLongo"
+    }
+  ],
+  "fluxo": {
+    "elementos": [
+      {
+        "id": "inicio",
+        "tipo": "inicio",
+        "nome": "Início"
+      },
+      {
+        "id": "planejar",
+        "tipo": "tarefaHumana",
+        "nome": "Planejar auditoria",
+        "responsaveis": [
+          {
+            "tipo": "autorRevisao"
+          }
+        ],
+        "prazoDiasUteis": 5,
+        "statusDocumento": "Elaboração",
+        "campos": [
+          {
+            "chave": "escopo",
+            "obrigatorio": true
+          },
+          {
+            "chave": "dataAuditoria",
+            "obrigatorio": true
+          },
+          {
+            "chave": "auditorLider",
+            "obrigatorio": true
+          }
+        ]
+      },
+      {
+        "id": "executar",
+        "tipo": "tarefaHumana",
+        "nome": "Registrar constatações",
+        "responsaveis": [
+          {
+            "tipo": "campoUsuario",
+            "campo": "auditorLider"
+          }
+        ],
+        "prazoDiasUteis": 10,
+        "statusDocumento": "Revisão",
+        "campos": [
+          {
+            "chave": "constatacoes",
+            "obrigatorio": true
+          }
+        ]
+      },
+      {
+        "id": "abrirAcoes",
+        "tipo": "subprocesso",
+        "nome": "Abrir planos de ação",
+        "subprocesso": {
+          "fluxo": "QUA-PDA",
+          "origem": "tabela",
+          "campoTabela": "constatacoes",
+          "filtroLinhas": {
+            "coluna": "conforme",
+            "valores": [
+              "nao"
+            ]
+          },
+          "campoReferencias": "acoesAbertas",
+          "tipoDocumento": "PDA",
+          "titulo": "{pai.codigo} — NC {n}: {coluna:descricao}",
+          "autor": "coluna:responsavel",
+          "aguardar": "todos",
+          "mapeamentos": [
+            {
+              "origem": "coluna:descricao",
+              "destino": "acao"
+            },
+            {
+              "origem": "coluna:prazo",
+              "destino": "prazo"
+            },
+            {
+              "origem": "pai:referencia",
+              "destino": "auditoriaOrigem"
+            }
+          ]
+        }
+      },
+      {
+        "id": "encerrar",
+        "tipo": "tarefaHumana",
+        "nome": "Encerrar auditoria",
+        "responsaveis": [
+          {
+            "tipo": "gestorArea"
+          }
+        ],
+        "statusDocumento": "Aprovação",
+        "campos": [
+          {
+            "chave": "acoesAbertas",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "parecer",
+            "obrigatorio": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "aprovar",
+            "rotulo": "Encerrar",
+            "resultado": "aprovado"
+          },
+          {
+            "chave": "devolver",
+            "rotulo": "Reabrir constatações",
+            "resultado": "devolvido",
+            "exigeComentario": true
+          }
+        ]
+      },
+      {
+        "id": "fim",
+        "tipo": "fim",
+        "nome": "Fim"
+      }
+    ],
+    "transicoes": [
+      {
+        "de": "inicio",
+        "para": "planejar"
+      },
+      {
+        "de": "planejar",
+        "para": "executar"
+      },
+      {
+        "de": "executar",
+        "para": "abrirAcoes"
+      },
+      {
+        "de": "abrirAcoes",
+        "para": "encerrar"
+      },
+      {
+        "de": "encerrar",
+        "para": "fim",
+        "quando": {
+          "resultado": "aprovado"
+        }
+      },
+      {
+        "de": "encerrar",
+        "para": "executar",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Reabrir",
+        "excecao": true
+      }
+    ]
+  }
+}

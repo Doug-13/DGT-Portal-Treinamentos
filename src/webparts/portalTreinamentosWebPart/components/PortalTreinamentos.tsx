@@ -99,6 +99,7 @@ import { IAmbiente, IEdicaoAmbiente } from '../models/Ambiente';
 import { AmbienteService, ambienteLiberado, podeCriarAmbiente, registrarAmbientesNoPortal } from '../services/ambientes/AmbienteService';
 import { solicitarAberturaProcesso as abrirProcessoNoEditor } from '../services/processos/ProcessoService';
 import AmbienteFormModal from '../pages/Ambientes/AmbienteFormModal';
+import ImportarPacoteModal from '../pages/Processos/ImportarPacoteModal';
 
 type DataverseRecord =
   IDataverseRecord;
@@ -532,6 +533,13 @@ const PortalTreinamentos:
 
     const [processandoAmbiente, setProcessandoAmbiente] =
       React.useState<boolean>(false);
+
+    // Importar pacote JSON (atalho do "+ Adicionar ambiente").
+    const [importarPacoteAberto, setImportarPacoteAberto] =
+      React.useState<boolean>(false);
+
+    const [ambienteImportadoChave, setAmbienteImportadoChave] =
+      React.useState<string>('');
 
     const aplicarAmbientes =
       React.useCallback(
@@ -4286,6 +4294,31 @@ const gestaoAreas =
 
         </aside>
 
+        {/* IMPORTAR PACOTE JSON (processo + fluxo + ambiente) */}
+
+        {
+          importarPacoteAberto &&
+          (
+            <ImportarPacoteModal
+              dataverseService={dataverseService}
+              ambientes={ambientes}
+              onConcluido={resultado => {
+                carregarAmbientes().catch(erro => console.error('[Ambientes]', erro));
+                setAmbienteImportadoChave(resultado.ambiente ? resultado.ambiente.chave : '');
+              }}
+              onFechar={() => {
+                setImportarPacoteAberto(false);
+                // Abre o ambiente recém-criado.
+                if (ambienteImportadoChave) {
+                  setAmbienteAtualChave(ambienteImportadoChave);
+                  setPaginaAtual('ambiente');
+                  setAmbienteImportadoChave('');
+                }
+              }}
+            />
+          )
+        }
+
         {/* ADICIONAR / EDITAR AMBIENTE (Administrador) */}
 
         {
@@ -4299,6 +4332,10 @@ const gestaoAreas =
               processando={processandoAmbiente}
               carregarFluxos={() => ambienteService.listarFluxos(ambientes)}
               onSalvar={salvarAmbiente}
+              onImportarJson={() => {
+                setFormAmbiente(undefined);
+                setImportarPacoteAberto(true);
+              }}
               onFechar={() => setFormAmbiente(undefined)}
             />
           )
@@ -4645,6 +4682,10 @@ const gestaoAreas =
                 onDesenharFluxoAmbiente={processoId => {
                   abrirProcessoNoEditor(processoId);
                   navegar('fluxos');
+                }}
+
+                onAmbientesAlterados={() => {
+                  carregarAmbientes().catch(erro => console.error('[Ambientes]', erro));
                 }}
 
                 onLayoutAmbienteSalvo={(ambienteId, layoutJson) =>

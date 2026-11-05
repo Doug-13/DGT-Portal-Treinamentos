@@ -661,6 +661,10 @@ export interface IPortalRouterProps {
   onEditarAmbiente?:
   () => void;
 
+  // Ambientes criados/alterados fora do menu (ex.: importação de JSON).
+  onAmbientesAlterados?:
+  () => void;
+
   // Telas do ambiente personalizadas (atualiza a lista do portal).
   onLayoutAmbienteSalvo?:
   (
@@ -2063,6 +2067,7 @@ const PortalRouter:
 
         return (
           <ProcessosPage
+            onAmbientesAlterados={props.onAmbientesAlterados}
             documentos={
               props.documentos
             }

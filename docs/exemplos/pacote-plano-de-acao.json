@@ -1,0 +1,55 @@
+{
+  "formato": "dgt-portal/pacote-processo@1",
+  "processo": {
+    "codigo": "QUA-PDA",
+    "nome": "Plano de ação",
+    "descricao": "Tratamento de uma não conformidade: planejar, executar e verificar a ação.",
+    "area": "QUA"
+  },
+  "metadados": [
+    { "chave": "acao", "rotulo": "Ação a executar", "tipo": "textoLongo" },
+    { "chave": "prazo", "rotulo": "Prazo", "tipo": "data" },
+    { "chave": "auditoriaOrigem", "rotulo": "Auditoria de origem", "tipo": "documento" },
+    { "chave": "evidencia", "rotulo": "Evidência da execução", "tipo": "textoLongo" },
+    { "chave": "eficaz", "rotulo": "A ação foi eficaz?", "tipo": "simNao" }
+  ],
+  "fluxo": {
+    "elementos": [
+      { "id": "inicio", "tipo": "inicio", "nome": "Início" },
+      {
+        "id": "executar", "tipo": "tarefaHumana", "nome": "Executar a ação",
+        "responsaveis": [{ "tipo": "autorRevisao" }],
+        "prazoDiasUteis": 15,
+        "statusDocumento": "Elaboração",
+        "campos": [
+          { "chave": "auditoriaOrigem", "somenteLeitura": true },
+          { "chave": "acao", "obrigatorio": true },
+          { "chave": "prazo", "obrigatorio": true },
+          { "chave": "evidencia", "obrigatorio": true }
+        ],
+        "acoes": [{ "chave": "concluir", "rotulo": "Enviar para verificação", "resultado": "concluido" }]
+      },
+      {
+        "id": "verificar", "tipo": "tarefaHumana", "nome": "Verificar eficácia",
+        "responsaveis": [{ "tipo": "gestorArea" }],
+        "prazoDiasUteis": 5,
+        "statusDocumento": "Revisão",
+        "campos": [
+          { "chave": "evidencia", "somenteLeitura": true },
+          { "chave": "eficaz", "obrigatorio": true }
+        ],
+        "acoes": [
+          { "chave": "aprovar", "rotulo": "Encerrar ação", "resultado": "aprovado" },
+          { "chave": "devolver", "rotulo": "Devolver", "resultado": "devolvido", "exigeComentario": true }
+        ]
+      },
+      { "id": "fim", "tipo": "fim", "nome": "Fim" }
+    ],
+    "transicoes": [
+      { "de": "inicio", "para": "executar" },
+      { "de": "executar", "para": "verificar" },
+      { "de": "verificar", "para": "fim", "quando": { "resultado": "aprovado" }, "rotulo": "Encerrada" },
+      { "de": "verificar", "para": "executar", "quando": { "resultado": "devolvido" }, "rotulo": "Refazer", "excecao": true }
+    ]
+  }
+}

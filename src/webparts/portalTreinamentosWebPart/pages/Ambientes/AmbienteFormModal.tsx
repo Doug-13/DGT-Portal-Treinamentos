@@ -53,6 +53,8 @@ export interface IAmbienteFormModalProps {
   // Fluxos de Processos → Fluxos que podem ser vinculados.
   carregarFluxos?: () => Promise<IFluxoOpcaoAmbiente[]>;
   onSalvar: (dados: IEdicaoAmbiente) => Promise<string[]>;
+  // Atalho: criar processo + fluxo + ambiente a partir de um pacote JSON.
+  onImportarJson?: () => void;
   onFechar: () => void;
 }
 
@@ -242,6 +244,13 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
               tipo="alerta"
               texto={props.avisoIndisponivel || 'As tabelas de ambientes ainda não existem no Dataverse. Execute scripts/dataverse/criar-tabelas-ambientes.ps1 e recarregue o portal.'}
             />
+          )}
+
+          {novo && props.disponivel && props.onImportarJson && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', border: `1px dashed ${COR.borda}`, borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', fontSize: '13px', color: COR.azul }}>
+              <span style={{ flex: 1 }}>Tem um <strong>pacote JSON</strong> (por exemplo, gerado por IA)? Ele cria o processo, o fluxo, o ambiente e as telas de uma vez.</span>
+              <button type="button" onClick={props.onImportarJson} style={botao('secundario')}>Importar JSON</button>
+            </div>
           )}
 
           {novo && props.disponivel && (

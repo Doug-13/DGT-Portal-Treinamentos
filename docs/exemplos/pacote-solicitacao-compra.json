@@ -1,0 +1,97 @@
+{
+  "formato": "dgt-portal/pacote-processo@1",
+  "processo": {
+    "codigo": "COM-SOL",
+    "nome": "Solicitação de compra",
+    "descricao": "Pedido de compra com aprovação do gestor e, acima do limite, da diretoria.",
+    "area": "COM"
+  },
+  "metadados": [
+    { "chave": "itens", "rotulo": "Itens", "tipo": "tabela",
+      "colunas": [
+        { "chave": "item", "rotulo": "Item", "tipo": "texto", "obrigatoria": true },
+        { "chave": "quantidade", "rotulo": "Qtd.", "tipo": "numero", "obrigatoria": true },
+        { "chave": "valorUnitario", "rotulo": "Valor unitário (R$)", "tipo": "numero" }
+      ] },
+    { "chave": "valorTotal", "rotulo": "Valor total estimado (R$)", "tipo": "numero" },
+    { "chave": "urgencia", "rotulo": "Urgência", "tipo": "lista", "opcoes": ["Normal", "Alta", "Crítica"] },
+    { "chave": "acimaDoLimite", "rotulo": "Acima de R$ 50 mil?", "tipo": "simNao" },
+    { "chave": "justificativa", "rotulo": "Justificativa", "tipo": "textoLongo" },
+    { "chave": "pedidoErp", "rotulo": "Nº do pedido no ERP", "tipo": "texto" }
+  ],
+  "fluxo": {
+    "elementos": [
+      { "id": "inicio", "tipo": "inicio", "nome": "Início" },
+      { "id": "solicitar", "tipo": "tarefaHumana", "nome": "Detalhar a solicitação",
+        "responsaveis": [{ "tipo": "autorRevisao" }],
+        "prazoDiasUteis": 2,
+        "campos": [
+          { "chave": "itens", "obrigatorio": true },
+          { "chave": "valorTotal", "obrigatorio": true },
+          { "chave": "urgencia", "obrigatorio": true },
+          { "chave": "acimaDoLimite", "obrigatorio": true },
+          { "chave": "justificativa", "obrigatorio": true }
+        ],
+        "acoes": [{ "chave": "enviar", "rotulo": "Enviar para aprovação", "resultado": "concluido" }] },
+      { "id": "aprovarGestor", "tipo": "tarefaHumana", "nome": "Aprovação do gestor",
+        "responsaveis": [{ "tipo": "gestorArea" }],
+        "prazoDiasUteis": 2,
+        "campos": [{ "chave": "valorTotal", "somenteLeitura": true }, { "chave": "justificativa", "somenteLeitura": true }],
+        "acoes": [
+          { "chave": "aprovar", "rotulo": "Aprovar", "resultado": "aprovado" },
+          { "chave": "reprovar", "rotulo": "Devolver", "resultado": "devolvido", "exigeComentario": true }
+        ] },
+      { "id": "limite", "tipo": "gateway", "nome": "Acima do limite?" },
+      { "id": "aprovarDiretoria", "tipo": "tarefaHumana", "nome": "Aprovação da diretoria",
+        "responsaveis": [{ "tipo": "cargoArea", "cargo": "Diretor", "origemArea": "documento" }],
+        "prazoDiasUteis": 3,
+        "acoes": [
+          { "chave": "aprovar", "rotulo": "Aprovar", "resultado": "aprovado" },
+          { "chave": "reprovar", "rotulo": "Devolver", "resultado": "devolvido", "exigeComentario": true }
+        ] },
+      { "id": "comprar", "tipo": "tarefaHumana", "nome": "Emitir pedido de compra",
+        "responsaveis": [{ "tipo": "area", "area": "COM" }],
+        "prazoDiasUteis": 3,
+        "campos": [{ "chave": "pedidoErp", "obrigatorio": true }],
+        "acoes": [{ "chave": "concluir", "rotulo": "Pedido emitido", "resultado": "concluido" }] },
+      { "id": "fim", "tipo": "fim", "nome": "Fim" }
+    ],
+    "transicoes": [
+      { "de": "inicio", "para": "solicitar" },
+      { "de": "solicitar", "para": "aprovarGestor" },
+      { "de": "aprovarGestor", "para": "limite", "quando": { "resultado": "aprovado" } },
+      { "de": "aprovarGestor", "para": "solicitar", "quando": { "resultado": "devolvido" }, "rotulo": "Devolvida", "excecao": true },
+      { "de": "limite", "para": "aprovarDiretoria", "quando": { "campo": "acimaDoLimite", "valor": "sim" }, "rotulo": "Sim" },
+      { "de": "limite", "para": "comprar", "rotulo": "Não", "padrao": true },
+      { "de": "aprovarDiretoria", "para": "comprar", "quando": { "resultado": "aprovado" } },
+      { "de": "aprovarDiretoria", "para": "solicitar", "quando": { "resultado": "devolvido" }, "rotulo": "Devolvida", "excecao": true },
+      { "de": "comprar", "para": "fim" }
+    ]
+  },
+  "ambiente": {
+    "nome": "Compras",
+    "chave": "compras",
+    "icone": "package",
+    "prefixoCodigo": "COM",
+    "rotuloRegistro": "Solicitação",
+    "subtitulo": "Da solicitação ao pedido emitido.",
+    "liberadoParaTodos": true,
+    "telas": {
+      "visoes": [
+        { "nome": "Aguardando você", "icone": "bell", "cor": "#B45309", "filtro": { "tipo": "aguardandoVoce" } },
+        { "nome": "Em aprovação", "icone": "checkCircle", "cor": "#6B4FBB", "filtro": { "tipo": "etapas", "etapas": ["aprovarGestor", "aprovarDiretoria"] } },
+        { "nome": "Urgentes", "icone": "alertTriangle", "cor": "#B42318", "filtro": { "tipo": "campo", "campo": "urgencia", "valores": ["Alta", "Crítica"] } },
+        { "nome": "Com prazo vencido", "icone": "clock", "cor": "#B42318", "filtro": { "tipo": "atrasados" } },
+        { "nome": "Pedidos emitidos", "icone": "package", "cor": "#107C10", "filtro": { "tipo": "situacao", "situacoes": ["concluido"] } }
+      ],
+      "colunas": ["codigo", "titulo", "campo:valorTotal", "campo:urgencia", "etapa", "prazo", "solicitante", "situacao"],
+      "etapas": [
+        { "id": "solicitar", "rotulo": "Solicitação" },
+        { "id": "aprovarGestor", "rotulo": "Gestor" },
+        { "id": "aprovarDiretoria", "rotulo": "Diretoria" },
+        { "id": "comprar", "rotulo": "Pedido" }
+      ],
+      "lista": { "todosVeemTodos": false }
+    }
+  }
+}

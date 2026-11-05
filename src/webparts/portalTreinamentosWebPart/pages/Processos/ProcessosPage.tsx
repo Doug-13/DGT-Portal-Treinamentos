@@ -65,6 +65,13 @@ import {
 // criado aqui (processos, vínculos, fluxos) fica no navegador.
 // ============================================================
 
+import ImportarPacoteModal from './ImportarPacoteModal';
+
+import {
+  PacoteProcessoService,
+  baixarJson
+} from '../../services/pacoteProcesso/PacoteProcessoService';
+
 export interface IProcessosPageProps {
   documentos: IDocumento[];
 
@@ -76,6 +83,8 @@ export interface IProcessosPageProps {
   contexto?: IContextoAcesso;
   dataverseService?: DataverseService;
   onAbrirDocumento: (documento: IDocumento) => void;
+  // Importação de pacote JSON criou um ambiente (recarregar o menu).
+  onAmbientesAlterados?: () => void;
 }
 
 type AbaProcesso = 'fluxo' | 'metadados' | 'documentos';
@@ -206,7 +215,8 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
   usuariosAreas = [],
   contexto,
   dataverseService,
-  onAbrirDocumento
+  onAbrirDocumento,
+  onAmbientesAlterados
 }) => {
 
   const referencias =
@@ -283,6 +293,42 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
         ? contexto.podeGerenciarProcessos
         : contexto.podeGerenciarDocumentos)
     );
+
+  // Pacote JSON (importar / exportar)
+  const [importarAberto, setImportarAberto] = React.useState(false);
+  const [exportando, setExportando] = React.useState(false);
+
+  const exportarProcesso = async (processo: IProcesso): Promise<void> => {
+    if (!dataverseService) {
+      return;
+    }
+    setExportando(true);
+    try {
+      const pacote = await new PacoteProcessoService(dataverseService).exportar(processo.id);
+      baixarJson(`${(processo.codigo || 'processo').toLowerCase()}.pacote.json`, pacote);
+    } catch (erro) {
+      window.alert(`Não foi possível exportar: ${erro instanceof Error ? erro.message : String(erro)}`);
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  const modalImportar =
+    importarAberto
+      ? (
+        <ImportarPacoteModal
+          dataverseService={dataverseService}
+          ambientes={[]}
+          onFechar={() => setImportarAberto(false)}
+          onConcluido={resultado => {
+            dados.recarregar(true).catch((error: unknown) => console.error(error));
+            if (resultado.ambiente && onAmbientesAlterados) {
+              onAmbientesAlterados();
+            }
+          }}
+        />
+      )
+      : null;
 
   const contagemDocumentos = (
     id: string
@@ -440,6 +486,8 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
 
+        {modalImportar}
+
         {
           atualizacaoVersao && dataverseService && (
             <AtualizarDocumentosFluxoModal
@@ -480,7 +528,20 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
               )
             }
           </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {
+              !dados.local && dataverseService && (
+                <button
+                  type="button"
+                  disabled={exportando}
+                  onClick={() => { exportarProcesso(processoSelecionado).catch(() => undefined); }}
+                  style={{ ...estiloBotao(false, exportando), minHeight: '32px' }}
+                  title="Baixar processo, campos e fluxo no formato de pacote JSON (para versionar ou ajustar com IA)"
+                >
+                  {exportando ? 'Exportando...' : 'Exportar JSON'}
+                </button>
+              )
+            }
             {selo(processoSelecionado.areaNome ? `Área: ${processoSelecionado.areaNome}` : 'Sem área', false)}
             {dados.local && selo(processoSelecionado.origem === 'teste' ? 'Teste (local)' : 'Dataverse', processoSelecionado.origem === 'dataverse')}
             {selo(resumo.texto, resumo.publicado)}
@@ -817,6 +878,8 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
 
       {avisoTeste}
 
+      {modalImportar}
+
       {/* REMOVER FLUXO (menu ⋮ dos cartões) */}
       {
         removerProcesso && dataverseService && (
@@ -902,6 +965,19 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
           >
             Atualizar
           </button>
+
+          {
+            podeEditar && !dados.local && (
+              <button
+                type="button"
+                onClick={() => setImportarAberto(true)}
+                style={estiloBotao(false, false)}
+                title="Criar processo, campos, fluxo e ambiente a partir de um pacote JSON (ex.: gerado por IA)"
+              >
+                Importar JSON
+              </button>
+            )
+          }
 
           {
             podeEditar && (
