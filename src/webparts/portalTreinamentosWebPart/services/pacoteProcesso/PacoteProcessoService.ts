@@ -64,6 +64,10 @@ export interface IOpcoesImportacao {
   publicar: boolean;
   criarAmbiente: boolean;
   substituirRascunho: boolean;
+  // Campos que já existem no processo (mesma chave e tipo): atualizar
+  // rótulo, opções, colunas, avaliação e ajuda com os do JSON. Campos
+  // que não estão no JSON nunca são apagados.
+  atualizarMetadados?: boolean;
   // Pacote SEM fluxo com ambiente: fluxo (dgt_processo) escolhido na
   // tela. Vazio = o processo do pacote (ou, sem processo, um novo AMB-…).
   fluxoAmbienteId?: string;
@@ -170,9 +174,38 @@ export class PacoteProcessoService {
           );
         }
         const novos = metadadosParaCopiar(pacote.metadados, atuais);
-        metadadosFinais = novos.length > 0 ? await persistencia.metadados.salvar(processo.id, atuais.concat(novos)) : atuais;
-        const mantidos = pacote.metadados.length - novos.length;
-        passos.push({ ok: true, texto: `Campos: ${novos.length} novo(s)${mantidos > 0 ? `, ${mantidos} já existia(m) e foram mantidos` : ''}.` });
+        let atualizados = 0;
+        const revisados =
+          atuais.map(atual => {
+            const doPacote = pacote.metadados.find(meta => meta.chave === atual.chave);
+            if (!opcoes.atualizarMetadados || !doPacote) {
+              return atual;
+            }
+            const novo: IFluxoMetadado = {
+              ...atual,
+              rotulo: doPacote.rotulo,
+              opcoes: doPacote.opcoes,
+              colunas: doPacote.colunas,
+              avaliacao: doPacote.avaliacao,
+              ajuda: doPacote.ajuda
+            };
+            if (JSON.stringify(novo) !== JSON.stringify(atual)) {
+              atualizados++;
+            }
+            return novo;
+          });
+        metadadosFinais =
+          novos.length > 0 || atualizados > 0
+            ? await persistencia.metadados.salvar(processo.id, revisados.concat(novos))
+            : atuais;
+        const mantidos = pacote.metadados.length - novos.length - atualizados;
+        passos.push({
+          ok: true,
+          texto: `Campos: ${novos.length} novo(s)` +
+            (atualizados > 0 ? `, ${atualizados} atualizado(s)` : '') +
+            (mantidos > 0 ? `, ${mantidos} já existia(m) sem mudança${opcoes.atualizarMetadados ? '' : ' (mantidos como estavam)'}` : '') +
+            '.'
+        });
       } catch (erro) {
         return falha(`Campos (metadados) não gravados: ${mensagem(erro)}`, processo);
       }
@@ -283,7 +316,9 @@ export class PacoteProcessoService {
   // ainda não houver publicada) + campos; com o ambiente, inclui as telas.
   public async exportar(
     processoId: string,
-    ambiente?: IAmbiente
+    ambiente?: IAmbiente,
+    // Versão específica (editor); sem ela, a publicada ou o rascunho.
+    versao?: number
   ): Promise<IPacoteProcesso> {
     const persistencia = obterPersistenciaFluxo(this.dataverse);
     const referencias = await this.referencias();
@@ -297,6 +332,7 @@ export class PacoteProcessoService {
       persistencia.catalogo.listarVersoes(processo.id)
     ]);
     const definicao =
+      (versao !== undefined ? versoes.find(item => item.versao === versao) : undefined) ||
       versoes.find(item => item.status === 'publicado') ||
       versoes.find(item => item.status === 'rascunho');
 

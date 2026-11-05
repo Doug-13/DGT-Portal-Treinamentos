@@ -71,6 +71,17 @@ import ModalConfiguracaoFluxo, {
   IAbaModalFluxo
 } from './ModalConfiguracaoFluxo';
 
+import ImportarPacoteModal from './ImportarPacoteModal';
+
+import {
+  PacoteProcessoService,
+  baixarJson
+} from '../../services/pacoteProcesso/PacoteProcessoService';
+
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
 import PainelMetadados from
   './PainelMetadados';
 
@@ -105,6 +116,9 @@ export interface IProcessoFluxoEditorProps {
 
   // Fluxos de outros processos que podem ser copiados para este.
   fontesCopia?: IFonteCopiaFluxo[];
+
+  // Importar/Exportar JSON (pacote de processo) — só no Dataverse.
+  dataverseService?: DataverseService;
 
   // Chamado depois de publicar uma versão (para oferecer a
   // atualização das revisões em andamento).
@@ -260,6 +274,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   areas,
   usuarios,
   gravandoMetadados,
+  dataverseService,
   fontesCopia,
   onPublicado
 }) => {
@@ -294,6 +309,10 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
 
   const [mensagens, setMensagens] =
     React.useState<{ tipo: 'erro' | 'ok'; titulo: string; textos: string[] } | undefined>(undefined);
+
+  // Importar/Exportar JSON
+  const [importarJsonAberto, setImportarJsonAberto] = React.useState(false);
+  const [exportandoJson, setExportandoJson] = React.useState(false);
 
   const [processando, setProcessando] =
     React.useState<boolean>(false);
@@ -1164,6 +1183,23 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: COR_AZUL }}>
 
+      {
+        importarJsonAberto && dataverseService && (
+          <ImportarPacoteModal
+            dataverseService={dataverseService}
+            ambientes={[]}
+            processoFixo={{ codigo: processo.codigo, nome: processo.nome }}
+            onFechar={() => setImportarJsonAberto(false)}
+            onConcluido={() => {
+              // Recarrega versões e campos; mostra o rascunho novo.
+              onAlterado()
+                .then(() => setVersaoSelecionada(undefined))
+                .catch((error: unknown) => console.error(error));
+            }}
+          />
+        )
+      }
+
       {/* VERSÕES */}
       <section style={{ ...estiloCartao, padding: '14px 20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={estiloRotulo}>Versões</span>
@@ -1489,6 +1525,48 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
             >
               Exportar .bpmn
             </button>
+
+            {
+              dataverseService && !catalogo.local && (
+                <>
+                  {
+                    podeEditar && (
+                      <button
+                        type="button"
+                        disabled={processando}
+                        onClick={() => setImportarJsonAberto(true)}
+                        style={estiloBotao(false, processando)}
+                        title="Atualizar o fluxo e os campos deste processo com um pacote JSON (ex.: ajustado por IA)"
+                      >
+                        Importar JSON
+                      </button>
+                    )
+                  }
+                  <button
+                    type="button"
+                    disabled={processando || exportandoJson}
+                    onClick={() => {
+                      const exportarJson = async (): Promise<void> => {
+                        setExportandoJson(true);
+                        try {
+                          const pacote = await new PacoteProcessoService(dataverseService).exportar(processo.id, undefined, definicaoSelecionada.versao);
+                          baixarJson(`${(processo.codigo || 'processo').toLowerCase()}_v${definicaoSelecionada.versao}.pacote.json`, pacote);
+                        } catch (erro) {
+                          setMensagens({ tipo: 'erro', titulo: 'Não foi possível exportar o JSON.', textos: [erro instanceof Error ? erro.message : String(erro)] });
+                        } finally {
+                          setExportandoJson(false);
+                        }
+                      };
+                      exportarJson().catch((error: unknown) => console.error(error));
+                    }}
+                    style={estiloBotao(false, processando || exportandoJson)}
+                    title={editavel ? 'Exporta a versão gravada: salve o rascunho antes para incluir as últimas alterações.' : 'Exporta esta versão com os campos do processo.'}
+                  >
+                    {exportandoJson ? 'Exportando...' : 'Exportar JSON'}
+                  </button>
+                </>
+              )
+            }
 
             {
               !temRascunho && processosComFluxo.length > 0 && (

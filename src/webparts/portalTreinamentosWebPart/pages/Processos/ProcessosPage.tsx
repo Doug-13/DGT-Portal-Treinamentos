@@ -581,6 +581,7 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 versoes={versoes}
                 podeEditar={podeEditar}
                 onAlterado={() => dados.recarregar()}
+                dataverseService={dataverseService}
                 metadados={metadadosProcesso}
                 onAlterarMetadados={lista => dados.salvarMetadados(processoSelecionado.id, lista)}
                 catalogo={dados.catalogo}

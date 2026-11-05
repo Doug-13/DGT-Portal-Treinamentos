@@ -12,6 +12,7 @@ import {
   FORMATO_PACOTE,
   IReferenciasPacote,
   IResultadoInterpretacao,
+  aplicarNoProcesso,
   interpretarPacote
 } from '../../services/pacoteProcesso/pacoteProcesso';
 
@@ -38,6 +39,9 @@ export interface IImportarPacoteModalProps {
   onConcluido?: (resultado: IResultadoImportacao) => void;
   // Botão "Abrir o ambiente" no resultado.
   onAbrirAmbiente?: (chave: string) => void;
+  // Editor do fluxo: o JSON é aplicado NESTE processo (o "processo" do
+  // JSON é ignorado; pode até faltar).
+  processoFixo?: { codigo: string; nome: string };
 }
 
 const COR_AZUL = '#202A44';
@@ -74,7 +78,9 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
   const [analise, setAnalise] = React.useState<IResultadoInterpretacao | undefined>(undefined);
   const [publicar, setPublicar] = React.useState(true);
   const [criarAmbiente, setCriarAmbiente] = React.useState(true);
-  const [substituirRascunho, setSubstituirRascunho] = React.useState(false);
+  const [substituirRascunho, setSubstituirRascunho] = React.useState(!!props.processoFixo);
+  const [atualizarMetadados, setAtualizarMetadados] = React.useState(!!props.processoFixo);
+  const [avisoProcesso, setAvisoProcesso] = React.useState('');
   // Pacote sem fluxo: fluxo escolhido para o ambiente ('' = padrão).
   const [fluxoAmbienteId, setFluxoAmbienteId] = React.useState('');
   const [processando, setProcessando] = React.useState(false);
@@ -97,7 +103,15 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
     try {
       const refs = referencias || await servico.referencias();
       setReferencias(refs);
-      const lido = interpretarPacote(texto, refs);
+      // Modo editor: aplica o JSON no processo aberto.
+      let entrada: unknown = texto;
+      setAvisoProcesso('');
+      if (props.processoFixo) {
+        const aplicado = aplicarNoProcesso(texto, props.processoFixo);
+        entrada = aplicado.entrada;
+        setAvisoProcesso(aplicado.aviso);
+      }
+      const lido = interpretarPacote(entrada, refs);
       setAnalise(lido);
       setPublicar(lido.errosPublicacao.length === 0);
       setFluxoAmbienteId(lido.pacote && lido.pacote.ambiente && lido.pacote.ambiente.processoExistenteId ? lido.pacote.ambiente.processoExistenteId : '');
@@ -116,7 +130,7 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
     try {
       const feito = await servico.importar(
         analise.pacote,
-        { publicar: publicar && analise.errosPublicacao.length === 0, criarAmbiente, substituirRascunho, fluxoAmbienteId: fluxoAmbienteId || undefined },
+        { publicar: publicar && analise.errosPublicacao.length === 0, criarAmbiente, substituirRascunho, atualizarMetadados, fluxoAmbienteId: fluxoAmbienteId || undefined },
         props.ambientes
       );
       setResultado(feito);
@@ -162,7 +176,9 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
     >
       <div style={{ width: '100%', maxWidth: '860px', background: '#FFFFFF', borderRadius: '10px', boxShadow: '0 20px 50px rgba(0,0,0,.25)', overflow: 'hidden', color: COR_AZUL }}>
         <div style={{ background: COR_AZUL, color: '#FFFFFF', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <h2 id="importar-pacote-titulo" style={{ margin: 0, fontSize: '16px', fontWeight: 700, flex: 1 }}>Importar processo de um JSON</h2>
+          <h2 id="importar-pacote-titulo" style={{ margin: 0, fontSize: '16px', fontWeight: 700, flex: 1 }}>
+            {props.processoFixo ? `Atualizar ${props.processoFixo.codigo} a partir de um JSON` : 'Importar processo de um JSON'}
+          </h2>
           <button type="button" aria-label="Fechar" disabled={processando} onClick={props.onFechar} style={{ border: 0, background: 'transparent', color: '#FFFFFF', fontSize: '20px', cursor: 'pointer' }}>×</button>
         </div>
 
@@ -170,6 +186,14 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
 
           {!resultado && (
             <>
+              {props.processoFixo && (
+                <div style={caixa('info')}>
+                  O JSON será aplicado <strong>neste processo ({props.processoFixo.codigo})</strong>: campos novos são acrescentados,
+                  os existentes podem ser atualizados e o fluxo do JSON vira um novo <strong>rascunho</strong> (que você pode publicar).
+                  Campos que não estão no JSON não são apagados. Dica: use <strong>Exportar JSON</strong>, ajuste o arquivo (ou peça à IA) e importe de volta.
+                </div>
+              )}
+
               <div style={caixa('info')}>
                 Cole o <strong>pacote de processo</strong> (formato <code>{FORMATO_PACOTE}</code>) — por exemplo, gerado por IA com a
                 skill de criação de processos — ou escolha o arquivo .json. O portal cria o processo, os campos, o fluxo
@@ -204,6 +228,8 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
 
           {erroGeral && <div style={caixa('erro')}>{erroGeral}</div>}
 
+          {avisoProcesso && !resultado && <div style={caixa('alerta')}>{avisoProcesso}</div>}
+
           {analise && !resultado && analise.erros.length > 0 && (
             <div style={caixa('erro')}>
               <strong>Corrija {analise.erros.length} ponto(s) no JSON:</strong>
@@ -218,7 +244,12 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
                 {processoDoPacote && (
                   <div>Processo <strong>{processoDoPacote.codigo} — {processoDoPacote.nome}</strong>: {processoExistente ? 'já existe (será usado)' : 'será criado'}{processoDoPacote.areaNome ? ` · área ${processoDoPacote.areaNome}` : ''}.</div>
                 )}
-                {processoDoPacote && <div>Campos: {pacote.metadados.length} no pacote (os que já existirem no processo são mantidos).</div>}
+                {processoDoPacote && (
+                  <div>
+                    Campos: {pacote.metadados.length} no pacote — novos são criados; os que já existem {atualizarMetadados ? 'são atualizados' : 'ficam como estão'}.
+                    Nenhum campo é apagado.
+                  </div>
+                )}
                 {definicaoDoPacote
                   ? (
                     <div>
@@ -262,7 +293,13 @@ const ImportarPacoteModal: React.FC<IImportarPacoteModalProps> = (props) => {
                 {definicaoDoPacote && (
                   <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <input type="checkbox" checked={substituirRascunho} onChange={() => setSubstituirRascunho(!substituirRascunho)} />
-                    Se o processo já tiver um rascunho de fluxo, substituí-lo
+                    Se o processo já tiver um rascunho de fluxo, substituí-lo pelo fluxo do JSON
+                  </label>
+                )}
+                {processoExistente && pacote.metadados.length > 0 && (
+                  <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="checkbox" checked={atualizarMetadados} onChange={() => setAtualizarMetadados(!atualizarMetadados)} />
+                    Atualizar os campos que já existem (rótulo, opções, colunas, avaliação, ajuda) com os do JSON
                   </label>
                 )}
               </div>

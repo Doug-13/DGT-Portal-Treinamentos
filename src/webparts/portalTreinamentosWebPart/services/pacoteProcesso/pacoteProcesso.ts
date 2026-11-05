@@ -860,6 +860,34 @@ export const interpretarPacote = (
 };
 
 // ------------------------------------------------------------
+// Editor do fluxo: aplicar o JSON no processo ABERTO
+// ------------------------------------------------------------
+
+// Troca o "processo" do JSON pelo processo aberto (código e nome). Se o
+// JSON for de outro código, devolve um aviso. Texto inválido volta como
+// está (o interpretador mostra o erro de JSON).
+export const aplicarNoProcesso = (
+  texto: string,
+  processo: { codigo: string; nome: string }
+): { entrada: unknown; aviso: string } => {
+  try {
+    const objeto = JSON.parse(texto) as { processo?: { codigo?: string } };
+    if (!objeto || typeof objeto !== 'object') {
+      return { entrada: texto, aviso: '' };
+    }
+    const original = objeto.processo && objeto.processo.codigo ? String(objeto.processo.codigo) : '';
+    return {
+      entrada: { ...objeto, processo: { ...(objeto.processo || {}), codigo: processo.codigo, nome: processo.nome } },
+      aviso: original && original.toUpperCase() !== processo.codigo.toUpperCase()
+        ? `O JSON é do processo ${original}; ele será aplicado em ${processo.codigo}.`
+        : ''
+    };
+  } catch {
+    return { entrada: texto, aviso: '' };
+  }
+};
+
+// ------------------------------------------------------------
 // Exportação (o mesmo formato, com referências amigáveis)
 // ------------------------------------------------------------
 

@@ -7,6 +7,7 @@ const path = require('path') as { join: (...partes: string[]) => string };
 import {
   FORMATO_PACOTE,
   IReferenciasPacote,
+  aplicarNoProcesso,
   exportarPacote,
   interpretarPacote
 } from './pacoteProcesso';
@@ -168,5 +169,21 @@ describe('Pacote de processo (JSON)', () => {
     const base = JSON.parse(exemplo('pacote-solicitacao-compra.json'));
     base.fluxo.elementos[5].responsaveis = [{ tipo: 'area', area: 'XPTO' }];
     expect(interpretarPacote(base, referencias).erros.join(' ')).toMatch(/Siglas cadastradas: QUA, COM/);
+  });
+
+  it('editor: o JSON é aplicado no processo aberto (mesmo de outro código ou sem processo)', () => {
+    const deOutro = aplicarNoProcesso(exemplo('pacote-plano-de-acao.json'), { codigo: 'QUA-PDA2', nome: 'Plano de ação v2' });
+    expect(deOutro.aviso).toMatch(/QUA-PDA; ele será aplicado em QUA-PDA2/);
+    const resultado = interpretarPacote(deOutro.entrada, referencias);
+    expect(resultado.erros).toEqual([]);
+    expect(resultado.pacote && resultado.pacote.processo && resultado.pacote.processo.codigo).toBe('QUA-PDA2');
+
+    const semProcesso = JSON.parse(exemplo('pacote-plano-de-acao.json'));
+    delete semProcesso.processo;
+    const aplicado = aplicarNoProcesso(JSON.stringify(semProcesso), { codigo: 'QUA-PDA', nome: 'Plano de ação' });
+    expect(aplicado.aviso).toBe('');
+    expect(interpretarPacote(aplicado.entrada, referencias).erros).toEqual([]);
+
+    expect(aplicarNoProcesso('{ quebrado', { codigo: 'X', nome: 'X' }).entrada).toBe('{ quebrado');
   });
 });

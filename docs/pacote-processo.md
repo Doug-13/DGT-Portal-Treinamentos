@@ -5,6 +5,11 @@ será criado e **importa**: processo → campos → fluxo (rascunho ou publicado
 ambiente com telas (opcional).
 
 - **Importar:** Processos → Fluxos → **Importar JSON** (ou “+ Adicionar ambiente” → **Importar JSON**).
+- **Atualizar um processo aberto:** no editor do fluxo → **Importar JSON**. O JSON é aplicado
+  **neste** processo (o `processo` do JSON é ignorado e pode faltar): campos novos são criados,
+  os existentes podem ser **atualizados** (rótulo, opções, colunas, avaliação, ajuda — nunca o tipo),
+  e o fluxo vira um novo rascunho (substitui o rascunho atual, se marcado). Nenhum campo é apagado.
+  **Exportar JSON** no editor exporta a versão selecionada (salve o rascunho antes).
 - **Exportar:** no processo aberto → **Exportar JSON**; na Configuração do ambiente → **Exportar pacote JSON**.
 - Exemplos completos e testados: `docs/exemplos/` (o build roda testes com eles).
 
