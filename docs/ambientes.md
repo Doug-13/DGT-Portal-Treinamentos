@@ -146,3 +146,53 @@ Fluxo "Nova etapa em ambiente":
   por `dgt_responsaveisetapa` direto na consulta.
 - O código sequencial é calculado no portal: dois registros criados no mesmo
   segundo no mesmo ambiente podem colidir (raro; o próximo segue normalmente).
+
+---
+
+## Telas configuráveis (modelo Arquitetura de Soluções)
+
+Cada ambiente monta as telas a partir do fluxo, sem código novo:
+
+| Tela | O que mostra | Configurável em *Personalizar telas* |
+|---|---|---|
+| **Visão geral** | Cards de resumo (contagem) que filtram a lista; lista de registros | **Visões**: nome, ícone, cor e filtro (aguardando você, meus, etapa(s), situação, prazo vencido, campo Lista/Sim-Não). **Colunas**: básicas e campos do fluxo, na ordem escolhida. Quem vê todos os registros. |
+| **Registro** | Cabeçalho + **barra de etapas** (✓ concluída, atual, a fazer). Clicar numa etapa mostra o que foi preenchido (por quem e quando) ou o que será pedido | **Etapas**: quais aparecem, ordem e nome curto. Quadro “Dados do registro”, diagrama aberto e histórico. |
+
+- Sem personalização, tudo é gerado do fluxo publicado: uma visão por etapa
+  (até 4) + “Aguardando você” + “Concluídos”, colunas básicas e todas as etapas.
+- Publicar uma nova versão do fluxo ajusta as telas sozinho: etapas removidas
+  saem, etapas novas entram visíveis, colunas de campos removidos somem.
+- Botões (Administrador ou administrador do ambiente): **Personalizar telas** e
+  **Configuração** (fluxo vinculado, liberação, dados do ambiente).
+
+### Colunas novas (rodar o script de novo)
+
+`criar-tabelas-ambientes.ps1` acrescenta (só o que falta):
+
+| Tabela | Coluna | Para quê |
+|---|---|---|
+| `dgt_ambiente` | `dgt_layoutjson` | configuração das telas |
+| `dgt_ambienteregistro` | `dgt_etapaatualid` | filtro por etapa (mesmo se renomeada) |
+| `dgt_ambienteregistro` | `dgt_valoresjson` | colunas e filtros por campo do fluxo |
+
+Sem elas o ambiente funciona com as telas geradas do fluxo, mas não salva
+personalizações nem mostra colunas/filtros de campos. Registros antigos passam a
+ter etapa e valores na próxima ação do fluxo.
+
+### Substituir um módulo programado (ex.: Arquitetura de Soluções)
+
+| Parte da Arquitetura | Ambiente configurável |
+|---|---|
+| Visão geral com cards por etapa e lista | ✓ visões + colunas |
+| Novo B.O.M. | ✓ “+ Novo(a) …” |
+| Barra de etapas 1–5 clicável | ✓ etapas do fluxo |
+| Dados da demanda (formulário) | ✓ campos da etapa (metadados) |
+| Bloqueio no Go/No-Go | ✓ decisão no fluxo (caminho de reprovação) |
+| Matriz Go/No-Go (pontuação calculada) | ⚠ tabela de critérios dá para registrar; o **cálculo automático** da nota ainda é código |
+| Seleção de kit (montador de B.O.M.) e Cálculo de HH | ✗ telas especializadas — continuam no módulo programado |
+
+Caminho sugerido: recriar o processo como ambiente para as etapas de formulário e
+decisão, e numa próxima fase permitir que uma etapa use um **componente especial**
+já existente (ex.: montador de B.O.M.) — assim o módulo programado pode ser
+desligado quando todas as etapas estiverem cobertas.
+

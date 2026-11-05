@@ -6,6 +6,8 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: telas configuráveis nos ambientes (modelo Arquitetura de Soluções) — visão geral com cards de resumo (visões com filtro) e colunas escolhidas, tela do registro com barra de etapas do processo; tudo editável em "Personalizar telas" e gerado do fluxo quando não configurado.
+
 ## [1.4.18] - 2026-11-04
 
 - Melhoria: ajustes e correções internas.
