@@ -63,6 +63,10 @@ export interface IAmbiente {
 
   // Como cada registro é chamado na tela (ex.: "Solicitação").
   rotuloRegistro: string;
+
+  // Configuração das telas (visões, colunas, etapas) em JSON — ver
+  // services/ambientes/layoutAmbiente.ts. Vazio = gerada do fluxo.
+  layoutJson: string;
 }
 
 export type SituacaoRegistroAmbiente =
@@ -94,6 +98,12 @@ export interface IAmbienteRegistro {
   situacao: SituacaoRegistroAmbiente;
 
   etapaAtual: string;
+
+  // Id do elemento do fluxo da etapa atual (filtros por etapa).
+  etapaAtualId: string;
+
+  // Valores dos campos do fluxo (colunas e filtros da visão geral).
+  valores: Record<string, string>;
 
   prazoEtapa: string;
 

@@ -11,13 +11,13 @@
     Tabela dgt_ambiente (Ambiente / Ambientes)
       dgt_chave, dgt_descricao, dgt_subtitulo, dgt_icone, dgt_ordem,
       dgt_ativo, dgt_liberadoparatodos, dgt_perfispadrao,
-      dgt_prefixocodigo, dgt_rotuloregistro,
+      dgt_prefixocodigo, dgt_rotuloregistro, dgt_layoutjson,
       dgt_Processo (Pesquisa -> dgt_processo)
 
     Tabela dgt_ambienteregistro (Registro de Ambiente / Registros de Ambiente)
       dgt_codigo, dgt_descricao, dgt_situacao, dgt_etapaatual,
       dgt_prazoetapa, dgt_responsaveisetapa, dgt_fluxoestado,
-      dgt_concluidoem,
+      dgt_concluidoem, dgt_etapaatualid, dgt_valoresjson,
       dgt_Ambiente (Pesquisa -> dgt_ambiente, exclusão RESTRITA),
       dgt_Area (Pesquisa -> dgt_area),
       dgt_Solicitante (Pesquisa -> dgt_usuario)
@@ -345,6 +345,8 @@ New-Texto   'dgt_ambiente' 'dgt_PerfisPadrao'      'Perfis com liberação padr�
 New-Texto   'dgt_ambiente' 'dgt_PrefixoCodigo'     'Prefixo do código' 20
 New-Texto   'dgt_ambiente' 'dgt_RotuloRegistro'    'Nome do registro' 100
 New-Lookup  'dgt_ambiente' 'dgt_Processo'          'Processo do fluxo' 'dgt_processo'
+# Telas configuráveis (visões, colunas, etapas) — layoutAmbiente.ts
+New-TextoLongo 'dgt_ambiente' 'dgt_LayoutJson'     'Configuração das telas (JSON)' 100000
 
 # ------------------------------------------------------------
 # 3) Colunas de dgt_ambienteregistro
@@ -360,6 +362,9 @@ New-DataHora   'dgt_ambienteregistro' 'dgt_PrazoEtapa'         'Prazo da etapa'
 New-TextoLongo 'dgt_ambienteregistro' 'dgt_ResponsaveisEtapa'  'Responsáveis da etapa (JSON)' 100000
 New-TextoLongo 'dgt_ambienteregistro' 'dgt_FluxoEstado'        'Estado do fluxo (JSON)' 1048576
 New-DataHora   'dgt_ambienteregistro' 'dgt_ConcluidoEm'        'Concluído/cancelado em'
+# Telas configuráveis: etapa atual (id do elemento) e valores dos campos
+New-Texto      'dgt_ambienteregistro' 'dgt_EtapaAtualId'       'Etapa atual (id)' 100
+New-TextoLongo 'dgt_ambienteregistro' 'dgt_ValoresJson'        'Valores dos campos (JSON)' 1048576
 
 # Exclusão RESTRITA: um ambiente com registros não pode ser apagado
 # (regra do projeto: nunca apagar histórico; desative o ambiente).

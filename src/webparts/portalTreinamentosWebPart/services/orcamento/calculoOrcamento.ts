@@ -124,19 +124,11 @@ const baseDaRegra = <T extends ILinhaCalculavel>(
   return base;
 };
 
-// Aplica as regras e devolve a lista com os valores das linhas
-// calculadas atualizados. Linhas que não mudaram continuam sendo o
-// MESMO objeto (a tabela não redesenha à toa).
-export const aplicarRegras = <T extends ILinhaCalculavel>(
+// Uma passada por todas as regras ativas, na ordem.
+const umaPassada = <T extends ILinhaCalculavel>(
   linhas: T[],
-  regras: IRegraCalculo[]
+  ativas: IRegraCalculo[]
 ): T[] => {
-
-  const ativas = regrasAtivas(regras);
-
-  if (ativas.length === 0) {
-    return linhas;
-  }
 
   let resultado = linhas.slice();
 
@@ -171,6 +163,35 @@ export const aplicarRegras = <T extends ILinhaCalculavel>(
 
   return resultado;
 };
+
+// Aplica as regras e devolve a lista com os valores das linhas
+// calculadas atualizados. Linhas que não mudaram continuam sendo o
+// MESMO objeto (a tabela não redesenha à toa).
+export const aplicarRegras = <T extends ILinhaCalculavel>(
+  linhas: T[],
+  regras: IRegraCalculo[]
+): T[] => {
+
+  const ativas = regrasAtivas(regras);
+
+  if (ativas.length === 0) {
+    return linhas;
+  }
+
+  // Recalcula até estabilizar: se uma regra usa o resultado de outra
+  // que tem ordem MAIOR (ex.: CSLL antes do ICMS), a 2ª passada corrige.
+  // Sem dependência circular, estabiliza em poucas passadas.
+  let resultado = linhas;
+  for (let passada = 0; passada < 8; passada++) {
+    const anterior = resultado;
+    resultado = umaPassada(anterior, ativas);
+    if (resultado.every((linha, indice) => linha === anterior[indice])) {
+      break;
+    }
+  }
+  return resultado;
+};
+
 
 const formatarPercentual = (valor: number): string =>
   (valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });

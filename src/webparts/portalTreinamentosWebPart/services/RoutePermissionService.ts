@@ -174,6 +174,11 @@ const regras:
     // Planejamento orçamentário
     { rota: 'planejamentoOrcamentario', perfis: ORCAMENTO },
 
+    // CRM (Dynamics 365): a entrada é controlada pelo MÓDULO "crm"
+    // (Usuários e acessos). Os registros visíveis dependem da Security
+    // Role da pessoa no ambiente do CRM.
+    { rota: 'crm', perfis: TODOS },
+
     // Ambientes dinâmicos: qualquer perfil. A entrada em CADA ambiente
     // é decidida pelo módulo "amb:<chave>" (Usuários e acessos), no
     // menu e na própria página (AmbienteService.ambienteLiberado).

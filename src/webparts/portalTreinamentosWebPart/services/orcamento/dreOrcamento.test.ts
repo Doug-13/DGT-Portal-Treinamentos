@@ -131,6 +131,15 @@ describe('DRE e regras = planilha Orçamento 2027', () => {
     expect(totalAnualDre('EBITDA', dre)).toBeCloseTo(-1040.795, 1);
   });
 
+  it('CSLL fecha com 9% do LAIR mesmo com a ordem das regras invertida', () => {
+    // ICMS, PIS, COFINS… calculados DEPOIS da CSLL (ordem maior).
+    const invertidas = regras.map(regra => ({ ...regra, ordem: regra.contaDestino === '3.1.2.01.02.005' ? 1 : regra.ordem }));
+    const linhasInvertidas = aplicarRegras(lancamentos(), invertidas);
+    const dreInvertida = calcularDre(linhasInvertidas);
+    expect(valorDe(linhasInvertidas, 'CSLL', '3.1.2.01.02.005')).toBeCloseTo(dreInvertida.LAIR[0] * 0.09, 1);
+    expect(dreInvertida.LL[0]).toBeCloseTo(-705.7247, 1);
+  });
+
   it('deduções aparecem negativas e a Lei do Bem reduz a CSLL', () => {
     expect(jan('Impostos')).toBeLessThan(0);
     // CSLL sobre prejuízo + Lei do Bem: positivos (como na planilha).

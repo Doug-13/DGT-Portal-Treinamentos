@@ -86,6 +86,29 @@ const lerListaJson = (
   }
 };
 
+// Colunas das telas configuráveis existem no Dataverse? (undefined =
+// ainda não testado). Sem elas, as consultas seguem sem essas colunas
+// e o ambiente usa o layout gerado do fluxo.
+const estadoColunasLayout: { disponivel: boolean | undefined } = { disponivel: undefined };
+
+const marcarColunasLayout = (disponivel: boolean): void => {
+  estadoColunasLayout.disponivel = disponivel;
+};
+
+const lerValoresJson = (
+  valor: unknown
+): Record<string, string> => {
+  if (!valor) {
+    return {};
+  }
+  try {
+    const objeto = JSON.parse(String(valor));
+    return objeto && typeof objeto === 'object' && !Array.isArray(objeto) ? objeto as Record<string, string> : {};
+  } catch {
+    return {};
+  }
+};
+
 // Chave técnica a partir do nome: "Licitações Públicas" → "licitacoes-publicas".
 export const gerarChaveAmbiente = (
   nome: string
@@ -268,8 +291,52 @@ export class AmbienteService {
       processoId: guid(registro[AMBIENTE.processoValor]),
       processoNome: texto(registro, AMBIENTE.processoValor + ANOTACAO_FORMATADA),
       prefixoCodigo: texto(registro, AMBIENTE.prefixoCodigo),
-      rotuloRegistro: texto(registro, AMBIENTE.rotuloRegistro) || 'Registro'
+      rotuloRegistro: texto(registro, AMBIENTE.rotuloRegistro) || 'Registro',
+      layoutJson: texto(registro, AMBIENTE.layout)
     };
+  }
+
+  private async consultarComLayout(
+    tabela: string,
+    selecaoBase: string[],
+    selecaoLayout: string[],
+    resto: string
+  ): Promise<Array<Record<string, unknown>>> {
+    if (estadoColunasLayout.disponivel !== false) {
+      try {
+        const registros =
+          await this.dataverse.listarRegistros(tabela, `$select=${selecaoBase.concat(selecaoLayout).join(',')}${resto}`);
+        marcarColunasLayout(true);
+        return registros;
+      } catch (erro) {
+        if (!/could not find a property|propert(y|ies).*(not exist|não existe)|Could not find/i.test(mensagem(erro))) {
+          throw erro;
+        }
+        marcarColunasLayout(false);
+        console.warn('[Ambientes] Colunas das telas configuráveis ainda não existem. Execute criar-tabelas-ambientes.ps1.');
+      }
+    }
+    return this.dataverse.listarRegistros(tabela, `$select=${selecaoBase.join(',')}${resto}`);
+  }
+
+  // false = falta criar as colunas (o editor de telas avisa).
+  public static telasConfiguraveisDisponiveis(): boolean {
+    return estadoColunasLayout.disponivel !== false;
+  }
+
+  // Grava a configuração das telas do ambiente.
+  public async salvarLayout(
+    ambiente: IAmbiente,
+    layoutJson: string
+  ): Promise<void> {
+    if (estadoColunasLayout.disponivel === false) {
+      throw new Error('A coluna dgt_layoutjson ainda não existe. Execute scripts/dataverse/criar-tabelas-ambientes.ps1 e recarregue o portal.');
+    }
+    await this.dataverse.atualizarRegistro(
+      TABELAS_AMBIENTE.ambiente,
+      ambiente.id,
+      { [AMBIENTE.layout]: layoutJson }
+    );
   }
 
   // Todos os ambientes (ativos e desativados), na ordem do menu.
@@ -279,14 +346,15 @@ export class AmbienteService {
 
     try {
       const registros =
-        await this.dataverse.listarRegistros(
+        await this.consultarComLayout(
           TABELAS_AMBIENTE.ambiente,
-          '$select=' + [
+          [
             AMBIENTE.id, AMBIENTE.nome, AMBIENTE.chave, AMBIENTE.descricao,
             AMBIENTE.subtitulo, AMBIENTE.icone, AMBIENTE.ordem, AMBIENTE.ativo,
             AMBIENTE.liberadoParaTodos, AMBIENTE.perfisPadrao, AMBIENTE.prefixoCodigo,
             AMBIENTE.rotuloRegistro, AMBIENTE.processoValor
-          ].join(',') +
+          ],
+          [AMBIENTE.layout],
           `&$orderby=${AMBIENTE.ordem} asc,${AMBIENTE.nome} asc`
         );
 
@@ -450,7 +518,8 @@ export class AmbienteService {
           processoId,
           processoNome,
           prefixoCodigo: dados.prefixoCodigo.trim(),
-          rotuloRegistro: dados.rotuloRegistro.trim()
+          rotuloRegistro: dados.rotuloRegistro.trim(),
+          layoutJson: ''
         }
       };
     } catch (erro) {
@@ -569,6 +638,8 @@ export class AmbienteService {
       solicitanteNome: texto(registro, REGISTRO.solicitanteValor + ANOTACAO_FORMATADA),
       situacao: situacao === 'concluido' || situacao === 'cancelado' ? situacao : 'emAndamento',
       etapaAtual: texto(registro, REGISTRO.etapaAtual),
+      etapaAtualId: texto(registro, REGISTRO.etapaAtualId),
+      valores: lerValoresJson(registro[REGISTRO.valores]),
       prazoEtapa: texto(registro, REGISTRO.prazoEtapa),
       criadoEm: texto(registro, REGISTRO.criadoEm),
       concluidoEm: texto(registro, REGISTRO.concluidoEm)
@@ -581,14 +652,15 @@ export class AmbienteService {
     ambiente: IAmbiente
   ): Promise<IAmbienteRegistro[]> {
     const registros =
-      await this.dataverse.listarRegistros(
+      await this.consultarComLayout(
         TABELAS_AMBIENTE.registro,
-        '$select=' + [
+        [
           REGISTRO.id, REGISTRO.titulo, REGISTRO.codigo, REGISTRO.descricao,
           REGISTRO.situacao, REGISTRO.etapaAtual, REGISTRO.prazoEtapa,
           REGISTRO.concluidoEm, REGISTRO.criadoEm, REGISTRO.ambienteValor,
           REGISTRO.areaValor, REGISTRO.solicitanteValor
-        ].join(',') +
+        ],
+        [REGISTRO.etapaAtualId, REGISTRO.valores],
         `&$filter=${REGISTRO.ambienteValor} eq ${ambiente.id}` +
         `&$orderby=${REGISTRO.criadoEm} desc`
       );
@@ -659,6 +731,8 @@ export class AmbienteService {
       solicitanteNome: contexto.nome,
       situacao: 'emAndamento',
       etapaAtual: '',
+      etapaAtualId: '',
+      valores: {},
       prazoEtapa: '',
       criadoEm: new Date().toISOString(),
       concluidoEm: ''

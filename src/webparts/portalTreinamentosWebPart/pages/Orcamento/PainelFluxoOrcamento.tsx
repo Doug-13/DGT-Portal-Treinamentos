@@ -74,6 +74,8 @@ export interface IPainelFluxoOrcamentoProps {
   // Sem eles, ficam os textos do Orçamento.
   rotuloFluxo?: string;
   textoConcluido?: string;
+  // Ambientes: esconder o histórico (telas configuráveis).
+  ocultarHistorico?: boolean;
 }
 
 const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
@@ -327,6 +329,7 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
       )}
 
       {/* Histórico do fluxo */}
+      {!props.ocultarHistorico && (
       <div style={{ marginTop: '14px', borderTop: `1px solid ${COR.borda}`, paddingTop: '10px' }}>
         <button
           type="button"
@@ -355,6 +358,7 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };

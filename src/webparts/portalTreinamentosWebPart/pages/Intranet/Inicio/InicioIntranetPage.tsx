@@ -152,7 +152,8 @@ const montarGrupos = (
           ? [{ titulo: 'Arquitetura de Soluções', descricao: 'B.O.M. e registros de oportunidade', icone: 'building' as IconeChave, pagina: arquitetura[0].pagina }]
           : []),
         { titulo: 'Kits', descricao: 'Catálogo de equipamentos e composição', icone: 'package', pagina: 'kits' },
-        { titulo: 'Cálculo de HH', descricao: 'Homem-hora por área para o B.O.M.', icone: 'clock', pagina: 'calculoHH' }
+        { titulo: 'Cálculo de HH', descricao: 'Homem-hora por área para o B.O.M.', icone: 'clock', pagina: 'calculoHH' },
+        { titulo: 'CRM', descricao: 'Contas, contatos, leads e oportunidades', icone: 'briefcase', pagina: 'crm' }
       ]
     },
     {

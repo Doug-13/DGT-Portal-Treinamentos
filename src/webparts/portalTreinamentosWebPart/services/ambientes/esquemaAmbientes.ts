@@ -26,6 +26,9 @@ export const AMBIENTE = {
   perfisPadrao: 'dgt_perfispadrao',
   prefixoCodigo: 'dgt_prefixocodigo',
   rotuloRegistro: 'dgt_rotuloregistro',
+  // Telas configuráveis (layoutAmbiente.ts). Coluna opcional: sem ela
+  // o ambiente usa o layout gerado do fluxo.
+  layout: 'dgt_layoutjson',
   // Lookup → dgt_processo
   processoValor: '_dgt_processo_value',
   processoBind: 'dgt_Processo@odata.bind'
@@ -38,6 +41,9 @@ export const REGISTRO = {
   descricao: 'dgt_descricao',
   situacao: 'dgt_situacao',
   etapaAtual: 'dgt_etapaatual',
+  // Colunas opcionais (telas configuráveis).
+  etapaAtualId: 'dgt_etapaatualid',
+  valores: 'dgt_valoresjson',
   prazoEtapa: 'dgt_prazoetapa',
   responsaveisEtapa: 'dgt_responsaveisetapa',
   fluxoEstado: 'dgt_fluxoestado',

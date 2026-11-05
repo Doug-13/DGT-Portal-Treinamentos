@@ -42,6 +42,7 @@ const existente = (parcial: Partial<IAmbiente>): IAmbiente => ({
   processoNome: 'Ambiente: Compras',
   prefixoCodigo: 'COM',
   rotuloRegistro: 'Pedido',
+  layoutJson: '',
   ...parcial
 });
 

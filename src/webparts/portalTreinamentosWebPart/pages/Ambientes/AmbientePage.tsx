@@ -1,14 +1,7 @@
 import * as React from 'react';
 
-import styles from
-  '../../components/PortalTreinamentos.module.scss';
-
 import ModuloCabecalho from
   '../../components/layout/ModuloCabecalho';
-
-import {
-  Icones
-} from '../../components/common/Icones';
 
 import {
   Pagina
@@ -16,8 +9,7 @@ import {
 
 import {
   IAmbiente,
-  IAmbienteRegistro,
-  SituacaoRegistroAmbiente
+  IAmbienteRegistro
 } from '../../models/Ambiente';
 
 import {
@@ -47,35 +39,38 @@ import {
   IPendenciaAmbiente
 } from '../../services/ambientes/AmbienteFluxoService';
 
-import PainelFluxoOrcamento from
-  '../Orcamento/PainelFluxoOrcamento';
+import VisaoGeralAmbiente from './VisaoGeralAmbiente';
+
+import RegistroAmbiente from './RegistroAmbiente';
+
+import AmbienteLayoutEditor from './AmbienteLayoutEditor';
+
+import {
+  IAmbienteLayout,
+  lerLayout,
+  normalizarLayout
+} from '../../services/ambientes/layoutAmbiente';
 
 import {
   COR,
   CaixaMensagem,
   FONTE,
-  Selo,
-  SeloPrazo,
   botao,
   campo,
-  cartao,
-  formatarData,
-  formatarDataHora
+  cartao
 } from '../Orcamento/orcamentoComum';
-
-import {
-  situacaoPrazo
-} from '../../services/orcamento/diasUteis';
 
 // ============================================================
 // AMBIENTE DINÂMICO (uma única tela para todos os ambientes)
 //
-// Abas:
-//   Aguardando você → registros cuja etapa atual tem você como
-//                     responsável (definido no desenho do fluxo)
-//   Meus registros  → registros que você abriu
-//   Todos           → Administrador e administrador do ambiente
-//   Configuração    → Administrador e administrador do ambiente
+// Telas configuráveis (modelo Arquitetura de Soluções), sem código
+// novo por ambiente — ver services/ambientes/layoutAmbiente.ts:
+//   Visão geral     → cards de VISÕES (contagem + filtro) e a lista
+//                     com as COLUNAS escolhidas (VisaoGeralAmbiente)
+//   Registro        → barra de ETAPAS do processo e o conteúdo de cada
+//                     etapa (RegistroAmbiente)
+//   Personalizar    → editor das telas (AmbienteLayoutEditor)
+//   Configuração    → fluxo vinculado, liberação e dados do ambiente
 //
 // Cada registro segue o fluxo publicado do processo do ambiente.
 // Os botões, campos, responsáveis e prazos de cada etapa vêm do
@@ -93,9 +88,11 @@ export interface IAmbientePageProps {
   onDesenharFluxo: (processoId: string) => void;
   // Abre o modal de edição do ambiente (Administrador global).
   onEditarAmbiente?: () => void;
+  // Telas personalizadas salvas (atualiza a lista de ambientes do portal).
+  onLayoutSalvo?: (ambienteId: string, layoutJson: string) => void;
 }
 
-type AbaAmbiente = 'pendencias' | 'meus' | 'todos' | 'config';
+type ModoAmbiente = 'inicio' | 'config';
 
 type Visao =
   | { tipo: 'lista' }
@@ -107,37 +104,6 @@ const guid = (valor?: unknown): string =>
 
 const mensagem = (erro: unknown): string =>
   erro instanceof Error ? erro.message : String(erro);
-
-const CORES_SITUACAO: Record<SituacaoRegistroAmbiente, { texto: string; cor: string; fundo: string }> = {
-  emAndamento: { texto: 'Em andamento', cor: '#0F4C81', fundo: '#E8F2FF' },
-  concluido: { texto: 'Concluído', cor: '#107C10', fundo: '#E7F6EC' },
-  cancelado: { texto: 'Cancelado', cor: '#64748b', fundo: '#F1F5F9' }
-};
-
-const SeloSituacao: React.FC<{ situacao: SituacaoRegistroAmbiente }> = ({ situacao }) => {
-  const cores = CORES_SITUACAO[situacao] || CORES_SITUACAO.emAndamento;
-  return <Selo texto={cores.texto} cor={cores.cor} fundo={cores.fundo} />;
-};
-
-const celula: React.CSSProperties = {
-  padding: '9px 10px',
-  borderTop: `1px solid ${COR.borda}`,
-  fontSize: '13px',
-  color: COR.azul,
-  verticalAlign: 'top'
-};
-
-const cabecalhoCelula: React.CSSProperties = {
-  ...celula,
-  borderTop: 0,
-  fontSize: '11.5px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '.04em',
-  color: COR.texto2,
-  textAlign: 'left',
-  background: COR.fundo
-};
 
 const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
 
@@ -157,7 +123,12 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
     [dataverseService]
   );
 
-  const [aba, setAba] = React.useState<AbaAmbiente>('pendencias');
+  const [modo, setModo] = React.useState<ModoAmbiente>('inicio');
+  const [visaoSelecionada, setVisaoSelecionada] = React.useState('');
+  // Layout salvo nesta sessão (o do portal pode estar desatualizado).
+  const [layoutJson, setLayoutJson] = React.useState(ambiente.layoutJson || '');
+  const [editorTelas, setEditorTelas] = React.useState(false);
+  const [salvandoTelas, setSalvandoTelas] = React.useState(false);
   const [visao, setVisao] = React.useState<Visao>({ tipo: 'lista' });
   const [registros, setRegistros] = React.useState<IAmbienteRegistro[]>([]);
   const [pendencias, setPendencias] = React.useState<IPendenciaAmbiente[]>([]);
@@ -228,7 +199,9 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
   // Trocar de ambiente pelo menu: volta para a lista.
   React.useEffect(() => {
     setVisao({ tipo: 'lista' });
-    setAba('pendencias');
+    setModo('inicio');
+    setVisaoSelecionada('');
+    setLayoutJson(ambiente.layoutJson || '');
     setSucesso('');
     setFiltro('');
     carregar().catch(() => undefined);
@@ -417,77 +390,43 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
     return <>{cabecalho}<CaixaMensagem tipo="erro" texto="Sem conexão com o Dataverse." /></>;
   }
 
-  const abas: Array<{ chave: AbaAmbiente; rotulo: string; icone: keyof typeof Icones; visivel: boolean }> = [
-    { chave: 'pendencias', rotulo: `Aguardando você${pendencias.length > 0 ? ` (${pendencias.length})` : ''}`, icone: 'bell', visivel: true },
-    { chave: 'meus', rotulo: 'Meus registros', icone: 'fileText', visivel: true },
-    { chave: 'todos', rotulo: 'Todos', icone: 'grid', visivel: administra },
-    { chave: 'config', rotulo: 'Configuração', icone: 'settings', visivel: administra }
-  ];
-
   const podeCriar = !!disponibilidade && disponibilidade.ativo;
 
-  const termo = filtro.trim().toLowerCase();
+  // Telas configuráveis: layout salvo ajustado ao fluxo publicado.
+  const layout: IAmbienteLayout =
+    normalizarLayout(lerLayout(layoutJson), disponibilidade ? disponibilidade.definicao : undefined);
 
-  const listaDaAba: IAmbienteRegistro[] =
-    aba === 'pendencias'
-      ? pendencias.map(item => item.registro)
-      : aba === 'meus'
-        ? registros.filter(item => guid(item.solicitanteId) === guid(contexto.usuarioId))
-        : aba === 'todos'
-          ? registros
-          : [];
+  const aguardandoIds = pendencias.map(item => item.registro.id);
 
-  const listaFiltrada =
-    listaDaAba
-      .filter(item => aba === 'pendencias' || mostrarEncerrados || item.situacao === 'emAndamento')
-      .filter(item =>
-        !termo ||
-        `${item.codigo} ${item.titulo} ${item.etapaAtual} ${item.solicitanteNome} ${item.areaNome}`.toLowerCase().indexOf(termo) >= 0
-      );
+  // Quem não administra vê só os seus e os que aguardam por ele, salvo
+  // se o layout liberar a lista completa.
+  const registrosVisiveis =
+    administra || layout.lista.todosVeemTodos
+      ? registros
+      : registros.filter(item => guid(item.solicitanteId) === guid(contexto.usuarioId) || aguardandoIds.indexOf(item.id) >= 0);
 
-  const renderTabelaRegistros = (): React.ReactNode => (
-    <div style={{ ...cartao, padding: 0, overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FONTE }}>
-        <thead>
-          <tr>
-            <th style={cabecalhoCelula}>Código</th>
-            <th style={cabecalhoCelula}>{ambiente.rotuloRegistro}</th>
-            <th style={cabecalhoCelula}>Etapa atual</th>
-            <th style={cabecalhoCelula}>Prazo da etapa</th>
-            <th style={cabecalhoCelula}>Situação</th>
-            <th style={cabecalhoCelula}>Aberto por</th>
-            <th style={cabecalhoCelula}>Aberto em</th>
-          </tr>
-        </thead>
-        <tbody>
-          {listaFiltrada.map(item => {
-            const prazo = item.prazoEtapa && item.situacao === 'emAndamento' ? situacaoPrazo(item.prazoEtapa) : undefined;
-            return (
-              <tr
-                key={item.id}
-                onClick={() => { abrirRegistro(item).catch(() => undefined); }}
-                style={{ cursor: 'pointer' }}
-                title="Abrir"
-              >
-                <td style={{ ...celula, fontWeight: 700, whiteSpace: 'nowrap' }}>{item.codigo}</td>
-                <td style={celula}>{item.titulo}{item.areaNome ? <span style={{ display: 'block', fontSize: '11.5px', color: COR.texto2 }}>{item.areaNome}</span> : null}</td>
-                <td style={celula}>{item.etapaAtual || '—'}</td>
-                <td style={{ ...celula, whiteSpace: 'nowrap' }}>{item.prazoEtapa && item.situacao === 'emAndamento' ? <SeloPrazo prazo={item.prazoEtapa} situacao={prazo} /> : '—'}</td>
-                <td style={celula}><SeloSituacao situacao={item.situacao} /></td>
-                <td style={celula}>{item.solicitanteNome || '—'}</td>
-                <td style={{ ...celula, whiteSpace: 'nowrap' }}>{formatarData(item.criadoEm)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {listaFiltrada.length === 0 && (
-        <div style={{ padding: '18px', fontSize: '13.5px', color: COR.texto2, textAlign: 'center' }}>
-          {aba === 'pendencias' ? 'Nada aguardando você neste ambiente.' : 'Nenhum registro encontrado.'}
-        </div>
-      )}
-    </div>
-  );
+  const salvarTelas = async (novo: IAmbienteLayout): Promise<string[]> => {
+    if (!servico) {
+      return ['Sem conexão com o Dataverse.'];
+    }
+    setSalvandoTelas(true);
+    try {
+      const json = JSON.stringify(novo);
+      await servico.salvarLayout(ambiente, json);
+      setLayoutJson(json);
+      if (props.onLayoutSalvo) {
+        props.onLayoutSalvo(ambiente.id, json);
+      }
+      setEditorTelas(false);
+      setVisaoSelecionada('');
+      setSucesso('Telas do ambiente salvas.');
+      return [];
+    } catch (falha) {
+      return [mensagem(falha)];
+    } finally {
+      setSalvandoTelas(false);
+    }
+  };
 
   const renderConfiguracao = (): React.ReactNode => {
     const passo = (feito: boolean, titulo: string, detalhe: React.ReactNode): React.ReactNode => (
@@ -640,100 +579,30 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
   );
 
   const renderRegistro = (registro: IAmbienteRegistro): React.ReactNode => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontFamily: FONTE }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
-        <button type="button" onClick={() => { setVisao({ tipo: 'lista' }); setSucesso(''); }} style={botao('secundario')}>
-          ← Voltar
-        </button>
-        <div style={{ flex: 1, minWidth: '240px' }}>
-          <div style={{ fontSize: '12px', color: COR.texto2, fontWeight: 700 }}>{registro.codigo}</div>
-          <div style={{ fontSize: '18px', color: COR.azul, fontWeight: 700 }}>{registro.titulo}</div>
-        </div>
-        <SeloSituacao situacao={registro.situacao} />
-        {administra && registro.situacao === 'emAndamento' && (
-          <button type="button" disabled={processando} onClick={() => { cancelar(registro).catch(() => undefined); }} style={botao('perigo', processando)}>
-            Cancelar registro
-          </button>
-        )}
-      </div>
-
-      <div style={{ ...cartao, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-        <div><div style={{ fontSize: '11.5px', color: COR.texto2, fontWeight: 700 }}>ABERTO POR</div><div style={{ fontSize: '13.5px', color: COR.azul }}>{registro.solicitanteNome || '—'}</div></div>
-        <div><div style={{ fontSize: '11.5px', color: COR.texto2, fontWeight: 700 }}>ABERTO EM</div><div style={{ fontSize: '13.5px', color: COR.azul }}>{formatarDataHora(registro.criadoEm)}</div></div>
-        <div><div style={{ fontSize: '11.5px', color: COR.texto2, fontWeight: 700 }}>ÁREA</div><div style={{ fontSize: '13.5px', color: COR.azul }}>{registro.areaNome || '—'}</div></div>
-        {registro.concluidoEm && (
-          <div><div style={{ fontSize: '11.5px', color: COR.texto2, fontWeight: 700 }}>{registro.situacao === 'cancelado' ? 'CANCELADO EM' : 'CONCLUÍDO EM'}</div><div style={{ fontSize: '13.5px', color: COR.azul }}>{formatarDataHora(registro.concluidoEm)}</div></div>
-        )}
-        {registro.descricao && (
-          <div style={{ gridColumn: '1 / -1' }}>
-            <div style={{ fontSize: '11.5px', color: COR.texto2, fontWeight: 700 }}>DESCRIÇÃO</div>
-            <div style={{ fontSize: '13.5px', color: COR.azul, whiteSpace: 'pre-line' }}>{registro.descricao}</div>
-          </div>
-        )}
-      </div>
-
-      {carregandoRegistro && <CaixaMensagem tipo="info" texto="Carregando o fluxo..." />}
-
-      {!carregandoRegistro && !estado && registro.situacao === 'emAndamento' && (
-        <div style={cartao}>
-          <div style={{ fontSize: '13.5px', color: COR.azul, marginBottom: '8px' }}>
-            O fluxo deste registro ainda não foi iniciado.
-          </div>
-          <button
-            type="button"
-            disabled={processando || !podeCriar}
-            onClick={() => { iniciarFluxo(registro).catch(() => undefined); }}
-            style={botao('principal', processando || !podeCriar)}
-          >
-            Iniciar fluxo
-          </button>
-          {!podeCriar && disponibilidade && <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '6px' }}>{disponibilidade.motivo}</div>}
-        </div>
-      )}
-
-      {!carregandoRegistro && estado && (
-        <PainelFluxoOrcamento
-          estado={estado}
-          dadosResponsaveis={fluxo ? fluxo.dadosResponsaveis(registro, estado.instancia) : {}}
-          vinculos={vinculos}
-          usuarios={usuarios}
-          podeAgir={podeAgir}
-          processando={processando}
-          onExecutar={(acaoChave, comentario, valores) => executar(registro, acaoChave, comentario, valores)}
-          rotuloFluxo={`Fluxo de ${ambiente.nome}`}
-          textoConcluido={registro.situacao === 'cancelado' ? 'Registro cancelado' : `✓ ${ambiente.rotuloRegistro} concluído(a) — fluxo encerrado`}
-          diagramaAberto={false}
-        />
-      )}
-    </div>
+    <RegistroAmbiente
+      ambiente={ambiente}
+      registro={registro}
+      layout={layout}
+      estado={estado}
+      carregando={carregandoRegistro}
+      podeAgir={podeAgir}
+      processando={processando}
+      podeCancelar={administra}
+      podeIniciar={podeCriar}
+      motivoNaoIniciar={disponibilidade ? disponibilidade.motivo : undefined}
+      dadosResponsaveis={fluxo && estado ? fluxo.dadosResponsaveis(registro, estado.instancia) : {}}
+      vinculos={vinculos}
+      usuarios={usuarios}
+      onVoltar={() => { setVisao({ tipo: 'lista' }); setSucesso(''); }}
+      onCancelar={() => { cancelar(registro).catch(() => undefined); }}
+      onIniciarFluxo={() => { iniciarFluxo(registro).catch(() => undefined); }}
+      onExecutar={(acaoChave, comentario, valores) => executar(registro, acaoChave, comentario, valores)}
+    />
   );
 
   return (
     <div style={{ fontFamily: FONTE }}>
       {cabecalho}
-
-      {visao.tipo === 'lista' && (
-        <nav className={styles.trainingTabs}>
-          {abas.filter(item => item.visivel).map(item => {
-            const ativo = aba === item.chave;
-            const IconeAba = Icones[item.icone];
-            return (
-              <button
-                key={item.chave}
-                type="button"
-                className={ativo ? styles.trainingTabActive : styles.trainingTab}
-                onClick={() => setAba(item.chave)}
-                aria-current={ativo ? 'page' : undefined}
-              >
-                <span style={{ display: 'inline-flex', color: ativo ? '#0874ce' : '#5C7287' }}>
-                  <IconeAba />
-                </span>
-                <strong>{item.rotulo}</strong>
-              </button>
-            );
-          })}
-        </nav>
-      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
 
@@ -748,9 +617,27 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
           <CaixaMensagem tipo="alerta" texto="Registro não encontrado (ou sem permissão de leitura)." />
         )}
 
-        {visao.tipo === 'lista' && aba === 'config' && administra && renderConfiguracao()}
+        {visao.tipo === 'lista' && modo === 'config' && administra && (
+          <>
+            <div>
+              <button type="button" onClick={() => setModo('inicio')} style={botao('secundario')}>← Visão geral</button>
+            </div>
+            {renderConfiguracao()}
+          </>
+        )}
 
-        {visao.tipo === 'lista' && aba !== 'config' && (
+        {editorTelas && (
+          <AmbienteLayoutEditor
+            layout={layout}
+            definicao={disponibilidade ? disponibilidade.definicao : undefined}
+            disponivel={AmbienteService.telasConfiguraveisDisponiveis()}
+            processando={salvandoTelas}
+            onSalvar={salvarTelas}
+            onFechar={() => setEditorTelas(false)}
+          />
+        )}
+
+        {visao.tipo === 'lista' && modo === 'inicio' && (
           <>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
               <input
@@ -760,7 +647,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
                 aria-label="Buscar registros"
                 style={{ ...campo, flex: 1, minWidth: '220px' }}
               />
-              {aba !== 'pendencias' && (
+              {!visaoSelecionada && (
                 <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '13px', color: COR.azul, cursor: 'pointer' }}>
                   <input type="checkbox" checked={mostrarEncerrados} onChange={() => setMostrarEncerrados(!mostrarEncerrados)} />
                   Mostrar concluídos e cancelados
@@ -769,6 +656,16 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
               <button type="button" disabled={carregando} onClick={() => { carregar().catch(() => undefined); }} style={botao('secundario', carregando)}>
                 Atualizar
               </button>
+              {administra && (
+                <>
+                  <button type="button" onClick={() => setEditorTelas(true)} style={botao('secundario')} title="Visões, colunas, etapas e tela do registro">
+                    Personalizar telas
+                  </button>
+                  <button type="button" onClick={() => setModo('config')} style={botao('secundario')} title="Fluxo, liberação e dados do ambiente">
+                    Configuração
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 disabled={!podeCriar}
@@ -783,22 +680,26 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
             {!carregando && disponibilidade && !disponibilidade.ativo && (
               <CaixaMensagem
                 tipo="alerta"
-                texto={administra ? `${disponibilidade.motivo}\nUse a aba Configuração.` : 'Este ambiente ainda está sendo configurado. Novos registros serão liberados quando o fluxo for publicado.'}
+                texto={administra ? `${disponibilidade.motivo}\nUse o botão Configuração.` : 'Este ambiente ainda está sendo configurado. Novos registros serão liberados quando o fluxo for publicado.'}
               />
             )}
 
             {carregando
               ? <CaixaMensagem tipo="info" texto="Carregando registros..." />
-              : renderTabelaRegistros()}
-
-            {aba === 'pendencias' && pendencias.length > 0 && (
-              <div style={{ fontSize: '12px', color: COR.texto2 }}>
-                {pendencias.filter(item => {
-                  const prazo = item.tarefa.prazo ? situacaoPrazo(item.tarefa.prazo, item.tarefa.criadaEm) : undefined;
-                  return !!prazo && prazo.atrasado;
-                }).length} com prazo vencido.
-              </div>
-            )}
+              : (
+                <VisaoGeralAmbiente
+                  ambiente={ambiente}
+                  layout={layout}
+                  definicao={disponibilidade ? disponibilidade.definicao : undefined}
+                  registros={registrosVisiveis}
+                  contextoFiltro={{ usuarioId: contexto.usuarioId, aguardandoIds }}
+                  visaoSelecionada={visaoSelecionada}
+                  onSelecionarVisao={setVisaoSelecionada}
+                  busca={filtro}
+                  mostrarEncerrados={mostrarEncerrados}
+                  onAbrir={registro => { abrirRegistro(registro).catch(() => undefined); }}
+                />
+              )}
           </>
         )}
       </div>

@@ -6,6 +6,14 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.18] - 2026-11-04
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.17] - 2026-11-04
+
+- Melhoria: ajustes e correções internas.
+
 ## [1.4.16] - 2026-11-04
 
 - Novo: subprocesso com condição por linha — cria documentos só para as linhas em que uma coluna Lista ou Sim/Não tem os valores escolhidos (ex.: só as não conformidades).

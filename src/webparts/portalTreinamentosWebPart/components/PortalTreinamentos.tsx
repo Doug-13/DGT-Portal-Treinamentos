@@ -4647,6 +4647,12 @@ const gestaoAreas =
                   navegar('fluxos');
                 }}
 
+                onLayoutAmbienteSalvo={(ambienteId, layoutJson) =>
+                  aplicarAmbientes(
+                    ambientes.map(item => (item.id === ambienteId ? { ...item, layoutJson } : item))
+                  )
+                }
+
                 onEditarAmbiente={
                   ambienteAtual && podeCriarAmbiente(autorizacao.contexto)
                     ? () => setFormAmbiente({ ambiente: ambienteAtual })

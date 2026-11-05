@@ -11,6 +11,7 @@ import {
   diagnosticarErro,
   registrarDiagnosticoNoConsole
 } from './utils/diagnosticoDataverse';
+import { registrarFabricaCrm } from './services/crm/CrmConexao';
 
 export interface IPortalTreinamentosWebPartProps {
 }
@@ -31,6 +32,10 @@ export default class PortalTreinamentosWebPart
   }
 
   private async renderPortal(): Promise<void> {
+    // CRM (Dynamics 365): o token do ambiente do CRM só é pedido quando
+    // a tela do CRM é aberta. Falha lá não impede o portal de abrir.
+    registrarFabricaCrm(this.context.aadHttpClientFactory);
+
     try {
       const dataverseApiUrl: string =
         'https://orga1bd9fe9.api.crm2.dynamics.com/api/data/v9.2';

@@ -45,6 +45,8 @@ export type Pagina =
   | 'rhPessoas'
   // Planejamento orçamentário (Gestor e Administrador)
   | 'planejamentoOrcamentario'
+  // CRM (Dynamics 365) — consulta dos dados do ambiente DGT - CRM - POC
+  | 'crm'
   // Ambiente dinâmico (criado pelo Administrador no portal). Qual
   // ambiente está aberto fica no estado do portal (ambienteAtualChave).
   | 'ambiente';
@@ -89,6 +91,7 @@ export const ROTAS = {
   RH_PESSOAS: 'rhPessoas',
   PLANEJAMENTO_ORCAMENTARIO: 'planejamentoOrcamentario',
   AMBIENTE: 'ambiente',
+  CRM: 'crm',
 } as const;
 
 

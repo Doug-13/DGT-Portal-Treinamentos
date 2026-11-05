@@ -661,6 +661,13 @@ export interface IPortalRouterProps {
   onEditarAmbiente?:
   () => void;
 
+  // Telas do ambiente personalizadas (atualiza a lista do portal).
+  onLayoutAmbienteSalvo?:
+  (
+    ambienteId: string,
+    layoutJson: string
+  ) => void;
+
   // ============================================================
   // USUÁRIO
   // ============================================================
@@ -3525,6 +3532,7 @@ const PortalRouter:
               }
             }}
             onEditarAmbiente={props.onEditarAmbiente}
+            onLayoutSalvo={props.onLayoutAmbienteSalvo}
           />
         );
 

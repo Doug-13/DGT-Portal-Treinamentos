@@ -46,7 +46,8 @@ export type ChaveModuloPortal =
   | 'orcamento'
   | 'rh'
   | 'kits'
-  | 'hh';
+  | 'hh'
+  | 'crm';
 
 export interface IModuloPortal {
   chave: ChaveModuloPortal;
@@ -70,7 +71,8 @@ export const MODULOS_PORTAL: IModuloPortal[] = [
   { chave: 'orcamento', nome: 'Planejamento orçamentário', descricao: 'Planilha de orçamento anual. Cada um vê só a sua; o Administrador vê todas. Padrão para Gestor; demais só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] },
   { chave: 'kits', nome: 'Kits (catálogo do B.O.M.)', descricao: 'Equipamentos homologados, composição dos kits e regras do montador de B.O.M. Liberar para Arquitetura (consulta). Alterar: Administrador do módulo.', padrao: false, padraoPerfis: ['Administrador'] },
   { chave: 'hh', nome: 'Cálculo de HH', descricao: 'Homem-hora por área (Implantação, Suporte...) com as fórmulas das planilhas de HH. A versão vigente alimenta o B.O.M. Alterar: Administrador do módulo.', padrao: false, padraoPerfis: ['Administrador'] },
-  { chave: 'rh', nome: 'RH e Pessoas', descricao: 'Certificados e validades de todos os colaboradores. Liberar só para o RH.', padrao: false, padraoPerfis: ['Administrador'] }
+  { chave: 'rh', nome: 'RH e Pessoas', descricao: 'Certificados e validades de todos os colaboradores. Liberar só para o RH.', padrao: false, padraoPerfis: ['Administrador'] },
+  { chave: 'crm', nome: 'CRM', descricao: 'Contas, contatos, leads e oportunidades do Dynamics 365 (ambiente DGT - CRM - POC). Os registros visíveis dependem da Security Role da pessoa no ambiente do CRM.', padrao: false, padraoPerfis: ['Administrador'] }
 ];
 
 // Módulo a que uma página pertence (undefined = página geral, sempre
@@ -97,6 +99,10 @@ export const moduloDaPagina = (
 
   if (pagina === 'calculoHH') {
     return 'hh';
+  }
+
+  if (pagina === 'crm') {
+    return 'crm';
   }
 
   const modulo =
