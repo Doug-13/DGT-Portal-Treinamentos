@@ -28,6 +28,14 @@ import {
 } from '../fluxo/valorAvaliacao';
 
 import {
+  validarConfigComponente
+} from '../fluxo/valorComponente';
+
+import {
+  CHAVES_NATIVOS
+} from '../fluxo/componentesNativos';
+
+import {
   validarDefinicao
 } from '../fluxo/FluxoValidacao';
 
@@ -219,7 +227,7 @@ export interface IResultadoInterpretacao {
 // Listas aceitas
 // ------------------------------------------------------------
 
-const TIPOS_CAMPO: TipoCampoFluxo[] = ['avaliacao', 'simNao', 'texto', 'textoLongo', 'numero', 'data', 'lista', 'tabela', 'usuario', 'documento', 'documentos', 'area'];
+const TIPOS_CAMPO: TipoCampoFluxo[] = ['avaliacao', 'componente', 'simNao', 'texto', 'textoLongo', 'numero', 'data', 'lista', 'tabela', 'usuario', 'documento', 'documentos', 'area'];
 const TIPOS_COLUNA: TipoColunaTabela[] = ['texto', 'textoLongo', 'numero', 'data', 'simNao', 'lista', 'usuario', 'documento', 'documentos', 'area'];
 const TIPOS_ELEMENTO: TipoElementoFluxo[] = ['inicio', 'fim', 'tarefaHumana', 'tarefaSistema', 'gateway', 'eventoRevisao', 'subprocesso'];
 const TIPOS_RESPONSAVEL = ['autorRevisao', 'gestorArea', 'area', 'cargoArea', 'nivelHierarquico', 'usuario', 'campoUsuario'];
@@ -453,6 +461,9 @@ export const interpretarPacote = (
     if (meta.tipo === 'avaliacao') {
       validarConfigAvaliacao(chave, meta.avaliacao).forEach(erro => erros.push(`${onde} (${chave}): ${erro}`));
     }
+    if (meta.tipo === 'componente') {
+      validarConfigComponente(chave, meta.componente, CHAVES_NATIVOS).forEach(erro => erros.push(`${onde} (${chave}): ${erro}`));
+    }
     if (meta.tipo === 'tabela') {
       const colunas = meta.colunas || [];
       if (colunas.length === 0) {
@@ -477,6 +488,7 @@ export const interpretarPacote = (
       opcoes: meta.tipo === 'lista' ? meta.opcoes : undefined,
       colunas: meta.tipo === 'tabela' ? (meta.colunas || []).map(coluna => ({ ...coluna, rotulo: coluna.rotulo || coluna.chave })) : undefined,
       avaliacao: meta.tipo === 'avaliacao' ? meta.avaliacao : undefined,
+      componente: meta.tipo === 'componente' ? meta.componente : undefined,
       ajuda: texto(meta.ajuda) || undefined
     });
   });
@@ -629,6 +641,7 @@ export const interpretarPacote = (
           opcoes: campo.opcoes || meta.opcoes,
           colunas: campo.colunas || meta.colunas,
           avaliacao: meta.avaliacao,
+          componente: meta.componente,
           ajuda: texto(campo.ajuda) || meta.ajuda,
           mostrarQuando: campo.mostrarQuando,
           obrigatorioQuando: campo.obrigatorioQuando,

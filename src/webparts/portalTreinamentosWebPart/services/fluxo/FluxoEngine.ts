@@ -1,4 +1,9 @@
 import {
+  formatarValorComponente,
+  validarComponente
+} from './valorComponente';
+
+import {
   faixaDoValor,
   formatarValorAvaliacao,
   validarAvaliacao
@@ -271,6 +276,13 @@ export const validarAcao = (
           acao.resultado
         );
 
+      // Componente: vale o "valido" informado pela tela (envelope).
+      if (campo.tipo === 'componente') {
+        validarComponente(campo.rotulo, valor, obrigatorio)
+          .forEach(erro => erros.push(erro));
+        return;
+      }
+
       if (campo.tipo === 'avaliacao') {
         validarAvaliacao(
           campo.rotulo,
@@ -377,6 +389,10 @@ export const formatarValorCampo = (
 
   if (tipo === 'avaliacao') {
     return formatarValorAvaliacao(valor);
+  }
+
+  if (tipo === 'componente') {
+    return formatarValorComponente(valor);
   }
 
   if (tipo === 'usuario') {

@@ -1004,6 +1004,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       editavel={podeEditar}
       usoPorChave={usoPorChave}
       onAlterar={alterarMetadados}
+      dataverseService={dataverseService}
     />
   );
 

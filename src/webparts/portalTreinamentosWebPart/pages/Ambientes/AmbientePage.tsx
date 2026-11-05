@@ -627,6 +627,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
       onCancelar={() => { cancelar(registro).catch(() => undefined); }}
       onIniciarFluxo={() => { iniciarFluxo(registro).catch(() => undefined); }}
       onExecutar={(acaoChave, comentario, valores) => executar(registro, acaoChave, comentario, valores)}
+      dataverseService={dataverseService}
     />
   );
 

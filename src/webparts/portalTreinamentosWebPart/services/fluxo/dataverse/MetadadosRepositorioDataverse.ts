@@ -13,6 +13,10 @@ import {
 } from '../valorAvaliacao';
 
 import {
+  IConfigComponente
+} from '../valorComponente';
+
+import {
   IMetadadosRepositorio
 } from '../../processos/MetadadosProcessoService';
 
@@ -84,11 +88,15 @@ export class MetadadosRepositorioDataverse
           opcoes: lerJsonSeguro<string[] | undefined>(texto(registro, METADADO.opcoesJson), undefined),
           // tipo 'avaliacao': a configuração (critérios, escala, faixas)
           // fica na mesma coluna JSON, como { "avaliacao": {...} }.
-          colunas: texto(registro, METADADO.tipo) === 'avaliacao'
+          colunas: texto(registro, METADADO.tipo) === 'avaliacao' || texto(registro, METADADO.tipo) === 'componente'
             ? undefined
             : lerJsonSeguro<IColunaTabela[] | undefined>(texto(registro, METADADO.colunasJson), undefined),
           avaliacao: texto(registro, METADADO.tipo) === 'avaliacao'
             ? (lerJsonSeguro<{ avaliacao?: IConfigAvaliacao } | undefined>(texto(registro, METADADO.colunasJson), undefined) || {}).avaliacao
+            : undefined,
+          // tipo 'componente': configuração (nativo/HTML e fontes) na mesma coluna.
+          componente: texto(registro, METADADO.tipo) === 'componente'
+            ? (lerJsonSeguro<{ componente?: IConfigComponente } | undefined>(texto(registro, METADADO.colunasJson), undefined) || {}).componente
             : undefined,
           ajuda: texto(registro, METADADO.ajuda) || undefined
         }
@@ -135,6 +143,8 @@ export class MetadadosRepositorioDataverse
         [METADADO.opcoesJson]: metadado.opcoes ? JSON.stringify(metadado.opcoes) : '',
         [METADADO.colunasJson]: metadado.tipo === 'avaliacao'
           ? (metadado.avaliacao ? JSON.stringify({ avaliacao: metadado.avaliacao }) : '')
+          : metadado.tipo === 'componente'
+          ? (metadado.componente ? JSON.stringify({ componente: metadado.componente }) : '')
           : metadado.colunas ? JSON.stringify(metadado.colunas) : '',
         [METADADO.ajuda]: (metadado.ajuda || '').slice(0, 500),
         [METADADO.ativo]: true

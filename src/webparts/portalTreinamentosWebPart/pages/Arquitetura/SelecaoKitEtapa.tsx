@@ -65,6 +65,9 @@ export interface ISelecaoKitEtapaProps {
   // Simulador da aba Kits: monta a lista normalmente, mas sem a
   // barra de salvar/concluir (não existe B.O.M. por trás).
   modoSimulacao?: boolean;
+  // Uso dentro de uma etapa de fluxo (campo "Componente"): avisa a
+  // cada alteração; o fluxo grava e conclui pelos botões da etapa.
+  onAlterar?: (selecao: ISelecaoKit) => void;
 }
 
 const VERDE = '#107C10';
@@ -325,7 +328,8 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   salvando,
   somenteLeitura,
   onSalvar,
-  modoSimulacao
+  modoSimulacao,
+  onAlterar
 }) => {
 
   const [selecao, setSelecao] = React.useState<ISelecaoKit>(() => normalizarSelecao(selecaoInicial || selecaoVazia()));
@@ -349,6 +353,18 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   }, [selecaoInicial]);
 
   const resultado = React.useMemo(() => montarBom(selecao), [selecao]);
+
+  // Campo "Componente" do fluxo: repassa cada alteração (não a 1ª carga).
+  const primeiraCarga = React.useRef(true);
+  React.useEffect(() => {
+    if (primeiraCarga.current) {
+      primeiraCarga.current = false;
+      return;
+    }
+    if (onAlterar) {
+      onAlterar(selecao);
+    }
+  }, [selecao]);
   const erros = resultado.alertas.filter(a => a.nivel === 'erro');
   const bloqueado = somenteLeitura || salvando;
   const sw = selecao.softwares;

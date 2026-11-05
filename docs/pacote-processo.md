@@ -79,6 +79,7 @@ O fluxo do ambiente pode ser trocado depois em **Configuração → Trocar fluxo
 | `documento` / `documentos` | documento(s) referenciado(s) | |
 | `tabela` | linhas | `colunas` (obrigatório) |
 | `avaliacao` | matriz de critérios com nota, peso e faixas (Go/No-Go) | `avaliacao` (obrigatório) |
+| `componente` | tela personalizada: nativa (ex.: Montador de B.O.M.) ou HTML isolado | `componente` (obrigatório) — ver `docs/componentes.md` |
 
 ### Avaliação (`tipo: "avaliacao"`)
 
@@ -117,6 +118,26 @@ A faixa atingida pode decidir o caminho do fluxo e filtrar visões do ambiente.
 No fluxo: `{ "de": "decisao", "para": "bloqueado", "quando": { "campo": "goNoGo", "valor": "nogo" } }`
 (o `valor` é a **chave da faixa**). Nas etapas, `campos: [{ "chave": "goNoGo", "obrigatorio": true }]`
 exige nota em todos os critérios. Em visões do ambiente: `{ "tipo": "campo", "campo": "goNoGo", "valores": ["nogo"] }`.
+
+### Componente (`tipo: "componente"`)
+
+```json
+{ "chave": "selecaoKit", "rotulo": "Seleção de kit", "tipo": "componente",
+  "componente": { "tipo": "nativo", "nativo": "montadorBom", "parametros": { "campoCanal": "canal" } } }
+```
+
+```json
+{ "chave": "itensExtras", "rotulo": "Itens extras", "tipo": "componente",
+  "componente": {
+    "tipo": "html",
+    "html": "<div id=\"app\"></div><script>DGT.aoIniciar(function (c) { /* ... */ });</script>",
+    "fontes": [{ "nome": "itens", "tabela": "dgt_kititem", "colunas": ["dgt_codigo", "dgt_name", "dgt_categoria"], "filtroFixo": "dgt_ativo eq true", "ordem": "dgt_ordem asc" }],
+    "altura": 520
+  } }
+```
+
+Nativos disponíveis: `montadorBom`. O contrato do HTML (ponte `DGT.*`) está em `docs/componentes.md`.
+Componente **não** pode ser usado em condição de caminho.
 
 Colunas de `tabela`: `{ "chave", "rotulo", "tipo", "obrigatoria"?, "opcoes"? }` com
 `tipo` em `texto, textoLongo, numero, data, simNao, lista, usuario, documento, documentos, area`.

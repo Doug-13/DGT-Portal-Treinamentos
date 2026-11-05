@@ -2,6 +2,10 @@ import {
   IConfigAvaliacao
 } from '../services/fluxo/valorAvaliacao';
 
+import {
+  IConfigComponente
+} from '../services/fluxo/valorComponente';
+
 // ============================================================
 // MODELO DO FLUXO CONFIGURÁVEL DE DOCUMENTOS
 //
@@ -191,6 +195,9 @@ export type TipoCampoFluxo =
   // Matriz de critérios com nota, peso e faixas (Go/No-Go) — ver
   // services/fluxo/valorAvaliacao.ts.
   | 'avaliacao'
+  // Tela personalizada (nativa do portal ou HTML isolado) — ver
+  // services/fluxo/valorComponente.ts.
+  | 'componente'
   | 'simNao'
   | 'texto'
   | 'textoLongo'
@@ -260,6 +267,9 @@ export interface IFluxoMetadado {
   // tipo = 'avaliacao'
   avaliacao?: IConfigAvaliacao;
 
+  // tipo = 'componente'
+  componente?: IConfigComponente;
+
   ajuda?: string;
 }
 
@@ -283,6 +293,9 @@ export interface IFluxoCampo {
 
   // tipo = 'avaliacao'
   avaliacao?: IConfigAvaliacao;
+
+  // tipo = 'componente'
+  componente?: IConfigComponente;
 
   // Só exige este campo quando outro campo tiver o valor indicado.
   // Ex.: justificativa obrigatória apenas quando retreinamento = 'nao'.

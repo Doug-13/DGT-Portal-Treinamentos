@@ -32,6 +32,10 @@ import {
   IDadosRevisaoResponsaveis
 } from '../../services/fluxo/ResolvedorResponsaveis';
 
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
 import PainelFluxoOrcamento from
   '../Orcamento/PainelFluxoOrcamento';
 
@@ -74,6 +78,8 @@ export interface IRegistroAmbienteProps {
   onCancelar: () => void;
   onIniciarFluxo: () => void;
   onExecutar: (acaoChave: string, comentario: string, valores: Record<string, string>) => Promise<string[]>;
+  // Campos do tipo Componente (dados do Dataverse).
+  dataverseService?: DataverseService;
 }
 
 const CORES_SITUACAO: Record<SituacaoRegistroAmbiente, { texto: string; cor: string; fundo: string }> = {
@@ -292,6 +298,7 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
           textoConcluido={registro.situacao === 'cancelado' ? 'Registro cancelado' : `✓ ${ambiente.rotuloRegistro} concluído(a) — fluxo encerrado`}
           diagramaAberto={layout.registro.mostrarDiagrama}
           ocultarHistorico={!layout.registro.mostrarHistorico}
+          dataverseService={props.dataverseService}
         />
       )}
 

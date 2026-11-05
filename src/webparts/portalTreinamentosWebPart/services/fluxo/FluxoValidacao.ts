@@ -1,4 +1,12 @@
 import {
+  validarConfigComponente
+} from './valorComponente';
+
+import {
+  CHAVES_NATIVOS
+} from './componentesNativos';
+
+import {
   validarConfigAvaliacao
 } from './valorAvaliacao';
 
@@ -302,6 +310,11 @@ export const validarDefinicao = (
 
       if (metadado.tipo === 'avaliacao') {
         validarConfigAvaliacao(metadado.rotulo, metadado.avaliacao)
+          .forEach(erro => erros.push(erro));
+      }
+
+      if (metadado.tipo === 'componente') {
+        validarConfigComponente(metadado.rotulo, metadado.componente, CHAVES_NATIVOS)
           .forEach(erro => erros.push(erro));
       }
 
@@ -626,6 +639,10 @@ export const validarDefinicao = (
           (metadadoCondicao.tipo === 'documento' || metadadoCondicao.tipo === 'documentos')
         ) {
           erros.push(`A ligação "${nome}" não pode usar um documento referenciado como condição.`);
+        }
+
+        if (metadadoCondicao && metadadoCondicao.tipo === 'componente') {
+          erros.push(`A ligação "${nome}" não pode usar um componente como condição.`);
         }
 
         if (metadadoCondicao && metadadoCondicao.tipo === 'area') {

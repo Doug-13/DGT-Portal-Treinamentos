@@ -57,6 +57,15 @@ Se o usuário já deu as informações, não pergunte de novo: assuma o razoáve
 - Ambiente: `prefixoCodigo` curto (2–6 letras), `rotuloRegistro` no singular, 3–6 `visoes`
   úteis (sempre "Aguardando você"), `etapas` com rótulos curtos.
 
+### Telas personalizadas (campo `componente`)
+
+- Seleção de kit / B.O.M. → `{ "tipo": "nativo", "nativo": "montadorBom" }`.
+- Tela nova → `{ "tipo": "html", "html": "...", "fontes": [...] }`. Siga o contrato de
+  `references/componentes.md`: use só `DGT.aoIniciar`, `DGT.consultar(fonte, { coluna: valor })`
+  e `DGT.alterar({ dados, valido, erros, resumo, itens })`; nada de `fetch`, cookies ou bibliotecas
+  externas; estilos com as variáveis `--dgt-*`; reabra a tela a partir de `contexto.dados`;
+  respeite `contexto.somenteLeitura`; libere em `fontes` só as colunas que a tela usa.
+
 ## 3. Conferir antes de entregar
 
 - [ ] Um `inicio`, ao menos um `fim`, todo elemento alcançável e com saída (menos `fim`).

@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: tipo de campo "Componente" — telas personalizadas em etapas de fluxo: nativas (Montador de B.O.M. da Arquitetura, a mesma tela de Seleção de kit) ou HTML isolado (iframe sandbox) com ponte de dados somente leitura para tabelas e colunas liberadas; o "válido" da tela libera o Concluir da etapa. Guia em docs/componentes.md.
 - Novo: "Importar JSON" e "Exportar JSON" no editor do fluxo — atualiza o processo aberto com um pacote JSON (novo rascunho do fluxo, campos novos e, se marcado, atualização dos campos existentes).
 - Novo: tipo de campo "Avaliação" (modelo Matriz Go/No-Go) — critérios com nota colorida (vermelho → verde), peso, justificativa, pontuação ponderada (0–100) ou por soma, faixas com sinaleira e "Onde perde pontos"; a faixa decide caminhos do fluxo e filtra visões dos ambientes. Configurado em Processos → Metadados (com modelo Go/No-Go pronto).
 - Melhoria: pacote JSON sem fluxo — o ambiente usa um fluxo existente ("ambiente.fluxo" ou escolha na importação); botão "Abrir o ambiente" ao final da importação e lista das siglas de área quando uma não é encontrada.

@@ -33,11 +33,20 @@ export interface IPainelMetadadosProps {
   // Quantas etapas usam cada metadado (para avisar antes de excluir
   // e para travar a chave).
   usoPorChave: Record<string, number>;
+
+  // Pré-visualização de campos do tipo Componente (dados reais).
+  dataverseService?: DataverseService;
 }
 
 const COR_AZUL = '#202A44';
 const COR_CIANO = '#05C3DD';
 import EditorAvaliacao from './EditorAvaliacao';
+
+import EditorComponente from './EditorComponente';
+
+import {
+  DataverseService
+} from '../../services/DataverseService';
 
 import {
   configAvaliacaoPadrao
@@ -55,6 +64,8 @@ const TIPOS: Array<{ valor: TipoCampoFluxo; rotulo: string }> = [
   { valor: 'tabela', rotulo: 'Tabela' },
   // Matriz de critérios com nota, peso e faixas (Go/No-Go).
   { valor: 'avaliacao', rotulo: 'Avaliação (critérios com nota e peso)' },
+  // Tela personalizada: nativa do portal ou HTML isolado.
+  { valor: 'componente', rotulo: 'Componente (tela nativa ou HTML)' },
   { valor: 'usuario', rotulo: 'Usuário (busca na plataforma)' },
   { valor: 'documento', rotulo: 'Documento referenciado' },
   { valor: 'documentos', rotulo: 'Documentos referenciados (vários)' },
@@ -309,7 +320,8 @@ const PainelMetadados: React.FC<IPainelMetadadosProps> = ({
   metadados,
   editavel,
   onAlterar,
-  usoPorChave
+  usoPorChave,
+  dataverseService
 }) => {
 
   const alterar = (
@@ -409,6 +421,8 @@ const PainelMetadados: React.FC<IPainelMetadadosProps> = ({
                                 indice,
                                 tipo === 'avaliacao' && !metadado.avaliacao
                                   ? { tipo, avaliacao: configAvaliacaoPadrao() }
+                                  : tipo === 'componente' && !metadado.componente
+                                  ? { tipo, componente: { tipo: 'nativo', nativo: 'montadorBom', parametros: {} } }
                                   : tipo === 'tabela' && (!metadado.colunas || metadado.colunas.length === 0)
                                   ? {
                                     tipo,
@@ -485,6 +499,19 @@ const PainelMetadados: React.FC<IPainelMetadadosProps> = ({
                               : <span />
                           }
                         </div>
+
+                        {
+                          metadado.tipo === 'componente' && (
+                            <EditorComponente
+                              config={metadado.componente}
+                              editavel={editavel}
+                              rotuloCampo={metadado.rotulo}
+                              metadados={metadados}
+                              dataverseService={dataverseService}
+                              onAlterar={componente => alterar(indice, { componente })}
+                            />
+                          )
+                        }
 
                         {
                           metadado.tipo === 'avaliacao' && (

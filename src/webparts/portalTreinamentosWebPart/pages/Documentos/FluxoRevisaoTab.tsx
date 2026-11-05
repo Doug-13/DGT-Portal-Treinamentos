@@ -53,6 +53,7 @@ import CampoDocumentoFluxo from
 import CampoAreaFluxo from
   '../../components/fluxo/CampoAreaFluxo';
 
+import CampoComponenteFluxo from '../../components/fluxo/CampoComponenteFluxo';
 import CampoAvaliacaoFluxo from '../../components/fluxo/CampoAvaliacaoFluxo';
 import TabelaCampoFluxo from
   '../../components/fluxo/TabelaCampoFluxo';
@@ -744,6 +745,16 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
     const valor =
       valoresVisiveis[campo.chave] || '';
 
+    // Componente (somente leitura): a tela com o que foi preenchido.
+    if (campo.somenteLeitura && campo.tipo === 'componente') {
+      return (
+        <div key={campo.chave}>
+          <div style={estiloRotuloCampo}>{campo.rotulo}</div>
+          <CampoComponenteFluxo id={`fluxo-campo-${campo.chave}`} rotulo={campo.rotulo} config={campo.componente} valor={valor} desabilitado={true} dataverseService={dataverseService} valoresRegistro={valoresVisiveis} />
+        </div>
+      );
+    }
+
     // Avaliação (somente leitura): a matriz com as notas dadas.
     if (campo.somenteLeitura && campo.tipo === 'avaliacao') {
       return (
@@ -846,6 +857,29 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
       color: COR_AZUL,
       background: '#FFFFFF'
     };
+
+    if (campo.tipo === 'componente') {
+      return (
+        <fieldset
+          key={campo.chave}
+          style={{ border: `1px solid ${COR_BORDA}`, borderRadius: '6px', padding: '12px 14px', margin: 0, minWidth: 0 }}
+        >
+          <legend style={{ ...estiloRotuloCampo, padding: '0 6px', marginBottom: 0 }}>
+            {campo.rotulo}{obrigatorio ? ' *' : ''}
+          </legend>
+          <CampoComponenteFluxo
+            id={idCampo}
+            rotulo={campo.rotulo}
+            config={campo.componente}
+            valor={valor}
+            desabilitado={desabilitado}
+            onAlterar={novo => definirValor(campo.chave, novo)}
+            dataverseService={dataverseService}
+            valoresRegistro={valoresVisiveis}
+          />
+        </fieldset>
+      );
+    }
 
     if (campo.tipo === 'avaliacao') {
       return (
