@@ -603,8 +603,24 @@ export class AmbienteFluxoService {
       [REGISTRO.concluidoEm]: concluido ? (instancia.concluidoEm || new Date().toISOString()) : null
     };
 
+    // Colunas das telas configuráveis (opcionais): etapa atual (id) e
+    // os valores dos campos, para colunas e filtros da visão geral.
+    const corpoLayout: Record<string, unknown> = {
+      ...corpo,
+      [REGISTRO.etapaAtualId]: concluido || !atual ? null : atual.id,
+      [REGISTRO.valores]: JSON.stringify(instancia.valores || {}).substring(0, 1000000)
+    };
+
     try {
-      await this.dataverse.atualizarRegistro(TABELAS_AMBIENTE.registro, registro.id, corpo);
+      try {
+        await this.dataverse.atualizarRegistro(TABELAS_AMBIENTE.registro, registro.id, corpoLayout);
+      } catch (erroLayout) {
+        if (!/could not find a property|propert(y|ies).*(not exist|não existe)|Could not find/i.test(mensagem(erroLayout))) {
+          throw erroLayout;
+        }
+        // Colunas ainda não criadas: grava o essencial.
+        await this.dataverse.atualizarRegistro(TABELAS_AMBIENTE.registro, registro.id, corpo);
+      }
       return '';
     } catch (erro) {
       return `O fluxo avançou, mas a situação do registro não foi atualizada: ${mensagem(erro)}`;
