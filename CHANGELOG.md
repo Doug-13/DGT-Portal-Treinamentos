@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: tipo de campo "Avaliação" (modelo Matriz Go/No-Go) — critérios com nota colorida (vermelho → verde), peso, justificativa, pontuação ponderada (0–100) ou por soma, faixas com sinaleira e "Onde perde pontos"; a faixa decide caminhos do fluxo e filtra visões dos ambientes. Configurado em Processos → Metadados (com modelo Go/No-Go pronto).
 - Melhoria: pacote JSON sem fluxo — o ambiente usa um fluxo existente ("ambiente.fluxo" ou escolha na importação); botão "Abrir o ambiente" ao final da importação e lista das siglas de área quando uma não é encontrada.
 - Novo: importar e exportar processos em JSON ("pacote de processo") — um arquivo cria o processo, os campos, o fluxo (rascunho ou publicado) e o ambiente com as telas; ideal para gerar fluxos por IA. Botões em Processos → Fluxos, no "+ Adicionar ambiente" e na Configuração do ambiente. Formato em docs/pacote-processo.md.
 - Novo: telas configuráveis nos ambientes (modelo Arquitetura de Soluções) — visão geral com cards de resumo (visões com filtro) e colunas escolhidas, tela do registro com barra de etapas do processo; tudo editável em "Personalizar telas" e gerado do fluxo quando não configurado.

@@ -42,6 +42,7 @@ import CampoUsuarioFluxo from
 import CampoDocumentoFluxo from
   '../../components/fluxo/CampoDocumentoFluxo';
 
+import CampoAvaliacaoFluxo from '../../components/fluxo/CampoAvaliacaoFluxo';
 import TabelaCampoFluxo from
   '../../components/fluxo/TabelaCampoFluxo';
 
@@ -412,6 +413,16 @@ const EdicaoAdministradorModal: React.FC<IEdicaoAdministradorModalProps> = (prop
         );
       case 'area':
         return <CampoAreaFluxo id={id} valor={valor} dataverseService={props.dataverseService} onAlterar={novo => definirValor(item.chave, novo)} />;
+      case 'avaliacao':
+        return (
+          <CampoAvaliacaoFluxo
+            id={id}
+            rotulo={item.rotulo}
+            config={item.avaliacao}
+            valor={valor}
+            onAlterar={novo => definirValor(item.chave, novo)}
+          />
+        );
       case 'tabela':
         return (
           <TabelaCampoFluxo

@@ -196,7 +196,25 @@ export const FormCondicaoLigacao: React.FC<IFormCondicaoLigacaoProps> = ({
             <div>
               <label htmlFor={`${prefixoId}-valor`} style={estiloRotulo}>Valor</label>
               {
-                metadado && (metadado.tipo === 'simNao' || metadado.tipo === 'lista')
+                metadado && metadado.tipo === 'avaliacao'
+                  ? (
+                    // Avaliação: o caminho compara a FAIXA atingida.
+                    <select
+                      id={`${prefixoId}-valor`}
+                      value={config.valorEsperado || ''}
+                      disabled={!editavel}
+                      onChange={evento => onAlterar({ valorEsperado: evento.target.value })}
+                      style={estiloEntrada}
+                    >
+                      <option value="">Selecione a faixa...</option>
+                      {
+                        (metadado.avaliacao ? metadado.avaliacao.faixas : []).map(
+                          faixa => <option key={faixa.chave} value={faixa.chave}>{faixa.rotulo}</option>
+                        )
+                      }
+                    </select>
+                  )
+                  : metadado && (metadado.tipo === 'simNao' || metadado.tipo === 'lista')
                   ? (
                     <select
                       id={`${prefixoId}-valor`}
@@ -274,10 +292,17 @@ export const descreverCondicao = (
       return 'quando o campo… (escolha o campo)';
     }
 
+    const faixa =
+      metadado.tipo === 'avaliacao' && metadado.avaliacao
+        ? metadado.avaliacao.faixas.find(item => item.chave === config.valorEsperado)
+        : undefined;
+
     const valor =
       metadado.tipo === 'simNao'
         ? (config.valorEsperado === 'sim' ? 'Sim' : config.valorEsperado === 'nao' ? 'Não' : '…')
-        : (config.valorEsperado || '…');
+        : faixa
+          ? faixa.rotulo
+          : (config.valorEsperado || '…');
 
     return `quando “${metadado.rotulo}” for ${valor}`;
   }

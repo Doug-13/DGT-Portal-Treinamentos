@@ -73,6 +73,45 @@ O fluxo do ambiente pode ser trocado depois em **Configuração → Trocar fluxo
 | `area` | área | |
 | `documento` / `documentos` | documento(s) referenciado(s) | |
 | `tabela` | linhas | `colunas` (obrigatório) |
+| `avaliacao` | matriz de critérios com nota, peso e faixas (Go/No-Go) | `avaliacao` (obrigatório) |
+
+### Avaliação (`tipo: "avaliacao"`)
+
+Critérios com nota (escala com cores vermelho → verde), peso, pontuação e **faixas** (sinaleira).
+A faixa atingida pode decidir o caminho do fluxo e filtrar visões do ambiente.
+
+```json
+{
+  "chave": "goNoGo", "rotulo": "Matriz Go/No-Go", "tipo": "avaliacao",
+  "avaliacao": {
+    "criterios": [
+      { "chave": "aderencia", "rotulo": "Aderência ao portfólio", "descricao": "Compatibilidade com nossas soluções", "peso": 20 },
+      { "chave": "tecnica", "rotulo": "Viabilidade técnica", "peso": 20 },
+      { "chave": "prazo", "rotulo": "Prazo", "peso": 10 }
+    ],
+    "escala": { "minimo": 1, "maximo": 5, "rotulos": ["Muito desfavorável", "Desfavorável", "Aceitável", "Favorável", "Muito favorável"] },
+    "calculo": "ponderada",
+    "faixas": [
+      { "chave": "go", "rotulo": "GO", "minimo": 80, "cor": "#107C10" },
+      { "chave": "restricao", "rotulo": "GO com restrição", "minimo": 60, "cor": "#B45309" },
+      { "chave": "nogo", "rotulo": "NO-GO", "minimo": 0, "cor": "#B42318" }
+    ],
+    "justificativaAte": 2
+  }
+}
+```
+
+| Campo | Regra |
+|---|---|
+| `criterios` | ≥ 1; `chave` camelCase única; `peso` > 0 |
+| `escala` | inteiros, `minimo` ≥ 0, `maximo` até 10; `rotulos` opcionais, um por nota |
+| `calculo` | `ponderada` = 0 a 100 (pesos viram %); `soma` = soma de nota × peso |
+| `faixas` | chave camelCase, nome, `minimo` (pontos) e cor; **uma faixa com `minimo` 0** é obrigatória. Vale a de maior mínimo atingido |
+| `justificativaAte` | opcional: justificativa obrigatória para notas ≤ este valor |
+
+No fluxo: `{ "de": "decisao", "para": "bloqueado", "quando": { "campo": "goNoGo", "valor": "nogo" } }`
+(o `valor` é a **chave da faixa**). Nas etapas, `campos: [{ "chave": "goNoGo", "obrigatorio": true }]`
+exige nota em todos os critérios. Em visões do ambiente: `{ "tipo": "campo", "campo": "goNoGo", "valores": ["nogo"] }`.
 
 Colunas de `tabela`: `{ "chave", "rotulo", "tipo", "obrigatoria"?, "opcoes"? }` com
 `tipo` em `texto, textoLongo, numero, data, simNao, lista, usuario, documento, documentos, area`.

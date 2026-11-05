@@ -128,6 +128,7 @@ export const aplicarMetadadosNaDefinicao = (
                   tipo: metadado.tipo,
                   opcoes: metadado.opcoes,
                   colunas: metadado.colunas,
+                  avaliacao: metadado.avaliacao,
                   ajuda: metadado.ajuda
                 }
                 : campo;

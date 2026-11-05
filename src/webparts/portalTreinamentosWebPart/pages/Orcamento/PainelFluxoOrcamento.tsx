@@ -32,6 +32,7 @@ import {
 } from '../../services/orcamento/diasUteis';
 
 import FluxoDiagrama from '../../components/fluxo/FluxoDiagrama';
+import CampoAvaliacaoFluxo from '../../components/fluxo/CampoAvaliacaoFluxo';
 import TabelaCampoFluxo from '../../components/fluxo/TabelaCampoFluxo';
 import CampoUsuarioFluxo from '../../components/fluxo/CampoUsuarioFluxo';
 
@@ -143,6 +144,19 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
     const valor = valoresConsolidados[item.chave] || '';
     const somenteLeitura = item.somenteLeitura || !props.podeAgir;
     const alterar = (novo: string): void => setValores(atual => ({ ...atual, [item.chave]: novo }));
+
+    if (item.tipo === 'avaliacao') {
+      return (
+        <CampoAvaliacaoFluxo
+          id={`orc-${item.chave}`}
+          rotulo={item.rotulo}
+          config={item.avaliacao}
+          valor={valor}
+          desabilitado={somenteLeitura || props.processando}
+          onAlterar={alterar}
+        />
+      );
+    }
 
     if (item.tipo === 'tabela') {
       return (
@@ -269,7 +283,7 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
           {elemento.campos.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px', marginBottom: '10px' }}>
               {elemento.campos.map(item => (
-                <label key={item.chave} style={{ display: 'block', gridColumn: item.tipo === 'tabela' || item.tipo === 'textoLongo' ? '1 / -1' : undefined }}>
+                <label key={item.chave} style={{ display: 'block', gridColumn: item.tipo === 'tabela' || item.tipo === 'textoLongo' || item.tipo === 'avaliacao' ? '1 / -1' : undefined }}>
                   <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: COR.azul, marginBottom: '4px' }}>
                     {item.rotulo}{item.obrigatorio ? ' *' : ''}
                   </span>

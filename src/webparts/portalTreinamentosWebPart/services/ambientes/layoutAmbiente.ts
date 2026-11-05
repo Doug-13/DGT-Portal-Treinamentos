@@ -1,4 +1,8 @@
 import {
+  faixaDoValor
+} from '../fluxo/valorAvaliacao';
+
+import {
   IFluxoDefinicao,
   IFluxoElemento,
   IFluxoInstancia,
@@ -294,7 +298,9 @@ export const registroAtendeVisao = (
     case 'situacao':
       return filtro.situacoes.indexOf(registro.situacao) >= 0;
     case 'campo': {
-      const valor = ((registro.valores || {})[filtro.campo] || '').trim().toLowerCase();
+      const bruto = (registro.valores || {})[filtro.campo] || '';
+      // Avaliação: compara a faixa atingida (ex.: "nogo").
+      const valor = (faixaDoValor(bruto) || bruto).trim().toLowerCase();
       return filtro.valores.some(item => (item || '').trim().toLowerCase() === valor);
     }
     default:
@@ -319,17 +325,22 @@ export const descreverFiltro = (
     case 'situacao': return `Situação: ${filtro.situacoes.map(item => item === 'emAndamento' ? 'Em andamento' : item === 'concluido' ? 'Concluído' : 'Cancelado').join(' ou ')}`;
     case 'campo': {
       const campo = definicao && definicao.metadados ? definicao.metadados.find(item => item.chave === filtro.campo) : undefined;
-      return `${campo ? campo.rotulo : filtro.campo} = ${filtro.valores.map(item => item === 'sim' ? 'Sim' : item === 'nao' ? 'Não' : item).join(' ou ')}`;
+      const nome = (valor: string): string => {
+        const faixa = campo && campo.avaliacao ? campo.avaliacao.faixas.find(item => item.chave === valor) : undefined;
+        return faixa ? faixa.rotulo : valor === 'sim' ? 'Sim' : valor === 'nao' ? 'Não' : valor;
+      };
+      return `${campo ? campo.rotulo : filtro.campo} = ${filtro.valores.map(nome).join(' ou ')}`;
     }
     default: return '';
   }
 };
 
-// Campos do fluxo que podem filtrar uma visão (Lista ou Sim/Não).
+// Campos do fluxo que podem filtrar uma visão (Lista, Sim/Não ou a
+// faixa de uma Avaliação).
 export const camposFiltraveis = (
   definicao?: IFluxoDefinicao
 ): IFluxoMetadado[] =>
-  ((definicao && definicao.metadados) || []).filter(item => item.tipo === 'lista' || item.tipo === 'simNao');
+  ((definicao && definicao.metadados) || []).filter(item => item.tipo === 'lista' || item.tipo === 'simNao' || item.tipo === 'avaliacao');
 
 // ------------------------------------------------------------
 // Barra de etapas do registro

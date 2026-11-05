@@ -9,6 +9,10 @@ import {
 } from '../../DataverseService';
 
 import {
+  IConfigAvaliacao
+} from '../valorAvaliacao';
+
+import {
   IMetadadosRepositorio
 } from '../../processos/MetadadosProcessoService';
 
@@ -78,7 +82,14 @@ export class MetadadosRepositorioDataverse
           rotulo: texto(registro, METADADO.nome),
           tipo: (texto(registro, METADADO.tipo) || 'texto') as TipoCampoFluxo,
           opcoes: lerJsonSeguro<string[] | undefined>(texto(registro, METADADO.opcoesJson), undefined),
-          colunas: lerJsonSeguro<IColunaTabela[] | undefined>(texto(registro, METADADO.colunasJson), undefined),
+          // tipo 'avaliacao': a configuração (critérios, escala, faixas)
+          // fica na mesma coluna JSON, como { "avaliacao": {...} }.
+          colunas: texto(registro, METADADO.tipo) === 'avaliacao'
+            ? undefined
+            : lerJsonSeguro<IColunaTabela[] | undefined>(texto(registro, METADADO.colunasJson), undefined),
+          avaliacao: texto(registro, METADADO.tipo) === 'avaliacao'
+            ? (lerJsonSeguro<{ avaliacao?: IConfigAvaliacao } | undefined>(texto(registro, METADADO.colunasJson), undefined) || {}).avaliacao
+            : undefined,
           ajuda: texto(registro, METADADO.ajuda) || undefined
         }
       })
@@ -122,7 +133,9 @@ export class MetadadosRepositorioDataverse
         [METADADO.tipo]: metadado.tipo,
         [METADADO.ordem]: indice + 1,
         [METADADO.opcoesJson]: metadado.opcoes ? JSON.stringify(metadado.opcoes) : '',
-        [METADADO.colunasJson]: metadado.colunas ? JSON.stringify(metadado.colunas) : '',
+        [METADADO.colunasJson]: metadado.tipo === 'avaliacao'
+          ? (metadado.avaliacao ? JSON.stringify({ avaliacao: metadado.avaliacao }) : '')
+          : metadado.colunas ? JSON.stringify(metadado.colunas) : '',
         [METADADO.ajuda]: (metadado.ajuda || '').slice(0, 500),
         [METADADO.ativo]: true
       };

@@ -1,3 +1,7 @@
+import {
+  IConfigAvaliacao
+} from '../services/fluxo/valorAvaliacao';
+
 // ============================================================
 // MODELO DO FLUXO CONFIGURÁVEL DE DOCUMENTOS
 //
@@ -184,6 +188,9 @@ export interface IFluxoAcao {
 
 // Campo que precisa ser preenchido na etapa antes de concluir.
 export type TipoCampoFluxo =
+  // Matriz de critérios com nota, peso e faixas (Go/No-Go) — ver
+  // services/fluxo/valorAvaliacao.ts.
+  | 'avaliacao'
   | 'simNao'
   | 'texto'
   | 'textoLongo'
@@ -250,6 +257,9 @@ export interface IFluxoMetadado {
   // tipo = 'tabela' (o valor é gravado como JSON: lista de linhas)
   colunas?: IColunaTabela[];
 
+  // tipo = 'avaliacao'
+  avaliacao?: IConfigAvaliacao;
+
   ajuda?: string;
 }
 
@@ -270,6 +280,9 @@ export interface IFluxoCampo {
 
   // tipo = 'tabela'
   colunas?: IColunaTabela[];
+
+  // tipo = 'avaliacao'
+  avaliacao?: IConfigAvaliacao;
 
   // Só exige este campo quando outro campo tiver o valor indicado.
   // Ex.: justificativa obrigatória apenas quando retreinamento = 'nao'.

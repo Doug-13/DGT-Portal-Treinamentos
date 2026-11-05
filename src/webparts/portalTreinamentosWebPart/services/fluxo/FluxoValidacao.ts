@@ -1,4 +1,8 @@
 import {
+  validarConfigAvaliacao
+} from './valorAvaliacao';
+
+import {
   validarConfigSubprocesso
 } from './subprocesso/regrasSubprocesso';
 
@@ -294,6 +298,11 @@ export const validarDefinicao = (
         (!metadado.opcoes || metadado.opcoes.filter(opcao => !!opcao.trim()).length === 0)
       ) {
         erros.push(`Informe as opções da lista "${metadado.rotulo}".`);
+      }
+
+      if (metadado.tipo === 'avaliacao') {
+        validarConfigAvaliacao(metadado.rotulo, metadado.avaliacao)
+          .forEach(erro => erros.push(erro));
       }
 
       if (metadado.tipo === 'tabela') {
@@ -621,6 +630,19 @@ export const validarDefinicao = (
 
         if (metadadoCondicao && metadadoCondicao.tipo === 'area') {
           erros.push(`A ligação "${nome}" não pode usar um campo de área como condição.`);
+        }
+
+        // Avaliação: a condição compara a FAIXA atingida (chave).
+        if (
+          metadadoCondicao &&
+          metadadoCondicao.tipo === 'avaliacao' &&
+          (transicao.valorEsperado || '').trim() &&
+          !(metadadoCondicao.avaliacao && metadadoCondicao.avaliacao.faixas.some(faixa => faixa.chave === transicao.valorEsperado))
+        ) {
+          erros.push(
+            `A ligação "${nome}" compara a avaliação "${metadadoCondicao.rotulo}" com "${transicao.valorEsperado}", que não é uma faixa dela` +
+            (metadadoCondicao.avaliacao ? ` (use: ${metadadoCondicao.avaliacao.faixas.map(faixa => faixa.chave).join(', ')}).` : '.')
+          );
         }
 
         if (!(transicao.valorEsperado || '').trim()) {

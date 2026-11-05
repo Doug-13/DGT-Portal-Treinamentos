@@ -37,6 +37,12 @@ export interface IPainelMetadadosProps {
 
 const COR_AZUL = '#202A44';
 const COR_CIANO = '#05C3DD';
+import EditorAvaliacao from './EditorAvaliacao';
+
+import {
+  configAvaliacaoPadrao
+} from '../../services/fluxo/valorAvaliacao';
+
 const COR_BORDA = '#D9D9D6';
 
 const TIPOS: Array<{ valor: TipoCampoFluxo; rotulo: string }> = [
@@ -47,6 +53,8 @@ const TIPOS: Array<{ valor: TipoCampoFluxo; rotulo: string }> = [
   { valor: 'simNao', rotulo: 'Sim / Não' },
   { valor: 'lista', rotulo: 'Lista de opções' },
   { valor: 'tabela', rotulo: 'Tabela' },
+  // Matriz de critérios com nota, peso e faixas (Go/No-Go).
+  { valor: 'avaliacao', rotulo: 'Avaliação (critérios com nota e peso)' },
   { valor: 'usuario', rotulo: 'Usuário (busca na plataforma)' },
   { valor: 'documento', rotulo: 'Documento referenciado' },
   { valor: 'documentos', rotulo: 'Documentos referenciados (vários)' },
@@ -399,7 +407,9 @@ const PainelMetadados: React.FC<IPainelMetadadosProps> = ({
                               const tipo = evento.target.value as TipoCampoFluxo;
                               alterar(
                                 indice,
-                                tipo === 'tabela' && (!metadado.colunas || metadado.colunas.length === 0)
+                                tipo === 'avaliacao' && !metadado.avaliacao
+                                  ? { tipo, avaliacao: configAvaliacaoPadrao() }
+                                  : tipo === 'tabela' && (!metadado.colunas || metadado.colunas.length === 0)
                                   ? {
                                     tipo,
                                     colunas: [
@@ -475,6 +485,17 @@ const PainelMetadados: React.FC<IPainelMetadadosProps> = ({
                               : <span />
                           }
                         </div>
+
+                        {
+                          metadado.tipo === 'avaliacao' && (
+                            <EditorAvaliacao
+                              config={metadado.avaliacao}
+                              editavel={editavel}
+                              rotuloCampo={metadado.rotulo}
+                              onAlterar={avaliacao => alterar(indice, { avaliacao })}
+                            />
+                          )
+                        }
 
                         {
                           metadado.tipo === 'tabela' && (

@@ -49,6 +49,9 @@ Se o usuário já deu as informações, não pergunte de novo: assuma o razoáve
 - Decisão (`gateway`): um caminho por condição + **um** caminho `"padrao": true`.
   Condição por campo só com `simNao`, `lista`, `texto`, `numero` ou `data`.
 - Não informe `posicao` nem `pontos`: o portal desenha sozinho.
+- Avaliação/pontuação por critérios (Go/No-Go, qualificação, matriz de risco): use um metadado
+  `tipo: "avaliacao"` com critérios, pesos e faixas; decida caminhos pela faixa
+  (`quando: { campo, valor: <chave da faixa> }`).
 - `subprocesso.fluxo` = código de um processo que **já existe** no portal (ou que será importado
   antes — diga a ordem ao usuário).
 - Ambiente: `prefixoCodigo` curto (2–6 letras), `rotuloRegistro` no singular, 3–6 `visoes`

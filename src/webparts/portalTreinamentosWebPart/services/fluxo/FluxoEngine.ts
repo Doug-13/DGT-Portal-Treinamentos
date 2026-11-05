@@ -1,4 +1,10 @@
 import {
+  faixaDoValor,
+  formatarValorAvaliacao,
+  validarAvaliacao
+} from './valorAvaliacao';
+
+import {
   AcaoSistemaFluxo,
   IConfigSubprocesso,
   IOrigemSubprocesso,
@@ -265,6 +271,16 @@ export const validarAcao = (
           acao.resultado
         );
 
+      if (campo.tipo === 'avaliacao') {
+        validarAvaliacao(
+          campo.rotulo,
+          campo.avaliacao,
+          valor,
+          obrigatorio
+        ).forEach(erro => erros.push(erro));
+        return;
+      }
+
       if (campo.tipo === 'tabela') {
         validarTabela(
           campo.rotulo,
@@ -359,6 +375,10 @@ export const formatarValorCampo = (
     return resumoTabela(valor);
   }
 
+  if (tipo === 'avaliacao') {
+    return formatarValorAvaliacao(valor);
+  }
+
   if (tipo === 'usuario') {
     return formatarValorUsuario(valor);
   }
@@ -401,11 +421,15 @@ const transicaoAtende = (
     case 'resultado':
       return (transicao.resultado || '') === resultado;
 
-    case 'campo':
-      return (
-        (valores[transicao.campo || ''] || '') ===
-        (transicao.valorEsperado || '')
-      );
+    case 'campo': {
+      const valor = valores[transicao.campo || ''] || '';
+      // Campo Avaliação: compara a FAIXA atingida (ex.: "nogo").
+      const faixa = faixaDoValor(valor);
+      if (faixa !== undefined) {
+        return faixa === (transicao.valorEsperado || '');
+      }
+      return valor === (transicao.valorEsperado || '');
+    }
 
     default:
       return false;

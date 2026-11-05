@@ -60,7 +60,7 @@ const TIPOS_FILTRO: Array<{ tipo: FiltroVisao['tipo']; nome: string }> = [
   { tipo: 'etapas', nome: 'Estão na(s) etapa(s)...' },
   { tipo: 'situacao', nome: 'Situação...' },
   { tipo: 'atrasados', nome: 'Com prazo vencido' },
-  { tipo: 'campo', nome: 'Campo do fluxo (Lista/Sim-Não) igual a...' }
+  { tipo: 'campo', nome: 'Campo do fluxo (Lista, Sim-Não ou faixa da Avaliação)...' }
 ];
 
 const SITUACOES: Array<{ valor: SituacaoRegistroAmbiente; nome: string }> = [
@@ -180,6 +180,9 @@ const AmbienteLayoutEditor: React.FC<IAmbienteLayoutEditorProps> = (props) => {
     const meta = filtraveis.find(item => item.chave === chave);
     if (!meta) {
       return [];
+    }
+    if (meta.tipo === 'avaliacao') {
+      return (meta.avaliacao ? meta.avaliacao.faixas : []).map(faixa => ({ valor: faixa.chave, nome: faixa.rotulo }));
     }
     return meta.tipo === 'simNao'
       ? [{ valor: 'sim', nome: 'Sim' }, { valor: 'nao', nome: 'Não' }]
