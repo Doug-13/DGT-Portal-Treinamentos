@@ -136,7 +136,9 @@ exige nota em todos os critérios. Em visões do ambiente: `{ "tipo": "campo", "
   } }
 ```
 
-Nativos disponíveis: `montadorBom`. O contrato do HTML (ponte `DGT.*`) está em `docs/componentes.md`.
+Nativos disponíveis: `montadorBom` (parâmetros `campoCanal`, `canal`) e `calculoHH`
+(parâmetros `campoKit` — obrigatório, chave do campo do `montadorBom` —, `campoCusto` — campo `numero` —
+e `exigirCusto`: `sim`/`nao`). Exemplo completo: `docs/exemplos/pacote-arquitetura-bom.json`. O contrato do HTML (ponte `DGT.*`) está em `docs/componentes.md`.
 Componente **não** pode ser usado em condição de caminho.
 
 Colunas de `tabela`: `{ "chave", "rotulo", "tipo", "obrigatoria"?, "opcoes"? }` com

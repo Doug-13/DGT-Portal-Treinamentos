@@ -1,0 +1,592 @@
+{
+  "formato": "dgt-portal/pacote-processo@1",
+  "processo": {
+    "codigo": "ARQ-BOM",
+    "nome": "B.O.M. — Arquitetura de Soluções",
+    "descricao": "Da demanda ao B.O.M. pronto: Go/No-Go, seleção de kit e cálculo de HH."
+  },
+  "metadados": [
+    {
+      "chave": "cliente",
+      "rotulo": "Cliente / órgão",
+      "tipo": "texto"
+    },
+    {
+      "chave": "canal",
+      "rotulo": "Canal",
+      "tipo": "lista",
+      "opcoes": [
+        "Público",
+        "Privado"
+      ]
+    },
+    {
+      "chave": "origem",
+      "rotulo": "Origem",
+      "tipo": "lista",
+      "opcoes": [
+        "Edital / licitação",
+        "Oportunidade comercial",
+        "Cliente atual"
+      ]
+    },
+    {
+      "chave": "prazoProposta",
+      "rotulo": "Prazo da proposta",
+      "tipo": "data"
+    },
+    {
+      "chave": "escopo",
+      "rotulo": "Escopo da demanda",
+      "tipo": "textoLongo"
+    },
+    {
+      "chave": "goNoGo",
+      "rotulo": "Matriz Go/No-Go",
+      "tipo": "avaliacao",
+      "avaliacao": {
+        "criterios": [
+          {
+            "chave": "aderencia",
+            "rotulo": "Aderência ao portfólio",
+            "descricao": "Compatibilidade com soluções e capacidades da DGT",
+            "peso": 20
+          },
+          {
+            "chave": "tecnica",
+            "rotulo": "Viabilidade técnica",
+            "descricao": "Capacidade real de implementação da solução",
+            "peso": 20
+          },
+          {
+            "chave": "financeira",
+            "rotulo": "Viabilidade financeira",
+            "descricao": "Margem, orçamento e sustentabilidade comercial",
+            "peso": 15
+          },
+          {
+            "chave": "prazo",
+            "rotulo": "Prazo",
+            "descricao": "Tempo disponível para elaboração da proposta",
+            "peso": 10
+          },
+          {
+            "chave": "competitividade",
+            "rotulo": "Competitividade",
+            "descricao": "Posicionamento frente à concorrência",
+            "peso": 10
+          },
+          {
+            "chave": "risco",
+            "rotulo": "Risco jurídico/editalício",
+            "descricao": "Risco de inabilitação ou exigências críticas",
+            "peso": 10
+          },
+          {
+            "chave": "capacidade",
+            "rotulo": "Capacidade operacional",
+            "descricao": "Disponibilidade do time e áreas internas",
+            "peso": 10
+          },
+          {
+            "chave": "estrategico",
+            "rotulo": "Impacto estratégico",
+            "descricao": "Relevância para posicionamento e crescimento",
+            "peso": 5
+          }
+        ],
+        "escala": {
+          "minimo": 1,
+          "maximo": 5,
+          "rotulos": [
+            "Muito desfavorável",
+            "Desfavorável",
+            "Aceitável",
+            "Favorável",
+            "Muito favorável"
+          ]
+        },
+        "calculo": "ponderada",
+        "faixas": [
+          {
+            "chave": "go",
+            "rotulo": "GO",
+            "minimo": 80,
+            "cor": "#107C10"
+          },
+          {
+            "chave": "restricao",
+            "rotulo": "GO com restrição",
+            "minimo": 60,
+            "cor": "#B45309"
+          },
+          {
+            "chave": "nogo",
+            "rotulo": "NO-GO",
+            "minimo": 0,
+            "cor": "#B42318"
+          }
+        ],
+        "justificativaAte": 2
+      }
+    },
+    {
+      "chave": "parecer",
+      "rotulo": "Parecer",
+      "tipo": "textoLongo"
+    },
+    {
+      "chave": "selecaoKit",
+      "rotulo": "Seleção de kit",
+      "tipo": "componente",
+      "componente": {
+        "tipo": "nativo",
+        "nativo": "montadorBom",
+        "parametros": {
+          "campoCanal": "canal"
+        }
+      }
+    },
+    {
+      "chave": "custoProjeto",
+      "rotulo": "Custo total do projeto (R$)",
+      "tipo": "numero"
+    },
+    {
+      "chave": "calculoHH",
+      "rotulo": "Cálculo de HH",
+      "tipo": "componente",
+      "componente": {
+        "tipo": "nativo",
+        "nativo": "calculoHH",
+        "parametros": {
+          "campoKit": "selecaoKit",
+          "campoCusto": "custoProjeto",
+          "exigirCusto": "nao"
+        }
+      }
+    },
+    {
+      "chave": "observacoesFinais",
+      "rotulo": "Observações do B.O.M.",
+      "tipo": "textoLongo"
+    }
+  ],
+  "fluxo": {
+    "elementos": [
+      {
+        "id": "inicio",
+        "tipo": "inicio",
+        "nome": "Início"
+      },
+      {
+        "id": "demanda",
+        "tipo": "tarefaHumana",
+        "nome": "Dados da demanda",
+        "responsaveis": [
+          {
+            "tipo": "autorRevisao"
+          }
+        ],
+        "prazoDiasUteis": 2,
+        "campos": [
+          {
+            "chave": "cliente",
+            "obrigatorio": true
+          },
+          {
+            "chave": "canal",
+            "obrigatorio": true
+          },
+          {
+            "chave": "origem",
+            "obrigatorio": true
+          },
+          {
+            "chave": "prazoProposta",
+            "obrigatorio": true
+          },
+          {
+            "chave": "escopo",
+            "obrigatorio": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "enviar",
+            "rotulo": "Enviar para Go/No-Go",
+            "resultado": "concluido"
+          }
+        ]
+      },
+      {
+        "id": "goNoGo",
+        "tipo": "tarefaHumana",
+        "nome": "Matriz Go/No-Go",
+        "responsaveis": [
+          {
+            "tipo": "autorRevisao"
+          }
+        ],
+        "prazoDiasUteis": 2,
+        "campos": [
+          {
+            "chave": "goNoGo",
+            "obrigatorio": true
+          },
+          {
+            "chave": "parecer",
+            "obrigatorio": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "registrar",
+            "rotulo": "Registrar análise",
+            "resultado": "concluido"
+          },
+          {
+            "chave": "devolver",
+            "rotulo": "Voltar aos dados",
+            "resultado": "devolvido",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
+        ]
+      },
+      {
+        "id": "decisao",
+        "tipo": "gateway",
+        "nome": "Resultado do Go/No-Go?"
+      },
+      {
+        "id": "bloqueado",
+        "tipo": "tarefaHumana",
+        "nome": "Bloqueado no Go/No-Go",
+        "responsaveis": [
+          {
+            "tipo": "gestorArea"
+          }
+        ],
+        "instrucoes": "A demanda não passou no Go/No-Go. Encerre ou reabra a análise.",
+        "acoes": [
+          {
+            "chave": "encerrar",
+            "rotulo": "Encerrar demanda",
+            "resultado": "encerrado"
+          },
+          {
+            "chave": "reabrir",
+            "rotulo": "Reabrir a análise",
+            "resultado": "devolvido",
+            "exigeComentario": true
+          }
+        ]
+      },
+      {
+        "id": "kit",
+        "tipo": "tarefaHumana",
+        "nome": "Seleção de kit",
+        "responsaveis": [
+          {
+            "tipo": "autorRevisao"
+          }
+        ],
+        "prazoDiasUteis": 5,
+        "campos": [
+          {
+            "chave": "selecaoKit",
+            "obrigatorio": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "concluir",
+            "rotulo": "Concluir seleção de kit",
+            "resultado": "concluido"
+          }
+        ]
+      },
+      {
+        "id": "hh",
+        "tipo": "tarefaHumana",
+        "nome": "Cálculo de HH",
+        "responsaveis": [
+          {
+            "tipo": "autorRevisao"
+          }
+        ],
+        "prazoDiasUteis": 2,
+        "campos": [
+          {
+            "chave": "custoProjeto"
+          },
+          {
+            "chave": "calculoHH",
+            "obrigatorio": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "concluir",
+            "rotulo": "Concluir HH",
+            "resultado": "concluido"
+          },
+          {
+            "chave": "voltarKit",
+            "rotulo": "Ajustar a seleção de kit",
+            "resultado": "devolvido",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
+        ]
+      },
+      {
+        "id": "bomPronto",
+        "tipo": "tarefaHumana",
+        "nome": "B.O.M. pronto",
+        "responsaveis": [
+          {
+            "tipo": "gestorArea"
+          }
+        ],
+        "prazoDiasUteis": 2,
+        "campos": [
+          {
+            "chave": "selecaoKit",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "calculoHH",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "observacoesFinais"
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "aprovar",
+            "rotulo": "Aprovar B.O.M.",
+            "resultado": "aprovado"
+          },
+          {
+            "chave": "ajustar",
+            "rotulo": "Devolver para ajuste",
+            "resultado": "devolvido",
+            "exigeComentario": true
+          }
+        ]
+      },
+      {
+        "id": "fim",
+        "tipo": "fim",
+        "nome": "Fim"
+      }
+    ],
+    "transicoes": [
+      {
+        "de": "inicio",
+        "para": "demanda"
+      },
+      {
+        "de": "demanda",
+        "para": "goNoGo"
+      },
+      {
+        "de": "goNoGo",
+        "para": "decisao",
+        "quando": {
+          "resultado": "concluido"
+        }
+      },
+      {
+        "de": "goNoGo",
+        "para": "demanda",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Voltar",
+        "excecao": true
+      },
+      {
+        "de": "decisao",
+        "para": "bloqueado",
+        "quando": {
+          "campo": "goNoGo",
+          "valor": "nogo"
+        },
+        "rotulo": "NO-GO"
+      },
+      {
+        "de": "decisao",
+        "para": "kit",
+        "rotulo": "GO",
+        "padrao": true
+      },
+      {
+        "de": "bloqueado",
+        "para": "fim",
+        "quando": {
+          "resultado": "encerrado"
+        },
+        "rotulo": "Encerrada"
+      },
+      {
+        "de": "bloqueado",
+        "para": "goNoGo",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Reabrir",
+        "excecao": true
+      },
+      {
+        "de": "kit",
+        "para": "hh"
+      },
+      {
+        "de": "hh",
+        "para": "bomPronto",
+        "quando": {
+          "resultado": "concluido"
+        }
+      },
+      {
+        "de": "hh",
+        "para": "kit",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Ajustar kit",
+        "excecao": true
+      },
+      {
+        "de": "bomPronto",
+        "para": "fim",
+        "quando": {
+          "resultado": "aprovado"
+        }
+      },
+      {
+        "de": "bomPronto",
+        "para": "kit",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Ajuste",
+        "excecao": true
+      }
+    ]
+  },
+  "ambiente": {
+    "nome": "Arquitetura (B.O.M.)",
+    "chave": "arquitetura-bom",
+    "icone": "layers",
+    "prefixoCodigo": "BOM",
+    "rotuloRegistro": "B.O.M.",
+    "subtitulo": "Da demanda ao B.O.M. pronto, com Go/No-Go, seleção de kit e HH.",
+    "perfisPadrao": [
+      "Gestor"
+    ],
+    "telas": {
+      "visoes": [
+        {
+          "nome": "Aguardando você",
+          "icone": "bell",
+          "cor": "#B45309",
+          "filtro": {
+            "tipo": "aguardandoVoce"
+          }
+        },
+        {
+          "nome": "Em Go/No-Go",
+          "icone": "checkCircle",
+          "cor": "#6B4FBB",
+          "filtro": {
+            "tipo": "etapas",
+            "etapas": [
+              "goNoGo"
+            ]
+          }
+        },
+        {
+          "nome": "Em montagem do kit",
+          "icone": "package",
+          "cor": "#0F6CBD",
+          "filtro": {
+            "tipo": "etapas",
+            "etapas": [
+              "kit",
+              "hh"
+            ]
+          }
+        },
+        {
+          "nome": "NO-GO",
+          "icone": "alertTriangle",
+          "cor": "#B42318",
+          "filtro": {
+            "tipo": "campo",
+            "campo": "goNoGo",
+            "valores": [
+              "nogo"
+            ]
+          }
+        },
+        {
+          "nome": "B.O.M. prontos",
+          "icone": "checkCircle",
+          "cor": "#107C10",
+          "filtro": {
+            "tipo": "situacao",
+            "situacoes": [
+              "concluido"
+            ]
+          }
+        }
+      ],
+      "colunas": [
+        "codigo",
+        "titulo",
+        "campo:cliente",
+        "campo:canal",
+        "campo:goNoGo",
+        "etapa",
+        "prazo",
+        "situacao"
+      ],
+      "etapas": [
+        {
+          "id": "demanda",
+          "rotulo": "Dados da demanda"
+        },
+        {
+          "id": "goNoGo",
+          "rotulo": "Matriz Go/No-Go"
+        },
+        {
+          "id": "kit",
+          "rotulo": "Seleção de kit"
+        },
+        {
+          "id": "hh",
+          "rotulo": "Cálculo de HH"
+        },
+        {
+          "id": "bomPronto",
+          "rotulo": "B.O.M. pronto"
+        },
+        {
+          "id": "bloqueado",
+          "visivel": false
+        }
+      ],
+      "registro": {
+        "mostrarDados": true,
+        "mostrarDiagrama": false,
+        "mostrarHistorico": true
+      }
+    }
+  }
+}

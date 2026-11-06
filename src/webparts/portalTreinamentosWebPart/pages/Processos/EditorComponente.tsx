@@ -16,7 +16,8 @@ import {
 
 import {
   CHAVES_NATIVOS,
-  COMPONENTES_NATIVOS
+  COMPONENTES_NATIVOS,
+  validarParametrosNativo
 } from '../../services/fluxo/componentesNativos';
 
 import CampoComponenteFluxo from '../../components/fluxo/CampoComponenteFluxo';
@@ -146,7 +147,9 @@ const EditorComponente: React.FC<IEditorComponenteProps> = ({ config, editavel, 
 
   const nativo = COMPONENTES_NATIVOS.find(item => item.chave === atual.nativo);
   const fontes = atual.fontes || [];
-  const problemas = validarConfigComponente(rotuloCampo || 'componente', atual, CHAVES_NATIVOS);
+  const problemas =
+    validarConfigComponente(rotuloCampo || 'componente', atual, CHAVES_NATIVOS)
+      .concat(validarParametrosNativo(rotuloCampo || 'componente', atual, metadados));
 
   const alterarFonte = (indice: number, parcial: Partial<IFonteDadosComponente>): void =>
     alterar({ fontes: fontes.map((item, posicao) => (posicao === indice ? { ...item, ...parcial } : item)) });
@@ -187,8 +190,22 @@ const EditorComponente: React.FC<IEditorComponenteProps> = ({ config, editavel, 
                         onChange={evento => alterar({ parametros: { ...(atual.parametros || {}), [parametro.chave]: evento.target.value } })}
                         style={entrada}
                       >
-                        <option value="">(nenhum)</option>
-                        {metadados.filter(item => ['texto', 'lista', 'simNao'].indexOf(item.tipo) >= 0).map(item => <option key={item.chave} value={item.chave}>{item.rotulo}</option>)}
+                        <option value="">{parametro.obrigatorio ? 'Selecione...' : '(nenhum)'}</option>
+                        {metadados
+                          .filter(item => (parametro.tiposCampo || ['texto', 'lista', 'simNao']).indexOf(item.tipo) >= 0)
+                          .filter(item => !parametro.nativoDoCampo || (!!item.componente && item.componente.nativo === parametro.nativoDoCampo))
+                          .map(item => <option key={item.chave} value={item.chave}>{item.rotulo}</option>)}
+                      </select>
+                    )
+                    : parametro.tipo === 'escolha'
+                    ? (
+                      <select
+                        value={(atual.parametros || {})[parametro.chave] || (parametro.opcoes && parametro.opcoes[0] ? parametro.opcoes[0].valor : '')}
+                        disabled={!editavel}
+                        onChange={evento => alterar({ parametros: { ...(atual.parametros || {}), [parametro.chave]: evento.target.value } })}
+                        style={entrada}
+                      >
+                        {(parametro.opcoes || []).map(opcao => <option key={opcao.valor} value={opcao.valor}>{opcao.rotulo}</option>)}
                       </select>
                     )
                     : (

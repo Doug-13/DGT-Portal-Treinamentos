@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: componente nativo "Cálculo de HH" — a tela da Arquitetura ligada à Seleção de kit do registro; grava o resultado e a versão de HH aplicada. Exemplo da Arquitetura inteira como ambiente configurável (docs/exemplos/pacote-arquitetura-bom.json).
 - Novo: tipo de campo "Componente" — telas personalizadas em etapas de fluxo: nativas (Montador de B.O.M. da Arquitetura, a mesma tela de Seleção de kit) ou HTML isolado (iframe sandbox) com ponte de dados somente leitura para tabelas e colunas liberadas; o "válido" da tela libera o Concluir da etapa. Guia em docs/componentes.md.
 - Novo: "Importar JSON" e "Exportar JSON" no editor do fluxo — atualiza o processo aberto com um pacote JSON (novo rascunho do fluxo, campos novos e, se marcado, atualização dos campos existentes).
 - Novo: tipo de campo "Avaliação" (modelo Matriz Go/No-Go) — critérios com nota colorida (vermelho → verde), peso, justificativa, pontuação ponderada (0–100) ou por soma, faixas com sinaleira e "Onde perde pontos"; a faixa decide caminhos do fluxo e filtra visões dos ambientes. Configurado em Processos → Metadados (com modelo Go/No-Go pronto).

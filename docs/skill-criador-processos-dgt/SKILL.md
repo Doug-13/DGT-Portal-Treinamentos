@@ -60,6 +60,8 @@ Se o usuário já deu as informações, não pergunte de novo: assuma o razoáve
 ### Telas personalizadas (campo `componente`)
 
 - Seleção de kit / B.O.M. → `{ "tipo": "nativo", "nativo": "montadorBom" }`.
+- Cálculo de HH sobre o kit → `{ "tipo": "nativo", "nativo": "calculoHH", "parametros": { "campoKit": "<chave do montadorBom>" } }`
+  (veja `references/exemplos/pacote-arquitetura-bom.json`, o processo completo da Arquitetura).
 - Tela nova → `{ "tipo": "html", "html": "...", "fontes": [...] }`. Siga o contrato de
   `references/componentes.md`: use só `DGT.aoIniciar`, `DGT.consultar(fonte, { coluna: valor })`
   e `DGT.alterar({ dados, valido, erros, resumo, itens })`; nada de `fetch`, cookies ou bibliotecas

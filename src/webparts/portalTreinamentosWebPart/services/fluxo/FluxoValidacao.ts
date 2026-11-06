@@ -3,7 +3,8 @@ import {
 } from './valorComponente';
 
 import {
-  CHAVES_NATIVOS
+  CHAVES_NATIVOS,
+  validarParametrosNativo
 } from './componentesNativos';
 
 import {
@@ -315,6 +316,7 @@ export const validarDefinicao = (
 
       if (metadado.tipo === 'componente') {
         validarConfigComponente(metadado.rotulo, metadado.componente, CHAVES_NATIVOS)
+          .concat(validarParametrosNativo(metadado.rotulo, metadado.componente, metadados))
           .forEach(erro => erros.push(erro));
       }
 

@@ -32,7 +32,8 @@ import {
 } from '../fluxo/valorComponente';
 
 import {
-  CHAVES_NATIVOS
+  CHAVES_NATIVOS,
+  validarParametrosNativo
 } from '../fluxo/componentesNativos';
 
 import {
@@ -494,6 +495,12 @@ export const interpretarPacote = (
   });
 
   const metadado = (chave: string): IFluxoMetadado | undefined => metadados.find(item => item.chave === chave);
+
+  // Componentes nativos: parâmetros (ex.: campo da Seleção de kit) só
+  // podem ser checados com todos os metadados lidos.
+  metadados
+    .filter(item => item.tipo === 'componente')
+    .forEach(item => validarParametrosNativo(item.chave, item.componente, metadados).forEach(erro => erros.push(`metadados (${item.chave}): ${erro}`)));
 
   // ---------------- fluxo: elementos ----------------
   const fluxo = (bruto.fluxo || { elementos: [], transicoes: [] }) as NonNullable<IPacoteProcesso['fluxo']>;

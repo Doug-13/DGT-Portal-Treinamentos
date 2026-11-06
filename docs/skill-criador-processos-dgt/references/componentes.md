@@ -35,6 +35,32 @@ Erros do montador (ex.: Wallfix com mais de 2 câmeras) bloqueiam a etapa. Assim
 Arquitetura de Soluções pode virar um **ambiente** com fluxo: Dados da demanda → Matriz
 Go/No-Go (campo **Avaliação**) → **Seleção de kit (Componente nativo)** → …
 
+## Nativo: Cálculo de HH
+
+A **mesma tela** da etapa "Cálculo de HH" da Arquitetura, ligada à Seleção de kit do registro:
+aplica o HH da **versão vigente** de cada área (menu Cálculo de HH) aos pontos do kit — HH dos
+pontos e alocação de Analista de Projetos e Suprimentos sobre o custo total.
+
+| Parâmetro | Uso |
+|---|---|
+| **Campo com a Seleção de kit** (obrigatório) | o campo Componente do **Montador de B.O.M.** de uma etapa anterior |
+| **Campo com o custo total** (opcional) | campo Número do registro; sem ele, o custo é digitado na tela e gravado junto |
+| **Custo obrigatório** | `sim` exige a alocação de horas para concluir |
+
+- Grava o resultado **e qual versão de HH foi usada** (id, número, mês) — em etapas seguintes
+  (somente leitura) aparece o que foi gravado, mesmo que uma versão nova de HH seja publicada depois.
+- Bloqueia o Concluir se: o kit não tem pontos ou tem erros, não há HH publicado, ou o custo é
+  obrigatório e não foi informado.
+
+## A Arquitetura inteira como ambiente
+
+`docs/exemplos/pacote-arquitetura-bom.json` monta o processo completo, pronto para publicar:
+Dados da demanda → **Matriz Go/No-Go** (Avaliação; NO-GO vai para "Bloqueado") → **Seleção de kit**
+(Montador de B.O.M.) → **Cálculo de HH** → **B.O.M. pronto** (aprovação), com o ambiente
+"Arquitetura (B.O.M.)", visões (Aguardando você, Em Go/No-Go, Em montagem do kit, NO-GO, B.O.M.
+prontos) e a barra de etapas. Importe em Processos → Fluxos → **Importar JSON** e teste em paralelo
+com o módulo atual antes de trocar.
+
 ## HTML personalizado
 
 O HTML (com `<style>` e `<script>`) roda **isolado** num `iframe` com `sandbox="allow-scripts"`

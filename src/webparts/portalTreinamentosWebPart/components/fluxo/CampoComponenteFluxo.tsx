@@ -15,6 +15,7 @@ import {
 
 import ComponenteHtml from './componentes/ComponenteHtml';
 import ComponenteMontadorBom from './componentes/ComponenteMontadorBom';
+import ComponenteCalculoHH from './componentes/ComponenteCalculoHH';
 import { IPropsComponenteNativo } from './componentes/tiposComponente';
 
 // ============================================================
@@ -24,7 +25,8 @@ import { IPropsComponenteNativo } from './componentes/tiposComponente';
 
 // Telas dos componentes nativos (descrição em componentesNativos.ts).
 const TELAS_NATIVAS: Record<string, React.FC<IPropsComponenteNativo>> = {
-  montadorBom: ComponenteMontadorBom
+  montadorBom: ComponenteMontadorBom,
+  calculoHH: ComponenteCalculoHH
 };
 
 export interface ICampoComponenteFluxoProps {

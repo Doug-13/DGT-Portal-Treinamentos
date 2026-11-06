@@ -21,21 +21,53 @@ import { COR, botao } from './arquiteturaComum';
 const moeda = (v: number): string => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const num = (v: number, c = 1): string => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: c });
 
-const EtapaHHBom: React.FC<{
+export interface IEtapaHHBomProps {
   dataverseService?: DataverseService;
   resumoKit?: IResultadoBom;
-  aoVoltarKit: () => void;
-}> = ({ dataverseService, resumoKit, aoVoltarKit }) => {
+  // Arquitetura: volta para a Seleção de kit. Sem ele, o botão some.
+  aoVoltarKit?: () => void;
+  // ---- Uso como componente de fluxo (opcionais) ----
+  // Pontos quando não há resumoKit (vêm da Seleção de kit do registro).
+  pontosInformados?: number;
+  resumoKitTexto?: string;
+  custoInicial?: number;
+  // Custo vem de outro campo do registro (não editável aqui).
+  custoFixo?: boolean;
+  somenteLeitura?: boolean;
+  // Avisa a cada mudança (custo ou HH vigente carregado); o fluxo grava.
+  onCalculado?: (custoTotal: number, vigentes: Record<string, { versao: IVersaoHH; dados: IDadosHH }>) => void;
+}
+
+const formatarCustoInicial = (valor?: number): string =>
+  valor && valor > 0 ? valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+
+const EtapaHHBom: React.FC<IEtapaHHBomProps> = ({
+  dataverseService, resumoKit, aoVoltarKit, pontosInformados, resumoKitTexto, custoInicial, custoFixo, somenteLeitura, onCalculado
+}) => {
 
   const [vigentes, setVigentes] = React.useState<Record<string, { versao: IVersaoHH; dados: IDadosHH }> | undefined>(undefined);
-  const [custo, setCusto] = React.useState('');
+  const [custo, setCusto] = React.useState(formatarCustoInicial(custoInicial));
 
   React.useEffect(() => {
     carregarHHVigente(dataverseService).then(setVigentes).catch(() => setVigentes({}));
   }, [dataverseService]);
 
-  const pontos = resumoKit ? resumoKit.totais.pontos : 0;
+  // Custo vindo de outro campo: acompanha o valor recebido.
+  React.useEffect(() => {
+    if (custoFixo) {
+      setCusto(formatarCustoInicial(custoInicial));
+    }
+  }, [custoFixo, custoInicial]);
+
+  const pontos = resumoKit ? resumoKit.totais.pontos : (pontosInformados || 0);
   const custoTotal = Number(custo.replace(/\./g, '').replace(',', '.')) || 0;
+
+  // Componente de fluxo: repassa o cálculo (com o HH vigente já lido).
+  React.useEffect(() => {
+    if (onCalculado && vigentes && !somenteLeitura) {
+      onCalculado(custoTotal, vigentes);
+    }
+  }, [vigentes, custoTotal, pontos]);
   const areas = AREAS_HH.filter(a => vigentes && vigentes[a.chave]);
   const celula: React.CSSProperties = { padding: '9px 12px', borderBottom: `1px solid ${COR.borda}`, fontSize: '14px', color: COR.azul, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
   const cab: React.CSSProperties = { ...celula, background: COR.azul, color: '#FFFFFF', fontWeight: 600, fontSize: '12.5px', textTransform: 'uppercase' };
@@ -47,6 +79,12 @@ const EtapaHHBom: React.FC<{
         Valores da versão vigente de cada área (menu <strong>Cálculo de HH</strong>) aplicados a este B.O.M. A regra final de composição
         com o B.O.M. será fechada quando a terceira planilha ficar pronta.
       </p>
+
+      {!resumoKit && resumoKitTexto && (
+        <div style={{ fontSize: '13px', color: COR.azul, background: COR.fundo, borderRadius: '8px', padding: '10px 12px', marginBottom: '14px' }}>
+          Kit deste registro: <strong>{resumoKitTexto}</strong>
+        </div>
+      )}
 
       {resumoKit && (
         <div style={{ fontSize: '13px', color: COR.azul, background: COR.fundo, borderRadius: '8px', padding: '10px 12px', marginBottom: '14px' }}>
@@ -67,8 +105,10 @@ const EtapaHHBom: React.FC<{
         <>
           <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13.5px', color: COR.azul, marginBottom: '12px', flexWrap: 'wrap' }}>
             Custo total do projeto (B.O.M), para a alocação de horas:
-            <input value={custo} onChange={e => setCusto(e.target.value)} placeholder="Ex.: 250.000,00" inputMode="decimal" style={{ border: `1px solid ${COR.borda}`, borderRadius: '6px', padding: '7px 10px', fontSize: '14px', width: '160px', textAlign: 'right' }} />
-            <span style={{ fontSize: '12.5px', color: COR.texto2 }}>(simulação; não é gravado)</span>
+            <input value={custo} disabled={!!somenteLeitura || !!custoFixo} onChange={e => setCusto(e.target.value)} placeholder="Ex.: 250.000,00" inputMode="decimal" style={{ border: `1px solid ${COR.borda}`, borderRadius: '6px', padding: '7px 10px', fontSize: '14px', width: '160px', textAlign: 'right' }} />
+            <span style={{ fontSize: '12.5px', color: COR.texto2 }}>
+              {onCalculado ? (custoFixo ? '(vem de outro campo do registro)' : '(gravado com o resultado)') : '(simulação; não é gravado)'}
+            </span>
           </label>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
@@ -102,7 +142,9 @@ const EtapaHHBom: React.FC<{
         </>
       )}
 
-      <button type="button" style={{ ...botao('secundario'), marginTop: '14px' }} onClick={aoVoltarKit}>← Ver / ajustar a Seleção de kit</button>
+      {aoVoltarKit && (
+        <button type="button" style={{ ...botao('secundario'), marginTop: '14px' }} onClick={aoVoltarKit}>← Ver / ajustar a Seleção de kit</button>
+      )}
     </div>
   );
 };

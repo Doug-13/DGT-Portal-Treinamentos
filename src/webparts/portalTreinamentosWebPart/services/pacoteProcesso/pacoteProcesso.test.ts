@@ -158,7 +158,7 @@ describe('Pacote de processo (JSON)', () => {
   });
 
   it('todos os exemplos da documentação são válidos', () => {
-    ['pacote-plano-de-acao.json', 'pacote-auditoria.json', 'pacote-solicitacao-compra.json', 'pacote-ambiente-fluxo-existente.json']
+    ['pacote-plano-de-acao.json', 'pacote-auditoria.json', 'pacote-solicitacao-compra.json', 'pacote-ambiente-fluxo-existente.json', 'pacote-arquitetura-bom.json']
       .forEach(nome => {
         const resultado = interpretarPacote(exemplo(nome), referencias);
         expect({ nome, erros: resultado.erros, publicacao: resultado.errosPublicacao }).toEqual({ nome, erros: [], publicacao: [] });
