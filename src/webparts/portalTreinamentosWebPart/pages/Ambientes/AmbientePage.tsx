@@ -43,6 +43,8 @@ import VisaoGeralAmbiente from './VisaoGeralAmbiente';
 
 import RegistroAmbiente from './RegistroAmbiente';
 
+import ExcluirAmbienteModal from './ExcluirAmbienteModal';
+
 import AmbienteLayoutEditor from './AmbienteLayoutEditor';
 
 import {
@@ -95,6 +97,10 @@ export interface IAmbientePageProps {
   onEditarAmbiente?: () => void;
   // Telas personalizadas salvas (atualiza a lista de ambientes do portal).
   onLayoutSalvo?: (ambienteId: string, layoutJson: string) => void;
+  // Exclusão/desativação (Administrador): todos os ambientes (checa o
+  // fluxo compartilhado) e aviso para recarregar o menu.
+  ambientesTodos?: IAmbiente[];
+  onAmbienteExcluido?: () => void;
 }
 
 type ModoAmbiente = 'inicio' | 'config';
@@ -135,6 +141,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
   const [editorTelas, setEditorTelas] = React.useState(false);
   const [salvandoTelas, setSalvandoTelas] = React.useState(false);
   const [exportando, setExportando] = React.useState(false);
+  const [excluirAberto, setExcluirAberto] = React.useState(false);
   const [visao, setVisao] = React.useState<Visao>({ tipo: 'lista' });
   const [registros, setRegistros] = React.useState<IAmbienteRegistro[]>([]);
   const [pendencias, setPendencias] = React.useState<IPendenciaAmbiente[]>([]);
@@ -547,6 +554,14 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
             >
               {exportando ? 'Exportando...' : 'Exportar pacote JSON'}
             </button>
+            <button
+              type="button"
+              onClick={() => setExcluirAberto(true)}
+              style={{ ...botao('secundario'), color: '#B42318', borderColor: '#B42318' }}
+              title="Desativar ou excluir este ambiente (e, se quiser, o fluxo dele) — para recriar durante a configuração"
+            >
+              Excluir ambiente
+            </button>
           </div>
         )}
       </div>
@@ -655,6 +670,20 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
             </div>
             {renderConfiguracao()}
           </>
+        )}
+
+        {excluirAberto && dataverseService && (
+          <ExcluirAmbienteModal
+            ambiente={ambiente}
+            todos={props.ambientesTodos || [ambiente]}
+            dataverseService={dataverseService}
+            onFechar={resultado => {
+              setExcluirAberto(false);
+              if (resultado && props.onAmbienteExcluido) {
+                props.onAmbienteExcluido();
+              }
+            }}
+          />
         )}
 
         {editorTelas && (

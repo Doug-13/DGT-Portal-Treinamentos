@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: excluir ou desativar ambientes (Configuração do ambiente), com opção de excluir junto o processo/fluxo; reativar/excluir ambientes desativados no "+ Adicionar ambiente"; botão Remover no processo aberto. A remoção de fluxo agora é bloqueada enquanto um ambiente usa o fluxo.
 - Novo: componente nativo "Cálculo de HH" — a tela da Arquitetura ligada à Seleção de kit do registro; grava o resultado e a versão de HH aplicada. Exemplo da Arquitetura inteira como ambiente configurável (docs/exemplos/pacote-arquitetura-bom.json).
 - Novo: tipo de campo "Componente" — telas personalizadas em etapas de fluxo: nativas (Montador de B.O.M. da Arquitetura, a mesma tela de Seleção de kit) ou HTML isolado (iframe sandbox) com ponte de dados somente leitura para tabelas e colunas liberadas; o "válido" da tela libera o Concluir da etapa. Guia em docs/componentes.md.
 - Novo: "Importar JSON" e "Exportar JSON" no editor do fluxo — atualiza o processo aberto com um pacote JSON (novo rascunho do fluxo, campos novos e, se marcado, atualização dos campos existentes).

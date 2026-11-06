@@ -665,6 +665,13 @@ export interface IPortalRouterProps {
   onAmbientesAlterados?:
   () => void;
 
+  // Lista de ambientes e aviso de exclusão/desativação.
+  ambientes?:
+  IAmbiente[];
+
+  onAmbienteExcluido?:
+  () => void;
+
   // Abre um ambiente pela chave (ex.: recém-importado).
   onAbrirAmbiente?:
   (
@@ -3545,6 +3552,8 @@ const PortalRouter:
             }}
             onEditarAmbiente={props.onEditarAmbiente}
             onLayoutSalvo={props.onLayoutAmbienteSalvo}
+            ambientesTodos={props.ambientes}
+            onAmbienteExcluido={props.onAmbienteExcluido}
           />
         );
 

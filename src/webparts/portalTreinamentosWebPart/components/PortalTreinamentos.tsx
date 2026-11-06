@@ -100,6 +100,7 @@ import { AmbienteService, ambienteLiberado, podeCriarAmbiente, registrarAmbiente
 import { solicitarAberturaProcesso as abrirProcessoNoEditor } from '../services/processos/ProcessoService';
 import AmbienteFormModal from '../pages/Ambientes/AmbienteFormModal';
 import ImportarPacoteModal from '../pages/Processos/ImportarPacoteModal';
+import ExcluirAmbienteModal from '../pages/Ambientes/ExcluirAmbienteModal';
 
 type DataverseRecord =
   IDataverseRecord;
@@ -540,6 +541,10 @@ const PortalTreinamentos:
 
     const [ambienteImportadoChave, setAmbienteImportadoChave] =
       React.useState<string>('');
+
+    // Exclusão de ambiente desativado (aberta pelo "+ Adicionar ambiente").
+    const [ambienteParaExcluir, setAmbienteParaExcluir] =
+      React.useState<IAmbiente | undefined>(undefined);
 
     const aplicarAmbientes =
       React.useCallback(
@@ -4294,6 +4299,23 @@ const gestaoAreas =
 
         </aside>
 
+        {/* EXCLUIR AMBIENTE DESATIVADO */}
+
+        {
+          ambienteParaExcluir &&
+          (
+            <ExcluirAmbienteModal
+              ambiente={ambienteParaExcluir}
+              todos={ambientes}
+              dataverseService={dataverseService}
+              onFechar={() => {
+                setAmbienteParaExcluir(undefined);
+                carregarAmbientes().catch(erro => console.error('[Ambientes]', erro));
+              }}
+            />
+          )
+        }
+
         {/* IMPORTAR PACOTE JSON (processo + fluxo + ambiente) */}
 
         {
@@ -4342,6 +4364,23 @@ const gestaoAreas =
               onImportarJson={() => {
                 setFormAmbiente(undefined);
                 setImportarPacoteAberto(true);
+              }}
+              onReativar={alvo => {
+                setProcessandoAmbiente(true);
+                ambienteService.reativar(alvo)
+                  .then(() => carregarAmbientes())
+                  .then(() => {
+                    setFormAmbiente(undefined);
+                    setAmbienteAtualChave(alvo.chave);
+                    setPaginaAtual('ambiente');
+                  })
+                  .catch(erro => window.alert(`Não foi possível reativar: ${erro instanceof Error ? erro.message : String(erro)}`))
+                  .then(() => setProcessandoAmbiente(false))
+                  .catch(() => undefined);
+              }}
+              onExcluir={alvo => {
+                setFormAmbiente(undefined);
+                setAmbienteParaExcluir(alvo);
               }}
               onFechar={() => setFormAmbiente(undefined)}
             />
@@ -4692,6 +4731,14 @@ const gestaoAreas =
                 }}
 
                 onAmbientesAlterados={() => {
+                  carregarAmbientes().catch(erro => console.error('[Ambientes]', erro));
+                }}
+
+                ambientes={ambientes}
+
+                onAmbienteExcluido={() => {
+                  setAmbienteAtualChave('');
+                  setPaginaAtual('inicio');
                   carregarAmbientes().catch(erro => console.error('[Ambientes]', erro));
                 }}
 

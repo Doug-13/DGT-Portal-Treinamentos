@@ -45,8 +45,12 @@ export interface IAnaliseExclusaoFluxo {
   excecoesProcessoNegocio: string[];
   processosNegocioPadrao: Array<{ id: string; nome: string }>;
 
-  // 'transferir' | 'arquivar' | 'excluir'
-  acao: 'transferir' | 'arquivar' | 'excluir';
+  // Ambientes que usam este fluxo → precisam ser excluídos ou ligados a
+  // outro fluxo antes (senão ficariam sem fluxo).
+  ambientes: Array<{ id: string; nome: string }>;
+
+  // 'ambientes' | 'transferir' | 'arquivar' | 'excluir'
+  acao: 'ambientes' | 'transferir' | 'arquivar' | 'excluir';
 }
 
 const guid = (
@@ -112,13 +116,15 @@ export class ExclusaoFluxoService {
     const processoId = guid(processoIdOriginal);
     const dv = this.dataverse;
 
-    const [vinculos, versoes, metadados, processosNegocio, excecoes] =
+    const [vinculos, versoes, metadados, processosNegocio, excecoes, ambientes] =
       await Promise.all([
         lerIds(dv, 'dgt_documentoprocesso', 'dgt_documentoprocessoid,dgt_ativo', `_dgt_processo_value eq ${processoId}`),
         lerIds(dv, 'dgt_fluxo', 'dgt_fluxoid', `_dgt_processo_value eq ${processoId}`),
         lerIds(dv, 'dgt_processometadado', 'dgt_processometadadoid', `_dgt_processo_value eq ${processoId}`),
         lerIds(dv, 'dgt_processonegocio', 'dgt_processonegocioid,dgt_name', `_dgt_fluxopadrao_value eq ${processoId}`),
-        lerIds(dv, 'dgt_processonegociofluxo', 'dgt_processonegociofluxoid', `_dgt_fluxo_value eq ${processoId}`)
+        lerIds(dv, 'dgt_processonegociofluxo', 'dgt_processonegociofluxoid', `_dgt_fluxo_value eq ${processoId}`),
+        // Tabela de ambientes pode não existir (lerIds devolve vazio).
+        lerIds(dv, 'dgt_ambiente', 'dgt_ambienteid,dgt_name', `_dgt_processo_value eq ${processoId}`)
       ]);
 
     const idsVersoes = versoes.map(item => guid(item.dgt_fluxoid)).filter(id => !!id);
@@ -159,8 +165,11 @@ export class ExclusaoFluxoService {
         id: guid(item.dgt_processonegocioid),
         nome: texto(item, 'dgt_name')
       })),
+      ambientes: ambientes.map(item => ({ id: guid(item.dgt_ambienteid), nome: texto(item, 'dgt_name') })),
       acao:
-        documentosVinculados > 0
+        ambientes.length > 0
+          ? 'ambientes'
+          : documentosVinculados > 0
           ? 'transferir'
           : revisoes > 0
             ? 'arquivar'
@@ -186,7 +195,9 @@ export class ExclusaoFluxoService {
 
     if (analise.acao !== 'excluir') {
       throw new Error(
-        analise.acao === 'transferir'
+        analise.acao === 'ambientes'
+          ? `O fluxo é usado pelo(s) ambiente(s) ${analise.ambientes.map(item => item.nome).join(', ')}. Exclua-os ou troque o fluxo deles antes.`
+          : analise.acao === 'transferir'
           ? 'O fluxo ainda tem documentos vinculados. Transfira os documentos antes de remover.'
           : 'O fluxo tem histórico de revisões de documentos e não pode ser apagado; ele pode ser arquivado.'
       );

@@ -55,6 +55,9 @@ export interface IAmbienteFormModalProps {
   onSalvar: (dados: IEdicaoAmbiente) => Promise<string[]>;
   // Atalho: criar processo + fluxo + ambiente a partir de um pacote JSON.
   onImportarJson?: () => void;
+  // Novo ambiente: lista os desativados para reativar ou excluir.
+  onReativar?: (ambiente: IAmbiente) => void;
+  onExcluir?: (ambiente: IAmbiente) => void;
   onFechar: () => void;
 }
 
@@ -244,6 +247,23 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
               tipo="alerta"
               texto={props.avisoIndisponivel || 'As tabelas de ambientes ainda não existem no Dataverse. Execute scripts/dataverse/criar-tabelas-ambientes.ps1 e recarregue o portal.'}
             />
+          )}
+
+          {novo && props.existentes.some(item => !item.ativo) && (props.onReativar || props.onExcluir) && (
+            <div style={{ border: `1px solid ${COR.borda}`, borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', fontSize: '13px', color: COR.azul }}>
+              <strong>Ambientes desativados</strong>
+              {props.existentes.filter(item => !item.ativo).map(item => (
+                <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ flex: 1 }}>{item.nome} <span style={{ color: COR.texto2 }}>({item.chave})</span></span>
+                  {props.onReativar && (
+                    <button type="button" disabled={props.processando} onClick={() => { if (props.onReativar) { props.onReativar(item); } }} style={botao('secundario', props.processando)}>Reativar</button>
+                  )}
+                  {props.onExcluir && (
+                    <button type="button" disabled={props.processando} onClick={() => { if (props.onExcluir) { props.onExcluir(item); } }} style={{ ...botao('secundario', props.processando), color: '#B42318' }}>Excluir</button>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
 
           {novo && props.disponivel && props.onImportarJson && (

@@ -49,8 +49,7 @@ Power Platform admin center → ambiente → *Configurações* → *Usuários + 
 | `dgt_processo` | Ler (Org.) | + **Criar** (o portal cria o processo do ambiente) |
 | `dgt_area`, `dgt_usuario` | + **Acrescentar a** (Org.) | idem |
 
-- **Ninguém** deve ter *Excluir* em `dgt_ambienteregistro` (histórico).
-- `dgt_ambiente` não precisa de *Excluir*: ambientes são **desativados**.
+- *Excluir* em `dgt_ambienteregistro` e `dgt_ambiente`: **só Administradores**, na fase de criação (veja “Excluir, desativar e recriar”). Em uso real, prefira **Desativar** e **Cancelar registro**, que preservam o histórico.
 - Quem executa etapas precisa **Gravar** no registro, porque o estado do fluxo fica nele.
 - Para restringir quem lê os registros (ex.: só a equipe de Licitações),
   use o nível **Unidade de negócios / Usuário** nos perfis — a tela
@@ -195,4 +194,24 @@ Caminho sugerido: recriar o processo como ambiente para as etapas de formulário
 decisão, e numa próxima fase permitir que uma etapa use um **componente especial**
 já existente (ex.: montador de B.O.M.) — assim o módulo programado pode ser
 desligado quando todas as etapas estiverem cobertas.
+
+---
+
+## Excluir, desativar e recriar (fase de criação)
+
+| Onde | O que faz |
+|---|---|
+| Ambiente → **Configuração → Excluir ambiente** | analisa e oferece **Desativar** (some do menu; registros ficam; dá para reativar) ou **Excluir definitivamente** (apaga o ambiente **e os registros**; digite a chave para confirmar). Opção de excluir junto o **processo/fluxo**, se só este ambiente o usa e não há documentos nele. |
+| **+ Adicionar ambiente → Ambientes desativados** | **Reativar** ou **Excluir** ambientes desativados. |
+| Processos → Fluxos → **⋮ → Remover** ou **Remover** no processo aberto | analisa: com **ambientes** usando o fluxo → bloqueia (exclua os ambientes ou troque o fluxo deles); com **documentos** → transferir; com **histórico de revisões** → arquivar; **sem nada ligado** → remover definitivamente (digite o código). |
+| Editor do fluxo → **Descartar rascunho** / **Importar JSON** (substituir rascunho) | refazer só o fluxo, sem apagar o processo. |
+
+Ciclo para recriar do zero: **Excluir ambiente** (marcando "excluir também o processo e o fluxo")
+→ importar o pacote JSON de novo. A chave do ambiente e o código do processo ficam livres.
+
+**Permissão necessária (Administradores):** privilégio **Excluir** em *Ambiente* e *Registro de
+Ambiente* (e, para remover fluxos, nas tabelas do fluxo: Processo, Fluxo, Metadado do processo,
+Tarefa e Histórico do fluxo). Recomendação: conceder **só ao perfil de Administradores** e, depois que
+os ambientes estiverem em uso real, considerar retirar o Excluir de *Registro de Ambiente* — a partir
+daí, use **Desativar** e **Cancelar registro**, que preservam o histórico.
 

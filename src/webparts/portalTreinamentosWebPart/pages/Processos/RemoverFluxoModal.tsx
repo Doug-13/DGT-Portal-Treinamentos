@@ -16,6 +16,8 @@ import {
 // ============================================================
 // REMOVER FLUXO (somente Administrador)
 //
+//   Usado por ambientes      → bloqueado: excluir os ambientes (ou
+//                               trocar o fluxo deles) antes.
 //   Com documentos vinculados → "Transferir documentos" (abre a
 //                               transferência; depois volta aqui).
 //   Com histórico de revisões → "Arquivar fluxo" (some da lista,
@@ -179,6 +181,17 @@ const RemoverFluxoModal: React.FC<IRemoverFluxoModalProps> = ({
                   <Linha rotulo="Metadados" quantidade={analise.metadados.length} />
                   <Linha rotulo="Processos de negócio que usam como padrão" quantidade={analise.processosNegocioPadrao.length} />
                 </ul>
+
+                {
+                  analise.acao === 'ambientes' && (
+                    <div style={{ padding: '12px 14px', borderRadius: '8px', background: COR.ambarClaro, color: COR.ambar, lineHeight: 1.5 }}>
+                      <strong>Este fluxo é usado por {analise.ambientes.length} ambiente(s): {analise.ambientes.map(item => item.nome).join(', ')}.</strong>
+                      <br />
+                      Antes de remover o fluxo, exclua esse(s) ambiente(s) (Configuração do ambiente → Excluir ambiente,
+                      que pode remover o fluxo junto) ou ligue-os a outro fluxo (Configuração → Trocar fluxo).
+                    </div>
+                  )
+                }
 
                 {
                   analise.acao === 'transferir' && (

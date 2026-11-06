@@ -28,6 +28,10 @@ import {
 } from '../../utils/modulosPortal';
 
 import {
+  ExclusaoFluxoService
+} from '../processos/ExclusaoFluxoService';
+
+import {
   obterPersistenciaFluxo
 } from '../fluxo/persistenciaFluxo';
 
@@ -252,6 +256,18 @@ export interface IResultadoListaAmbientes {
   // false = as tabelas ainda não existem no Dataverse.
   disponivel: boolean;
   aviso: string;
+}
+
+export interface IAnaliseExclusaoAmbiente {
+  registros: { total: number; emAndamento: number; concluidos: number; cancelados: number; ids: string[] };
+  // Outros ambientes que usam o mesmo fluxo (o fluxo fica).
+  outrosAmbientes: string[];
+  // Documentos/revisões que usam o fluxo (o fluxo não pode ser apagado).
+  documentosNoFluxo: number;
+  revisoesNoFluxo: number;
+  // O fluxo pode ser apagado junto (só este ambiente o usa, sem documentos).
+  podeExcluirFluxo: boolean;
+  processoNome: string;
 }
 
 export interface IResultadoGravacaoAmbiente {
@@ -616,6 +632,89 @@ export class AmbienteService {
       [AMBIENTE.prefixoCodigo]: dados.prefixoCodigo.trim().toUpperCase().substring(0, 20),
       [AMBIENTE.rotuloRegistro]: dados.rotuloRegistro.trim().substring(0, 100)
     };
+  }
+
+  // ----------------------------------------------------------
+  // Exclusão (fase de criação/testes) e desativação
+  // ----------------------------------------------------------
+
+  public async analisarExclusao(
+    ambiente: IAmbiente,
+    todos: IAmbiente[]
+  ): Promise<IAnaliseExclusaoAmbiente> {
+    const registros = await this.listarRegistros(ambiente);
+    const outros = todos.filter(item => item.id !== ambiente.id && guid(item.processoId) === guid(ambiente.processoId) && !!ambiente.processoId);
+    let documentos = 0;
+    let revisoes = 0;
+    if (ambiente.processoId) {
+      const analise = await new ExclusaoFluxoService(this.dataverse).analisar(ambiente.processoId);
+      documentos = analise.documentosVinculados;
+      revisoes = analise.revisoesComHistorico;
+    }
+    return {
+      registros: {
+        total: registros.length,
+        emAndamento: registros.filter(item => item.situacao === 'emAndamento').length,
+        concluidos: registros.filter(item => item.situacao === 'concluido').length,
+        cancelados: registros.filter(item => item.situacao === 'cancelado').length,
+        ids: registros.map(item => item.id)
+      },
+      outrosAmbientes: outros.map(item => item.nome),
+      documentosNoFluxo: documentos,
+      revisoesNoFluxo: revisoes,
+      podeExcluirFluxo: !!ambiente.processoId && outros.length === 0 && documentos === 0 && revisoes === 0,
+      processoNome: ambiente.processoNome || ''
+    };
+  }
+
+  public async reativar(ambiente: IAmbiente): Promise<void> {
+    await this.dataverse.atualizarRegistro(TABELAS_AMBIENTE.ambiente, ambiente.id, { [AMBIENTE.ativo]: true });
+  }
+
+  // Desativa: some do menu; registros e histórico ficam.
+  public async desativar(ambiente: IAmbiente): Promise<void> {
+    await this.dataverse.atualizarRegistro(TABELAS_AMBIENTE.ambiente, ambiente.id, { [AMBIENTE.ativo]: false });
+  }
+
+  // Exclui DEFINITIVAMENTE o ambiente e os registros dele (fase de
+  // criação/testes). Com excluirFluxo, remove também o processo/fluxo
+  // se ninguém mais o usa. Refaz a análise antes de apagar.
+  public async excluir(
+    ambiente: IAmbiente,
+    todos: IAmbiente[],
+    excluirFluxo: boolean,
+    onProgresso?: (mensagem: string) => void
+  ): Promise<string[]> {
+    const avisos: string[] = [];
+    const analise = await this.analisarExclusao(ambiente, todos);
+    const ids = analise.registros.ids;
+    for (let i = 0; i < ids.length; i++) {
+      if (onProgresso) {
+        onProgresso(`Excluindo registros (${i + 1}/${ids.length})`);
+      }
+      await this.dataverse.excluirRegistro(TABELAS_AMBIENTE.registro, ids[i]);
+    }
+    if (onProgresso) {
+      onProgresso('Excluindo o ambiente');
+    }
+    await this.dataverse.excluirRegistro(TABELAS_AMBIENTE.ambiente, ambiente.id);
+
+    if (excluirFluxo && ambiente.processoId) {
+      if (!analise.podeExcluirFluxo) {
+        avisos.push(
+          analise.outrosAmbientes.length > 0
+            ? `O fluxo foi mantido: também é usado por ${analise.outrosAmbientes.join(', ')}.`
+            : 'O fluxo foi mantido: há documentos ou revisões que o usam.'
+        );
+      } else {
+        try {
+          await new ExclusaoFluxoService(this.dataverse).excluir(ambiente.processoId, onProgresso);
+        } catch (erro) {
+          avisos.push(`O ambiente foi excluído, mas o fluxo não: ${mensagem(erro)}`);
+        }
+      }
+    }
+    return avisos;
   }
 
   // ----------------------------------------------------------

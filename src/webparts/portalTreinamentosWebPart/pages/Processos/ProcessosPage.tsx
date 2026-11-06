@@ -553,6 +553,23 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 </button>
               )
             }
+            {
+              podeRemover && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // A remoção abre sobre a lista de fluxos.
+                    const alvo = processoSelecionado;
+                    setProcessoId('');
+                    setRemoverProcesso(alvo);
+                  }}
+                  style={{ ...estiloBotao(false, false), minHeight: '32px', color: '#B42318', borderColor: '#B42318' }}
+                  title="Remover este processo/fluxo (analisa antes: transferir documentos, arquivar ou remover)"
+                >
+                  Remover
+                </button>
+              )
+            }
             {selo(processoSelecionado.areaNome ? `Área: ${processoSelecionado.areaNome}` : 'Sem área', false)}
             {dados.local && selo(processoSelecionado.origem === 'teste' ? 'Teste (local)' : 'Dataverse', processoSelecionado.origem === 'dataverse')}
             {selo(resumo.texto, resumo.publicado)}
