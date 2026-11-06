@@ -24,6 +24,19 @@ import {
 } from './catalogoKits';
 
 import {
+  ILinhaServidor,
+  ISoftwareServidor,
+  aplicarServidores,
+  dadosGravadosFicha,
+  dadosGravadosLinha,
+  nomeLinha,
+  normalizarFicha,
+  normalizarLinha,
+  restaurarServidoresPadrao,
+  servidoresPadrao
+} from './catalogoServidores';
+
+import {
   COL_ALTERACAO,
   COL_COMPOSICAO,
   COL_ITEM,
@@ -146,6 +159,49 @@ const chaveEquipamento = (tipo: TipoItemKit, id: string): string =>
   `${tipo}:${id}`;
 
 // ------------------------------------------------------------
+// Servidores (linhas do memorial e fichas dos softwares) ⇄ itens
+// ------------------------------------------------------------
+
+export const itemDaLinha = (linha: ILinhaServidor, ordem: number): IItemKit => ({
+  chave: linha.chave,
+  tipo: 'servidor',
+  codigo: linha.codigoCigam,
+  descricao: nomeLinha(linha),
+  categoria: 'Equipamento',
+  situacao: 'Homologado',
+  observacao: '',
+  ordem,
+  ativo: linha.ativo,
+  atributos: { servidor: dadosGravadosLinha(linha) }
+});
+
+export const itemDaFicha = (ficha: ISoftwareServidor, ordem: number): IItemKit => ({
+  chave: ficha.chave,
+  tipo: 'servidorSoftware',
+  codigo: '',
+  descricao: `Memorial — ${ficha.nome}`,
+  categoria: 'Equipamento',
+  situacao: 'Homologado',
+  observacao: '',
+  ordem,
+  ativo: true,
+  atributos: { servidor: dadosGravadosFicha(ficha) }
+});
+
+export const linhaDoItem = (item: IItemKit): ILinhaServidor =>
+  normalizarLinha((item.atributos.servidor || {}) as Partial<ILinhaServidor>, item.chave, item.codigo, item.ativo);
+
+export const fichaDoItem = (item: IItemKit): ISoftwareServidor =>
+  normalizarFicha((item.atributos.servidor || {}) as Partial<ISoftwareServidor>, item.chave);
+
+export const servidoresDoCatalogo = (
+  catalogo: Pick<ICatalogoKitsCarregado, 'itens'>
+): { linhas: ILinhaServidor[]; softwares: ISoftwareServidor[] } => ({
+  linhas: catalogo.itens.filter(i => i.tipo === 'servidor').map(linhaDoItem),
+  softwares: catalogo.itens.filter(i => i.tipo === 'servidorSoftware').map(fichaDoItem)
+});
+
+// ------------------------------------------------------------
 // Padrão (código) → modelo da aba Kits
 // ------------------------------------------------------------
 
@@ -177,7 +233,7 @@ export const itensDoPadrao = (): IItemKit[] => {
     observacao: cam.observacao || '',
     ordem: indice,
     ativo: true,
-    atributos: { formato: cam.formato, zoomOptico: cam.zoomOptico, consumoW: cam.consumoW, padrao: !!cam.padrao }
+    atributos: { formato: cam.formato, zoomOptico: cam.zoomOptico, consumoW: cam.consumoW, padrao: !!cam.padrao, ...(cam.resolucaoMp ? { resolucaoMp: cam.resolucaoMp } : {}) }
   });
 
   p.camerasVideo.forEach((cam, i) => itens.push(camera('cameraVideo')(cam, i)));
@@ -224,6 +280,10 @@ export const itensDoPadrao = (): IItemKit[] => {
     });
   }
 
+  const servidores = servidoresPadrao();
+  servidores.linhas.forEach((linha, i) => itens.push(itemDaLinha(linha, i)));
+  servidores.softwares.forEach((ficha, i) => itens.push(itemDaFicha(ficha, i)));
+
   return itens;
 };
 
@@ -262,6 +322,12 @@ const catalogoDoPadrao = (motivo: string): ICatalogoKitsCarregado => ({
 // Modelo da aba Kits → dados do montador
 // ------------------------------------------------------------
 
+const resolucaoPadrao = (item: IItemKit): number | undefined => {
+  const p = catalogoPadrao();
+  const cam = p.camerasVideo.concat(p.camerasOcr).filter(c => (c.codigo && c.codigo === item.codigo) || c.modelo === item.descricao)[0];
+  return cam ? cam.resolucaoMp : undefined;
+};
+
 export const dadosParaMontador = (
   catalogo: Pick<ICatalogoKitsCarregado, 'itens' | 'kits' | 'composicoes'>
 ): ICatalogoKitsDados => {
@@ -278,7 +344,10 @@ export const dadosParaMontador = (
     zoomOptico: !!item.atributos.zoomOptico,
     consumoW: Number(item.atributos.consumoW) || 0,
     padrao: !!item.atributos.padrao,
-    observacao: item.observacao || undefined
+    observacao: item.observacao || undefined,
+    // Sem resolução gravada (catálogo importado antes do campo): usa
+    // a do padrão do sistema para o mesmo modelo.
+    resolucaoMp: Number(item.atributos.resolucaoMp) || resolucaoPadrao(item)
   }));
 
   const pne = ativos('controladorPne')[0];
@@ -351,8 +420,10 @@ export const dadosParaMontador = (
 export const aplicarNoMontador = (catalogo: ICatalogoKitsCarregado): void => {
   if (catalogo.origem === 'dataverse' && !catalogo.vazio) {
     aplicarCatalogo(dadosParaMontador(catalogo), 'dataverse');
+    aplicarServidores(servidoresDoCatalogo(catalogo));
   } else {
     restaurarCatalogoPadrao();
+    restaurarServidoresPadrao();
   }
 };
 
@@ -535,6 +606,11 @@ export class KitsService {
   // ---------------- gravação ----------------
 
   private dadosItem(item: IItemKit): Record<string, unknown> {
+    const atributos = JSON.stringify(item.atributos || {});
+    // dgt_atributos tem 4000 caracteres (criar-tabelas-kits.ps1).
+    if (atributos.length > 4000) {
+      throw new Error(`${item.descricao}: os dados técnicos passam de 4000 caracteres (${atributos.length}). Encurte textos de alertas ou alternativas.`);
+    }
     return {
       [COL_ITEM.chave]: item.chave,
       [COL_ITEM.descricao]: item.descricao.trim().substring(0, 200),
@@ -545,7 +621,7 @@ export class KitsService {
       [COL_ITEM.observacao]: item.observacao,
       [COL_ITEM.ordem]: Math.round(item.ordem || 0),
       [COL_ITEM.ativo]: item.ativo,
-      [COL_ITEM.atributos]: JSON.stringify(item.atributos || {})
+      [COL_ITEM.atributos]: atributos
     };
   }
 
@@ -720,6 +796,46 @@ export class KitsService {
       depois: { ...kit, composicao: composicao.map(l => ({ chaveItem: l.chaveItem, quantidade: l.quantidade, regra: l.regra, condicao: l.condicao })) },
       usuarioNome
     });
+  }
+
+  // Carga da planilha dos memoriais (aba Servidores): grava as linhas
+  // e as fichas informadas — criando as que ainda não existem — e
+  // registra UMA alteração com o resumo.
+  public async gravarServidores(
+    itens: Array<{ novo: IItemKit; anterior?: IItemKit }>,
+    motivo: string,
+    resumo: string,
+    usuarioNome: string,
+    aoProgredir?: (feito: number, total: number) => void
+  ): Promise<number> {
+
+    const lote = 5;
+    for (let i = 0; i < itens.length; i += lote) {
+      await Promise.all(itens.slice(i, i + lote).map(({ novo, anterior }) => {
+        const id = novo.id || (anterior && anterior.id);
+        return id
+          ? this.dataverse.atualizarRegistro(TABELAS_KITS.item, id, this.dadosItem(novo))
+          : this.dataverse.criarRegistro(TABELAS_KITS.item, this.dadosItem(novo));
+      }));
+      if (aoProgredir) {
+        aoProgredir(Math.min(itens.length, i + lote), itens.length);
+      }
+    }
+
+    if (itens.length > 0) {
+      await this.registrarAlteracao({
+        entidade: 'Servidor',
+        chave: 'servidores',
+        acao: 'Importação',
+        resumo,
+        motivo,
+        antes: itens.filter(x => x.anterior).map(x => ({ chave: (x.anterior as IItemKit).chave, codigo: (x.anterior as IItemKit).codigo, dados: (x.anterior as IItemKit).atributos })),
+        depois: itens.map(x => ({ chave: x.novo.chave, codigo: x.novo.codigo, dados: x.novo.atributos })),
+        usuarioNome
+      });
+    }
+
+    return itens.length;
   }
 
   // Leva o catálogo padrão (código) para o Dataverse. Só cria o que

@@ -8,8 +8,17 @@ import {
 
 import {
   ICatalogoKitsCarregado,
+  linhaDoItem,
   usosDoItem
 } from '../../services/bom/KitsService';
+
+import {
+  pendenciasLinha
+} from '../../services/bom/catalogoServidores';
+
+import {
+  ehTipoServidor
+} from '../../services/bom/esquemaKits';
 
 import {
   IconeKit,
@@ -36,6 +45,7 @@ export interface IVisaoGeralKitsProps {
   abrirKit: (kit: ChaveKit) => void;
   abrirItens: () => void;
   abrirHistorico: () => void;
+  abrirServidores: () => void;
 }
 
 interface IPendencia {
@@ -46,9 +56,11 @@ interface IPendencia {
   rotuloAcao: string;
 }
 
-const VisaoGeralKits: React.FC<IVisaoGeralKitsProps> = ({ catalogo, abrirItem, abrirKit, abrirItens, abrirHistorico }) => {
+const VisaoGeralKits: React.FC<IVisaoGeralKitsProps> = ({ catalogo, abrirItem, abrirKit, abrirItens, abrirHistorico, abrirServidores }) => {
 
-  const ativos = catalogo.itens.filter(i => i.ativo);
+  // Linhas de servidor contam à parte (aba Servidores).
+  const servidores = catalogo.itens.filter(i => i.ativo && i.tipo === 'servidor');
+  const ativos = catalogo.itens.filter(i => i.ativo && !ehTipoServidor(i.tipo));
   const equipamentos = ativos.filter(i => i.tipo !== 'item');
   const itensKit = ativos.filter(i => i.tipo === 'item');
   const semCodigo = ativos.filter(i => !i.codigo.trim());
@@ -92,6 +104,18 @@ const VisaoGeralKits: React.FC<IVisaoGeralKitsProps> = ({ catalogo, abrirItem, a
       acao: () => abrirItem(i.chave),
       rotuloAcao: 'Preencher código'
     }));
+
+  const servidoresIncompletos = servidores.filter(i => pendenciasLinha(linhaDoItem(i)).length > 0).length;
+  const servidoresSemCodigo = servidores.filter(i => !i.codigo.trim()).length;
+  if (servidoresIncompletos > 0 || servidoresSemCodigo > 0) {
+    pendencias.unshift({
+      chave: 'servidores',
+      texto: `Servidores: ${servidoresIncompletos} linha(s) com o memorial incompleto, ${servidoresSemCodigo} sem código CIGAM`,
+      detalhe: 'Linha incompleta não pode ser escolhida no seletor de servidor; sem código, o servidor não é orçável.',
+      acao: abrirServidores,
+      rotuloAcao: 'Abrir Servidores'
+    });
+  }
 
   const numeros: Array<{ valor: number; rotulo: string; acao?: () => void }> = [
     { valor: equipamentos.length, rotulo: 'equipamentos homologados ou em homologação', acao: abrirItens },

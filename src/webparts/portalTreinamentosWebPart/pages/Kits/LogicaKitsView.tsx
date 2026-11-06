@@ -44,7 +44,7 @@ const PASSOS: Array<{ titulo: string; texto: string }> = [
   },
   {
     titulo: 'Entram as licenças',
-    texto: 'Por câmera (Safe City, Face Detect), por faixa monitorada (Safe Way) e as de projeto (Digifort por servidor, IPX, W-Access por cadastros e canais).'
+    texto: 'Por câmera (Safe City, Face Detect), por faixa monitorada (Safe Way) e as de projeto (IPX, W-Access por cadastros e canais). Servidor e licenças de VMS (Digifort, Milestone) vêm do seletor de servidor.'
   },
   {
     titulo: 'O montador confere e consolida',
@@ -60,7 +60,8 @@ const VALIDACOES: string[] = [
   'Face Detect em ponto alto com câmera sem zoom óptico.',
   'Equipamento ou item sem código CIGAM: entra como pendente, não orçável.',
   'Item usado no kit que foi desativado no catálogo.',
-  'IPX Analytics sem o Digifort como VMS.'
+  'IPX Analytics sem o Digifort como VMS.',
+  'VMS local (Digifort, Milestone) ou IPX sem servidor adicionado à central; premissa do memorial não atendida; necessidade acima da maior faixa.'
 ];
 
 const LogicaKitsView: React.FC = () => {
@@ -113,7 +114,8 @@ const LogicaKitsView: React.FC = () => {
             <li>Safe City: 1 licença por câmera de vídeo com a solução marcada.</li>
             <li>Face Detect: 1 por câmera de vídeo do ponto com Face Detect.</li>
             <li>Safe Way: 1 por faixa monitorada em cada câmera OCR/LPR.</li>
-            <li>Digifort: base de {CAMERAS_BASE_DIGIFORT} câmeras por servidor; o excedente é coberto pelo menor pack que resolve ({packs} câmeras).</li>
+            <li>Digifort: gerado pelo seletor de servidor — base de {CAMERAS_BASE_DIGIFORT} câmeras por servidor da opção escolhida; o excedente da necessidade é coberto pelo menor pack que resolve ({packs} câmeras).</li>
+            <li>Milestone: licença por câmera, gerada pelo seletor de servidor, com os discos de vigilância da faixa.</li>
             <li>IPX Analytics: câmeras de vídeo × pacotes; só com Digifort.</li>
             <li>W-Access: 1 licença por leitora, 1 a cada 1000 cadastros de face e 1 a cada 2 canais de visualização.</li>
           </ul>

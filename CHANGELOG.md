@@ -6,6 +6,12 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: seleção de servidor na Seleção de kit (Arquitetura) — bloco "Servidores da central" escolhe o servidor de gravação (Digifort, Milestone) e o de analítico (IPX) pelo memorial de cálculo: premissas, compressão, câmeras com reserva, faixa recomendada, distribuição, GPU, processador e SO; o servidor, os discos, o SO e as licenças de VMS só entram no B.O.M. depois de "Adicionar à central".
+- Melhoria: as licenças do Digifort passam a ser geradas pelo seletor de servidor (base por servidor + packs pela necessidade); o campo "Servidores" saiu do bloco Projeto. Seleções antigas com Digifort pedem a seleção do servidor para concluir.
+- Novo: Milestone como VMS do projeto (licença por câmera e discos de vigilância vêm do seletor de servidor).
+- Novo: aba "Servidores" em Kits — as 43 linhas dos memoriais (Digifort, Milestone, IPX), fichas com premissas e alertas editáveis, "Baixar modelo CSV" e "Importar planilha"; linhas com memorial incompleto ficam fora do seletor.
+- Novo: aba "Wiki" em Kits — como as soluções, estruturas, controle de acesso, VMS de terceiros e servidores funcionam, sem modelos nem códigos, com links para as abas que definem os kits.
+- Melhoria: resolução (MP) no cadastro de câmeras, conferida contra a premissa dos memoriais de servidor.
 - Novo: excluir ou desativar ambientes (Configuração do ambiente), com opção de excluir junto o processo/fluxo; reativar/excluir ambientes desativados no "+ Adicionar ambiente"; botão Remover no processo aberto. A remoção de fluxo agora é bloqueada enquanto um ambiente usa o fluxo.
 - Novo: componente nativo "Cálculo de HH" — a tela da Arquitetura ligada à Seleção de kit do registro; grava o resultado e a versão de HH aplicada. Exemplo da Arquitetura inteira como ambiente configurável (docs/exemplos/pacote-arquitetura-bom.json).
 - Novo: tipo de campo "Componente" — telas personalizadas em etapas de fluxo: nativas (Montador de B.O.M. da Arquitetura, a mesma tela de Seleção de kit) ou HTML isolado (iframe sandbox) com ponte de dados somente leitura para tabelas e colunas liberadas; o "válido" da tela libera o Concluir da etapa. Guia em docs/componentes.md.

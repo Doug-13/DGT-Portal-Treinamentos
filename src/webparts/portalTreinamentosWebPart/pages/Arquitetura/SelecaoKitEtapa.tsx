@@ -44,10 +44,13 @@ import {
   NomeIconeKit
 } from './IconesKit';
 
+import SeletorServidor from './SeletorServidor';
+
 // ============================================================
 // ETAPA 3 — SELEÇÃO DE KIT (montador de B.O.M.)
 //
-//   ┌ Projeto: VMS, Digifort, IPX, W-Access ──────────────┐
+//   ┌ Projeto: VMS, IPX, W-Access ────────────────────────┐
+//   ├ Servidores da central (seletor por memorial) ───────┤
 //   ├ Pontos do projeto (cartões) + Adicionar ponto ──────┤
 //   │ Configurar ponto            │ Kit gerado             │
 //   │ (tipo, soluções, câmeras,   │ (kits aplicados,       │
@@ -460,7 +463,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
     const usaVideo =
       (parcial.safeCity !== undefined ? parcial.safeCity : ponto.safeCity) ||
       (parcial.faceDetect !== undefined ? parcial.faceDetect : ponto.faceDetect) ||
-      sw.vms === 'digifort';
+      sw.vms !== 'safeCity';
 
     if (!usaVideo) {
       parcial.camerasVideo = 0;
@@ -507,17 +510,14 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
           onMudar={id => mudarSoftwares({ vms: id as ISoftwaresKit['vms'] })}
           opcoes={[
             { id: 'safeCity', texto: 'Safe City (nuvem)', icone: 'nuvem' },
-            { id: 'digifort', texto: 'Digifort (terceiro)', icone: 'servidor' }
+            { id: 'digifort', texto: 'Digifort', icone: 'servidor' },
+            { id: 'milestone', texto: 'Milestone', icone: 'servidor' }
           ]}
         />
       </div>
 
       {sw.vms === 'digifort' && (
         <>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul, fontWeight: 700 }} title="Cada servidor exige a própria base de 8 câmeras">
-            Servidores
-            <Numero valor={sw.digifortServidores} aoMudar={n => mudarSoftwares({ digifortServidores: n })} minimo={1} maximo={99} desabilitado={bloqueado} largura="70px" />
-          </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul, cursor: 'pointer' }} title="Analíticos por IA (IP Extreme) — roda sobre o Digifort">
             <input type="checkbox" checked={sw.ipx} disabled={bloqueado} onChange={e => mudarSoftwares({ ipx: e.target.checked })} />
             <strong>IPX Analytics</strong>
@@ -662,7 +662,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
 
     const bridgefy = ehBridgefy(ponto.tipo);
     const estrutura = parametrosDoPonto(ponto);
-    const usaVideo = bridgefy && (ponto.safeCity || ponto.faceDetect || sw.vms === 'digifort');
+    const usaVideo = bridgefy && (ponto.safeCity || ponto.faceDetect || sw.vms !== 'safeCity');
     const usaLpr = bridgefy && !!estrutura && estrutura.aceitaOcr && ponto.safeWay;
     const swPonto = switchDe(ponto.switchId);
 
@@ -718,7 +718,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
               {sw.vms === 'safeCity'
                 ? <Ladrilho caixa icone="nuvem" titulo="Safe City" descricao="VMS em nuvem · RTMP · licença por câmera" marcado={ponto.safeCity} desabilitado={bloqueado} onClick={() => alternarSolucao('safeCity')} />
-                : <Ladrilho caixa icone="servidor" titulo="Digifort (VMS do projeto)" descricao="Licença por servidor + packs, no projeto" marcado desabilitado onClick={() => undefined} />}
+                : <Ladrilho caixa icone="servidor" titulo={`${sw.vms === 'milestone' ? 'Milestone' : 'Digifort'} (VMS do projeto)`} descricao="Servidor e licenças pelo seletor de servidor" marcado desabilitado onClick={() => undefined} />}
               <Ladrilho caixa icone="radar" titulo="Smart Detect" descricao="Módulo do Safe City · licença inclusa" marcado={ponto.smartDetect} desabilitado={bloqueado || sw.vms !== 'safeCity'} onClick={() => alternarSolucao('smartDetect')} />
               <Ladrilho caixa icone="rosto" titulo="Face Detect" descricao="Facial · SFTP · licença por câmera" marcado={ponto.faceDetect} desabilitado={bloqueado} onClick={() => alternarSolucao('faceDetect')} />
               <Ladrilho caixa icone="placa" titulo="Safe Way" descricao={estrutura.aceitaOcr ? 'Leitura de placas · SFTP · licença por faixa' : 'O Box não comporta câmera OCR/LPR'} marcado={ponto.safeWay && estrutura.aceitaOcr} desabilitado={bloqueado || !estrutura.aceitaOcr} onClick={() => alternarSolucao('safeWay')} />
@@ -952,6 +952,11 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
       )}
 
       {blocoProjeto}
+      <SeletorServidor
+        selecao={selecao}
+        bloqueado={bloqueado}
+        aoMudar={servidores => { setSelecao(atual => ({ ...atual, servidores })); setAlterado(true); }}
+      />
       {selecao.pontos.length > 0 && blocoPontos}
 
       <div style={{ display: 'grid', gridTemplateColumns: largo ? 'minmax(0, 1.1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: '14px', alignItems: 'start' }}>

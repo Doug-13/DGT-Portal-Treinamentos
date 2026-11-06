@@ -82,7 +82,17 @@ export type TipoItemKit =
   | 'cameraOcr'
   | 'switch'
   | 'controladorPorta'
-  | 'controladorPne';
+  | 'controladorPne'
+  // Seleção de servidor (aba Servidores): uma linha do memorial de
+  // cálculo por faixa e opção, e a ficha de cada software (premissas
+  // e alertas). Não aparecem em Equipamentos e itens.
+  | 'servidor'
+  | 'servidorSoftware';
+
+export const TIPOS_SERVIDOR: TipoItemKit[] = ['servidor', 'servidorSoftware'];
+
+export const ehTipoServidor = (tipo: TipoItemKit): boolean =>
+  TIPOS_SERVIDOR.indexOf(tipo) >= 0;
 
 export const TIPOS_ITEM: Array<{ tipo: TipoItemKit; nome: string; plural: string; ajuda: string }> = [
   { tipo: 'item', nome: 'Item de kit', plural: 'Itens de kit', ajuda: 'Peças, infraestrutura, serviços, licenças e adesivos usados na composição dos kits.' },
@@ -106,4 +116,9 @@ export interface IAtributosItemKit {
   portasPoe?: number;
   padrao?: boolean;
   usoCatraca?: boolean;
+  // Câmeras: resolução em MP (premissa dos memoriais de servidor).
+  resolucaoMp?: number;
+  // Servidores: os dados da linha do memorial ou da ficha do
+  // software (formato em catalogoServidores.ts).
+  servidor?: unknown;
 }

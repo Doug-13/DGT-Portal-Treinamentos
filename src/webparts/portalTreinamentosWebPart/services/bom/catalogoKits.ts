@@ -111,6 +111,9 @@ const ITENS_PADRAO = {
   digifortPack64: item('635.010.0010', 'Digifort Enterprise — pack 64 câmeras (DGFEN1164V7)', 'Licença'),
   ipxAnalytics: item('620.005.0054', 'Licença IPX Analytics Pro — mensal (por câmera e pacote)', 'Licença'),
   ipxIntegracao: item('', 'Licença de integração de analítico em servidor de terceiros (Digifort) — código a levantar', 'Licença'),
+  // Milestone: gerada pelo seletor de servidor. O memorial é do
+  // Professional+; o item cadastrado é Express+ (pendência S4).
+  milestoneXprotect: item('3300110014', 'Milestone XProtect Express+ Device Licence (por câmera)', 'Licença'),
 
   // Controle de acesso — porta
   acionadorEmbutir: item('5500010158', 'Intelbras acionador abertura inox embutir 4x2 BT 5000 IN', 'Equipamento'),
@@ -174,16 +177,18 @@ export interface ICameraCatalogo {
   consumoW: number;
   padrao?: boolean;
   observacao?: string;
+  // Resolução (MP): premissa dos memoriais de servidor (até 4 MP).
+  resolucaoMp?: number;
 }
 
 export const CAMERAS_VIDEO: ICameraCatalogo[] = [
-  { codigo: '3100050082', modelo: 'Intelbras VIP 5440 D Z IA', formato: 'Dome', zoomOptico: true, consumoW: 9.2, padrao: true },
-  { codigo: '3100010165', modelo: 'Intelbras VIP 5460 Z IA', formato: 'Bullet', zoomOptico: true, consumoW: 9.2, observacao: 'Escassa — produção reduzida até novembro' },
-  { codigo: '3100010149', modelo: 'Intelbras VIP 7550 Z IA FT', formato: 'Bullet', zoomOptico: true, consumoW: 13 },
-  { codigo: '3100050075', modelo: 'Intelbras VIP 7550 D Z IA FT', formato: 'Dome', zoomOptico: true, consumoW: 13 },
-  { codigo: '', modelo: 'Intelbras VIP 5440 IA', formato: 'Bullet', zoomOptico: false, consumoW: 7.2, observacao: 'Código CIGAM a preencher' },
-  { codigo: '', modelo: 'Intelbras VIP 5440 D IA', formato: 'Dome', zoomOptico: false, consumoW: 8.3, observacao: 'Sem cadastro no CIGAM — não orçável' },
-  { codigo: '', modelo: 'Dahua DH-IPC-HDBW4441E-AS', formato: 'Dome', zoomOptico: false, consumoW: 8.3, observacao: 'Código CIGAM a preencher' }
+  { codigo: '3100050082', modelo: 'Intelbras VIP 5440 D Z IA', formato: 'Dome', zoomOptico: true, consumoW: 9.2, padrao: true, resolucaoMp: 4 },
+  { codigo: '3100010165', modelo: 'Intelbras VIP 5460 Z IA', formato: 'Bullet', zoomOptico: true, consumoW: 9.2, observacao: 'Escassa — produção reduzida até novembro', resolucaoMp: 4 },
+  { codigo: '3100010149', modelo: 'Intelbras VIP 7550 Z IA FT', formato: 'Bullet', zoomOptico: true, consumoW: 13, resolucaoMp: 5 },
+  { codigo: '3100050075', modelo: 'Intelbras VIP 7550 D Z IA FT', formato: 'Dome', zoomOptico: true, consumoW: 13, resolucaoMp: 5 },
+  { codigo: '', modelo: 'Intelbras VIP 5440 IA', formato: 'Bullet', zoomOptico: false, consumoW: 7.2, observacao: 'Código CIGAM a preencher', resolucaoMp: 4 },
+  { codigo: '', modelo: 'Intelbras VIP 5440 D IA', formato: 'Dome', zoomOptico: false, consumoW: 8.3, observacao: 'Sem cadastro no CIGAM — não orçável', resolucaoMp: 4 },
+  { codigo: '', modelo: 'Dahua DH-IPC-HDBW4441E-AS', formato: 'Dome', zoomOptico: false, consumoW: 8.3, observacao: 'Código CIGAM a preencher', resolucaoMp: 4 }
 ];
 
 export const CAMERAS_OCR: ICameraCatalogo[] = [
@@ -506,20 +511,22 @@ export const COMPOSICAO_KITS: Record<string, IComponenteKit[]> = copiarComposica
 // para mostrar "onde é usado" e avisar antes de desativar.
 const REGRA_CATRACA = 'Catraca (fórmula)';
 const REGRA_LICENCAS = 'Licenças (regra do montador)';
+const REGRA_SERVIDOR = 'Seletor de servidor';
 
 export const ITENS_EM_REGRAS: Record<string, string> = {
   fonte12v35: 'Fontes das câmeras (regra do montador)',
   licencaSafeCity: REGRA_LICENCAS,
   licencaSafeWay: REGRA_LICENCAS,
   licencaFaceDetect: REGRA_LICENCAS,
-  digifortBase8: REGRA_LICENCAS,
-  digifortPack2: REGRA_LICENCAS,
-  digifortPack4: REGRA_LICENCAS,
-  digifortPack8: REGRA_LICENCAS,
-  digifortPack16: REGRA_LICENCAS,
-  digifortPack32: REGRA_LICENCAS,
-  digifortPack64: REGRA_LICENCAS,
+  digifortBase8: REGRA_SERVIDOR,
+  digifortPack2: REGRA_SERVIDOR,
+  digifortPack4: REGRA_SERVIDOR,
+  digifortPack8: REGRA_SERVIDOR,
+  digifortPack16: REGRA_SERVIDOR,
+  digifortPack32: REGRA_SERVIDOR,
+  digifortPack64: REGRA_SERVIDOR,
   ipxAnalytics: REGRA_LICENCAS,
+  milestoneXprotect: REGRA_SERVIDOR,
   ipxIntegracao: REGRA_LICENCAS,
   waccess1000: REGRA_LICENCAS,
   waccess2Conexoes: REGRA_LICENCAS,

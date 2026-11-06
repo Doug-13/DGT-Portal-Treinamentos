@@ -30,7 +30,13 @@ import CatalogoItensView from './CatalogoItensView';
 import ComposicaoKitView from './ComposicaoKitView';
 import HistoricoKitsView from './HistoricoKitsView';
 import LogicaKitsView from './LogicaKitsView';
+import ServidoresKitsView from './ServidoresKitsView';
 import VisaoGeralKits from './VisaoGeralKits';
+import WikiKitsView, { DestinoWiki } from './WikiKitsView';
+
+import {
+  TipoItemKit
+} from '../../services/bom/esquemaKits';
 
 import {
   Aviso,
@@ -45,7 +51,8 @@ import {
 //
 // Abas internas:
 //   Visão geral · Equipamentos e itens · Composição dos kits ·
-//   Como o montador calcula (com simulador) · Histórico
+//   Servidores (memoriais) · Como o montador calcula (com
+//   simulador) · Histórico · Wiki (soluções, sem dados de kit)
 //
 // Quem vê: quem tem o módulo "kits" liberado (Usuários e acessos).
 // Quem altera: Administrador do portal ou administrador do módulo
@@ -58,14 +65,16 @@ export interface IKitsPageProps {
   contexto?: IContextoAcesso;
 }
 
-type AbaKits = 'visao' | 'itens' | 'kits' | 'logica' | 'historico';
+type AbaKits = 'visao' | 'itens' | 'kits' | 'servidores' | 'logica' | 'historico' | 'wiki';
 
 const ABAS: Array<{ id: AbaKits; rotulo: string }> = [
   { id: 'visao', rotulo: 'Visão geral' },
   { id: 'itens', rotulo: 'Equipamentos e itens' },
   { id: 'kits', rotulo: 'Composição dos kits' },
+  { id: 'servidores', rotulo: 'Servidores' },
   { id: 'logica', rotulo: 'Como o montador calcula' },
-  { id: 'historico', rotulo: 'Histórico' }
+  { id: 'historico', rotulo: 'Histórico' },
+  { id: 'wiki', rotulo: 'Wiki' }
 ];
 
 const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
@@ -81,6 +90,7 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
   const [aba, setAba] = React.useState<AbaKits>('visao');
   const [itemFoco, setItemFoco] = React.useState<string | undefined>(undefined);
   const [kitFoco, setKitFoco] = React.useState<ChaveKit | undefined>(undefined);
+  const [tipoFoco, setTipoFoco] = React.useState<TipoItemKit | undefined>(undefined);
   const [importando, setImportando] = React.useState('');
   const [pendente, setPendente] = React.useState(false);
 
@@ -125,7 +135,20 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
     setPendente(false);
     setItemFoco(undefined);
     setKitFoco(undefined);
+    setTipoFoco(undefined);
     setAba(nova);
+  };
+
+  // Links da Wiki para as abas que definem os kits.
+  const abrirDaWiki = (d: DestinoWiki): void => {
+    irPara(d.aba);
+    if (d.aba === 'itens' && d.tipo) {
+      setTipoFoco(d.tipo);
+    }
+    if (d.aba === 'kits' && d.kit) {
+      setKitFoco(d.kit);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // ---------------- gravações ----------------
@@ -161,6 +184,19 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
     await servico.criarKit(kit, composicao, motivo, usuarioNome);
     await carregar();
     avisar(`Kit "${kit.nome}" criado. Ele já aparece na Seleção de kit da Arquitetura de Soluções.`);
+  };
+
+  const gravarServidores = async (
+    itens: Parameters<KitsService['gravarServidores']>[0],
+    motivo: string,
+    resumo: string
+  ): Promise<void> => {
+    if (!servico) {
+      return;
+    }
+    await servico.gravarServidores(itens, motivo, resumo, usuarioNome);
+    await carregar();
+    avisar(`${resumo}. O seletor de servidor já usa os dados novos.`);
   };
 
   const importar = async (): Promise<void> => {
@@ -257,6 +293,7 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
               abrirKit={kit => { setKitFoco(kit); setAba('kits'); }}
               abrirItens={() => { setItemFoco(undefined); setAba('itens'); }}
               abrirHistorico={() => setAba('historico')}
+              abrirServidores={() => setAba('servidores')}
             />
           )}
           {aba === 'itens' && (
@@ -264,6 +301,7 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
               catalogo={catalogo}
               podeEditar={podeEditar}
               chaveInicial={itemFoco}
+              tipoInicial={tipoFoco}
               aoSalvarItem={salvarItem}
             />
           )}
@@ -277,7 +315,9 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
               aoCriarKit={criarKit}
             />
           )}
+          {aba === 'servidores' && <ServidoresKitsView catalogo={catalogo} podeEditar={podeEditar} aoGravar={gravarServidores} />}
           {aba === 'logica' && <LogicaKitsView />}
+          {aba === 'wiki' && <WikiKitsView abrir={abrirDaWiki} />}
           {aba === 'historico' && <HistoricoKitsView alteracoes={catalogo.alteracoes} origemDataverse={catalogo.origem === 'dataverse'} />}
         </div>
       )}
