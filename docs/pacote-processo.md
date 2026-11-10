@@ -199,7 +199,7 @@ Todo fluxo tem **um** `inicio` e ao menos um `fim`.
 
 ### Ação automática (`tarefaSistema`, só documentos)
 
-`acaoSistema`: `publicarComRetreinamento`, `publicarSemRetreinamento`, `novaRevisao`,
+`acaoSistema`: `executarScript` (script — ver `docs/scripts.md`; também em ambientes), `publicarComRetreinamento`, `publicarSemRetreinamento`, `novaRevisao`,
 `novaSubRevisao`, `proximaRevisao`, `removerArquivoRevisao`.
 
 ### Subprocesso (só documentos)

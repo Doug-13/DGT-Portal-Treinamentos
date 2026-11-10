@@ -455,6 +455,11 @@ export const etapaDeAprovacao = (
             return false;
           }
 
+          // Script não publica: segue a busca adiante dele.
+          if (destino.tipo === 'tarefaSistema' && destino.acaoSistema === 'executarScript') {
+            return levaAPublicacao(destino.id, visitados.concat(id));
+          }
+
           if (destino.tipo === 'tarefaSistema' && !!destino.acaoSistema) {
             return true;
           }

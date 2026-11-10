@@ -19,7 +19,8 @@ export const avisosFluxoAmbiente = (
 
   definicao.elementos.forEach(elemento => {
 
-    if (elemento.tipo === 'tarefaSistema' && elemento.acaoSistema) {
+    // Script funciona em ambientes (não é ação de documento).
+    if (elemento.tipo === 'tarefaSistema' && elemento.acaoSistema && elemento.acaoSistema !== 'executarScript') {
       avisos.push(`"${elemento.nome}": publicação de documento — no ambiente apenas segue adiante.`);
     }
 

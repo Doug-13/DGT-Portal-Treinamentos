@@ -1,8 +1,13 @@
 import {
+  IResultadoScript
+} from './scriptFluxo';
+
+import {
   ISubprocessoSolicitado,
   AcaoSistemaFluxo,
   IFluxoAtor,
   IFluxoDefinicao,
+  IFluxoElemento,
   IFluxoInstancia,
   IFluxoResponsavel,
   IResponsavelResolvido
@@ -22,6 +27,8 @@ import {
 } from '../processos/MetadadosProcessoService';
 
 import {
+  continuarAposScriptNaInstancia,
+  scriptPendente,
   liberarSubprocesso,
   subprocessoAguardando,
   concluirPublicacaoPendente,
@@ -66,6 +73,11 @@ export interface IContextoExecucaoFluxo {
   // gravar o novo estado. Se falhar, nada é gravado e a ação volta
   // com o erro — o fluxo não fica "concluído" sem a publicação.
   executarAcoesSistema?: (acoes: AcaoSistemaFluxo[], instancia: IFluxoInstancia) => Promise<void>;
+
+  // Roda o script de uma tarefa "Executar script" (isolado) e devolve
+  // os campos preenchidos (já filtrados) ou erros. Sem ele, um fluxo
+  // que chega a um script não avança (exceto no modo de teste).
+  executarScript?: (elemento: IFluxoElemento, instancia: IFluxoInstancia) => Promise<IResultadoScript>;
 }
 
 export class FluxoService {
@@ -284,6 +296,12 @@ export class FluxoService {
       resultado.instancia.processoId = processo.id;
       resultado.instancia.processoNome = processo.nome;
 
+      // Script logo depois do Início: roda antes de gravar.
+      const errosScriptInicio = await this.rodarScripts(definicao, resultado.instancia, resultado.acoesSistema, contexto);
+      if (errosScriptInicio.length > 0) {
+        return { ok: false, erros: errosScriptInicio, acoesSistema: [] };
+      }
+
       // Subprocesso logo depois do Início: cria os documentos filhos
       // antes de gravar (só esta tarefa automática roda no início).
       if (
@@ -344,6 +362,13 @@ export class FluxoService {
       executarAcao(definicao, instancia, execucao);
 
     if (resultado.ok && resultado.instancia) {
+
+      // Scripts no caminho: rodam ANTES das tarefas de sistema e da
+      // gravação; se falharem, a ação não é concluída.
+      const errosScript = await this.rodarScripts(definicao, resultado.instancia, resultado.acoesSistema, contexto);
+      if (errosScript.length > 0) {
+        return { ok: false, erros: errosScript, acoesSistema: [] };
+      }
 
       if (
         resultado.acoesSistema.length > 0 &&
@@ -492,6 +517,11 @@ export class FluxoService {
 
     if (resultado.ok && resultado.instancia) {
 
+      const errosScript = await this.rodarScripts(definicao, resultado.instancia, resultado.acoesSistema, contexto);
+      if (errosScript.length > 0) {
+        return { ok: false, erros: errosScript, acoesSistema: [] };
+      }
+
       if (
         resultado.acoesSistema.length > 0 &&
         contexto &&
@@ -522,6 +552,48 @@ export class FluxoService {
     }
 
     return resultado;
+  }
+
+  // Enquanto o fluxo estiver parado num script: roda, aplica os campos
+  // e segue (o próximo trecho pode ter outro script). As tarefas de
+  // sistema alcançadas depois do script entram em "acoes". Devolve os
+  // erros (a ação não deve ser gravada).
+  private async rodarScripts(
+    definicao: IFluxoDefinicao,
+    instancia: IFluxoInstancia,
+    acoes: AcaoSistemaFluxo[],
+    contexto?: IContextoExecucaoFluxo
+  ): Promise<string[]> {
+    for (let rodada = 0; rodada < 10; rodada++) {
+      const script = scriptPendente(definicao, instancia);
+      if (!script) {
+        return [];
+      }
+      let saida: { valores: Record<string, string>; mensagem?: string; naoExecutado?: boolean };
+      if (instancia.simulado || !contexto || !contexto.executarScript) {
+        if (!instancia.simulado) {
+          return [`O fluxo chegou ao script "${script.nome}", mas esta tela não executa scripts. Abra o registro pelo portal (documento ou ambiente).`];
+        }
+        saida = { valores: {}, mensagem: 'modo de teste', naoExecutado: true };
+      } else {
+        let resultado: IResultadoScript;
+        try {
+          resultado = await contexto.executarScript(script, instancia);
+        } catch (error) {
+          return [`Script "${script.nome}": ${error instanceof Error ? error.message : String(error)}`];
+        }
+        if (resultado.erros.length > 0) {
+          return resultado.erros.map(erro => `Script "${script.nome}": ${erro}`);
+        }
+        saida = { valores: resultado.valores, mensagem: resultado.mensagem };
+      }
+      const continuacao = continuarAposScriptNaInstancia(definicao, instancia, saida);
+      if (continuacao.erros.length > 0) {
+        return continuacao.erros;
+      }
+      continuacao.acoesSistema.forEach(acao => acoes.push(acao));
+    }
+    return ['Scripts demais em sequência (mais de 10): confira se há um ciclo entre scripts no fluxo.'];
   }
 
   // Retorno de UM passo (administrador). Relê o estado antes de agir:

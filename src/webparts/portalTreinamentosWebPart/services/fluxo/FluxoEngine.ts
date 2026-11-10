@@ -774,7 +774,9 @@ const DESCRICAO_ACAO_SISTEMA: Record<AcaoSistemaFluxo, string> = {
   removerArquivoRevisao:
     'Arquivo da revisão removido (o novo será anexado na próxima etapa)',
   criarSubprocessos:
-    'Subprocesso: criação dos documentos solicitada'
+    'Subprocesso: criação dos documentos solicitada',
+  executarScript:
+    'Script executado'
 };
 
 // Avança automaticamente por gateways e tarefas de sistema até
@@ -943,6 +945,21 @@ const avancar = (
 
       resultadoAtual =
         'concluido';
+    }
+
+    // Script: o fluxo PARA aqui. Quem roda o script e continua é o
+    // FluxoService (rodarScripts → continuarAposScriptNaInstancia), para
+    // que as decisões seguintes já vejam os campos preenchidos.
+    if (
+      destino.tipo === 'tarefaSistema' &&
+      destino.acaoSistema === 'executarScript'
+    ) {
+      limparTransicoesOrfas(
+        definicao,
+        instancia
+      );
+
+      return [];
     }
 
     if (
@@ -2431,4 +2448,80 @@ export const liberarSubprocesso = (
     instancia: resultado.erros.length === 0 ? instancia : undefined,
     acoesSistema: resultado.acoesSistema
   };
+};
+
+// ============================================================
+// SCRIPT (tarefa de sistema "executarScript")
+// ============================================================
+
+// Script em que o fluxo está parado (esperando rodar).
+export const scriptPendente = (
+  definicao: IFluxoDefinicao | undefined,
+  instancia: IFluxoInstancia | undefined
+): IFluxoElemento | undefined => {
+  if (!definicao || !instancia || instancia.status !== 'emAndamento') {
+    return undefined;
+  }
+  const atual = obterElemento(definicao, instancia.elementoAtualId);
+  return atual && atual.tipo === 'tarefaSistema' && atual.acaoSistema === 'executarScript'
+    ? atual
+    : undefined;
+};
+
+// Aplica a saída do script (só os campos liberados, já filtrados) e
+// segue o fluxo. ALTERA a instância recebida.
+export const continuarAposScriptNaInstancia = (
+  definicao: IFluxoDefinicao,
+  instancia: IFluxoInstancia,
+  saida: { valores: Record<string, string>; mensagem?: string; naoExecutado?: boolean }
+): { erros: string[]; acoesSistema: AcaoSistemaFluxo[] } => {
+
+  const script = scriptPendente(definicao, instancia);
+
+  if (!script) {
+    return { erros: ['O fluxo não está parado num script.'], acoesSistema: [] };
+  }
+
+  const agora = agoraIso();
+  const preenchidos = Object.keys(saida.valores || {});
+
+  Object.keys(saida.valores || {}).forEach(chave => {
+    instancia.valores[chave] = saida.valores[chave];
+  });
+
+  const nomes = preenchidos.map(chave => {
+    const meta = (definicao.metadados || []).find(item => item.chave === chave);
+    return meta ? meta.rotulo : chave;
+  });
+
+  instancia.historico.unshift({
+    revisao: instancia.revisao,
+    id: gerarId('hist'),
+    data: agora,
+    elementoId: script.id,
+    elementoNome: script.nome,
+    acaoChave: 'executarScript',
+    acaoRotulo: saida.naoExecutado
+      ? `Script não executado${saida.mensagem ? ` (${saida.mensagem})` : ''}`
+      : `Script: ${saida.mensagem || 'executado'}`,
+    resultado: 'concluido',
+    comentario: nomes.length > 0 ? `Campos preenchidos: ${nomes.join(', ')}` : undefined,
+    executadoPorId: 'sistema',
+    executadoPorNome: 'Sistema',
+    sistema: true
+  });
+
+  const acoesSistema: AcaoSistemaFluxo[] = [];
+
+  const erros =
+    avancar(
+      definicao,
+      instancia,
+      script.id,
+      'concluido',
+      agora,
+      acoesSistema
+    );
+
+  return { erros, acoesSistema };
 };

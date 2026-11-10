@@ -1,4 +1,8 @@
 import {
+  executarScriptIsolado
+} from '../../components/fluxo/executarScriptIsolado';
+
+import {
   DataverseService
 } from '../DataverseService';
 
@@ -334,10 +338,24 @@ export class AmbienteFluxoService {
 
   private contextoExecucao(
     ambiente: IAmbiente,
-    registro: IAmbienteRegistro
+    registro: IAmbienteRegistro,
+    usuario?: { id: string; nome: string }
   ): IContextoExecucaoFluxo {
     const dados = this.dadosResponsaveis(registro);
     return {
+      // Tarefa "Executar script": roda isolada e preenche campos.
+      executarScript: async (elemento, instancia) =>
+        elemento.script
+          ? executarScriptIsolado(
+            elemento.script,
+            {
+              valores: instancia.valores,
+              registro: { codigo: registro.codigo, titulo: registro.titulo },
+              usuario: usuario || { id: '', nome: '' }
+            },
+            this.dataverse
+          )
+          : { valores: {}, erros: ['o script não está configurado.'], log: [] },
       resolverResponsaveis: (responsaveis, valores) =>
         resolverResponsaveis(responsaveis, { ...dados, valores }, this.vinculosCache),
       rotuloRevisao: `${registro.codigo} — ${registro.titulo}`.substring(0, 200),
@@ -420,7 +438,7 @@ export class AmbienteFluxoService {
             ator: await this.ator(disponibilidade.definicao, registro, contexto),
             simulado: false
           },
-          this.contextoExecucao(ambiente, registro)
+          this.contextoExecucao(ambiente, registro, { id: guid(contexto.usuarioId), nome: contexto.nome })
         );
     } catch (erro) {
       return { ok: false, erros: [mensagem(erro)], avisos: [] };
@@ -477,7 +495,7 @@ export class AmbienteFluxoService {
             valores,
             ator: await this.ator(antes.definicao, registro, contexto, antes.instancia)
           },
-          this.contextoExecucao(ambiente, registro)
+          this.contextoExecucao(ambiente, registro, { id: guid(contexto.usuarioId), nome: contexto.nome })
         );
     } catch (erro) {
       return { ok: false, erros: [mensagem(erro)], avisos: [] };

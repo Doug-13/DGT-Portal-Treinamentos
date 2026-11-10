@@ -40,6 +40,7 @@ import {
   configDaTransicao,
   configDoElemento,
   configPadraoElemento,
+  configInicialElemento,
   configPadraoTransicao,
   definicaoParaBpmnXml,
   IConfigElemento,
@@ -1022,7 +1023,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
 
   const configSelecionado: IConfigElemento | undefined =
     edicaoVisivel && selecionado && tipoSelecionado
-      ? edicaoVisivel.configsElementos[selecionado.id] || configPadraoElemento(tipoSelecionado)
+      ? edicaoVisivel.configsElementos[selecionado.id] || configInicialElemento(tipoSelecionado, selecionado.nome)
       : undefined;
 
   const painel = (
@@ -1034,6 +1035,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         key={`${selecionado ? selecionado.id : 'nenhum'}-${secao}`}
         secao={secao}
         processoAtualId={processo.id}
+        dataverseService={dataverseService}
         processosSubprocesso={
           (fontesCopia || []).map(item => ({
             id: item.processo.id,

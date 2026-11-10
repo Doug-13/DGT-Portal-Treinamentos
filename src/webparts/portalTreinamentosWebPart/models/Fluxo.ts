@@ -6,6 +6,10 @@ import {
   IConfigComponente
 } from '../services/fluxo/valorComponente';
 
+import {
+  IConfigScript
+} from '../services/fluxo/scriptFluxo';
+
 // ============================================================
 // MODELO DO FLUXO CONFIGURÁVEL DE DOCUMENTOS
 //
@@ -165,7 +169,10 @@ export type AcaoSistemaFluxo =
   | 'removerArquivoRevisao'
   // Subprocesso: cria os documentos filhos (ver IConfigSubprocesso e
   // IFluxoInstancia.subprocessos).
-  | 'criarSubprocessos';
+  | 'criarSubprocessos'
+  // Script (caixa com engrenagem): o motor para, o script roda isolado e
+  // preenche campos; só então o fluxo segue (ver scriptFluxo.ts).
+  | 'executarScript';
 
 // Arquivo da revisão numa etapa com responsável:
 //   'nao'         a etapa não mostra o anexo (padrão)
@@ -515,6 +522,9 @@ export interface IFluxoElemento {
 
   // subprocesso: o que criar e como ligar ao documento atual.
   subprocesso?: IConfigSubprocesso;
+
+  // tarefaSistema com acaoSistema 'executarScript'.
+  script?: IConfigScript;
 
   // tarefaHumana com status 'Vigente': retreinamento na publicação.
   //   'nao' (padrão) · 'sim' · 'etapa:<id>' = sim, se o fluxo passou

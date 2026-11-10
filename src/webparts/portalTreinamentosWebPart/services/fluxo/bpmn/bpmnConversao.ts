@@ -55,7 +55,7 @@ export interface IBpmnSnapshot {
 // Configuração de negócio de uma etapa (o que não está no desenho).
 export type IConfigElemento = Pick<
   IFluxoElemento,
-  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo' | 'permiteEditarDocumento' | 'subprocesso'
+  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo' | 'permiteEditarDocumento' | 'subprocesso' | 'script'
 >;
 
 // Configuração de negócio de uma ligação.
@@ -241,6 +241,18 @@ export const configPadraoElemento = (
   };
 };
 
+// Configuração de um elemento recém-desenhado: a tarefa de sistema
+// criada pelo atalho "Script" da paleta (nome começa com "Script") já
+// vem como "Executar script".
+export const configInicialElemento = (
+  tipo: TipoElementoFluxo,
+  nome?: string
+): IConfigElemento =>
+  tipo === 'tarefaSistema' && /^script/i.test((nome || '').trim())
+    ? { ...configPadraoElemento('tarefaSistema'), acaoSistema: 'executarScript', script: { codigo: '', camposSaida: [] } }
+    : configPadraoElemento(tipo);
+
+
 export const configPadraoTransicao = (): IConfigTransicao => ({
   tipoCondicao: 'sempre',
   padrao: false,
@@ -263,7 +275,8 @@ export const configDoElemento = (
   removerArquivo: elemento.removerArquivo,
   anexoArquivo: elemento.anexoArquivo,
   permiteEditarDocumento: elemento.permiteEditarDocumento,
-  subprocesso: elemento.subprocesso
+  subprocesso: elemento.subprocesso,
+  script: elemento.script
 });
 
 export const configDaTransicao = (
@@ -573,7 +586,7 @@ export const montarDefinicao = (
 
         const config =
           dados.configsElementos[forma.id] ||
-          configPadraoElemento(tipo);
+          configInicialElemento(tipo, forma.nome);
 
         const humana =
           tipo === 'tarefaHumana';
@@ -606,6 +619,9 @@ export const montarDefinicao = (
           tipoRevisao: tipo === 'eventoRevisao' ? (config.tipoRevisao || 'revisao') : undefined,
           removerArquivo: tipo === 'eventoRevisao' && config.removerArquivo ? true : undefined,
           subprocesso: tipo === 'subprocesso' ? (config.subprocesso || configPadraoElemento('subprocesso').subprocesso) : undefined,
+          script: tipo === 'tarefaSistema' && config.acaoSistema === 'executarScript'
+            ? (config.script || { codigo: '', camposSaida: [] })
+            : undefined,
           anexoArquivo: humana && config.anexoArquivo && config.anexoArquivo !== 'nao' ? config.anexoArquivo : undefined,
           permiteEditarDocumento: humana && typeof config.permiteEditarDocumento === 'boolean' ? config.permiteEditarDocumento : undefined,
           posicao: mover({ x: forma.x, y: forma.y, largura: forma.largura, altura: forma.altura }),

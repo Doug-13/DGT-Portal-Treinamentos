@@ -188,6 +188,14 @@ const ICONE_SUBPROCESSO =
   '<path d="M13 15.5v3M11.5 17h3" stroke="currentColor" stroke-width="1.5" />' +
   '</svg>';
 
+// Caixa com engrenagem (Script).
+const ICONE_SCRIPT =
+  '<svg width="30" height="30" viewBox="0 0 26 26" aria-hidden="true">' +
+  '<rect x="2" y="5" width="22" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.6" />' +
+  '<circle cx="9" cy="11" r="2.4" fill="none" stroke="currentColor" stroke-width="1.4" />' +
+  '<path d="M9 7.4v1.2M9 13.4v1.2M5.4 11h1.2M11.4 11h1.2M6.5 8.5l.8.8M10.7 12.7l.8.8M6.5 13.5l.8-.8M10.7 9.3l.8-.8" stroke="currentColor" stroke-width="1.2" />' +
+  '</svg>';
+
 function FiltroPaleta(this: any, palette: any, create: any, elementFactory: any): void {
   this._create = create;
   this._elementFactory = elementFactory;
@@ -200,6 +208,12 @@ FiltroPaleta.prototype.getPaletteEntries = function (this: any): (entradas: Reco
 
   const create = this._create;
   const elementFactory = this._elementFactory;
+
+  const criarScript = (evento: any): void => {
+    const forma = elementFactory.createShape({ type: 'bpmn:ServiceTask' });
+    forma.businessObject.name = 'Script';
+    create.start(evento, forma);
+  };
 
   const criarSubprocesso = (evento: any): void => {
     const forma = elementFactory.createShape({ type: 'bpmn:CallActivity' });
@@ -225,6 +239,17 @@ FiltroPaleta.prototype.getPaletteEntries = function (this: any): (entradas: Reco
         }
       }
     );
+
+    // Script: caixa com engrenagem (tarefa de sistema "Executar script").
+    filtradas['create.script'] = {
+      group: 'activity',
+      title: 'Script (consulta banco ou API e preenche campos)',
+      html: `<div class="entry" draggable="true" style="display:flex;align-items:center;justify-content:center;color:#202A44">${ICONE_SCRIPT}</div>`,
+      action: {
+        dragstart: criarScript,
+        click: criarScript
+      }
+    };
 
     filtradas['create.subprocesso'] = {
       group: 'activity',

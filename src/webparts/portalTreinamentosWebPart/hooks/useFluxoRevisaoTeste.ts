@@ -3,6 +3,10 @@ import {
 } from '../services/referencias/ReferenciasDocumentoService';
 
 import {
+  executarScriptIsolado
+} from '../components/fluxo/executarScriptIsolado';
+
+import {
   SubprocessoService
 } from '../services/fluxo/subprocesso/SubprocessoService';
 
@@ -595,6 +599,20 @@ export const useFluxoRevisaoTeste = (
     definicaoAtual: IFluxoDefinicao | undefined
   ): IContextoExecucaoFluxo => ({
     rotuloRevisao: documento && revisaoAlvo ? `${documento.codigo} ${revisaoAlvo.revisao}` : undefined,
+
+    // Tarefa "Executar script": roda isolada e preenche campos.
+    executarScript: async (elemento, instancia) =>
+      elemento.script
+        ? executarScriptIsolado(
+          elemento.script,
+          {
+            valores: instancia.valores,
+            registro: { codigo: documento ? documento.codigo : '', titulo: documento ? documento.titulo : '' },
+            usuario: { id: contexto ? contexto.usuarioId : '', nome: contexto ? contexto.nome : '' }
+          },
+          dataverseService
+        )
+        : { valores: {}, erros: ['o script não está configurado.'], log: [] },
 
     // Usa o autor já identificado (ref), mesmo que o estado ainda
     // não tenha sido atualizado na tela.

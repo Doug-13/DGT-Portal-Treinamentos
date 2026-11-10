@@ -32,6 +32,12 @@ import {
   rotuloNivel
 } from '../../services/fluxo/hierarquiaArea';
 
+import EditorScript from './EditorScript';
+
+import {
+  DataverseService
+} from '../../services/DataverseService';
+
 import PainelSubprocesso, {
   IProcessoSubprocessoOpcao
 } from './PainelSubprocesso';
@@ -98,6 +104,8 @@ export interface IPainelPropriedadesFluxoProps {
   // Subprocesso: fluxos que podem ser chamados e o processo atual.
   processosSubprocesso?: IProcessoSubprocessoOpcao[];
   processoAtualId?: string;
+  // Script: "Testar script" usa o Dataverse (fontes liberadas).
+  dataverseService?: DataverseService;
 }
 
 const COR_AZUL = '#202A44';
@@ -209,7 +217,8 @@ const STATUS_DOCUMENTO: Array<{ valor: StatusDocumentoEtapa; rotulo: string }> =
 const ACOES_SISTEMA: Array<{ valor: '' | AcaoSistemaFluxo; rotulo: string }> = [
   { valor: '', rotulo: 'Nenhuma (apenas segue o fluxo)' },
   { valor: 'publicarComRetreinamento', rotulo: 'Publicar a revisão e gerar retreinamento' },
-  { valor: 'publicarSemRetreinamento', rotulo: 'Publicar a revisão sem retreinamento' }
+  { valor: 'publicarSemRetreinamento', rotulo: 'Publicar a revisão sem retreinamento' },
+  { valor: 'executarScript', rotulo: 'Executar script (consultar banco ou API e preencher campos)' }
 ];
 
 // condicional          = obrigatório e visível só quando a condição é atendida
@@ -272,7 +281,8 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   areas = [],
   usuarios = [],
   processosSubprocesso = [],
-  processoAtualId
+  processoAtualId,
+  dataverseService
 }) => {
 
   const ver = (
@@ -522,9 +532,21 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
             }
           </select>
           <div style={{ fontSize: '12px', marginTop: '4px' }}>
-            No modo de teste a ação é apenas simulada e registrada no histórico.
+            {config.acaoSistema === 'executarScript'
+              ? 'O fluxo para aqui, roda o script e só então segue — decisões logo depois já enxergam os campos que ele preencheu.'
+              : 'No modo de teste a ação é apenas simulada e registrada no histórico.'}
           </div>
         </div>
+        {config.acaoSistema === 'executarScript' && (
+          <EditorScript
+            config={config.script}
+            editavel={editavel}
+            nomeTarefa={nome || 'Script'}
+            metadados={metadados}
+            dataverseService={dataverseService}
+            onAlterar={script => alterar({ script })}
+          />
+        )}
       </div>
     );
   }

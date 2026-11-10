@@ -71,6 +71,14 @@ Se o usuário já deu as informações, não pergunte de novo: assuma o razoáve
   externas; estilos com as variáveis `--dgt-*`; reabra a tela a partir de `contexto.dados`;
   respeite `contexto.somenteLeitura`; libere em `fontes` só as colunas que a tela usa.
 
+### Script (consulta banco/API e preenche campos)
+
+- Use `{ "tipo": "tarefaSistema", "acaoSistema": "executarScript", "script": {...} }` (contrato em
+  `references/scripts.md`). Só `DGT.http` (HTTPS, endereços em `hostsPermitidos`), `DGT.consultar`
+  (fontes liberadas) e `DGT.log`; devolva `{ valores, mensagem }` ou `{ erro }` para bloquear.
+- Declare em `camposSaida` cada campo que o script preenche; para decidir pelo resultado, ponha uma
+  decisão depois do script por um desses campos (ex.: `cepEncontrado`). O script tem uma só saída.
+
 ## 3. Conferir antes de entregar
 
 - [ ] Um `inicio`, ao menos um `fim`, todo elemento alcançável e com saída (menos `fim`).

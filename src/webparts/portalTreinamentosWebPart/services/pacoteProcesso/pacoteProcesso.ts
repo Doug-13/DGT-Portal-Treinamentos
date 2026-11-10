@@ -24,6 +24,10 @@ import {
 } from '../../components/common/Icones';
 
 import {
+  IConfigScript
+} from '../fluxo/scriptFluxo';
+
+import {
   corrigirLigacoesParaDecisao
 } from '../fluxo/correcoesFluxo';
 
@@ -121,6 +125,8 @@ export interface IPacoteElemento {
   anexoArquivo?: string;
   permiteEditarDocumento?: boolean;
   acaoSistema?: string;
+  // tarefaSistema com acaoSistema "executarScript".
+  script?: IConfigScript;
   tipoRevisao?: string;
   removerArquivo?: boolean;
   // subprocesso: "fluxo" = CÓDIGO do processo cujo fluxo os filhos seguem
@@ -237,7 +243,7 @@ const TIPOS_COLUNA: TipoColunaTabela[] = ['texto', 'textoLongo', 'numero', 'data
 const TIPOS_ELEMENTO: TipoElementoFluxo[] = ['inicio', 'fim', 'tarefaHumana', 'tarefaSistema', 'gateway', 'eventoRevisao', 'subprocesso'];
 const TIPOS_RESPONSAVEL = ['autorRevisao', 'gestorArea', 'area', 'cargoArea', 'nivelHierarquico', 'usuario', 'campoUsuario'];
 const STATUS_DOCUMENTO: StatusDocumentoEtapa[] = ['Elaboração', 'Revisão', 'Aprovação', 'Vigente'];
-const ACOES_SISTEMA: AcaoSistemaFluxo[] = ['publicarComRetreinamento', 'publicarSemRetreinamento', 'novaRevisao', 'novaSubRevisao', 'proximaRevisao', 'removerArquivoRevisao'];
+const ACOES_SISTEMA: AcaoSistemaFluxo[] = ['executarScript', 'publicarComRetreinamento', 'publicarSemRetreinamento', 'novaRevisao', 'novaSubRevisao', 'proximaRevisao', 'removerArquivoRevisao'];
 const ANEXO: AnexoArquivoEtapa[] = ['nao', 'opcional', 'obrigatorio'];
 const ICONES: string[] = ['workflow', 'gavel', 'fileText', 'folder', 'building', 'package', 'wallet', 'users', 'checkCircle', 'barChart', 'grid', 'layers', 'settings', 'search', 'megaphone', 'activity', 'bell', 'clock', 'alertTriangle'];
 
@@ -685,6 +691,16 @@ export const interpretarPacote = (
         erros.push(`${onde} (${idOriginal}): acaoSistema deve ser ${ACOES_SISTEMA.join(', ')}.`);
       } else {
         elemento.acaoSistema = item.acaoSistema as AcaoSistemaFluxo;
+        if (item.acaoSistema === 'executarScript') {
+          const script = item.script || ({} as IConfigScript);
+          elemento.script = {
+            codigo: texto(script.codigo),
+            camposSaida: Array.isArray(script.camposSaida) ? script.camposSaida.map(String) : [],
+            fontes: script.fontes,
+            hostsPermitidos: script.hostsPermitidos,
+            tempoLimiteSegundos: script.tempoLimiteSegundos
+          };
+        }
       }
     }
 
@@ -992,6 +1008,7 @@ export const exportarPacote = (
         if (el.permiteEditarDocumento !== undefined) { saida.permiteEditarDocumento = el.permiteEditarDocumento; }
       }
       if (el.tipo === 'tarefaSistema' && el.acaoSistema) { saida.acaoSistema = el.acaoSistema; }
+      if (el.tipo === 'tarefaSistema' && el.script) { saida.script = el.script; }
       if (el.tipo === 'eventoRevisao') {
         saida.tipoRevisao = el.tipoRevisao;
         if (el.removerArquivo) { saida.removerArquivo = true; }

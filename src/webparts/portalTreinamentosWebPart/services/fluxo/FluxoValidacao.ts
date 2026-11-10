@@ -1,4 +1,8 @@
 import {
+  validarConfigScript
+} from './scriptFluxo';
+
+import {
   ligacoesQueBarramBotoes,
   mensagemLigacaoQueBarra
 } from './correcoesFluxo';
@@ -152,7 +156,7 @@ const levaAoFimOuPublicacao = (
 
       if (
         destino.tipo === 'fim' ||
-        (destino.tipo === 'tarefaSistema' && !!destino.acaoSistema)
+        (destino.tipo === 'tarefaSistema' && !!destino.acaoSistema && destino.acaoSistema !== 'executarScript')
       ) {
         return true;
       }
@@ -570,6 +574,13 @@ export const validarDefinicao = (
             'Deixe o status "Vigente" somente na última etapa (ex.: "Documento Vigente").'
           );
         }
+      }
+
+      if (item.tipo === 'tarefaSistema' && item.acaoSistema === 'executarScript') {
+        if (saidas.length !== 1) {
+          erros.push(`O script "${item.nome}" deve ter exatamente uma ligação de saída. Para escolher caminhos pelo resultado, ponha uma decisão depois dele (por campo que o script preenche).`);
+        }
+        validarConfigScript(item.nome, item.script, metadados).forEach(erro => erros.push(erro));
       }
 
       if (item.tipo === 'subprocesso') {
