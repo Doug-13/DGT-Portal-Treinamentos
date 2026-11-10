@@ -151,7 +151,14 @@ const ITENS_PADRAO = {
   // Licenças W-Access (Invenzi) — confirmar a cada cotação da Invenzi
   waccessLeitora: item('3300800009', 'Invenzi WXS-S-1R-FR-E — licença leitora facial Expert', 'Licença'),
   waccess1000: item('3300800007', 'Invenzi WXS-S-1KCRD-E — 1000 usuários ativos', 'Licença'),
-  waccess2Conexoes: item('3300800008', 'Invenzi WXS-S-2CNX-E — 2 conexões simultâneas', 'Licença')
+  waccess2Conexoes: item('3300800008', 'Invenzi WXS-S-2CNX-E — 2 conexões simultâneas', 'Licença'),
+
+  // Milestone XProtect Professional+ (edição vendida pela DGT).
+  // NÃO usar os itens de Express+ (3300110014 e 3300110016).
+  milestoneLicenca: item('3300110002', 'Milestone XProtect Professional+ Device License (XPPPLUSDL)', 'Licença'),
+  milestoneCare1: item('3300110005', 'Milestone Care Plus 1 ano — XProtect Professional+ DL (YXPPPLUSDL)', 'Licença'),
+  milestoneCare3: item('3300110006', 'Milestone Care Plus 3 anos — XProtect Professional (Y3XPPCL)', 'Licença'),
+  milestoneCare5: item('3300110017', 'Milestone Care Plus 5 anos — XProtect Professional+ DL (Y5XPPPLUSDL)', 'Licença')
 };
 
 export type ChaveItem = keyof typeof ITENS_PADRAO;
@@ -523,6 +530,10 @@ export const ITENS_EM_REGRAS: Record<string, string> = {
   ipxIntegracao: REGRA_LICENCAS,
   waccess1000: REGRA_LICENCAS,
   waccess2Conexoes: REGRA_LICENCAS,
+  milestoneLicenca: REGRA_LICENCAS,
+  milestoneCare1: REGRA_LICENCAS,
+  milestoneCare3: REGRA_LICENCAS,
+  milestoneCare5: REGRA_LICENCAS,
   waccessLeitora: REGRA_CATRACA,
   catracaCap3100: REGRA_CATRACA,
   catracaPne: REGRA_CATRACA,

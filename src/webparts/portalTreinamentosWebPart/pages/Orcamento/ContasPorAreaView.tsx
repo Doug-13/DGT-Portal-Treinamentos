@@ -8,7 +8,8 @@ import {
 
 import {
   GRUPOS_ORCAMENTO,
-  PLANO_CONTAS
+  PLANO_CONTAS,
+  termoExibido
 } from '../../services/orcamento/planoContasOrcamento';
 
 import {
@@ -239,7 +240,7 @@ const ContasPorAreaView: React.FC<IContasPorAreaViewProps> = (props) => {
                 >
                   <input type="checkbox" checked={marcado} onChange={() => alternar(grupo)} style={{ marginTop: '2px' }} />
                   <span>
-                    <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 600, color: COR.azul }}>{grupo}</span>
+                    <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 600, color: COR.azul }}>{termoExibido(grupo)}</span>
                     <span style={{ display: 'block', fontSize: '12px', color: COR.texto2 }}>{contasPorGrupo[grupo] || 0} conta(s)</span>
                   </span>
                 </label>

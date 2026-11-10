@@ -6,6 +6,32 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: estrutura para dashboards no próprio portal, com visualização e componentes de gráficos, acompanhada de documentação em docs/dashboards/.
+- Novo: cadastro de servidores no módulo de Kits, com serviço de dados e script scripts/dataverse/criar-tabelas-servidores.ps1.
+- Novo: painel de servidor central na Arquitetura de Soluções.
+- Novo: telas de Plano de Contas e Responsáveis no Planejamento Orçamentário.
+- Melhoria: gestão de dashboards e integração com a página de Indicadores e os serviços de dados.
+- Melhoria: catálogo e lógica dos kits, montagem do B.O.M. e seleção de kits na Arquitetura de Soluções.
+- Melhoria: telas do Planejamento Orçamentário, incluindo planilhas individuais e consolidadas, contas por área, inclusão de linhas e tabela de orçamento.
+- Melhoria: regras e serviços de cálculo do orçamento, fórmulas, DRE e estrutura do plano de contas.
+- Melhoria: etapas, painel e serviços do fluxo orçamentário, com ajustes na resolução e configuração de responsáveis dos processos.
+- Melhoria: scripts de criação de tabelas de dashboards e orçamento e de limpeza dos dados orçamentários.
+- Melhoria: inclusão de arquivos de testes para servidores, fórmulas orçamentárias, importação do executado por CSV, plano de ajustes e configuração de responsáveis.
+
+## [1.4.22] - 2026-11-09
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.21] - 2026-11-09
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.20] - 2026-11-08
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.19] - 2026-11-06
+
 - Novo: excluir ou desativar ambientes (Configuração do ambiente), com opção de excluir junto o processo/fluxo; reativar/excluir ambientes desativados no "+ Adicionar ambiente"; botão Remover no processo aberto. A remoção de fluxo agora é bloqueada enquanto um ambiente usa o fluxo.
 - Novo: componente nativo "Cálculo de HH" — a tela da Arquitetura ligada à Seleção de kit do registro; grava o resultado e a versão de HH aplicada. Exemplo da Arquitetura inteira como ambiente configurável (docs/exemplos/pacote-arquitetura-bom.json).
 - Novo: tipo de campo "Componente" — telas personalizadas em etapas de fluxo: nativas (Montador de B.O.M. da Arquitetura, a mesma tela de Seleção de kit) ou HTML isolado (iframe sandbox) com ponte de dados somente leitura para tabelas e colunas liberadas; o "válido" da tela libera o Concluir da etapa. Guia em docs/componentes.md.

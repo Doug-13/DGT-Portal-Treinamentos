@@ -11,9 +11,16 @@ import {
   ILinhaDre,
   calcularDre,
   nomeDaReferencia,
+  sinalDaConta,
   valoresComSinal,
   valoresDaConta
 } from './dreOrcamento';
+
+import {
+  avaliarFormula,
+  referenciasDaFormula,
+  validarFormula
+} from './formulaOrcamento';
 
 // ============================================================
 // REGRAS DE CÁLCULO DO ORÇAMENTO
@@ -75,11 +82,13 @@ export const regrasAtivas = (
     .filter(regra => regra.ativo && !!regra.contaDestino)
     .sort((a, b) => a.ordem - b.ordem);
 
-// Referências da base no formato 'Misto'.
+// Referências da base no formato 'Misto' (na fórmula: as usadas nela).
 export const referenciasDaRegra = (
   regra: Pick<IRegraCalculo, 'tipoBase' | 'base'>
 ): string[] =>
-  regra.tipoBase === 'Misto'
+  regra.tipoBase === 'Formula'
+    ? referenciasDaFormula(regra.base[0] || '')
+    : regra.tipoBase === 'Misto'
     ? regra.base
     : regra.tipoBase === 'Grupo'
       ? regra.base.map(grupo => `grupo:${nomeGrupoAtual(grupo)}`)
@@ -92,36 +101,63 @@ const ehDestino = (
   linha.codigo === regra.contaDestino &&
   (!regra.grupoDestino || linha.grupo === regra.grupoDestino);
 
-// Base (com sinal) de uma regra, mês a mês.
+// Valores (com sinal) de cada referência, sem a conta destino.
+const leitorDeReferencias = <T extends ILinhaCalculavel>(
+  regra: IRegraCalculo,
+  linhas: T[]
+): ((ref: string) => number[]) => {
+  // A conta destino nunca entra na própria base.
+  const semDestino = linhas.filter(linha => !ehDestino(linha, regra));
+  let dre: { [id: string]: number[] } | undefined;
+  return (ref: string): number[] => {
+    if (ref.indexOf('conta:') === 0) {
+      return valoresDaConta(ref, semDestino);
+    }
+    if (ref.indexOf('linha:') === 0) {
+      dre = dre || calcularDre(semDestino);
+      return dre[ref.substring(6)] || zeros();
+    }
+    const grupo = nomeGrupoAtual(ref.replace(/^grupo:/, ''));
+    const valores = zeros();
+    semDestino
+      .filter(linha => linha.grupo === grupo)
+      .forEach(linha => valoresComSinal(linha).forEach((valor, mes) => { valores[mes] += valor; }));
+    return valores;
+  };
+};
+
+// Base (com sinal) de uma regra de percentual, mês a mês.
 const baseDaRegra = <T extends ILinhaCalculavel>(
   regra: IRegraCalculo,
   linhas: T[]
 ): number[] => {
-
   const base = zeros();
-  const referencias = referenciasDaRegra(regra);
-  // A conta destino nunca entra na própria base.
-  const semDestino = linhas.filter(linha => !ehDestino(linha, regra));
-  const precisaDre = referencias.some(ref => ref.indexOf('linha:') === 0);
-  const dre = precisaDre ? calcularDre(semDestino) : {};
-
-  referencias.forEach(ref => {
-    let valores: number[];
-    if (ref.indexOf('conta:') === 0) {
-      valores = valoresDaConta(ref, semDestino);
-    } else if (ref.indexOf('linha:') === 0) {
-      valores = dre[ref.substring(6)] || zeros();
-    } else {
-      const grupo = ref.replace(/^grupo:/, '');
-      valores = zeros();
-      semDestino
-        .filter(linha => linha.grupo === grupo)
-        .forEach(linha => valoresComSinal(linha).forEach((valor, mes) => { valores[mes] += valor; }));
-    }
-    valores.forEach((valor, mes) => { base[mes] += valor || 0; });
+  const ler = leitorDeReferencias(regra, linhas);
+  referenciasDaRegra(regra).forEach(ref => {
+    ler(ref).forEach((valor, mes) => { base[mes] += valor || 0; });
   });
-
   return base;
+};
+
+// Valor gravado na conta destino, mês a mês.
+//  • Percentual: percentual × base.
+//  • Fórmula: o resultado é o valor COMO APARECE NA TELA (com sinal,
+//    como na planilha: "-[linha:LAIR]*9%" dá a CSLL negativa); o valor
+//    gravado é convertido pelo sinal da conta destino.
+const valoresDaRegra = <T extends ILinhaCalculavel>(
+  regra: IRegraCalculo,
+  linhas: T[]
+): number[] => {
+  if (regra.tipoBase === 'Formula') {
+    try {
+      const sinal = sinalDaConta(regra.contaDestino);
+      return avaliarFormula(regra.base[0] || '', leitorDeReferencias(regra, linhas))
+        .map(valor => arredondar(valor * sinal));
+    } catch {
+      return zeros();
+    }
+  }
+  return baseDaRegra(regra, linhas).map(valor => arredondar(valor * (regra.percentual || 0) / 100));
 };
 
 // Uma passada por todas as regras ativas, na ordem.
@@ -148,7 +184,7 @@ const umaPassada = <T extends ILinhaCalculavel>(
     // Valor digitado = percentual × base (com sinal). Na tela, a conta
     // de dedução aparece negativa (sinal da conta).
     const calculados =
-      baseDaRegra(regra, resultado).map(valor => arredondar(valor * (regra.percentual || 0) / 100));
+      valoresDaRegra(regra, resultado);
 
     resultado = resultado.map(linha => {
       const indice = destinos.indexOf(linha);
@@ -200,6 +236,12 @@ const formatarPercentual = (valor: number): string =>
 export const descreverRegra = (
   regra: IRegraCalculo
 ): string => {
+  if (regra.tipoBase === 'Formula') {
+    // Fórmula com os nomes no lugar dos códigos, para leitura.
+    const legivel =
+      (regra.base[0] || '').replace(/\[([^\]]+)\]/g, (_trecho, ref: string) => `[${nomeDaReferencia(ref.trim())}]`);
+    return `= ${legivel}`;
+  }
   const nomes = referenciasDaRegra(regra).map(ref => nomeDaReferencia(ref));
   const base =
     nomes.length <= 3
@@ -243,7 +285,12 @@ export const validarRegra = (
     problemas.push('Escolha a conta que será calculada.');
   }
 
-  if (regra.base.length === 0) {
+  if (regra.tipoBase === 'Formula') {
+    const erro = validarFormula(regra.base[0] || '');
+    if (erro) {
+      problemas.push(`Fórmula: ${erro}`);
+    }
+  } else if (regra.base.length === 0) {
     problemas.push('Escolha pelo menos um item como base.');
   }
 
@@ -255,7 +302,7 @@ export const validarRegra = (
     problemas.push('A conta calculada não pode fazer parte da própria base.');
   }
 
-  if (!isFinite(regra.percentual) || regra.percentual < 0 || regra.percentual > 100) {
+  if (regra.tipoBase !== 'Formula' && (!isFinite(regra.percentual) || regra.percentual < 0 || regra.percentual > 100)) {
     problemas.push('O percentual deve estar entre 0 e 100.');
   }
 

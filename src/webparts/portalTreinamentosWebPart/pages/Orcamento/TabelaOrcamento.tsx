@@ -10,7 +10,9 @@ import {
 
 import {
   CONTAS_MAE,
-  PLANO_CONTAS
+  PLANO_CONTAS,
+  termoExibido,
+  versaoPlano
 } from '../../services/orcamento/planoContasOrcamento';
 
 import {
@@ -85,7 +87,17 @@ export interface ITabelaOrcamentoProps {
   onColarValores?: (chave: string, mesInicial: number, valores: number[]) => void;
   onAlterarDescricao?: (chave: string, descricao: string) => void;
   onRepetirJaneiro?: (chave: string) => void;
+  // Executado (realizado): coluna "Exec." ao lado de cada mês.
+  executado?: {
+    mostrar: boolean;
+    // Controladoria / Administrador: digita o executado (qualquer situação).
+    editavel: boolean;
+    onAlterar?: (chave: string, mes: number, valor: number) => void;
+    onColar?: (chave: string, mesInicial: number, valores: number[]) => void;
+  };
 }
+
+const FUNDO_EXECUTADO = '#F5F3FF';
 
 const LARGURA_CONTA = 340;
 const LARGURA_MES = 108;
@@ -293,7 +305,20 @@ interface ILinhaTabelaProps {
   onColarValores?: (chave: string, mesInicial: number, valores: number[]) => void;
   onAlterarDescricao?: (chave: string, descricao: string) => void;
   onRepetirJaneiro?: (chave: string) => void;
+  mostrarExecutado?: boolean;
+  executadoEditavel?: boolean;
+  onAlterarExecutado?: (chave: string, mes: number, valor: number) => void;
+  onColarExecutado?: (chave: string, mesInicial: number, valores: number[]) => void;
 }
+
+// Conta desativada no plano (aba Plano de contas).
+const contaDesativada = (linha: ILinhaOrcamento): boolean =>
+  PLANO_CONTAS.some(conta => conta.grupo === linha.grupo && conta.codigo === linha.codigo && !!conta.inativa);
+
+const temConteudo = (linha: ILinhaOrcamento): boolean =>
+  linha.valores.some(valor => !!valor) || (linha.executado || []).some(valor => !!valor) || !!linha.descricao;
+
+const arredondarTela = (valor: number): number => Math.round((valor || 0) * 100) / 100;
 
 function LinhaTabelaBase(props: ILinhaTabelaProps): JSX.Element {
 
@@ -314,7 +339,14 @@ function LinhaTabelaBase(props: ILinhaTabelaProps): JSX.Element {
               {alterada && <span style={{ marginLeft: '6px', color: '#B45309', fontWeight: 700 }}>• não salvo</span>}
               {destaque && <span style={{ marginLeft: '6px', color: '#0F6CBD', fontWeight: 700 }}>• {destaque}</span>}
             </div>
-            <div style={{ fontWeight: 600, lineHeight: 1.25 }}>{linha.conta}</div>
+            <div style={{ fontWeight: 600, lineHeight: 1.25 }}>
+              {linha.conta}
+              {contaDesativada(linha) && (
+                <span title="Conta desativada no plano de contas: não entra em planilhas novas" style={{ marginLeft: '6px', fontSize: '10.5px', fontWeight: 700, color: '#B45309', background: '#FFF4E5', borderRadius: '999px', padding: '1px 7px' }}>
+                  desativada
+                </span>
+              )}
+            </div>
           </div>
           {!props.somenteLeitura && (
             <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
@@ -356,24 +388,46 @@ function LinhaTabelaBase(props: ILinhaTabelaProps): JSX.Element {
       </td>
 
       {props.meses.map(mes => (
-        <td key={mes} style={{ ...celulaNumero, background: fundo, padding: props.somenteLeitura || calculo ? celula.padding : '4px' }}>
-          {props.somenteLeitura || calculo ? (
-            <Valor valor={comSinal[mes]} vazioClaro={true} />
-          ) : (
-            <CampoValor
-              valor={linha.valores[mes]}
-              sinal={sinal}
-              rotulo={`${linha.conta} — ${NOMES_MESES[mes]}/${props.ano}`}
-              onConfirmar={novo => props.onAlterarValor && props.onAlterarValor(linha.chave, mes, novo)}
-              onColar={valores => props.onColarValores && props.onColarValores(linha.chave, mes, valores)}
-            />
+        <React.Fragment key={mes}>
+          <td style={{ ...celulaNumero, background: fundo, padding: props.somenteLeitura || calculo ? celula.padding : '4px' }}>
+            {props.somenteLeitura || calculo ? (
+              <Valor valor={comSinal[mes]} vazioClaro={true} />
+            ) : (
+              <CampoValor
+                valor={linha.valores[mes]}
+                sinal={sinal}
+                rotulo={`${linha.conta} — ${NOMES_MESES[mes]}/${props.ano}`}
+                onConfirmar={novo => props.onAlterarValor && props.onAlterarValor(linha.chave, mes, novo)}
+                onColar={valores => props.onColarValores && props.onColarValores(linha.chave, mes, valores)}
+              />
+            )}
+          </td>
+          {props.mostrarExecutado && (
+            <td style={{ ...celulaNumero, background: FUNDO_EXECUTADO, padding: props.executadoEditavel ? '4px' : celula.padding }}>
+              {props.executadoEditavel ? (
+                <CampoValor
+                  valor={(linha.executado || [])[mes] || 0}
+                  sinal={sinal}
+                  rotulo={`${linha.conta} — executado ${NOMES_MESES[mes]}/${props.ano}`}
+                  onConfirmar={novo => props.onAlterarExecutado && props.onAlterarExecutado(linha.chave, mes, novo)}
+                  onColar={valores => props.onColarExecutado && props.onColarExecutado(linha.chave, mes, valores)}
+                />
+              ) : (
+                <Valor valor={arredondarTela(((linha.executado || [])[mes] || 0) * sinal)} vazioClaro={true} />
+              )}
+            </td>
           )}
-        </td>
+        </React.Fragment>
       ))}
 
       <td style={{ ...celulaTotal, background: fundo }}>
         <Valor valor={Math.round(total * 100) / 100} />
       </td>
+      {props.mostrarExecutado && (
+        <td style={{ ...celulaTotal, background: FUNDO_EXECUTADO }}>
+          <Valor valor={arredondarTela((linha.executado || []).reduce((soma, valor) => soma + (valor || 0), 0) * sinal)} />
+        </td>
+      )}
     </tr>
   );
 }
@@ -381,14 +435,27 @@ function LinhaTabelaBase(props: ILinhaTabelaProps): JSX.Element {
 const LinhaTabela = React.memo(LinhaTabelaBase);
 
 // Ordem das contas no plano (para ordenar as linhas do grupo).
+// Recalculada quando o Administrador altera o plano (versaoPlano).
+let ordemCalculada = -1;
 const ORDEM_PLANO: { [chave: string]: number } = {};
-PLANO_CONTAS.forEach((conta, indice) => {
-  ORDEM_PLANO[`${conta.grupo}|${conta.codigo}`] = indice;
-  // Lançamento antigo direto na conta mãe: logo antes dos subitens.
-  if (conta.pai && ORDEM_PLANO[`${conta.grupo}|${conta.pai}`] === undefined) {
-    ORDEM_PLANO[`${conta.grupo}|${conta.pai}`] = indice - 0.5;
+const ordemDoPlano = (): { [chave: string]: number } => {
+  if (ordemCalculada !== versaoPlano()) {
+    Object.keys(ORDEM_PLANO).forEach(chave => { delete ORDEM_PLANO[chave]; });
+    PLANO_CONTAS.forEach((conta, indice) => {
+      ORDEM_PLANO[`${conta.grupo}|${conta.codigo}`] = indice;
+      // Lançamento antigo direto na conta mãe: logo antes dos subitens.
+      if (conta.pai && ORDEM_PLANO[`${conta.grupo}|${conta.pai}`] === undefined) {
+        ORDEM_PLANO[`${conta.grupo}|${conta.pai}`] = indice - 0.5;
+      }
+    });
+    ordemCalculada = versaoPlano();
   }
-});
+  return ORDEM_PLANO;
+};
+
+// Grupo em que ficam os subitens de uma conta mãe.
+const grupoDaContaMae = (codigo: string): string =>
+  (PLANO_CONTAS.filter(conta => conta.pai === codigo)[0] || { grupo: '' }).grupo;
 
 const infoDoPlano = (grupo: string, codigo: string): { pai?: string; subdivisao?: string } => {
   const conta = PLANO_CONTAS.filter(item => item.grupo === grupo && item.codigo === codigo)[0];
@@ -453,16 +520,37 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
 
   const dre: ResultadoDre = React.useMemo(() => calcularDre(totais), [totais]);
 
+  const mostrarExecutado = !!props.executado && props.executado.mostrar;
+  const dreExecutado: ResultadoDre = React.useMemo(
+    () => (mostrarExecutado
+      ? calcularDre(totais.map(linha => ({ ...linha, valores: linha.executado || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] })))
+      : {}),
+    [totais, mostrarExecutado]
+  );
+
+  // Soma (com sinal) do executado de um conjunto de linhas.
+  const somaExecutado = (linhas: ILinhaOrcamento[]): number[] => {
+    const soma = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    linhas.forEach(linha => {
+      const sinal = sinalDaConta(linha.codigo);
+      (linha.executado || []).forEach((valor, mes) => { soma[mes] += (valor || 0) * sinal; });
+    });
+    return soma.map(valor => Math.round(valor * 100) / 100);
+  };
+
   // Linhas exibidas por grupo, na ordem do plano.
   const porGrupo = React.useMemo(() => {
     const mapa: { [grupo: string]: ILinhaOrcamento[] } = {};
-    props.linhas.forEach(linha => {
-      (mapa[linha.grupo] = mapa[linha.grupo] || []).push(linha);
-    });
+    props.linhas
+      // Conta desativada pelo Administrador: some quando não tem valor.
+      .filter(linha => !contaDesativada(linha) || temConteudo(linha))
+      .forEach(linha => {
+        (mapa[linha.grupo] = mapa[linha.grupo] || []).push(linha);
+      });
     Object.keys(mapa).forEach(grupo => {
       mapa[grupo].sort((a, b) => {
-        const oa = ORDEM_PLANO[`${a.grupo}|${a.codigo}`];
-        const ob = ORDEM_PLANO[`${b.grupo}|${b.codigo}`];
+        const oa = ordemDoPlano()[`${a.grupo}|${a.codigo}`];
+        const ob = ordemDoPlano()[`${b.grupo}|${b.codigo}`];
         return ((oa === undefined ? 99999 : oa) - (ob === undefined ? 99999 : ob)) || (a.ordem - b.ordem);
       });
     });
@@ -483,25 +571,44 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
     chave: string,
     rotulo: React.ReactNode,
     valores: number[],
-    estilo: { fundo: string; negrito?: boolean; percentual?: boolean; recuo?: number; cor?: string }
+    estilo: { fundo: string; negrito?: boolean; percentual?: boolean; recuo?: number; cor?: string },
+    // Executado (padrão: o item da DRE com a mesma chave).
+    valoresExecutado?: number[]
   ): JSX.Element => {
     const total =
       estilo.percentual
         ? totalAnualDre(chave, dre)
         : Math.round(valores.reduce((soma, valor) => soma + valor, 0) * 100) / 100;
+    const executado = valoresExecutado || dreExecutado[chave] || [];
+    const totalExecutado =
+      estilo.percentual
+        ? totalAnualDre(chave, dreExecutado)
+        : Math.round(executado.reduce((soma, valor) => soma + (valor || 0), 0) * 100) / 100;
     return (
       <tr key={chave}>
         <td style={{ ...celula, ...colunaFixa(estilo.fundo), fontWeight: estilo.negrito ? 700 : 600, whiteSpace: 'normal', paddingLeft: `${8 + (estilo.recuo || 0) * 14}px`, color: estilo.cor || COR.azul }}>
           {rotulo}
         </td>
         {meses.map(mes => (
-          <td key={mes} style={{ ...celulaNumero, background: estilo.fundo, fontWeight: estilo.negrito ? 700 : 600 }}>
-            <Valor valor={valores[mes] || 0} percentual={estilo.percentual} />
-          </td>
+          <React.Fragment key={mes}>
+            <td style={{ ...celulaNumero, background: estilo.fundo, fontWeight: estilo.negrito ? 700 : 600 }}>
+              <Valor valor={valores[mes] || 0} percentual={estilo.percentual} />
+            </td>
+            {mostrarExecutado && (
+              <td style={{ ...celulaNumero, background: FUNDO_EXECUTADO, fontWeight: estilo.negrito ? 700 : 600 }}>
+                <Valor valor={executado[mes] || 0} percentual={estilo.percentual} />
+              </td>
+            )}
+          </React.Fragment>
         ))}
         <td style={{ ...celulaTotal, background: estilo.fundo }}>
           <Valor valor={total} percentual={estilo.percentual} />
         </td>
+        {mostrarExecutado && (
+          <td style={{ ...celulaTotal, background: FUNDO_EXECUTADO }}>
+            <Valor valor={totalExecutado} percentual={estilo.percentual} />
+          </td>
+        )}
       </tr>
     );
   };
@@ -537,7 +644,8 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
             </span>
           </span>,
           soma.map(valor => Math.round(valor * 100) / 100),
-          { fundo: '#F8FAFC', negrito: true, recuo: 1 }
+          { fundo: '#F8FAFC', negrito: true, recuo: 1 },
+          somaExecutado(totais.filter(item => item.grupo === grupo && (infoDoPlano(item.grupo, item.codigo).pai === pai || item.codigo === pai)))
         ));
       }
 
@@ -561,7 +669,7 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
           subdivisaoAtual = info.subdivisao;
           saida.push(
             <tr key={`sub-${grupo}-${info.subdivisao}`}>
-              <td colSpan={meses.length + 2} style={{ ...celula, background: '#FFFFFF', paddingLeft: '30px', fontSize: '11.5px', fontWeight: 700, color: '#0F4C81', textTransform: 'uppercase', letterSpacing: '.3px' }}>
+              <td colSpan={meses.length * (mostrarExecutado ? 2 : 1) + (mostrarExecutado ? 3 : 2)} style={{ ...celula, background: '#FFFFFF', paddingLeft: '30px', fontSize: '11.5px', fontWeight: 700, color: '#0F4C81', textTransform: 'uppercase', letterSpacing: '.3px' }}>
                 {info.subdivisao}
               </td>
             </tr>
@@ -582,6 +690,10 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
             onColarValores={props.onColarValores}
             onAlterarDescricao={props.onAlterarDescricao}
             onRepetirJaneiro={props.onRepetirJaneiro}
+            mostrarExecutado={mostrarExecutado}
+            executadoEditavel={mostrarExecutado && !!props.executado && props.executado.editavel}
+            onAlterarExecutado={props.executado ? props.executado.onAlterar : undefined}
+            onColarExecutado={props.executado ? props.executado.onColar : undefined}
           />
         );
       }
@@ -626,7 +738,7 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
               type="button"
               onClick={() => setRecolhidos(
                 ITENS_DRE.filter(item => item.tipo === 'grupo').map(item => item.id)
-                  .concat(Object.keys(CONTAS_MAE).map(codigo => `pai-Custos Diretos Locações Bens (sem amortização)-${codigo}`))
+                  .concat(Object.keys(CONTAS_MAE).map(codigo => `pai-${grupoDaContaMae(codigo)}-${codigo}`))
               )}
               style={{ padding: '5px 12px', borderRadius: '999px', border: `1px solid ${COR.borda}`, background: '#FFFFFF', color: COR.texto2, fontWeight: 700, fontSize: '12px', cursor: 'pointer', fontFamily: FONTE }}
             >
@@ -665,9 +777,17 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
             <tr>
               <th style={{ ...celula, ...colunaFixa('#F1F5F9'), ...cabecalhoFixo, left: 0, textAlign: 'left', zIndex: 3 }}>Conta</th>
               {meses.map(mes => (
-                <th key={mes} style={{ ...celulaNumero, ...cabecalhoFixo }}>{NOMES_MESES[mes]}/{sufixoAno}</th>
+                <React.Fragment key={mes}>
+                  <th style={{ ...celulaNumero, ...cabecalhoFixo }}>{NOMES_MESES[mes]}/{sufixoAno}</th>
+                  {mostrarExecutado && (
+                    <th style={{ ...celulaNumero, ...cabecalhoFixo, background: '#EDE9FE', color: '#5B21B6' }}>Exec. {NOMES_MESES[mes]}</th>
+                  )}
+                </React.Fragment>
               ))}
-              <th style={{ ...celulaTotal, ...cabecalhoFixo }}>Total (ano)</th>
+              <th style={{ ...celulaTotal, ...cabecalhoFixo }}>{mostrarExecutado ? 'Orçado (ano)' : 'Total (ano)'}</th>
+              {mostrarExecutado && (
+                <th style={{ ...celulaTotal, ...cabecalhoFixo, background: '#EDE9FE', color: '#5B21B6' }}>Executado (ano)</th>
+              )}
             </tr>
           </thead>
 
@@ -675,19 +795,19 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
             {ITENS_DRE.filter(gruposComLinhas).map(item => {
               const valores = dre[item.id] || [];
               if (item.tipo === 'secao') {
-                return linhaTotal(item.id, item.nome.toUpperCase() === item.nome ? item.nome : item.nome, valores, { fundo: FUNDO_SECAO, negrito: true });
+                return linhaTotal(item.id, termoExibido(item.id, item.nome), valores, { fundo: FUNDO_SECAO, negrito: true });
               }
               if (item.tipo === 'resultado') {
-                return linhaTotal(item.id, item.nome, valores, { fundo: FUNDO_RESULTADO, negrito: true, cor: '#1F3864' });
+                return linhaTotal(item.id, termoExibido(item.id, item.nome), valores, { fundo: FUNDO_RESULTADO, negrito: true, cor: '#1F3864' });
               }
               if (item.tipo === 'percentual') {
-                return linhaTotal(item.id, item.nome, valores, { fundo: FUNDO_PERCENTUAL, negrito: true, percentual: true, cor: '#3B5323' });
+                return linhaTotal(item.id, termoExibido(item.id, item.nome), valores, { fundo: FUNDO_PERCENTUAL, negrito: true, percentual: true, cor: '#3B5323' });
               }
               return (
                 <React.Fragment key={item.id}>
                   {linhaTotal(
                     item.id,
-                    <span>{!props.somenteTotais && botaoRecolher(item.id, item.nome)}{item.nome}</span>,
+                    <span>{!props.somenteTotais && botaoRecolher(item.id, termoExibido(item.id, item.nome))}{termoExibido(item.id, item.nome)}</span>,
                     valores,
                     { fundo: COR.fundoGrupo, negrito: true, recuo: item.nivel || 0 }
                   )}
@@ -701,7 +821,7 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
               (porGrupo[grupo] || []).forEach(linha => valoresComSinal(linha).forEach((valor, mes) => { valores[mes] += valor; }));
               return (
                 <React.Fragment key={`fora-${grupo}`}>
-                  {linhaTotal(`fora-${grupo}`, `${grupo} (fora do plano atual)`, valores, { fundo: '#FFF8E1', negrito: true })}
+                  {linhaTotal(`fora-${grupo}`, `${grupo} (fora do plano atual)`, valores, { fundo: '#FFF8E1', negrito: true }, somaExecutado(porGrupo[grupo] || []))}
                   {renderContas(grupo)}
                 </React.Fragment>
               );

@@ -41,7 +41,23 @@ export const TABELAS_ORCAMENTO = {
   evento: 'dgt_orcamentoevento',
   alteracao: 'dgt_orcamentoalteracao',
   regra: 'dgt_orcamentoregra',
-  configArea: 'dgt_orcamentoconfigarea'
+  configArea: 'dgt_orcamentoconfigarea',
+  planoAjuste: 'dgt_orcamentoplanoajuste'
+};
+
+// Ajustes do plano de contas (aba Plano de contas).
+export const PLANO_AJUSTE = {
+  id: 'dgt_orcamentoplanoajusteid',
+  chave: 'dgt_name',
+  tipo: 'dgt_tipo',
+  grupo: 'dgt_grupo',
+  codigo: 'dgt_codigo',
+  nome: 'dgt_nome',
+  pai: 'dgt_pai',
+  incluida: 'dgt_incluida',
+  ativa: 'dgt_contaativa',
+  historico: 'dgt_historico',
+  alteradoEm: 'modifiedon'
 };
 
 export const PLANILHA = {
@@ -103,7 +119,7 @@ export const ALTERACAO = {
 };
 
 export type TipoAlteracao = 'Inclusão' | 'Alteração' | 'Remoção';
-export type OrigemAlteracao = 'Gestor' | 'Cálculo automático';
+export type OrigemAlteracao = 'Gestor' | 'Cálculo automático' | 'Executado';
 
 export const REGRA = {
   id: 'dgt_orcamentoregraid',
@@ -120,7 +136,8 @@ export const REGRA = {
 
 // 'Misto': referências "grupo:…", "linha:…" e "conta:…" (ver
 // calculoOrcamento.ts). 'Grupo'/'Contas': formato antigo.
-export type TipoBaseRegra = 'Grupo' | 'Contas' | 'Misto';
+// 'Formula': base[0] é a expressão (formulaOrcamento.ts).
+export type TipoBaseRegra = 'Grupo' | 'Contas' | 'Misto' | 'Formula';
 
 export const CONFIG_AREA = {
   id: 'dgt_orcamentoconfigareaid',
@@ -130,6 +147,8 @@ export const CONFIG_AREA = {
   grupos: 'dgt_grupos',
   // Equipe (owner team) da área, criada pelo script de sincronização.
   equipeId: 'dgt_equipeid',
+  // Responsáveis da área (JSON): { preenchimento: id, diretor: id }.
+  responsaveis: 'dgt_responsaveis',
   ativo: 'dgt_ativo',
   alteradoEm: 'modifiedon'
 };
@@ -249,6 +268,10 @@ export const PRAZO_AJUSTE_DIAS_UTEIS = 2;
 export const AREA_GERAL = { id: '', nome: 'Geral (sem área)' };
 
 export const CENARIO_ORCADO = 'Orçado';
+
+// Valores realizados (lançados pela Controladoria/Administrador) ficam
+// em linhas da mesma planilha com este cenário, uma por conta.
+export const CENARIO_EXECUTADO = 'Executado';
 
 // Ano sugerido ao abrir a tela: o próximo ano (o orçamento é
 // preenchido no ano anterior ao de execução).

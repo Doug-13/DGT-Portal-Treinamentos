@@ -30,6 +30,8 @@ import MinhaPlanilhaView from './MinhaPlanilhaView';
 import AprovacoesView from './AprovacoesView';
 import TodasPlanilhasView from './TodasPlanilhasView';
 import ContasPorAreaView from './ContasPorAreaView';
+import ResponsaveisView from './ResponsaveisView';
+import PlanoContasView from './PlanoContasView';
 import RegrasCalculoView from './RegrasCalculoView';
 
 import {
@@ -67,7 +69,7 @@ export interface IPlanejamentoOrcamentarioPageProps {
   contexto?: IContextoAcesso;
 }
 
-type Aba = 'minha' | 'aprovacoes' | 'todas' | 'contas' | 'regras';
+type Aba = 'minha' | 'aprovacoes' | 'todas' | 'responsaveis' | 'contas' | 'plano' | 'regras';
 
 const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps> = (props) => {
 
@@ -111,6 +113,11 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
   // Configuração compartilhada pelas abas.
   const [regras, setRegras] = React.useState<IRegraCalculo[]>([]);
   const [configs, setConfigs] = React.useState<IConfigArea[]>([]);
+
+  // Plano de contas com os ajustes do Administrador (aplicado antes de
+  // mostrar as telas); versaoPlano redesenha depois de cada alteração.
+  const [planoPronto, setPlanoPronto] = React.useState(false);
+  const [versaoPlano, setVersaoPlano] = React.useState(0);
   const [areas, setAreas] = React.useState<IAreaOrcamento[]>([]);
   const [carregandoConfig, setCarregandoConfig] = React.useState(true);
   const [alertaConfig, setAlertaConfig] = React.useState('');
@@ -158,12 +165,17 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
       return;
     }
     try {
-      setConfigs(await servico.listarConfigAreas());
+      const lista = await servico.listarConfigAreas();
+      setConfigs(lista);
+      // O fluxo usa os responsáveis da aba na hora.
+      if (fluxo) {
+        fluxo.definirConfigs(lista);
+      }
     } catch (falha) {
       setConfigs([]);
       setAlertaConfig(atual => atual || `Contas por área indisponíveis — as planilhas usam todas as contas. ${explicarErro(falha)}`);
     }
-  }, [servico]);
+  }, [servico, fluxo]);
 
   React.useEffect(() => {
     if (!servico) {
@@ -262,6 +274,19 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
   // Administrador, quando o fluxo está ativo).
   const mostrarAprovacoes = fluxoAtivo && (ehAdmin || qtdAprovacoes > 0 || aba === 'aprovacoes');
 
+  React.useEffect(() => {
+    let ativo = true;
+    if (!servico) {
+      setPlanoPronto(true);
+      return undefined;
+    }
+    servico.garantirPlano()
+      .catch(() => undefined)
+      .then(() => { if (ativo) { setPlanoPronto(true); } })
+      .catch(() => undefined);
+    return () => { ativo = false; };
+  }, [servico]);
+
   const abas: Array<{ chave: Aba; titulo: string }> = [
     { chave: 'minha' as Aba, titulo: 'Minha planilha' }
   ]
@@ -269,13 +294,14 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
     .concat(ehAdmin
       ? [
         { chave: 'todas' as Aba, titulo: 'Todas as planilhas' },
+        { chave: 'responsaveis' as Aba, titulo: 'Responsáveis' },
         { chave: 'contas' as Aba, titulo: 'Contas por área' }
-      ].concat(ehAdminGlobal ? [{ chave: 'regras' as Aba, titulo: 'Regras de cálculo' }] : [])
+      ].concat(ehAdminGlobal ? [{ chave: 'plano' as Aba, titulo: 'Plano de contas' }, { chave: 'regras' as Aba, titulo: 'Regras de cálculo' }] : [])
       : []);
 
   const conteudo = (): React.ReactNode => {
 
-    if (carregandoConfig || !fluxo) {
+    if (carregandoConfig || !fluxo || !planoPronto) {
       return <div style={{ ...cartao, color: COR.texto2 }}>Carregando a configuração do orçamento...</div>;
     }
 
@@ -304,8 +330,17 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
           fluxoAtivo={fluxoAtivo}
           onFluxoAlterado={aoAlterarFluxo}
           areasPermitidas={areasAdministradas}
+          podeEditarExecutado={ehAdminGlobal}
         />
       );
+    }
+
+    if (aba === 'plano' && ehAdminGlobal) {
+      return <PlanoContasView servico={servico} usuarioNome={contexto.nome} onAlterado={() => setVersaoPlano(v => v + 1)} />;
+    }
+
+    if (aba === 'responsaveis' && ehAdmin) {
+      return <ResponsaveisView servico={servico} fluxo={fluxo} areas={areas} configs={configs} onSalvo={carregarConfigs} />;
     }
 
     if (aba === 'contas' && ehAdmin) {
@@ -405,7 +440,7 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
         <CaixaMensagem tipo="info" texto={`Fluxo de aprovação: ${motivoFluxo}`} />
       )}
 
-      {conteudo()}
+      <div data-versao-plano={versaoPlano}>{conteudo()}</div>
     </section>
   );
 };

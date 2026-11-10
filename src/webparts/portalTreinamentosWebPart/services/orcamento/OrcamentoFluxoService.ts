@@ -53,6 +53,7 @@ import {
 } from '../fluxo/ResolvedorResponsaveis';
 
 import {
+  IConfigArea,
   IPlanilhaOrcamento,
   OrcamentoService
 } from './OrcamentoService';
@@ -245,6 +246,7 @@ export class OrcamentoFluxoService {
   private disponibilidade: IDisponibilidadeFluxo | undefined;
 
   private vinculosCache: IUsuarioAreaAdmin[] | undefined;
+  private configsCache: IConfigArea[] | undefined;
 
   private usuariosCache: Array<{ id: string; nome: string }> | undefined;
 
@@ -341,7 +343,30 @@ export class OrcamentoFluxoService {
         this.vinculosCache = [];
       }
     }
+    // Responsáveis por área (aba Responsáveis), lidos junto.
+    if (!this.configsCache || forcar) {
+      try {
+        this.configsCache = await this.orcamento.listarConfigAreas();
+      } catch {
+        this.configsCache = [];
+      }
+    }
     return this.vinculosCache;
+  }
+
+  // Atualiza os responsáveis por área (depois de salvar na aba).
+  public definirConfigs(configs: IConfigArea[]): void {
+    this.configsCache = configs;
+  }
+
+  // Papel → pessoa da área da planilha (responsável "definidoPorArea").
+  public pessoasPorPapel(areaId?: string): { [papel: string]: string[] } {
+    const config = (this.configsCache || []).filter(item => !!areaId && item.areaId === areaId)[0];
+    const responsaveis = config ? config.responsaveis : {};
+    return {
+      preenchimento: responsaveis.preenchimento ? [responsaveis.preenchimento] : [],
+      diretor: responsaveis.diretor ? [responsaveis.diretor] : []
+    };
   }
 
   public async usuarios(): Promise<Array<{ id: string; nome: string }>> {
@@ -363,6 +388,8 @@ export class OrcamentoFluxoService {
     return {
       revisaoResponsavelId: planilha.gestorId,
       documentoAreaId: planilha.areaId,
+      // Responsável "Definido na aba Responsáveis".
+      pessoasPorPapel: this.pessoasPorPapel(planilha.areaId),
       // Metadados preenchidos (responsável "Usuário do campo").
       valores: instancia ? instancia.valores : undefined
     };
@@ -699,10 +726,11 @@ export class OrcamentoFluxoService {
 
     try {
       await this.dataverse.atualizarRegistro(TABELAS_ORCAMENTO.planilha, planilha.id, corpo);
-      return '';
     } catch (erro) {
       return `O fluxo avançou, mas a situação da planilha não foi atualizada: ${mensagem(erro)}`;
     }
+
+    return '';
   }
 
   // ----------------------------------------------------------
@@ -737,8 +765,8 @@ export class OrcamentoFluxoService {
         if (!estado || !tarefa) {
           continue;
         }
+        // Resolve na hora (metadados e hierarquia atuais).
         const resolvidos =
-          tarefa.responsaveisResolvidos ||
           resolverResponsaveis(tarefa.responsaveis, this.dadosResponsaveis(planilha, estado.instancia));
         if (resolvidos.some(item => usuarioAtende(item, contexto.usuarioId, vinculos))) {
           resultado.push({ planilha, estado, tarefa });

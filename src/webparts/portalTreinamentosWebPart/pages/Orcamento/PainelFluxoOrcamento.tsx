@@ -112,7 +112,7 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
 
   const responsaveis =
     tarefa
-      ? (tarefa.responsaveisResolvidos || resolverResponsaveis(tarefa.responsaveis, props.dadosResponsaveis))
+      ? resolverResponsaveis(tarefa.responsaveis, props.dadosResponsaveis)
         .map(item => descreverResolvido(item, props.vinculos, props.usuarios))
         .filter((texto, indice, lista) => !!texto && lista.indexOf(texto) === indice)
       : [];

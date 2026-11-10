@@ -39,6 +39,8 @@ import {
   campo
 } from './arquiteturaComum';
 
+import ServidorCentralPainel from './ServidorCentralPainel';
+
 import {
   IconeKit,
   NomeIconeKit
@@ -68,6 +70,8 @@ export interface ISelecaoKitEtapaProps {
   // Uso dentro de uma etapa de fluxo (campo "Componente"): avisa a
   // cada alteração; o fluxo grava e conclui pelos botões da etapa.
   onAlterar?: (selecao: ISelecaoKit) => void;
+  // Meses do contrato ("Locação N meses"): Care Plus do Milestone.
+  prazoContratoMeses?: number;
 }
 
 const VERDE = '#107C10';
@@ -263,8 +267,8 @@ const ListaAlertas: React.FC<{ alertas: IAlertaBom[]; mostrarOrigem?: boolean }>
         key={i}
         style={{
           display: 'flex', gap: '8px', alignItems: 'flex-start',
-          background: a.nivel === 'erro' ? '#FDE7E9' : '#FFF4E5',
-          color: a.nivel === 'erro' ? VERMELHO : '#7C2D12',
+          background: a.nivel === 'erro' ? '#FDE7E9' : a.nivel === 'info' ? '#EEF0FB' : '#FFF4E5',
+          color: a.nivel === 'erro' ? VERMELHO : a.nivel === 'info' ? COR.indigo : '#7C2D12',
           borderRadius: '8px', padding: '7px 10px', fontSize: '12.5px', lineHeight: 1.4
         }}
       >
@@ -329,7 +333,8 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   somenteLeitura,
   onSalvar,
   modoSimulacao,
-  onAlterar
+  onAlterar,
+  prazoContratoMeses
 }) => {
 
   const [selecao, setSelecao] = React.useState<ISelecaoKit>(() => normalizarSelecao(selecaoInicial || selecaoVazia()));
@@ -352,7 +357,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
     setAlterado(false);
   }, [selecaoInicial]);
 
-  const resultado = React.useMemo(() => montarBom(selecao), [selecao]);
+  const resultado = React.useMemo(() => montarBom(selecao, { prazoContratoMeses }), [selecao, prazoContratoMeses]);
 
   // Campo "Componente" do fluxo: repassa cada alteração (não a 1ª carga).
   const primeiraCarga = React.useRef(true);
@@ -460,7 +465,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
     const usaVideo =
       (parcial.safeCity !== undefined ? parcial.safeCity : ponto.safeCity) ||
       (parcial.faceDetect !== undefined ? parcial.faceDetect : ponto.faceDetect) ||
-      sw.vms === 'digifort';
+      sw.vms !== 'safeCity';
 
     if (!usaVideo) {
       parcial.camerasVideo = 0;
@@ -507,17 +512,16 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
           onMudar={id => mudarSoftwares({ vms: id as ISoftwaresKit['vms'] })}
           opcoes={[
             { id: 'safeCity', texto: 'Safe City (nuvem)', icone: 'nuvem' },
-            { id: 'digifort', texto: 'Digifort (terceiro)', icone: 'servidor' }
+            { id: 'digifort', texto: 'Digifort (terceiro)', icone: 'servidor' },
+            { id: 'milestone', texto: 'Milestone (terceiro)', icone: 'servidor' }
           ]}
         />
       </div>
 
       {sw.vms === 'digifort' && (
         <>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul, fontWeight: 700 }} title="Cada servidor exige a própria base de 8 câmeras">
-            Servidores
-            <Numero valor={sw.digifortServidores} aoMudar={n => mudarSoftwares({ digifortServidores: n })} minimo={1} maximo={99} desabilitado={bloqueado} largura="70px" />
-          </label>
+          {/* O número de servidores não é mais perguntado: vem do
+              painel "Servidor da central" (memorial de cálculo). */}
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul, cursor: 'pointer' }} title="Analíticos por IA (IP Extreme) — roda sobre o Digifort">
             <input type="checkbox" checked={sw.ipx} disabled={bloqueado} onChange={e => mudarSoftwares({ ipx: e.target.checked })} />
             <strong>IPX Analytics</strong>
@@ -718,7 +722,9 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
               {sw.vms === 'safeCity'
                 ? <Ladrilho caixa icone="nuvem" titulo="Safe City" descricao="VMS em nuvem · RTMP · licença por câmera" marcado={ponto.safeCity} desabilitado={bloqueado} onClick={() => alternarSolucao('safeCity')} />
-                : <Ladrilho caixa icone="servidor" titulo="Digifort (VMS do projeto)" descricao="Licença por servidor + packs, no projeto" marcado desabilitado onClick={() => undefined} />}
+                : sw.vms === 'milestone'
+                  ? <Ladrilho caixa icone="servidor" titulo="Milestone (VMS do projeto)" descricao="1 licença Professional+ por câmera, no projeto" marcado desabilitado onClick={() => undefined} />
+                  : <Ladrilho caixa icone="servidor" titulo="Digifort (VMS do projeto)" descricao="Licença base por servidor + packs, no projeto" marcado desabilitado onClick={() => undefined} />}
               <Ladrilho caixa icone="radar" titulo="Smart Detect" descricao="Módulo do Safe City · licença inclusa" marcado={ponto.smartDetect} desabilitado={bloqueado || sw.vms !== 'safeCity'} onClick={() => alternarSolucao('smartDetect')} />
               <Ladrilho caixa icone="rosto" titulo="Face Detect" descricao="Facial · SFTP · licença por câmera" marcado={ponto.faceDetect} desabilitado={bloqueado} onClick={() => alternarSolucao('faceDetect')} />
               <Ladrilho caixa icone="placa" titulo="Safe Way" descricao={estrutura.aceitaOcr ? 'Leitura de placas · SFTP · licença por faixa' : 'O Box não comporta câmera OCR/LPR'} marcado={ponto.safeWay && estrutura.aceitaOcr} desabilitado={bloqueado || !estrutura.aceitaOcr} onClick={() => alternarSolucao('safeWay')} />
@@ -952,6 +958,15 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
       )}
 
       {blocoProjeto}
+
+      <ServidorCentralPainel
+        analise={resultado.servidor}
+        selecao={selecao.servidor}
+        vms={sw.vms}
+        prazoContratoMeses={prazoContratoMeses}
+        bloqueado={bloqueado}
+        onMudar={servidor => { setSelecao(atual => ({ ...atual, servidor })); setAlterado(true); }}
+      />
       {selecao.pontos.length > 0 && blocoPontos}
 
       <div style={{ display: 'grid', gridTemplateColumns: largo ? 'minmax(0, 1.1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: '14px', alignItems: 'start' }}>

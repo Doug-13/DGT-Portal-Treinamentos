@@ -74,7 +74,11 @@ export type TipoResponsavelFluxo =
   | 'funcao'
   | 'setor'
   | 'usuario'
-  | 'campoUsuario';
+  | 'campoUsuario'
+  // Pessoa definida por área numa aba do módulo (Planejamento
+  // orçamentário → Responsáveis). referenciaId = papel:
+  // 'preenchimento' ou 'diretor'.
+  | 'definidoPorArea';
 
 export interface IFluxoResponsavel {
   tipo: TipoResponsavelFluxo;
@@ -131,6 +135,8 @@ export interface IResponsavelResolvido {
   // Hierarquia: pessoas que respondiam quando a pendência foi criada
   // (para avisos/notificações). Quem pode agir é conferido na hora.
   usuariosIds?: string[];
+  // definidoPorArea: pessoa(s) definida(s) para a área do documento.
+  pessoas?: string[];
 }
 
 // Status do documento (dgt_documentorevisao.dgt_status) enquanto a

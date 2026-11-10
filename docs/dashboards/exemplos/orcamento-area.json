@@ -1,0 +1,183 @@
+{
+  "formato": "dgt-portal/dashboard@1",
+  "titulo": "Orçamento da área",
+  "descricao": "Orçado × executado no ano, resultado e principais contas",
+  "filtros": {
+    "ano": true,
+    "area": true
+  },
+  "secoes": [
+    {
+      "titulo": "Resumo do ano",
+      "itens": [
+        {
+          "tipo": "cartao",
+          "titulo": "Receita bruta executada",
+          "fonte": "orcamento.dre",
+          "medida": "executado",
+          "agregacao": "soma",
+          "filtro": {
+            "indicadorId": "RECEITA BRUTA"
+          },
+          "formato": "moeda",
+          "comparar": {
+            "medida": "orcado",
+            "rotulo": "Orçado"
+          }
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "Custos de operação executados",
+          "fonte": "orcamento.dre",
+          "medida": "executado",
+          "agregacao": "soma",
+          "filtro": {
+            "indicadorId": "CUSTOS"
+          },
+          "formato": "moeda",
+          "comparar": {
+            "medida": "orcado",
+            "rotulo": "Orçado",
+            "direcao": "menor"
+          }
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "EBITDA executado",
+          "fonte": "orcamento.dre",
+          "medida": "executado",
+          "agregacao": "soma",
+          "filtro": {
+            "indicadorId": "EBITDA"
+          },
+          "formato": "moeda",
+          "comparar": {
+            "medida": "orcado",
+            "rotulo": "Orçado"
+          }
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "Planilhas atrasadas",
+          "fonte": "orcamento.planilhas",
+          "medida": "planilhas",
+          "agregacao": "soma",
+          "filtro": {
+            "atrasada": "Sim"
+          },
+          "formato": "inteiro"
+        }
+      ]
+    },
+    {
+      "titulo": "Evolução mensal",
+      "itens": [
+        {
+          "tipo": "grafico",
+          "grafico": "linhas",
+          "titulo": "Lucro Líquido — orçado × executado",
+          "fonte": "orcamento.dre",
+          "dimensao": "mes",
+          "filtro": {
+            "indicadorId": "LL"
+          },
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "formato": "moeda"
+        },
+        {
+          "tipo": "grafico",
+          "grafico": "barras",
+          "titulo": "Receita bruta — orçado × executado",
+          "fonte": "orcamento.dre",
+          "dimensao": "mes",
+          "filtro": {
+            "indicadorId": "RECEITA BRUTA"
+          },
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "formato": "moeda"
+        }
+      ]
+    },
+    {
+      "titulo": "Onde está o orçamento",
+      "itens": [
+        {
+          "tipo": "grafico",
+          "grafico": "barras",
+          "titulo": "Orçado por grupo",
+          "fonte": "orcamento.linhas",
+          "dimensao": "grupo",
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            }
+          ],
+          "ordenar": "valor asc",
+          "limite": 10,
+          "formato": "moeda"
+        },
+        {
+          "tipo": "tabela",
+          "titulo": "Top 10 contas (maior orçado)",
+          "fonte": "orcamento.linhas",
+          "dimensoes": [
+            "codigo",
+            "conta"
+          ],
+          "medidas": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            },
+            {
+              "medida": "diferenca",
+              "rotulo": "Diferença"
+            }
+          ],
+          "ordenar": "valor asc",
+          "limite": 10,
+          "formato": "moeda"
+        },
+        {
+          "tipo": "tabela",
+          "titulo": "Situação das planilhas",
+          "fonte": "orcamento.planilhas",
+          "colunas": [
+            "area",
+            "situacao",
+            "etapa",
+            "atrasada",
+            "diasAtraso",
+            "totalOrcado"
+          ],
+          "ordenar": "area asc",
+          "formato": "moeda",
+          "largura": 2
+        }
+      ]
+    }
+  ]
+}

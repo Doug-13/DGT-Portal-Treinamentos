@@ -15,6 +15,8 @@ import {
   ALTERACAO,
   BIND_ORCAMENTO,
   BIND_PROPRIETARIO,
+  CENARIO_EXECUTADO,
+  PLANO_AJUSTE,
   CENARIO_ORCADO,
   CONFIG_AREA,
   EVENTO,
@@ -34,7 +36,9 @@ import {
 } from './esquemaOrcamento';
 
 import {
+  IAjustePlano,
   PLANO_CONTAS,
+  aplicarAjustesPlano,
   nomeGrupoAtual
 } from './planoContasOrcamento';
 
@@ -119,6 +123,10 @@ export interface ILinhaOrcamento {
   ordem: number;
   // Sempre 12 posições (janeiro a dezembro).
   valores: number[];
+  // Executado (realizado) do mês, quando lançado (12 posições).
+  executado?: number[];
+  // Id da linha "Executado" no Dataverse (undefined = ainda não existe).
+  executadoId?: string;
 }
 
 export interface IAlteracoesOrcamento {
@@ -173,11 +181,18 @@ export interface IAreaOrcamento {
   nome: string;
 }
 
+// Responsáveis da área (aba Responsáveis): ids de dgt_usuario.
+export interface IResponsaveisArea {
+  preenchimento?: string;
+  diretor?: string;
+}
+
 export interface IConfigArea {
   id: string;
   areaId: string;
   areaNome: string;
   grupos: string[];
+  responsaveis: IResponsaveisArea;
   // Equipe da área ('' = ainda não sincronizada).
   equipeId: string;
   alteradoEm: string;
@@ -261,11 +276,29 @@ export const EVENTO_PLANO_SINCRONIZADO = 'Plano 2027 sincronizado';
 // Linhas do modelo (Orcamento_DGT_AAAA.xlsx), na ordem da planilha,
 // todas zeradas. Com "grupos", só as contas desses grupos (contas
 // configuradas para a área).
+// Nome da conta no plano atual (com os ajustes do Administrador).
+const nomeNoPlano = (grupo: string, codigo: string): string => {
+  const conta = PLANO_CONTAS.filter(item => item.grupo === grupo && item.codigo === codigo)[0];
+  return conta ? conta.conta : '';
+};
+
+// Ajuste do plano gravado (aba Plano de contas), com o histórico.
+export interface IAjustePlanoGravado extends IAjustePlano {
+  id: string;
+  historico: Array<{ quando: string; quem: string; antes: string; depois: string }>;
+  alteradoEm: string;
+}
+
+// Carrega e aplica os ajustes do plano uma vez por sessão (todas as
+// telas e serviços compartilham). recarregar = depois de salvar.
+let planoCarregado: Promise<void> | undefined;
+
 export const linhasDoModelo = (
   planilhaId: string,
   grupos?: string[]
 ): ILinhaOrcamento[] =>
   PLANO_CONTAS
+    .filter(conta => !conta.inativa)
     .map((conta, indice) => ({
       chave: novaChaveTemporaria(),
       planilhaId,
@@ -317,6 +350,9 @@ export const resumirDetalhes = (
     .join('; ');
 
 export class OrcamentoService {
+
+  // A coluna dos responsáveis por área existe? (lido em listarConfigAreas)
+  public colunaResponsaveis: boolean | undefined;
 
   private readonly dataverse: DataverseService;
 
@@ -384,7 +420,9 @@ export class OrcamentoService {
       // Nome do grupo da versão anterior do plano → nome atual.
       grupo: nomeGrupoAtual(texto(registro, LINHA.grupo)),
       codigo: texto(registro, LINHA.codigo),
-      conta: texto(registro, LINHA.conta),
+      // Nome atual do plano (renomeado pelo Administrador vale para
+      // todas as planilhas); conta fora do plano mantém o gravado.
+      conta: nomeNoPlano(nomeGrupoAtual(texto(registro, LINHA.grupo)), texto(registro, LINHA.codigo)) || texto(registro, LINHA.conta),
       descricao: texto(registro, LINHA.descricao),
       ordem: numero(registro[LINHA.ordem]),
       valores: LINHA.meses.map(campo => arredondar(numero(registro[campo])))
@@ -413,9 +451,11 @@ export class OrcamentoService {
 
   private async selectPlanilha(): Promise<string> {
     const base = this.camposPlanilha();
-    return (await this.temColunasFluxo())
-      ? `${base},${PLANILHA.etapaAtual},${PLANILHA.prazoEtapa}`
-      : base;
+    const comFluxo =
+      (await this.temColunasFluxo())
+        ? `${base},${PLANILHA.etapaAtual},${PLANILHA.prazoEtapa}`
+        : base;
+    return comFluxo;
   }
 
   private camposPlanilha(): string {
@@ -448,8 +488,49 @@ export class OrcamentoService {
       LINHA.codigo,
       LINHA.conta,
       LINHA.descricao,
-      LINHA.ordem
+      LINHA.ordem,
+      LINHA.cenario
     ].concat(LINHA.meses).join(',');
+  }
+
+  // Separa as linhas "Executado" e as junta à linha orçada da mesma
+  // conta (executado/executadoId). Executado sem linha orçada vira uma
+  // linha só com o executado.
+  private juntarCenarios(registros: IDataverseRecord[]): ILinhaOrcamento[] {
+    const orcadas: ILinhaOrcamento[] = [];
+    const executadas: ILinhaOrcamento[] = [];
+    registros.forEach(registro => {
+      const linha = this.mapearLinha(registro);
+      if (texto(registro, LINHA.cenario) === CENARIO_EXECUTADO) {
+        executadas.push(linha);
+      } else {
+        orcadas.push(linha);
+      }
+    });
+    const chave = (linha: ILinhaOrcamento): string => `${linha.planilhaId}|${linha.grupo}|${linha.codigo}`;
+    const porChave: { [chave: string]: ILinhaOrcamento } = {};
+    orcadas.forEach(linha => {
+      if (!porChave[chave(linha)]) {
+        porChave[chave(linha)] = linha;
+      }
+    });
+    executadas.forEach(executada => {
+      const orcada = porChave[chave(executada)];
+      if (orcada) {
+        orcada.executado = executada.valores;
+        orcada.executadoId = executada.id;
+      } else {
+        orcadas.push({
+          ...executada,
+          chave: `exec-${executada.chave}`,
+          id: undefined,
+          valores: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          executado: executada.valores,
+          executadoId: executada.id
+        });
+      }
+    });
+    return orcadas;
   }
 
   // Corpo gravado de uma linha (sem a pesquisa da planilha).
@@ -555,9 +636,91 @@ export class OrcamentoService {
     return registros.map(registro => this.mapearPlanilha(registro));
   }
 
+  // ----------------------------------------------------------
+  // Plano de contas: ajustes do Administrador
+  // ----------------------------------------------------------
+
+  public async garantirPlano(recarregar = false): Promise<void> {
+    if (!planoCarregado || recarregar) {
+      planoCarregado = this.listarAjustesPlano()
+        .then(ajustes => aplicarAjustesPlano(ajustes))
+        .catch(() => {
+          // Sem a tabela (script ainda não executado): plano base.
+        });
+    }
+    return planoCarregado;
+  }
+
+  public async listarAjustesPlano(): Promise<IAjustePlanoGravado[]> {
+    const registros =
+      await this.dataverse.listarRegistros(
+        TABELAS_ORCAMENTO.planoAjuste,
+        `$select=${[PLANO_AJUSTE.id, PLANO_AJUSTE.chave, PLANO_AJUSTE.tipo, PLANO_AJUSTE.grupo, PLANO_AJUSTE.codigo, PLANO_AJUSTE.nome,
+          PLANO_AJUSTE.pai, PLANO_AJUSTE.incluida, PLANO_AJUSTE.ativa, PLANO_AJUSTE.historico, PLANO_AJUSTE.alteradoEm].join(',')}` +
+        `&$orderby=${PLANO_AJUSTE.alteradoEm} asc`
+      );
+    return registros.map(registro => {
+      let historico: IAjustePlanoGravado['historico'] = [];
+      try {
+        const lido = JSON.parse(texto(registro, PLANO_AJUSTE.historico) || '[]');
+        historico = Array.isArray(lido) ? lido : [];
+      } catch {
+        historico = [];
+      }
+      return {
+        id: guid(registro[PLANO_AJUSTE.id]),
+        tipo: texto(registro, PLANO_AJUSTE.tipo) === 'termo' ? 'termo' : 'conta',
+        grupo: texto(registro, PLANO_AJUSTE.grupo),
+        codigo: texto(registro, PLANO_AJUSTE.codigo),
+        nome: texto(registro, PLANO_AJUSTE.nome),
+        pai: texto(registro, PLANO_AJUSTE.pai) || undefined,
+        incluida: registro[PLANO_AJUSTE.incluida] === true,
+        ativa: registro[PLANO_AJUSTE.ativa] !== false,
+        historico,
+        alteradoEm: texto(registro, PLANO_AJUSTE.alteradoEm)
+      };
+    });
+  }
+
+  // Grava (cria ou atualiza) o ajuste de uma conta ou termo, com o
+  // histórico (antes → depois, quem e quando), e reaplica o plano.
+  public async salvarAjustePlano(
+    ajuste: IAjustePlano,
+    resumoAntes: string,
+    resumoDepois: string,
+    usuarioNome: string,
+    existente?: IAjustePlanoGravado
+  ): Promise<void> {
+    const historico = (existente ? existente.historico : []).concat([{
+      quando: new Date().toISOString(),
+      quem: usuarioNome,
+      antes: resumoAntes,
+      depois: resumoDepois
+    }]);
+    const corpo: Record<string, unknown> = {
+      [PLANO_AJUSTE.chave]: `${ajuste.tipo}|${ajuste.grupo}|${ajuste.codigo}`.substring(0, 200),
+      [PLANO_AJUSTE.tipo]: ajuste.tipo,
+      [PLANO_AJUSTE.grupo]: ajuste.grupo.substring(0, 200),
+      [PLANO_AJUSTE.codigo]: ajuste.codigo.substring(0, 100),
+      [PLANO_AJUSTE.nome]: (ajuste.nome || '').substring(0, 400),
+      [PLANO_AJUSTE.pai]: (ajuste.pai || '').substring(0, 100),
+      [PLANO_AJUSTE.incluida]: !!ajuste.incluida,
+      [PLANO_AJUSTE.ativa]: ajuste.ativa !== false,
+      [PLANO_AJUSTE.historico]: JSON.stringify(historico).substring(0, 100000)
+    };
+    if (existente) {
+      await this.dataverse.atualizarRegistro(TABELAS_ORCAMENTO.planoAjuste, existente.id, corpo);
+    } else {
+      await this.dataverse.criarRegistro(TABELAS_ORCAMENTO.planoAjuste, corpo);
+    }
+    await this.garantirPlano(true);
+  }
+
   public async carregarLinhas(
     planilhaId: string
   ): Promise<ILinhaOrcamento[]> {
+
+    await this.garantirPlano();
 
     const registros =
       await this.dataverse.listarRegistros(
@@ -568,7 +731,7 @@ export class OrcamentoService {
         `&$orderby=${LINHA.ordem} asc`
       );
 
-    return registros.map(registro => this.mapearLinha(registro));
+    return this.juntarCenarios(registros);
   }
 
   // Linhas de várias planilhas (consolidado do Administrador).
@@ -577,7 +740,9 @@ export class OrcamentoService {
     planilhaIds: string[]
   ): Promise<ILinhaOrcamento[]> {
 
-    const resultado: ILinhaOrcamento[] = [];
+    await this.garantirPlano();
+
+    const registrosTodos: IDataverseRecord[] = [];
     const tamanhoBloco = 15;
 
     for (let inicio = 0; inicio < planilhaIds.length; inicio += tamanhoBloco) {
@@ -596,7 +761,102 @@ export class OrcamentoService {
           `&$orderby=${LINHA.ordem} asc`
         );
 
-      registros.forEach(registro => resultado.push(this.mapearLinha(registro)));
+      registros.forEach(registro => registrosTodos.push(registro));
+    }
+
+    return this.juntarCenarios(registrosTodos);
+  }
+
+  // ----------------------------------------------------------
+  // Executado (realizado) — Controladoria / Administrador
+  // ----------------------------------------------------------
+
+  // Grava o executado das linhas informadas (cria a linha "Executado"
+  // da conta quando ainda não existe) e registra cada alteração no log
+  // com origem "Executado". anteriores: chave → executado antes.
+  public async salvarExecutado(
+    planilha: IPlanilhaOrcamento,
+    linhas: ILinhaOrcamento[],
+    anteriores: { [chave: string]: number[] | undefined },
+    usuarioNome: string,
+    aoProgredir?: (feitas: number, total: number) => void
+  ): Promise<IResultadoGravacao> {
+
+    const resultado: IResultadoGravacao = { gravadas: 0, falhas: [], avisos: [], idsCriados: {} };
+    const referenciaPlanilha = await this.dataverse.referenciaLookup(TABELAS_ORCAMENTO.planilha, planilha.id);
+    const referenciaEquipe = planilha.equipeId ? await this.dataverse.referenciaLookup('team', planilha.equipeId) : '';
+    const registrosLog: Array<Record<string, unknown>> = [];
+    let feitas = 0;
+
+    await executarEmParalelo(linhas, GRAVACOES_SIMULTANEAS, async linha => {
+      const valores = (linha.executado || mesesVazios()).map(valor => arredondar(valor || 0));
+      const corpo: Record<string, unknown> = {
+        [LINHA.nome]: `${linha.codigo} ${linha.conta} (executado)`.trim().substring(0, 200),
+        [LINHA.cenario]: CENARIO_EXECUTADO,
+        [LINHA.grupo]: linha.grupo,
+        [LINHA.codigo]: linha.codigo,
+        [LINHA.conta]: linha.conta,
+        [LINHA.descricao]: '',
+        [LINHA.ordem]: linha.ordem
+      };
+      LINHA.meses.forEach((campo, indice) => {
+        corpo[campo] = valores[indice];
+      });
+      try {
+        let id = linha.executadoId;
+        if (id) {
+          await this.dataverse.atualizarRegistro(TABELAS_ORCAMENTO.linha, id, corpo);
+        } else {
+          corpo[LINHA.ativo] = true;
+          corpo[BIND_ORCAMENTO.linhaPlanilha] = referenciaPlanilha;
+          if (referenciaEquipe) {
+            corpo[BIND_PROPRIETARIO] = referenciaEquipe;
+          }
+          id = guid(await this.dataverse.criarRegistro(TABELAS_ORCAMENTO.linha, corpo));
+          resultado.idsCriados[linha.chave] = id;
+        }
+        resultado.gravadas++;
+        const antes = anteriores[linha.chave];
+        const detalhes = diferencasLinha(
+          antes ? { ...linha, valores: antes, descricao: '' } : undefined,
+          { ...linha, valores, descricao: '' }
+        );
+        if (detalhes.length > 0) {
+          registrosLog.push({
+            [ALTERACAO.nome]: `Executado — ${linha.codigo} ${linha.conta}`.substring(0, 200),
+            [ALTERACAO.linhaId]: id,
+            [ALTERACAO.grupo]: linha.grupo,
+            [ALTERACAO.codigo]: linha.codigo,
+            [ALTERACAO.conta]: linha.conta,
+            [ALTERACAO.tipo]: antes ? 'Alteração' : 'Inclusão',
+            [ALTERACAO.origem]: 'Executado',
+            [ALTERACAO.detalhes]: JSON.stringify(detalhes).substring(0, 4000),
+            [ALTERACAO.resumo]: `Executado — ${resumirDetalhes(detalhes)}`.substring(0, 4000),
+            [ALTERACAO.usuarioNome]: usuarioNome.substring(0, 200),
+            [BIND_ORCAMENTO.alteracaoPlanilha]: referenciaPlanilha,
+            ...(referenciaEquipe ? { [BIND_PROPRIETARIO]: referenciaEquipe } : {})
+          });
+        }
+      } catch (erro) {
+        resultado.falhas.push(`Executado "${linha.codigo} ${linha.conta}": ${erro instanceof Error ? erro.message : String(erro)}`);
+      } finally {
+        feitas++;
+        if (aoProgredir) {
+          aoProgredir(feitas, linhas.length);
+        }
+      }
+    });
+
+    let falhasLog = 0;
+    await executarEmParalelo(registrosLog, GRAVACOES_SIMULTANEAS, async corpo => {
+      try {
+        await this.dataverse.criarRegistro(TABELAS_ORCAMENTO.alteracao, corpo);
+      } catch {
+        falhasLog++;
+      }
+    });
+    if (falhasLog > 0) {
+      resultado.avisos.push(`${falhasLog} registro(s) do log não foram gravados.`);
     }
 
     return resultado;
@@ -869,7 +1129,7 @@ export class OrcamentoService {
       return [];
     }
     return linhasDoModelo(planilhaId, gruposNaPlanilha)
-      .filter(modelo => PLANO_CONTAS.some(conta => conta.grupo === modelo.grupo && conta.codigo === modelo.codigo && !!conta.pai))
+      .filter(modelo => PLANO_CONTAS.some(conta => conta.grupo === modelo.grupo && conta.codigo === modelo.codigo && !!conta.pai && !conta.inativa))
       .filter(modelo => !linhas.some(linha => linha.grupo === modelo.grupo && linha.codigo === modelo.codigo));
   }
 
@@ -899,6 +1159,16 @@ export class OrcamentoService {
         ? this.subitensFaltantes(planilha.id, linhas)
         : linhasDoModelo(planilha.id, grupos)
           .filter(modelo => !linhas.some(linha => linha.grupo === modelo.grupo && linha.codigo === modelo.codigo));
+
+    // Contas incluídas pelo Administrador (aba Plano de contas) entram
+    // em todas as planilhas, mesmo as já sincronizadas.
+    if (jaSincronizada) {
+      linhasDoModelo(planilha.id, grupos)
+        .filter(modelo => PLANO_CONTAS.some(conta => conta.grupo === modelo.grupo && conta.codigo === modelo.codigo && !!conta.incluida))
+        .filter(modelo => !linhas.some(linha => linha.grupo === modelo.grupo && linha.codigo === modelo.codigo))
+        .filter(modelo => !novas.some(nova => nova.grupo === modelo.grupo && nova.codigo === modelo.codigo))
+        .forEach(modelo => novas.push(modelo));
+    }
 
     let falhas: string[] = [];
     if (novas.length > 0) {
@@ -1151,7 +1421,7 @@ export class OrcamentoService {
       }
       const tipoGravado = texto(registro, REGRA.tipoBase);
       const tipoBase: TipoBaseRegra =
-        tipoGravado === 'Contas' || tipoGravado === 'Misto' ? tipoGravado : 'Grupo';
+        tipoGravado === 'Contas' || tipoGravado === 'Misto' || tipoGravado === 'Formula' ? tipoGravado : 'Grupo';
       return {
         id: guid(registro[REGRA.id]),
         nome: texto(registro, REGRA.nome),
@@ -1181,7 +1451,7 @@ export class OrcamentoService {
       [REGRA.tipoBase]: regra.tipoBase,
       // Com grupo destino ou referências mistas: { refs, grupoDestino }.
       [REGRA.base]: (
-        regra.tipoBase === 'Misto' || regra.grupoDestino
+        regra.tipoBase === 'Misto' || regra.tipoBase === 'Formula' || regra.grupoDestino
           ? JSON.stringify({ refs: regra.base, grupoDestino: regra.grupoDestino || '' })
           : JSON.stringify(regra.base)
       ).substring(0, 4000),
@@ -1210,14 +1480,65 @@ export class OrcamentoService {
         `&$filter=${CONFIG_AREA.ativo} eq true`
       );
 
+    // Responsáveis numa consulta à parte: sem a coluna (script ainda não
+    // executado), tudo continua funcionando, sem responsáveis.
+    const responsaveis: { [configId: string]: IResponsaveisArea } = {};
+    try {
+      const lidos =
+        await this.dataverse.listarRegistros(
+          TABELAS_ORCAMENTO.configArea,
+          `$select=${CONFIG_AREA.id},${CONFIG_AREA.responsaveis}&$filter=${CONFIG_AREA.ativo} eq true`
+        );
+      lidos.forEach(registro => {
+        try {
+          const lido = JSON.parse(texto(registro, CONFIG_AREA.responsaveis) || '{}');
+          responsaveis[guid(registro[CONFIG_AREA.id])] = {
+            preenchimento: lido && lido.preenchimento ? guid(String(lido.preenchimento)) : undefined,
+            diretor: lido && lido.diretor ? guid(String(lido.diretor)) : undefined
+          };
+        } catch {
+          // JSON inválido: área sem responsáveis.
+        }
+      });
+      this.colunaResponsaveis = true;
+    } catch {
+      this.colunaResponsaveis = false;
+    }
+
     return registros.map(registro => ({
       id: guid(registro[CONFIG_AREA.id]),
       areaId: guid(registro[CONFIG_AREA.areaValor]),
       areaNome: texto(registro, CONFIG_AREA.areaNome),
       grupos: lerListaJson(texto(registro, CONFIG_AREA.grupos)).map(grupo => nomeGrupoAtual(grupo)),
+      responsaveis: responsaveis[guid(registro[CONFIG_AREA.id])] || {},
       equipeId: guid(registro[CONFIG_AREA.equipeId]),
       alteradoEm: texto(registro, CONFIG_AREA.alteradoEm)
     }));
+  }
+
+  // Grava os responsáveis da área (cria a configuração se não houver;
+  // sem grupos = todos os grupos).
+  public async salvarResponsaveisArea(
+    area: IAreaOrcamento,
+    responsaveis: IResponsaveisArea,
+    existenteId?: string
+  ): Promise<void> {
+    const corpo: Record<string, unknown> = {
+      [CONFIG_AREA.responsaveis]: JSON.stringify({
+        preenchimento: responsaveis.preenchimento ? guid(responsaveis.preenchimento) : '',
+        diretor: responsaveis.diretor ? guid(responsaveis.diretor) : ''
+      })
+    };
+    if (existenteId) {
+      await this.dataverse.atualizarRegistro(TABELAS_ORCAMENTO.configArea, existenteId, corpo);
+      return;
+    }
+    corpo[CONFIG_AREA.nome] = `Contas — ${area.nome}`.substring(0, 200);
+    corpo[CONFIG_AREA.areaNome] = area.nome.substring(0, 200);
+    corpo[CONFIG_AREA.grupos] = '[]';
+    corpo[CONFIG_AREA.ativo] = true;
+    corpo[BIND_ORCAMENTO.configArea] = await this.dataverse.referenciaLookup('dgt_area', area.id);
+    await this.dataverse.criarRegistro(TABELAS_ORCAMENTO.configArea, corpo);
   }
 
   // Grupos que a área preenche (undefined = sem configuração = todos).

@@ -24,6 +24,10 @@ import {
 } from './catalogoKits';
 
 import {
+  carregarEAplicarServidores
+} from './ServidoresService';
+
+import {
   COL_ALTERACAO,
   COL_COMPOSICAO,
   COL_ITEM,
@@ -791,8 +795,10 @@ export const garantirCatalogoKitsAplicado = (
   if (!carregamento) {
     carregamento = new KitsService(dataverse)
       .carregar()
-      .then(catalogo => {
+      .then(async catalogo => {
         aplicarNoMontador(catalogo);
+        // Catálogo de servidores (memoriais): falhou, fica o padrão.
+        await carregarEAplicarServidores(dataverse).catch(() => undefined);
         return catalogo;
       })
       .catch(() => {

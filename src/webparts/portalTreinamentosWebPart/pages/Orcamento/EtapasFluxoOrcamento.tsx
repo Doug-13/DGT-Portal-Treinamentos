@@ -130,10 +130,8 @@ const EtapasFluxoOrcamento: React.FC<IEtapasFluxoOrcamentoProps> = (props) => {
     instancia.historico.filter(passo => passo.elementoId === elementoId && !passo.sistema && passo.acaoChave !== 'iniciar')[0];
 
   const responsaveisDe = (elemento: IFluxoElemento, atual: boolean): string => {
-    const resolvidos =
-      atual && tarefa && tarefa.responsaveisResolvidos
-        ? tarefa.responsaveisResolvidos
-        : resolverResponsaveis(elemento.responsaveis, props.dadosResponsaveis);
+    // Sempre com os responsáveis atuais (por área e hierarquia).
+    const resolvidos = resolverResponsaveis(elemento.responsaveis, props.dadosResponsaveis);
     return resolvidos
       .map(item => descreverResolvido(item, props.vinculos, props.usuarios))
       .filter((texto, indice, lista) => !!texto && lista.indexOf(texto) === indice)

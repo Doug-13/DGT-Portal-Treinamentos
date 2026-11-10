@@ -269,6 +269,14 @@ New-Inteiro    'dgt_dashboard' 'dgt_Altura'    'Altura (px)'
 New-Texto      'dgt_dashboard' 'dgt_Publico'   'Quem vê' 20
 New-SimNao     'dgt_dashboard' 'dgt_Ativo'     'Ativo' $true
 
+# Dashboards do portal (definição JSON da skill "dashboard-dgt"):
+#   dgt_Tipo      Link | Portal
+#   dgt_Definicao JSON no formato dgt-portal/dashboard@1
+#   dgt_Areas     JSON com os ids das áreas que veem (vazio = todas)
+New-Texto      'dgt_dashboard' 'dgt_Tipo'      'Tipo (Link ou Portal)' 20
+New-TextoLongo 'dgt_dashboard' 'dgt_Definicao' 'Definição do dashboard (JSON)' 1048576
+New-TextoLongo 'dgt_dashboard' 'dgt_Areas'     'Áreas que veem (JSON)' 4000
+
 # ------------------------------------------------------------
 # 3) Publicação
 # ------------------------------------------------------------

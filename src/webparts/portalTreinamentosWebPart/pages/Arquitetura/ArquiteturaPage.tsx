@@ -45,6 +45,10 @@ import {
   garantirCatalogoKitsAplicado
 } from '../../services/bom/KitsService';
 
+import {
+  mesesDoTipoProjeto
+} from '../../services/bom/servidores';
+
 import EtapaHHBom from './EtapaHHBom';
 
 import {
@@ -716,6 +720,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                   selecaoInicial={selecaoKit}
                   semColuna={kitSemColuna}
                   canal={demanda.canal}
+                  prazoContratoMeses={mesesDoTipoProjeto(demanda.tipoProjeto)}
                   salvando={salvando}
                   somenteLeitura={etapa === 'Enviado para aprovação'}
                   onSalvar={async (selecao, concluir) => {
@@ -740,7 +745,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
           aba === 'hh' && (
             <EtapaHHBom
               dataverseService={dataverseService}
-              resumoKit={selecaoKit ? montarBom(selecaoKit) : undefined}
+              resumoKit={selecaoKit ? montarBom(selecaoKit, { prazoContratoMeses: mesesDoTipoProjeto(demanda.tipoProjeto) }) : undefined}
               aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
             />
           )

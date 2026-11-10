@@ -5,7 +5,9 @@
 //   • aba ORÇAMENTO 2027 → grupos, contas e a ordem da DRE;
 //   • aba SUPORTE        → subitens 6.1.1.01.* da conta
 //     4.1.4.01.01.018 (CUSTO MOD PROJETOS C/TAD), com as subdivisões
-//     (Despesas com pessoal, Custos gerais, Veículos, Viagens).
+//     (Despesas com pessoal, Custos gerais, Veículos, Viagens);
+//   • subitens 6.5.1.01.01.* da conta 4.1.5.01.01.001 (CUSTO MOD P&D),
+//     em Custos Pesquisa e Desenvolvimento.
 //
 // As linhas já gravadas no Dataverse guardam código, conta e grupo
 // como TEXTO: mudar este arquivo nunca altera o histórico. Nomes de
@@ -26,10 +28,18 @@ export interface IContaOrcamento {
   pai?: string;
   // Subdivisão dentro da conta mãe (ex.: "6.1.1.01.02 · CUSTOS GERAIS").
   subdivisao?: string;
+  // Ajustes do Administrador (aba Plano de contas):
+  // desativada → não entra em planilhas/Adicionar linha (linhas com
+  // valor continuam); incluida → conta criada pelo Administrador.
+  inativa?: boolean;
+  incluida?: boolean;
 }
 
 // Contas "mãe" (valor = soma dos subitens), com o nome da planilha.
-export const CONTAS_MAE: { [codigo: string]: string } = {"4.1.4.01.01.018": "CUSTO MOD PROJETOS C/TAD"};
+export const CONTAS_MAE: { [codigo: string]: string } = {
+  "4.1.4.01.01.018": "CUSTO MOD PROJETOS C/TAD",
+  "4.1.5.01.01.001": "CUSTO MOD P&D"
+};
 
 // Grupos que recebem lançamentos, na ordem da planilha.
 export const GRUPOS_ORCAMENTO: string[] = [
@@ -210,7 +220,32 @@ export const PLANO_CONTAS: IContaOrcamento[] = [
   { grupo: "Custos Diretos Locações Bens (sem amortização)", codigo: "4.1.4.01.02.001", conta: "SERVICOS PRESTADOS POR TERCEIRO INDIRETO" },
   { grupo: "Custos Diretos Locações Bens (sem amortização)", codigo: "4.1.4.01.02.002", conta: "TAXAS" },
   { grupo: "Amortização Projetos", codigo: "4.1.2.01.01.001", conta: "CUSTOS PROJETOS AMORTIZADOS" },
-  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "4.1.5.01.01.001", conta: "CUSTO MOD P&D" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.001", conta: "SALARIOS E ORDENADOS - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.002", conta: "PROVISAO 13º SALARIO - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.003", conta: "PROVISAO DE FERIAS - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.004", conta: "ENCARGO FGTS S/PROVISOES - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.005", conta: "ENCARGO INSS S/PROVISOES - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.006", conta: "FGTS - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.007", conta: "HORAS EXTRAS - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.008", conta: "INSS PATRONAL - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.009", conta: "ASSISTENCIA MEDICA - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.010", conta: "CURSOS E TREINAMENTOS - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.011", conta: "VALE TRANSPORTE - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.012", conta: "REEMBOLSO USO TELEFONE CELULAR - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.013", conta: "UNIFORMES - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.014", conta: "SEGURO DE VIDA EMPREGADOS - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.015", conta: "DESPESA COM ALIMENTACAO - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.016", conta: "MEDICINA DO TRABALHO - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.017", conta: "PRÊMIOS E GRATIFICAÇÕES - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.018", conta: "HORAS DE SOBREAVISO - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.019", conta: "AUXILIO MOBILIDADE - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.020", conta: "BOLSA AUXILIO - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.021", conta: "SERVICO SELECAO PESSOAS - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.022", conta: "PLANO ODONTOLÓGICO - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.023", conta: "AUXILIO ATIVIDADE FISICA - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.024", conta: "PLR EMPREGADOS - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.025", conta: "AJUDA DE CUSTO HOME OFFICE - P&D", pai: "4.1.5.01.01.001" },
+  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.026", conta: "SERVICO TERCEIROS PJ - P&D", pai: "4.1.5.01.01.001" },
   { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "4.1.5.01.02.001", conta: "SERVICOS PRESTADOS POR TERCEIROS - P&D" },
   { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "4.1.5.01.02.002", conta: "MATERIAL CONSUMO - P&D" },
   { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "4.1.5.01.02.003", conta: "HOSPEDAGEM - P&D" },
@@ -465,3 +500,110 @@ export const PLANO_CONTAS: IContaOrcamento[] = [
   { grupo: "Receitas e Despesas financeiras (ajuste do EBITDA)", codigo: "4.2.1.01.08.009", conta: "SEGURO P/OPERACAO FINANCEIRA" },
   { grupo: "Receitas e Despesas financeiras (ajuste do EBITDA)", codigo: "4.2.1.01.08.010", conta: "VARIACAO CAMBIAL PASSIVA" }
 ];
+
+// ============================================================
+// AJUSTES DO PLANO (aba "Plano de contas", tabela
+// dgt_orcamentoplanoajuste) aplicados SOBRE o plano base acima:
+//  • conta: renomear, desativar ou incluir (com conta mãe opcional);
+//  • termo: nome exibido de um grupo ou linha da DRE (o identificador
+//    interno não muda — DRE, regras e Contas por área continuam).
+// As listas acima são atualizadas no lugar (todas as telas usam as
+// mesmas referências); "versaoPlano" muda a cada aplicação.
+// ============================================================
+
+export interface IAjustePlano {
+  tipo: 'conta' | 'termo';
+  grupo: string;
+  codigo: string;
+  // conta: nome da conta; termo: nome exibido do grupo/linha (codigo = id).
+  nome: string;
+  pai?: string;
+  incluida?: boolean;
+  ativa?: boolean;
+}
+
+const PLANO_BASE: IContaOrcamento[] = PLANO_CONTAS.map(conta => ({ ...conta }));
+const MAES_BASE: { [codigo: string]: string } = { ...CONTAS_MAE };
+
+// Nome exibido de grupos e linhas da DRE (id → termo).
+const TERMOS: { [id: string]: string } = {};
+
+let versao = 0;
+
+export const versaoPlano = (): number => versao;
+
+export const termoExibido = (id: string, padrao?: string): string =>
+  TERMOS[id] || padrao || id;
+
+export const termosAlterados = (): { [id: string]: string } => ({ ...TERMOS });
+
+export const contaBase = (grupo: string, codigo: string): IContaOrcamento | undefined =>
+  PLANO_BASE.filter(conta => conta.grupo === grupo && conta.codigo === codigo)[0];
+
+export const aplicarAjustesPlano = (ajustes: IAjustePlano[]): void => {
+
+  // Volta ao plano base.
+  PLANO_CONTAS.length = 0;
+  PLANO_BASE.forEach(conta => PLANO_CONTAS.push({ ...conta }));
+  Object.keys(CONTAS_MAE).forEach(codigo => { delete CONTAS_MAE[codigo]; });
+  Object.keys(MAES_BASE).forEach(codigo => { CONTAS_MAE[codigo] = MAES_BASE[codigo]; });
+  Object.keys(TERMOS).forEach(id => { delete TERMOS[id]; });
+
+  ajustes
+    .filter(ajuste => ajuste.tipo === 'termo' && ajuste.codigo && ajuste.nome)
+    .forEach(ajuste => { TERMOS[ajuste.codigo] = ajuste.nome; });
+
+  ajustes
+    .filter(ajuste => ajuste.tipo === 'conta' && ajuste.grupo && ajuste.codigo)
+    .forEach(ajuste => {
+      // Conta mãe (soma dos subitens) renomeada.
+      const ehMae = !!CONTAS_MAE[ajuste.codigo];
+      if (ehMae && ajuste.nome) {
+        CONTAS_MAE[ajuste.codigo] = ajuste.nome;
+      }
+      const existente = PLANO_CONTAS.filter(conta => conta.grupo === ajuste.grupo && conta.codigo === ajuste.codigo)[0];
+      if (!existente && ehMae) {
+        return;
+      }
+      if (existente) {
+        if (ajuste.nome) {
+          existente.conta = ajuste.nome;
+        }
+        existente.inativa = ajuste.ativa === false;
+        return;
+      }
+      if (!ajuste.incluida) {
+        return;
+      }
+      const nova: IContaOrcamento = {
+        grupo: ajuste.grupo,
+        codigo: ajuste.codigo,
+        conta: ajuste.nome || ajuste.codigo,
+        pai: ajuste.pai || undefined,
+        inativa: ajuste.ativa === false,
+        incluida: true
+      };
+      // Posição: depois do último subitem da conta mãe, ou da última
+      // conta do grupo (ou no fim, para grupo sem contas).
+      let posicao = -1;
+      PLANO_CONTAS.forEach((conta, indice) => {
+        if (conta.grupo === nova.grupo && (!nova.pai || conta.pai === nova.pai || conta.codigo === nova.pai)) {
+          posicao = indice;
+        }
+      });
+      if (posicao < 0) {
+        PLANO_CONTAS.forEach((conta, indice) => { if (conta.grupo === nova.grupo) { posicao = indice; } });
+      }
+      // Subdivisão do último subitem da mesma mãe.
+      if (nova.pai && posicao >= 0 && PLANO_CONTAS[posicao].pai === nova.pai) {
+        nova.subdivisao = PLANO_CONTAS[posicao].subdivisao;
+      }
+      if (posicao < 0) {
+        PLANO_CONTAS.push(nova);
+      } else {
+        PLANO_CONTAS.splice(posicao + 1, 0, nova);
+      }
+    });
+
+  versao++;
+};

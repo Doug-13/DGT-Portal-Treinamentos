@@ -3,6 +3,14 @@ import {
   IDataverseRecord
 } from './DataverseService';
 
+import {
+  validarDashboard
+} from './dashboards/dashboardModelo';
+
+import {
+  CATALOGO_DASHBOARD
+} from './dashboards/fontesDashboard';
+
 // ================================================================
 // DASHBOARDS (abas da página Indicadores)
 // ================================================================
@@ -15,6 +23,11 @@ import {
 //   dgt_altura     Altura do painel em pixels
 //   dgt_publico    Quem vê: Todos | Gestor | Administrador
 //   dgt_ativo      Aba visível no portal
+//   dgt_tipo       Link (Power BI/outro, em iframe) | Portal (definição
+//                  JSON desenhada pelo portal com dados do Dataverse)
+//   dgt_definicao  Definição do dashboard do portal (JSON, formato
+//                  dgt-portal/dashboard@1, gerado pela skill dashboard-dgt)
+//   dgt_areas      Áreas que veem (JSON com ids; vazio = todas)
 // ================================================================
 
 export type PublicoDashboard =
@@ -31,7 +44,14 @@ export interface IDashboard {
   altura: number;
   publico: PublicoDashboard;
   ativo: boolean;
+  tipo: TipoDashboard;
+  // Tipo Portal: definição JSON (dgt-portal/dashboard@1).
+  definicao: string;
+  // Áreas que veem (ids); vazio = todas.
+  areas: string[];
 }
+
+export type TipoDashboard = 'Link' | 'Portal';
 
 export type IDashboardEdicao =
   Omit<IDashboard, 'id'> & { id?: string };
@@ -169,21 +189,30 @@ export const analisarLink = (
   return { valido: true, urlIncorporacao: url, aviso: '' };
 };
 
-// Quem pode ver cada aba
+// Quem pode ver cada aba: "Quem vê" (perfil) e, quando definidas, as
+// áreas do dashboard (o usuário precisa ter vínculo com uma delas).
 export const podeVerDashboard = (
   dashboard: IDashboard,
-  perfil?: string
+  perfil?: string,
+  areasDoUsuario?: string[]
 ): boolean => {
   const p = (perfil || '').toLowerCase();
-
-  if (dashboard.publico === 'Todos') return true;
   if (p === 'administrador') return true;
+  if (dashboard.areas && dashboard.areas.length > 0 && areasDoUsuario) {
+    const minhas = areasDoUsuario.map(id => id.replace(/[{}]/g, '').toLowerCase());
+    if (!dashboard.areas.some(id => minhas.indexOf(id.replace(/[{}]/g, '').toLowerCase()) >= 0)) {
+      return false;
+    }
+  }
+  if (dashboard.publico === 'Todos') return true;
   if (dashboard.publico === 'Gestor') return p === 'gestor';
-
   return false;
 };
 
 export class DashboardService {
+
+  // Colunas do dashboard do portal existem? (lido em listar)
+  public colunasPortal: boolean | undefined;
 
   private readonly dataverse: DataverseService;
 
@@ -200,8 +229,35 @@ export class DashboardService {
         '&$orderby=dgt_ordem asc,dgt_name asc'
       );
 
+    // Colunas do dashboard do portal numa consulta à parte: sem elas
+    // (script ainda não executado) os links continuam funcionando.
+    const extras: { [id: string]: IDataverseRecord } = {};
+    try {
+      const lidos =
+        await this.dataverse.listarRegistros(
+          TABELA_DASHBOARD,
+          '$select=dgt_dashboardid,dgt_tipo,dgt_definicao,dgt_areas'
+        );
+      lidos.forEach(registro => { extras[texto(registro, 'dgt_dashboardid')] = registro; });
+      this.colunasPortal = true;
+    } catch {
+      this.colunasPortal = false;
+    }
+
+    const lerAreas = (valor: string): string[] => {
+      try {
+        const lista = JSON.parse(valor || '[]');
+        return Array.isArray(lista) ? lista.map(item => String(item)) : [];
+      } catch {
+        return [];
+      }
+    };
+
     return registros
       .map(registro => ({
+        tipo: (texto(extras[texto(registro, 'dgt_dashboardid')] || {}, 'dgt_tipo') === 'Portal' ? 'Portal' : 'Link') as TipoDashboard,
+        definicao: texto(extras[texto(registro, 'dgt_dashboardid')] || {}, 'dgt_definicao'),
+        areas: lerAreas(texto(extras[texto(registro, 'dgt_dashboardid')] || {}, 'dgt_areas')),
         id: texto(registro, 'dgt_dashboardid'),
         nome: texto(registro, 'dgt_name', 'Dashboard'),
         url: texto(registro, 'dgt_url'),
@@ -225,7 +281,19 @@ export class DashboardService {
       throw new Error('Informe o nome da aba.');
     }
 
-    const link = analisarLink(dados.url);
+    const portal = dados.tipo === 'Portal';
+
+    if (portal) {
+      if (this.colunasPortal === false) {
+        throw new Error('As colunas do dashboard do portal ainda não existem. Execute de novo scripts/dataverse/criar-tabela-dashboards.ps1.');
+      }
+      const validacao = validarDashboard(dados.definicao, CATALOGO_DASHBOARD);
+      if (validacao.erros.length > 0) {
+        throw new Error(`Definição inválida:\n${validacao.erros.join('\n')}`);
+      }
+    }
+
+    const link = portal ? { valido: true, urlIncorporacao: '', aviso: '' } : analisarLink(dados.url);
 
     if (!link.valido) {
       throw new Error(link.aviso);
@@ -240,6 +308,12 @@ export class DashboardService {
       dgt_publico: dados.publico,
       dgt_ativo: dados.ativo
     };
+
+    if (this.colunasPortal) {
+      registro.dgt_tipo = portal ? 'Portal' : 'Link';
+      registro.dgt_definicao = portal ? dados.definicao : '';
+      registro.dgt_areas = JSON.stringify(dados.areas || []);
+    }
 
     if (dados.id) {
       await this.dataverse.atualizarRegistro(
