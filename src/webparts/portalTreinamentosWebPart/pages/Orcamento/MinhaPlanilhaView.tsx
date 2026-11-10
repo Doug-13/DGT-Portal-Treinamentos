@@ -53,6 +53,10 @@ import {
 } from '../../services/orcamento/OrcamentoFluxoService';
 
 import {
+  estaNoPreenchimento
+} from '../../services/orcamento/situacaoFluxoOrcamento';
+
+import {
   IUsuarioAreaAdmin
 } from '../../services/AreaAdminService';
 
@@ -145,19 +149,48 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   const { servico, contexto, ano, regras, configs, onPendencias, fluxo, fluxoAtivo, onFluxoAlterado } = props;
 
   // Áreas em que o usuário preenche orçamento.
+  // Aba Responsáveis: o RESPONSÁVEL PELO PREENCHIMENTO da área cria,
+  // edita e envia a planilha. Gestores, Administradores da área e o
+  // Diretor responsável só visualizam. Área sem responsável: ninguém
+  // preenche até a Controladoria definir.
+  const meuId = guid(contexto.usuarioId);
+
+  const responsavelDaArea = React.useCallback(
+    (id: string): string => {
+      const config = configs.filter(item => item.areaId === id)[0];
+      return config && config.responsaveis.preenchimento ? guid(config.responsaveis.preenchimento) : '';
+    },
+    [configs]
+  );
+
+  const modoDaArea = React.useCallback(
+    (id: string): 'edita' | 'consulta' | 'semResponsavel' => {
+      const responsavel = responsavelDaArea(id);
+      return !responsavel ? 'semResponsavel' : responsavel === meuId ? 'edita' : 'consulta';
+    },
+    [responsavelDaArea, meuId]
+  );
+
   const areasDoUsuario =
     React.useMemo((): IAreaOrcamento[] => {
       const lista: IAreaOrcamento[] = [];
+      const incluir = (id: string, nome: string): void => {
+        if (id && !lista.some(area => area.id === id)) {
+          lista.push({ id, nome });
+        }
+      };
+      // 1º as áreas que o usuário preenche; depois as que só consulta.
+      configs
+        .filter(config => guid(config.responsaveis.preenchimento || '') === meuId)
+        .forEach(config => incluir(config.areaId, config.areaNome));
       (contexto.vinculosArea || [])
         .filter(item => item.perfil === 'Gestor' || item.perfil === 'Administrador da área')
-        .forEach(item => {
-          const id = guid(item.areaId);
-          if (id && !lista.some(area => area.id === id)) {
-            lista.push({ id, nome: item.areaNome });
-          }
-        });
+        .forEach(item => incluir(guid(item.areaId), item.areaNome));
+      configs
+        .filter(config => guid(config.responsaveis.diretor || '') === meuId)
+        .forEach(config => incluir(config.areaId, config.areaNome));
       return lista.length > 0 ? lista : [AREA_GERAL];
-    }, [contexto]);
+    }, [contexto, configs, meuId]);
 
   const [planilhasDoAno, setPlanilhasDoAno] = React.useState<IPlanilhaOrcamento[]>([]);
   const [areaId, setAreaId] = React.useState<string>(areasDoUsuario[0].id);
@@ -176,6 +209,8 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   const [modalAberto, setModalAberto] = React.useState(false);
   const [busca, setBusca] = React.useState('');
   const [somenteComValor, setSomenteComValor] = React.useState(false);
+  // Executado (realizado), lançado pela Controladoria: só consulta aqui.
+  const [mostrarExecutado, setMostrarExecutado] = React.useState(false);
   const [estadoFluxo, setEstadoFluxo] = React.useState<IEstadoFluxoPlanilha | undefined>(undefined);
   const [podeAgirFluxo, setPodeAgirFluxo] = React.useState(false);
   const [processandoFluxo, setProcessandoFluxo] = React.useState(false);
@@ -183,6 +218,15 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   const refFluxo = React.useRef<HTMLDivElement>(null);
   const [vinculosFluxo, setVinculosFluxo] = React.useState<IUsuarioAreaAdmin[]>([]);
   const [usuariosFluxo, setUsuariosFluxo] = React.useState<Array<{ id: string; nome: string }>>([]);
+
+  // Nomes (para "a planilha é preenchida por …"), mesmo sem o fluxo.
+  React.useEffect(() => {
+    let ativo = true;
+    fluxo.usuarios()
+      .then(lista => { if (ativo && lista.length > 0) { setUsuariosFluxo(atual => (atual.length > 0 ? atual : lista)); } })
+      .catch(() => undefined);
+    return () => { ativo = false; };
+  }, [fluxo]);
 
   // Áreas do usuário + áreas de planilhas já existentes (ex.: uma
   // planilha "Geral" criada antes de a pessoa ter área).
@@ -205,7 +249,23 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
     return config && config.grupos.length > 0 ? config.grupos : undefined;
   };
 
-  const editavel = !!planilha && statusEditavel(planilha.status);
+  // Com o fluxo, os valores só são editados na etapa de preenchimento e
+  // só por quem responde por ela (ex.: o "Responsável pelo
+  // preenchimento" definido pela Controladoria). Gestores e demais só
+  // visualizam. Sem o fluxo: como antes.
+  const modoAtual = areaAtual.id ? modoDaArea(areaAtual.id) : 'edita';
+  const nomeDoResponsavel =
+    areaAtual.id
+      ? (usuariosFluxo.filter(item => guid(item.id) === responsavelDaArea(areaAtual.id))[0] || { nome: '' }).nome
+      : '';
+
+  // Só o responsável pelo preenchimento edita, e só na etapa de
+  // preenchimento do fluxo (ou sem fluxo).
+  const editavel =
+    !!planilha &&
+    statusEditavel(planilha.status) &&
+    modoAtual === 'edita' &&
+    (!estadoFluxo || estaNoPreenchimento(estadoFluxo.instancia, estadoFluxo.definicao));
   const somenteLeitura = !editavel;
 
   const calculadas =
@@ -356,7 +416,10 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
       // Contas novas do plano Orçamento 2027 (CSLL, IR, Lei do Bem, CBS,
       // Amortização, ajuste do EBITDA, subitens da 4.1.4.01.01.018…) que
       // faltam em planilhas criadas antes delas: grava zeradas, uma vez.
-      if (encontrada.status === STATUS_PLANILHA.emPreenchimento || encontrada.status === STATUS_PLANILHA.devolvida) {
+      if (
+        (encontrada.status === STATUS_PLANILHA.emPreenchimento || encontrada.status === STATUS_PLANILHA.devolvida) &&
+        modoDaArea(encontrada.areaId) === 'edita'
+      ) {
         try {
           const sincronizacao =
             await servico.sincronizarComPlano(
@@ -433,7 +496,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
     }
   // configs entra só pelo gruposDaArea na criação do modelo.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [servico, contexto, ano, areaId, areasDoUsuario, carregarLog, fluxo, fluxoAtivo]);
+  }, [servico, contexto, ano, areaId, areasDoUsuario, carregarLog, fluxo, fluxoAtivo, modoDaArea]);
 
   React.useEffect(() => {
     carregar().catch(() => undefined);
@@ -891,6 +954,28 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
     );
   }
 
+  // Sem planilha e o usuário não é o responsável pelo preenchimento.
+  if (!planilha && modoAtual !== 'edita') {
+    return (
+      <>
+        {areasExibidas.length > 1 && seletorAreas}
+        <CaixaMensagem tipo="erro" texto={erro} />
+        <div style={{ ...cartao, textAlign: 'center', padding: '36px 20px' }}>
+          <div style={{ fontSize: '17px', fontWeight: 700, color: COR.azul }}>
+            {modoAtual === 'semResponsavel'
+              ? `O responsável pelo preenchimento de ${areaAtual.nome} ainda não foi definido`
+              : `O orçamento de ${ano} — ${areaAtual.nome} ainda não foi iniciado`}
+          </div>
+          <div style={{ fontSize: '13.5px', color: COR.texto2, margin: '8px auto 0', maxWidth: '560px' }}>
+            {modoAtual === 'semResponsavel'
+              ? 'A Controladoria define quem preenche cada área em Planejamento orçamentário → Responsáveis.'
+              : `A planilha é preenchida por ${nomeDoResponsavel || 'o responsável definido pela Controladoria'}. Você poderá visualizá-la assim que for iniciada.`}
+          </div>
+        </div>
+      </>
+    );
+  }
+
   if (!planilha) {
     const grupos = gruposDaArea(areaAtual.id);
     return (
@@ -939,12 +1024,13 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
   const etapaAtualFluxo = estadoFluxo ? obterElementoAtual(estadoFluxo.definicao, estadoFluxo.instancia) : undefined;
   const quemConclui =
     tarefaAtual
-      ? (tarefaAtual.responsaveisResolvidos || resolverResponsaveis(tarefaAtual.responsaveis, fluxo.dadosResponsaveis(planilha)))
+      ? resolverResponsaveis(tarefaAtual.responsaveis, fluxo.dadosResponsaveis(planilha))
         .map(item => descreverResolvido(item, vinculosFluxo, usuariosFluxo))
         .filter((texto, indice, lista) => !!texto && lista.indexOf(texto) === indice)
         .join(' · ')
       : '';
   const semPermissaoDeEnvio = !!estadoFluxo && editavel && !podeAgirFluxo;
+
 
   // Com o fluxo, o botão de envio usa o NOME da ação principal da etapa
   // (ex.: "Concluir"), como definido no processo. Sem fluxo: "Enviar
@@ -998,6 +1084,20 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
           )}
         </div>
       </div>
+
+      {modoAtual === 'semResponsavel' && (
+        <CaixaMensagem
+          tipo="alerta"
+          texto="O responsável pelo preenchimento desta área ainda não foi definido. A planilha fica só para consulta até a Controladoria definir em Planejamento orçamentário → Responsáveis."
+        />
+      )}
+
+      {modoAtual === 'consulta' && planilha && statusEditavel(planilha.status) && (
+        <CaixaMensagem
+          tipo="info"
+          texto={`Somente visualização: a planilha desta área é preenchida por ${nomeDoResponsavel || 'o responsável definido na aba Responsáveis'}.`}
+        />
+      )}
 
       {semPermissaoDeEnvio && (
         <CaixaMensagem
@@ -1130,6 +1230,13 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
               <input type="checkbox" checked={somenteComValor} onChange={evento => setSomenteComValor(evento.target.checked)} />
               Mostrar só linhas com valor
             </label>
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#5B21B6', cursor: 'pointer' }}
+              title="Executado lançado pela Controladoria (somente consulta)"
+            >
+              <input type="checkbox" checked={mostrarExecutado} onChange={evento => setMostrarExecutado(evento.target.checked)} />
+              Mostrar executado
+            </label>
             {filtroAtivo && (
               <span style={{ fontSize: '12px', color: '#B45309', fontWeight: 600 }}>
                 Filtro ativo: exibindo {linhasVisiveis.length} de {linhas.length} linhas (os totais e resultados da tabela consideram a planilha inteira).
@@ -1150,6 +1257,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
             <TabelaOrcamento
               linhas={linhasVisiveis}
               linhasTotais={linhas}
+              executado={{ mostrar: mostrarExecutado, editavel: false }}
               ano={ano}
               somenteLeitura={somenteLeitura}
               chavesAlteradas={chavesAlteradas}

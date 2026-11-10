@@ -221,7 +221,26 @@ if ($filtros.Count -gt 0) {
 
 $planilhas = @(Get-Todos $consulta)
 
-if ($planilhas.Count -eq 0) {
+# Registros sem planilha (sobras de uma limpeza interrompida): linhas,
+# histórico e log cuja planilha já foi excluída. Só no modo Excluir.
+$orfas = @()
+if ($Modo -eq 'Excluir') {
+  $orfas += @(Get-Todos "dgt_orcamentolinhas?`$select=dgt_orcamentolinhaid&`$filter=_dgt_planilha_value eq null" |
+    ForEach-Object { [pscustomobject]@{ Tabela = 'dgt_orcamentolinhas'; Id = $_.dgt_orcamentolinhaid } })
+  if ($temEventos) {
+    $orfas += @(Get-Todos "dgt_orcamentoeventos?`$select=dgt_orcamentoeventoid&`$filter=_dgt_planilha_value eq null" |
+      ForEach-Object { [pscustomobject]@{ Tabela = 'dgt_orcamentoeventos'; Id = $_.dgt_orcamentoeventoid } })
+  }
+  if ($temLog) {
+    $orfas += @(Get-Todos "dgt_orcamentoalteracaos?`$select=dgt_orcamentoalteracaoid&`$filter=_dgt_planilha_value eq null" |
+      ForEach-Object { [pscustomobject]@{ Tabela = 'dgt_orcamentoalteracaos'; Id = $_.dgt_orcamentoalteracaoid } })
+  }
+  if ($orfas.Count -gt 0) {
+    Write-Host "Registros sem planilha (sobras de limpeza anterior): $($orfas.Count)" -ForegroundColor Yellow
+  }
+}
+
+if ($planilhas.Count -eq 0 -and $orfas.Count -eq 0) {
   Write-Host 'Nenhuma planilha encontrada com esses filtros. Nada a limpar.' -ForegroundColor Green
   return
 }
@@ -323,6 +342,9 @@ $planilhasCompletas = @($planilhas | ForEach-Object {
 $planilhasCompletas | ConvertTo-Json -Depth 10 | Out-File (Join-Path $PastaBackup 'planilhas.json') -Encoding utf8
 $todasLinhas        | ConvertTo-Json -Depth 10 | Out-File (Join-Path $PastaBackup 'linhas.json')    -Encoding utf8
 $todosEventos       | ConvertTo-Json -Depth 10 | Out-File (Join-Path $PastaBackup 'historico.json') -Encoding utf8
+if ($orfas.Count -gt 0) {
+  $orfas | ConvertTo-Json -Depth 5 | Out-File (Join-Path $PastaBackup 'sem-planilha.json') -Encoding utf8
+}
 
 Write-Host "Backup salvo em: $PastaBackup" -ForegroundColor Green
 
@@ -378,6 +400,13 @@ if ($Modo -eq 'Excluir') {
   foreach ($planilha in $planilhas) {
     Invoke-Seguro "Planilha $($planilha.dgt_name)" {
       Invoke-Dv -Metodo 'DELETE' -Caminho "dgt_orcamentoplanilhas($($planilha.dgt_orcamentoplanilhaid))" | Out-Null
+    }
+  }
+
+  # Sobras sem planilha.
+  foreach ($orfa in $orfas) {
+    Invoke-Seguro "Sem planilha $($orfa.Tabela) $($orfa.Id)" {
+      Invoke-Dv -Metodo 'DELETE' -Caminho "$($orfa.Tabela)($($orfa.Id))" | Out-Null
     }
   }
 }

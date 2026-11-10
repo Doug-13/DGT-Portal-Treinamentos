@@ -48,7 +48,7 @@ const PASSOS: Array<{ titulo: string; texto: string }> = [
   },
   {
     titulo: 'O montador confere e consolida',
-    texto: 'Soma itens iguais de todos os pontos, ordena por categoria, marca o que não tem código CIGAM e mostra os erros e avisos antes de concluir.'
+    texto: 'Escolhe o servidor da central pela faixa do memorial (vídeo + porteiros, com reserva), soma itens iguais, marca o que não tem código CIGAM e mostra erros e avisos antes de concluir.'
   }
 ];
 
@@ -60,7 +60,8 @@ const VALIDACOES: string[] = [
   'Face Detect em ponto alto com câmera sem zoom óptico.',
   'Equipamento ou item sem código CIGAM: entra como pendente, não orçável.',
   'Item usado no kit que foi desativado no catálogo.',
-  'IPX Analytics sem o Digifort como VMS.'
+  'IPX Analytics sem o Digifort como VMS.',
+  'Servidor da central (Digifort, Milestone, IPX): faixa acima da maior do memorial, combinado acima de 50 câmeras, servidor sem código CIGAM, SO fora do suporte e Care Plus com prazo irregular.'
 ];
 
 const LogicaKitsView: React.FC = () => {
@@ -113,7 +114,8 @@ const LogicaKitsView: React.FC = () => {
             <li>Safe City: 1 licença por câmera de vídeo com a solução marcada.</li>
             <li>Face Detect: 1 por câmera de vídeo do ponto com Face Detect.</li>
             <li>Safe Way: 1 por faixa monitorada em cada câmera OCR/LPR.</li>
-            <li>Digifort: base de {CAMERAS_BASE_DIGIFORT} câmeras por servidor; o excedente é coberto pelo menor pack que resolve ({packs} câmeras).</li>
+            <li>Digifort: 1 licença base de {CAMERAS_BASE_DIGIFORT} câmeras por servidor (o número de servidores vem do memorial); packs pela necessidade real — vídeo + porteiros ({packs} câmeras).</li>
+            <li>Milestone XProtect Professional+: 1 licença por câmera (vídeo + porteiros) e Care Plus pelo prazo do contrato (12, 36 ou 60 meses; outro prazo = cotação).</li>
             <li>IPX Analytics: câmeras de vídeo × pacotes; só com Digifort.</li>
             <li>W-Access: 1 licença por leitora, 1 a cada 1000 cadastros de face e 1 a cada 2 canais de visualização.</li>
           </ul>

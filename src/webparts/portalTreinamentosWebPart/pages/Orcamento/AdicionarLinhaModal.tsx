@@ -3,7 +3,8 @@ import * as React from 'react';
 import {
   GRUPOS_ORCAMENTO,
   IContaOrcamento,
-  PLANO_CONTAS
+  PLANO_CONTAS,
+  termoExibido
 } from '../../services/orcamento/planoContasOrcamento';
 
 import {
@@ -59,6 +60,7 @@ const AdicionarLinhaModal: React.FC<IAdicionarLinhaModalProps> = (props) => {
     React.useMemo(() => {
       const termo = normalizar(busca.trim());
       return PLANO_CONTAS.filter(item =>
+        !item.inativa &&
         (!permitidos || permitidos.indexOf(item.grupo) >= 0) &&
         (!grupo || item.grupo === grupo) &&
         (!termo ||
@@ -145,7 +147,7 @@ const AdicionarLinhaModal: React.FC<IAdicionarLinhaModalProps> = (props) => {
           >
             <option value="">Todos os grupos</option>
             {gruposVisiveis.map(item => (
-              <option key={item} value={item}>{item}</option>
+              <option key={item} value={item}>{termoExibido(item)}</option>
             ))}
           </select>
           <input

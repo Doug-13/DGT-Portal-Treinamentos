@@ -91,3 +91,12 @@ export const situacaoDoFluxo = (
     ? STATUS_PLANILHA.devolvida
     : STATUS_PLANILHA.emPreenchimento;
 };
+
+// A etapa atual é a de preenchimento (1ª etapa com responsável)?
+export const estaNoPreenchimento = (
+  instancia: IFluxoInstancia,
+  definicao: IFluxoDefinicao
+): boolean => {
+  const preenchimento = etapaDePreenchimento(definicao);
+  return instancia.status !== 'concluido' && !!preenchimento && instancia.elementoAtualId === preenchimento.id;
+};

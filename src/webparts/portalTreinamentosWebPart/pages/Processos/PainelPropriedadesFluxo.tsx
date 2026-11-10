@@ -165,7 +165,8 @@ const TIPOS_RESPONSAVEL: Array<{ valor: TipoResponsavelFluxo; rotulo: string }> 
   { valor: 'usuario', rotulo: 'Usuário específico' },
   { valor: 'campoUsuario', rotulo: 'Usuário de um metadado (ex.: Responsável)' },
   { valor: 'cargoArea', rotulo: 'Hierarquia — cargo (ex.: Head, Diretor)' },
-  { valor: 'nivelHierarquico', rotulo: 'Hierarquia — nível (1º, 2º, 3º, topo)' }
+  { valor: 'nivelHierarquico', rotulo: 'Hierarquia — nível (1º, 2º, 3º, topo)' },
+  { valor: 'definidoPorArea', rotulo: 'Definido na aba Responsáveis (Planejamento orçamentário)' }
 ];
 
 // Níveis oferecidos para "Nível da hierarquia" (0 = topo).
@@ -194,7 +195,8 @@ const DESCRICAO_PADRAO_RESPONSAVEL: Record<TipoResponsavelFluxo, string> = {
   usuario: 'Usuário',
   campoUsuario: 'Usuário do campo',
   cargoArea: 'Head da área de quem criou',
-  nivelHierarquico: '1º nível da hierarquia da área de quem criou'
+  nivelHierarquico: '1º nível da hierarquia da área de quem criou',
+  definidoPorArea: 'Responsável pelo preenchimento'
 };
 
 const STATUS_DOCUMENTO: Array<{ valor: StatusDocumentoEtapa; rotulo: string }> = [
@@ -649,6 +651,14 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
             // Processos → Head de Processos).
             novo.origemArea =
               parcial.tipo === 'cargoArea' || parcial.tipo === 'nivelHierarquico' ? 'autor' : undefined;
+            if (parcial.tipo === 'definidoPorArea') {
+              novo.referenciaId = 'preenchimento';
+            }
+          }
+
+          // Definido na aba Responsáveis: descrição conforme o papel.
+          if (novo.tipo === 'definidoPorArea' && (parcial.tipo !== undefined || parcial.referenciaId !== undefined)) {
+            novo.descricao = novo.referenciaId === 'diretor' ? 'Diretor responsável' : 'Responsável pelo preenchimento';
           }
 
           // Hierarquia: descrição automática ao trocar cargo/nível/área.
@@ -1044,6 +1054,26 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                         {responsavel.tipo === 'cargoArea'
                           ? 'Quem tem este cargo na área (RH e Pessoas → Estrutura por área). Ex.: quem criou é de Processos → a pendência vai para o Head de Processos.'
                           : 'A cadeia da área sai dos cargos cadastrados (ex.: Coordenador → Head → Diretor). Se a área tiver menos níveis, vale o topo.'}
+                      </div>
+                    </div>
+                  )
+                }
+
+                {
+                  responsavel.tipo === 'definidoPorArea' && (
+                    <div>
+                      <select
+                        aria-label={`Papel do responsável ${indice + 1}`}
+                        value={responsavel.referenciaId === 'diretor' ? 'diretor' : 'preenchimento'}
+                        disabled={!editavel}
+                        onChange={evento => alterarResponsavel(indice, { referenciaId: evento.target.value })}
+                        style={estiloEntradaPainel}
+                      >
+                        <option value="preenchimento">Responsável pelo preenchimento</option>
+                        <option value="diretor">Diretor responsável</option>
+                      </select>
+                      <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '4px' }}>
+                        A pessoa de cada área é escolhida em Planejamento orçamentário → Responsáveis.
                       </div>
                     </div>
                   )

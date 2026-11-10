@@ -1,0 +1,2505 @@
+diff --git a/scripts/dataverse/criar-tabelas-orcamento.ps1 b/scripts/dataverse/criar-tabelas-orcamento.ps1
+index fcc9d9c..d02619b 100644
+--- a/scripts/dataverse/criar-tabelas-orcamento.ps1
++++ b/scripts/dataverse/criar-tabelas-orcamento.ps1
+@@ -73,6 +73,14 @@
+   situação da planilha; registrar o histórico.
+   (ex.: "DGT Orçamento - Aprovadores")
+ 
++.PARAMETER PapelPreenchedores
++  Opcional. Nome do perfil de segurança de quem PREENCHE o orçamento de
++  uma área sem ser gestor dela (o "Responsável pelo preenchimento"
++  definido pela Controladoria na 1ª etapa do CONT-001). Recebe: ler e
++  gravar planilhas e linhas, criar linhas e registrar log e histórico.
++  Quem edita o quê continua controlado pelo fluxo no portal.
++  (ex.: "DGT Orçamento - Preenchedores")
++
+ .PARAMETER PapelAdministradores
+   Opcional. Nome do perfil de segurança dos administradores do portal
+   (ex.: "DGT Treinamentos - Administradores").
+@@ -94,6 +102,7 @@ param(
+   [string] $PapelGestores,
+   [string] $PapelAdministradores,
+   [string] $PapelAprovadores,
++  [string] $PapelPreenchedores,
+   [string] $Token
+ )
+ 
+@@ -406,6 +415,9 @@ New-DataHora   $P 'dgt_PrazoAjuste'     'Prazo para ajuste'
+ New-TextoLongo $P 'dgt_FluxoEstado'     'Estado do fluxo de aprovação (JSON)' 1048576
+ New-Texto      $P 'dgt_EtapaAtual'      'Etapa atual do fluxo' 200
+ New-DataHora   $P 'dgt_PrazoEtapa'      'Prazo da etapa atual'
++# Quem já foi responsável por alguma etapa (ids de dgt_usuario, ";"):
++# a planilha aparece na "Minha planilha" dessas pessoas.
++New-Texto      $P 'dgt_Participantes'   'Participantes do fluxo (ids)' 4000
+ 
+ # Área da planilha (gestor de 2 áreas = 2 planilhas)
+ New-Lookup     $P 'dgt_Area'            'Área' 'dgt_area' 'dgt_area_dgt_orcamentoplanilha_area'
+@@ -567,7 +579,7 @@ function Grant-Privilegios {
+ $tabelasOrcamento = @('dgt_orcamentoplanilha', 'dgt_orcamentolinha')
+ $acoesOrcamento = @('Create', 'Read', 'Write', 'Append', 'AppendTo')
+ 
+-if ($PapelGestores -or $PapelAdministradores -or $PapelAprovadores) {
++if ($PapelGestores -or $PapelAdministradores -or $PapelAprovadores -or $PapelPreenchedores) {
+   Write-Host "`n5) Privilégios" -ForegroundColor Cyan
+ }
+ 
+@@ -599,6 +611,17 @@ if ($PapelAprovadores) {
+   Grant-Privilegios $PapelAprovadores 'Global' $tabelasConfig @('Read')
+ }
+ 
++# Preenchedores (Responsável pelo preenchimento de outra área): leem e
++# gravam planilhas e linhas, criam linhas (contas novas do plano) e
++# registram log/histórico — tudo com a equipe da área (Atribuir).
++if ($PapelPreenchedores) {
++  Grant-Privilegios $PapelPreenchedores 'Global' $tabelasOrcamento @('Create', 'Read', 'Write', 'Append', 'AppendTo')
++  Grant-Privilegios $PapelPreenchedores 'Global' $tabelasComEquipe @('Assign')
++  Grant-Privilegios $PapelPreenchedores 'Global' @('dgt_orcamentoevento', 'dgt_orcamentoalteracao') $acoesEvento
++  Grant-Privilegios $PapelPreenchedores 'Global' $tabelasConfig @('Read')
++  Grant-Privilegios $PapelPreenchedores 'Global' @('dgt_usuario', 'dgt_area') @('AppendTo')
++}
++
+ if ($PapelAdministradores) {
+   Grant-Privilegios $PapelAdministradores 'Global' $tabelasOrcamento $acoesOrcamento
+   Grant-Privilegios $PapelAdministradores 'Global' $tabelasComEquipe @('Assign')
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/EtapasFluxoOrcamento.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/EtapasFluxoOrcamento.tsx
+index 26e1047..db16cc4 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/EtapasFluxoOrcamento.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/EtapasFluxoOrcamento.tsx
+@@ -130,10 +130,8 @@ const EtapasFluxoOrcamento: React.FC<IEtapasFluxoOrcamentoProps> = (props) => {
+     instancia.historico.filter(passo => passo.elementoId === elementoId && !passo.sistema && passo.acaoChave !== 'iniciar')[0];
+ 
+   const responsaveisDe = (elemento: IFluxoElemento, atual: boolean): string => {
+-    const resolvidos =
+-      atual && tarefa && tarefa.responsaveisResolvidos
+-        ? tarefa.responsaveisResolvidos
+-        : resolverResponsaveis(elemento.responsaveis, props.dadosResponsaveis);
++    // Sempre com os responsáveis atuais (por área e hierarquia).
++    const resolvidos = resolverResponsaveis(elemento.responsaveis, props.dadosResponsaveis);
+     return resolvidos
+       .map(item => descreverResolvido(item, props.vinculos, props.usuarios))
+       .filter((texto, indice, lista) => !!texto && lista.indexOf(texto) === indice)
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/MinhaPlanilhaView.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/MinhaPlanilhaView.tsx
+index abbc32a..ce04f80 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/MinhaPlanilhaView.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/MinhaPlanilhaView.tsx
+@@ -52,6 +52,10 @@ import {
+   etapaDePreenchimento
+ } from '../../services/orcamento/OrcamentoFluxoService';
+ 
++import {
++  estaNoPreenchimento
++} from '../../services/orcamento/situacaoFluxoOrcamento';
++
+ import {
+   IUsuarioAreaAdmin
+ } from '../../services/AreaAdminService';
+@@ -176,6 +180,8 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
+   const [modalAberto, setModalAberto] = React.useState(false);
+   const [busca, setBusca] = React.useState('');
+   const [somenteComValor, setSomenteComValor] = React.useState(false);
++  // Executado (realizado), lançado pela Controladoria: só consulta aqui.
++  const [mostrarExecutado, setMostrarExecutado] = React.useState(false);
+   const [estadoFluxo, setEstadoFluxo] = React.useState<IEstadoFluxoPlanilha | undefined>(undefined);
+   const [podeAgirFluxo, setPodeAgirFluxo] = React.useState(false);
+   const [processandoFluxo, setProcessandoFluxo] = React.useState(false);
+@@ -205,7 +211,14 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
+     return config && config.grupos.length > 0 ? config.grupos : undefined;
+   };
+ 
+-  const editavel = !!planilha && statusEditavel(planilha.status);
++  // Com o fluxo, os valores só são editados na etapa de preenchimento e
++  // só por quem responde por ela (ex.: o "Responsável pelo
++  // preenchimento" definido pela Controladoria). Gestores e demais só
++  // visualizam. Sem o fluxo: como antes.
++  const editavel =
++    !!planilha &&
++    statusEditavel(planilha.status) &&
++    (!estadoFluxo || (estaNoPreenchimento(estadoFluxo.instancia, estadoFluxo.definicao) && podeAgirFluxo));
+   const somenteLeitura = !editavel;
+ 
+   const calculadas =
+@@ -314,6 +327,13 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
+       const encontrada =
+         doAno.filter(item => item.areaId === areaId)[0];
+ 
++      // Responsável por etapa (ex.: preenchimento) de outra área, sem
++      // área própria: abre a planilha em que participa.
++      if (!encontrada && doAno.length > 0 && !areasDoUsuario.some(area => !!area.id && area.id === areaId)) {
++        setAreaId(doAno[0].areaId);
++        return;
++      }
++
+       setPlanilha(encontrada);
+       setAlteracoesLog([]);
+ 
+@@ -891,6 +911,28 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
+     );
+   }
+ 
++  // Com o fluxo, quem cria a planilha da área é a Controladoria (já
++  // definindo os responsáveis): aqui só se aguarda.
++  if (!planilha && fluxoAtivo) {
++    return (
++      <>
++        {areasExibidas.length > 1 && seletorAreas}
++        <CaixaMensagem tipo="erro" texto={erro} />
++        <div style={{ ...cartao, textAlign: 'center', padding: '36px 20px' }}>
++          <div style={{ fontSize: '17px', fontWeight: 700, color: COR.azul }}>
++            {areaAtual.id
++              ? `Aguardando a Controladoria iniciar o orçamento de ${ano} — ${areaAtual.nome}`
++              : `Você não tem orçamento de ${ano} para preencher`}
++          </div>
++          <div style={{ fontSize: '13.5px', color: COR.texto2, margin: '8px auto 0', maxWidth: '560px' }}>
++            A Controladoria cria a planilha de cada área e define o responsável pelo preenchimento e o diretor
++            responsável. Quando a planilha for liberada para você, ela aparece aqui.
++          </div>
++        </div>
++      </>
++    );
++  }
++
+   if (!planilha) {
+     const grupos = gruposDaArea(areaAtual.id);
+     return (
+@@ -939,13 +981,20 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
+   const etapaAtualFluxo = estadoFluxo ? obterElementoAtual(estadoFluxo.definicao, estadoFluxo.instancia) : undefined;
+   const quemConclui =
+     tarefaAtual
+-      ? (tarefaAtual.responsaveisResolvidos || resolverResponsaveis(tarefaAtual.responsaveis, fluxo.dadosResponsaveis(planilha)))
++      ? resolverResponsaveis(tarefaAtual.responsaveis, fluxo.dadosResponsaveis(planilha))
+         .map(item => descreverResolvido(item, vinculosFluxo, usuariosFluxo))
+         .filter((texto, indice, lista) => !!texto && lista.indexOf(texto) === indice)
+         .join(' · ')
+       : '';
+   const semPermissaoDeEnvio = !!estadoFluxo && editavel && !podeAgirFluxo;
+ 
++  // Com o fluxo: planilha não entregue, mas o usuário só visualiza
++  // (etapa de outra pessoa, ou etapa anterior ao preenchimento).
++  const somenteVisualizacaoFluxo =
++    !!planilha && !!estadoFluxo && statusEditavel(planilha.status) && !editavel;
++  const antesDoPreenchimento =
++    !!planilha && !!estadoFluxo && !estaNoPreenchimento(estadoFluxo.instancia, estadoFluxo.definicao) && statusEditavel(planilha.status);
++
+   // Com o fluxo, o botão de envio usa o NOME da ação principal da etapa
+   // (ex.: "Concluir"), como definido no processo. Sem fluxo: "Enviar
+   // planilha" / "Reenviar planilha".
+@@ -999,6 +1048,19 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
+         </div>
+       </div>
+ 
++      {somenteVisualizacaoFluxo && (
++        <CaixaMensagem
++          tipo={antesDoPreenchimento && podeAgirFluxo ? 'alerta' : 'info'}
++          texto={
++            antesDoPreenchimento
++              ? (podeAgirFluxo
++                ? `Etapa "${etapaAtualFluxo ? etapaAtualFluxo.nome : ''}": preencha os campos (ex.: Responsável pelo preenchimento e Diretor responsável) no quadro "Fluxo de aprovação" abaixo e clique na ação da etapa para liberar o preenchimento.`
++                : `Aguardando "${etapaAtualFluxo ? etapaAtualFluxo.nome : 'a definição dos responsáveis'}" (${quemConclui || 'Controladoria'}). Depois disso, a planilha é preenchida pelo responsável definido.`)
++              : `Somente visualização: a planilha é preenchida por ${quemConclui || 'o responsável da etapa'}.`
++          }
++        />
++      )}
++
+       {semPermissaoDeEnvio && (
+         <CaixaMensagem
+           tipo="alerta"
+@@ -1130,6 +1192,13 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
+               <input type="checkbox" checked={somenteComValor} onChange={evento => setSomenteComValor(evento.target.checked)} />
+               Mostrar só linhas com valor
+             </label>
++            <label
++              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#5B21B6', cursor: 'pointer' }}
++              title="Executado lançado pela Controladoria (somente consulta)"
++            >
++              <input type="checkbox" checked={mostrarExecutado} onChange={evento => setMostrarExecutado(evento.target.checked)} />
++              Mostrar executado
++            </label>
+             {filtroAtivo && (
+               <span style={{ fontSize: '12px', color: '#B45309', fontWeight: 600 }}>
+                 Filtro ativo: exibindo {linhasVisiveis.length} de {linhas.length} linhas (os totais e resultados da tabela consideram a planilha inteira).
+@@ -1150,6 +1219,7 @@ const MinhaPlanilhaView: React.FC<IMinhaPlanilhaViewProps> = (props) => {
+             <TabelaOrcamento
+               linhas={linhasVisiveis}
+               linhasTotais={linhas}
++              executado={{ mostrar: mostrarExecutado, editavel: false }}
+               ano={ano}
+               somenteLeitura={somenteLeitura}
+               chavesAlteradas={chavesAlteradas}
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PainelFluxoOrcamento.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PainelFluxoOrcamento.tsx
+index d697037..b2721cd 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PainelFluxoOrcamento.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PainelFluxoOrcamento.tsx
+@@ -112,7 +112,7 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
+ 
+   const responsaveis =
+     tarefa
+-      ? (tarefa.responsaveisResolvidos || resolverResponsaveis(tarefa.responsaveis, props.dadosResponsaveis))
++      ? resolverResponsaveis(tarefa.responsaveis, props.dadosResponsaveis)
+         .map(item => descreverResolvido(item, props.vinculos, props.usuarios))
+         .filter((texto, indice, lista) => !!texto && lista.indexOf(texto) === indice)
+       : [];
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PlanejamentoOrcamentarioPage.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PlanejamentoOrcamentarioPage.tsx
+index 94a2867..dd8ae10 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PlanejamentoOrcamentarioPage.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/PlanejamentoOrcamentarioPage.tsx
+@@ -304,6 +304,8 @@ const PlanejamentoOrcamentarioPage: React.FC<IPlanejamentoOrcamentarioPageProps>
+           fluxoAtivo={fluxoAtivo}
+           onFluxoAlterado={aoAlterarFluxo}
+           areasPermitidas={areasAdministradas}
++          podeEditarExecutado={ehAdminGlobal}
++          podeIniciarPlanilhas={ehAdminGlobal}
+         />
+       );
+     }
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/RegrasCalculoView.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/RegrasCalculoView.tsx
+index 2379e5f..851d4d2 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/RegrasCalculoView.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/RegrasCalculoView.tsx
+@@ -108,7 +108,11 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
+ 
+   // Abre para edição já no formato 'Misto' (converte regras antigas).
+   const abrir = (regra: IRegraCalculo): void => {
+-    setEditando({ ...regra, tipoBase: 'Misto', base: referenciasDaRegra(regra), grupoDestino: regra.grupoDestino || '' });
++    setEditando(
++      regra.tipoBase === 'Formula'
++        ? { ...regra, base: [regra.base[0] || ''], grupoDestino: regra.grupoDestino || '' }
++        : { ...regra, tipoBase: 'Misto', base: referenciasDaRegra(regra), grupoDestino: regra.grupoDestino || '' }
++    );
+     setPercentualTexto(formatarPercentual(regra.percentual));
+     setBuscaConta('');
+     setErro('');
+@@ -122,9 +126,34 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
+       ...editando,
+       grupoDestino: editando.grupoDestino || undefined,
+       contaDestinoNome: nomeContaDoPlano(editando.contaDestino, editando.grupoDestino || undefined),
+-      percentual: isNaN(percentualConvertido) ? -1 : percentualConvertido
++      percentual: editando.tipoBase === 'Formula' ? 0 : isNaN(percentualConvertido) ? -1 : percentualConvertido
+     };
+ 
++  const ehFormula = !!editando && editando.tipoBase === 'Formula';
++
++  // Troca entre "percentual da soma" e "fórmula" (converte a base).
++  const trocarModo = (formula: boolean): void => {
++    if (!editando || formula === ehFormula) {
++      return;
++    }
++    if (formula) {
++      const soma = editando.base.map(ref => `[${ref}]`).join(' + ');
++      const pct = isNaN(percentualConvertido) ? 0 : percentualConvertido;
++      setEditando({ ...editando, tipoBase: 'Formula', base: [soma ? `-(${soma}) * ${String(pct).replace('.', ',')}%` : ''] });
++    } else {
++      setEditando({ ...editando, tipoBase: 'Misto', base: referenciasDaRegra(editando) });
++    }
++  };
++
++  // Fórmula: acrescenta um trecho (referência ou operador) no fim.
++  const inserirNaFormula = (trecho: string): void => {
++    if (!editando) {
++      return;
++    }
++    const atual = (editando.base[0] || '').replace(/\s+$/, '');
++    setEditando({ ...editando, base: [`${atual}${atual ? ' ' : ''}${trecho}`] });
++  };
++
+   const problemas = regraAtual ? validarRegra(regraAtual, props.regras) : [];
+ 
+   const salvar = async (): Promise<void> => {
+@@ -213,6 +242,10 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
+     if (!editando) {
+       return;
+     }
++    if (editando.tipoBase === 'Formula') {
++      inserirNaFormula(`[${ref}]`);
++      return;
++    }
+     const base =
+       editando.base.indexOf(ref) >= 0
+         ? editando.base.filter(valor => valor !== ref)
+@@ -220,6 +253,13 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
+     setEditando({ ...editando, base });
+   };
+ 
++  // Item usado na base (ou citado na fórmula).
++  const marcado = (ref: string): boolean =>
++    !!editando &&
++    (editando.tipoBase === 'Formula'
++      ? (editando.base[0] || '').indexOf(`[${ref}]`) >= 0
++      : editando.base.indexOf(ref) >= 0);
++
+   const contasFiltradas =
+     PLANO_CONTAS.filter(item => {
+       const termo = buscaConta.trim().toLowerCase();
+@@ -290,8 +330,16 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
+               </select>
+             </label>
+             <label>
+-              <span style={rotulo}>Percentual (%) *</span>
+-              <input type="text" inputMode="decimal" value={percentualTexto} onChange={evento => setPercentualTexto(evento.target.value)} placeholder="Ex.: 1,65" style={campo} />
++              <span style={rotulo}>Percentual (%) {ehFormula ? '' : '*'}</span>
++              <input
++                type="text"
++                inputMode="decimal"
++                value={ehFormula ? 'Na fórmula' : percentualTexto}
++                disabled={ehFormula}
++                onChange={evento => setPercentualTexto(evento.target.value)}
++                placeholder="Ex.: 1,65"
++                style={{ ...campo, opacity: ehFormula ? 0.6 : 1 }}
++              />
+             </label>
+             <label>
+               <span style={rotulo}>Ordem</span>
+@@ -305,15 +353,74 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
+             </label>
+           </div>
+ 
+-          <span style={rotulo}>Base do cálculo * <span style={{ fontWeight: 400, color: COR.texto2 }}>(soma com sinal dos itens marcados)</span></span>
++          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
++            <span style={{ ...rotulo, marginBottom: 0, marginRight: '6px' }}>Tipo de cálculo</span>
++            {[
++              { formula: false, texto: 'Percentual da soma' },
++              { formula: true, texto: 'Fórmula (+ − × ÷)' }
++            ].map(opcao => (
++              <button
++                key={opcao.texto}
++                type="button"
++                aria-pressed={ehFormula === opcao.formula}
++                onClick={() => trocarModo(opcao.formula)}
++                style={{
++                  padding: '5px 12px',
++                  borderRadius: '999px',
++                  border: `1px solid ${ehFormula === opcao.formula ? COR.azulAcao : COR.borda}`,
++                  background: ehFormula === opcao.formula ? '#E8F2FF' : '#FFFFFF',
++                  color: ehFormula === opcao.formula ? COR.azulAcao : COR.texto2,
++                  fontWeight: 700,
++                  fontSize: '12.5px',
++                  cursor: 'pointer',
++                  fontFamily: FONTE
++                }}
++              >
++                {opcao.texto}
++              </button>
++            ))}
++          </div>
++
++          {ehFormula ? (
++            <div style={{ marginBottom: '12px' }}>
++              <span style={rotulo}>Fórmula * <span style={{ fontWeight: 400, color: COR.texto2 }}>(o resultado é o valor como aparece na tela, com sinal — como na planilha)</span></span>
++              <textarea
++                value={editando.base[0] || ''}
++                onChange={evento => setEditando({ ...editando, base: [evento.target.value] })}
++                rows={3}
++                spellCheck={false}
++                placeholder="Ex.: -([grupo:RECEITA BRUTA] + [conta:4.3.1.01.01.001]) * 7,6%"
++                style={{ ...campo, width: '100%', fontFamily: 'Consolas, monospace', fontSize: '13px', resize: 'vertical' }}
++              />
++              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '6px 0' }}>
++                {['+', '-', '*', '/', '(', ')', '%'].map(operador => (
++                  <button
++                    key={operador}
++                    type="button"
++                    onClick={() => inserirNaFormula(operador)}
++                    style={{ minWidth: '34px', padding: '4px 8px', border: `1px solid ${COR.borda}`, borderRadius: '6px', background: '#FFFFFF', color: COR.azul, fontWeight: 700, cursor: 'pointer', fontFamily: 'Consolas, monospace' }}
++                  >
++                    {operador}
++                  </button>
++                ))}
++              </div>
++              <div style={{ fontSize: '12px', color: COR.texto2 }}>
++                Clique nos grupos, linhas da DRE e contas abaixo para inserir na fórmula. Valores com sinal: receitas positivas,
++                deduções, custos e despesas negativos. Ex.: <code>-[linha:LAIR] * 9%</code> (CSLL) ·{' '}
++                <code>-[conta:3.1.1.02.01.005] * 17%</code> (ICMS) · <code>[linha:EBITDA] / [grupo:RECEITA BRUTA]</code>.
++              </div>
++            </div>
++          ) : (
++            <span style={rotulo}>Base do cálculo * <span style={{ fontWeight: 400, color: COR.texto2 }}>(soma com sinal dos itens marcados)</span></span>
++          )}
+ 
+           <div style={{ fontSize: '12.5px', fontWeight: 700, color: COR.texto2, margin: '6px 0' }}>Grupos</div>
+           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '6px', marginBottom: '10px' }}>
+             {GRUPOS_ORCAMENTO.map(grupo => {
+               const ref = `grupo:${grupo}`;
+               return (
+-                <label key={ref} style={chip(editando.base.indexOf(ref) >= 0)}>
+-                  <input type="checkbox" checked={editando.base.indexOf(ref) >= 0} onChange={() => alternarRef(ref)} />
++                <label key={ref} style={chip(marcado(ref))}>
++                  <input type="checkbox" checked={marcado(ref)} onChange={() => alternarRef(ref)} />
+                   {grupo}
+                 </label>
+               );
+@@ -325,8 +432,8 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
+             {LINHAS_DRE.map(item => {
+               const ref = `linha:${item.id}`;
+               return (
+-                <label key={ref} style={chip(editando.base.indexOf(ref) >= 0)}>
+-                  <input type="checkbox" checked={editando.base.indexOf(ref) >= 0} onChange={() => alternarRef(ref)} />
++                <label key={ref} style={chip(marcado(ref))}>
++                  <input type="checkbox" checked={marcado(ref)} onChange={() => alternarRef(ref)} />
+                   {item.nome}
+                 </label>
+               );
+@@ -341,14 +448,14 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
+               const destino = item.codigo === editando.contaDestino;
+               return (
+                 <label key={`${item.grupo}|${item.codigo}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: COR.azul, padding: '4px 0', cursor: 'pointer' }}>
+-                  <input type="checkbox" checked={editando.base.indexOf(ref) >= 0} disabled={destino} onChange={() => alternarRef(ref)} />
++                  <input type="checkbox" checked={marcado(ref)} disabled={destino} onChange={() => alternarRef(ref)} />
+                   <span>{item.conta} <span style={{ color: COR.texto2, fontSize: '12px' }}>· {item.codigo} · {item.grupo}</span></span>
+                 </label>
+               );
+             })}
+           </div>
+ 
+-          {editando.base.length > 0 && (
++          {!ehFormula && editando.base.length > 0 && (
+             <div style={{ fontSize: '12.5px', color: COR.texto2, marginBottom: '10px' }}>
+               Base: {editando.base.map(ref => nomeDaReferencia(ref)).join(' + ')}
+             </div>
+@@ -361,8 +468,8 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
+ 
+           {problemas.length === 0 && regraAtual.contaDestino && (
+             <div style={{ fontSize: '13px', color: '#00707F', background: '#E0F7FA', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px' }}>
+-              <strong>{regraAtual.contaDestinoNome}</strong> = {descreverRegra(regraAtual)}.
+-              Exemplo: base de R$ 100.000,00 no mês → R$ {formatarValor(100000 * regraAtual.percentual / 100)}.
++              <strong>{regraAtual.contaDestinoNome}</strong> {ehFormula ? descreverRegra(regraAtual) : `= ${descreverRegra(regraAtual)}`}.
++              {!ehFormula && ` Exemplo: base de R$ 100.000,00 no mês → R$ ${formatarValor(100000 * regraAtual.percentual / 100)}.`}
+             </div>
+           )}
+ 
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TabelaOrcamento.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TabelaOrcamento.tsx
+index 21eec36..f8a0463 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TabelaOrcamento.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TabelaOrcamento.tsx
+@@ -85,8 +85,18 @@ export interface ITabelaOrcamentoProps {
+   onColarValores?: (chave: string, mesInicial: number, valores: number[]) => void;
+   onAlterarDescricao?: (chave: string, descricao: string) => void;
+   onRepetirJaneiro?: (chave: string) => void;
++  // Executado (realizado): coluna "Exec." ao lado de cada mês.
++  executado?: {
++    mostrar: boolean;
++    // Controladoria / Administrador: digita o executado (qualquer situação).
++    editavel: boolean;
++    onAlterar?: (chave: string, mes: number, valor: number) => void;
++    onColar?: (chave: string, mesInicial: number, valores: number[]) => void;
++  };
+ }
+ 
++const FUNDO_EXECUTADO = '#F5F3FF';
++
+ const LARGURA_CONTA = 340;
+ const LARGURA_MES = 108;
+ const LARGURA_TOTAL = 124;
+@@ -293,8 +303,14 @@ interface ILinhaTabelaProps {
+   onColarValores?: (chave: string, mesInicial: number, valores: number[]) => void;
+   onAlterarDescricao?: (chave: string, descricao: string) => void;
+   onRepetirJaneiro?: (chave: string) => void;
++  mostrarExecutado?: boolean;
++  executadoEditavel?: boolean;
++  onAlterarExecutado?: (chave: string, mes: number, valor: number) => void;
++  onColarExecutado?: (chave: string, mesInicial: number, valores: number[]) => void;
+ }
+ 
++const arredondarTela = (valor: number): number => Math.round((valor || 0) * 100) / 100;
++
+ function LinhaTabelaBase(props: ILinhaTabelaProps): JSX.Element {
+ 
+   const { linha, alterada, calculo, destaque } = props;
+@@ -356,24 +372,46 @@ function LinhaTabelaBase(props: ILinhaTabelaProps): JSX.Element {
+       </td>
+ 
+       {props.meses.map(mes => (
+-        <td key={mes} style={{ ...celulaNumero, background: fundo, padding: props.somenteLeitura || calculo ? celula.padding : '4px' }}>
+-          {props.somenteLeitura || calculo ? (
+-            <Valor valor={comSinal[mes]} vazioClaro={true} />
+-          ) : (
+-            <CampoValor
+-              valor={linha.valores[mes]}
+-              sinal={sinal}
+-              rotulo={`${linha.conta} — ${NOMES_MESES[mes]}/${props.ano}`}
+-              onConfirmar={novo => props.onAlterarValor && props.onAlterarValor(linha.chave, mes, novo)}
+-              onColar={valores => props.onColarValores && props.onColarValores(linha.chave, mes, valores)}
+-            />
++        <React.Fragment key={mes}>
++          <td style={{ ...celulaNumero, background: fundo, padding: props.somenteLeitura || calculo ? celula.padding : '4px' }}>
++            {props.somenteLeitura || calculo ? (
++              <Valor valor={comSinal[mes]} vazioClaro={true} />
++            ) : (
++              <CampoValor
++                valor={linha.valores[mes]}
++                sinal={sinal}
++                rotulo={`${linha.conta} — ${NOMES_MESES[mes]}/${props.ano}`}
++                onConfirmar={novo => props.onAlterarValor && props.onAlterarValor(linha.chave, mes, novo)}
++                onColar={valores => props.onColarValores && props.onColarValores(linha.chave, mes, valores)}
++              />
++            )}
++          </td>
++          {props.mostrarExecutado && (
++            <td style={{ ...celulaNumero, background: FUNDO_EXECUTADO, padding: props.executadoEditavel ? '4px' : celula.padding }}>
++              {props.executadoEditavel ? (
++                <CampoValor
++                  valor={(linha.executado || [])[mes] || 0}
++                  sinal={sinal}
++                  rotulo={`${linha.conta} — executado ${NOMES_MESES[mes]}/${props.ano}`}
++                  onConfirmar={novo => props.onAlterarExecutado && props.onAlterarExecutado(linha.chave, mes, novo)}
++                  onColar={valores => props.onColarExecutado && props.onColarExecutado(linha.chave, mes, valores)}
++                />
++              ) : (
++                <Valor valor={arredondarTela(((linha.executado || [])[mes] || 0) * sinal)} vazioClaro={true} />
++              )}
++            </td>
+           )}
+-        </td>
++        </React.Fragment>
+       ))}
+ 
+       <td style={{ ...celulaTotal, background: fundo }}>
+         <Valor valor={Math.round(total * 100) / 100} />
+       </td>
++      {props.mostrarExecutado && (
++        <td style={{ ...celulaTotal, background: FUNDO_EXECUTADO }}>
++          <Valor valor={arredondarTela((linha.executado || []).reduce((soma, valor) => soma + (valor || 0), 0) * sinal)} />
++        </td>
++      )}
+     </tr>
+   );
+ }
+@@ -390,6 +428,10 @@ PLANO_CONTAS.forEach((conta, indice) => {
+   }
+ });
+ 
++// Grupo em que ficam os subitens de uma conta mãe.
++const grupoDaContaMae = (codigo: string): string =>
++  (PLANO_CONTAS.filter(conta => conta.pai === codigo)[0] || { grupo: '' }).grupo;
++
+ const infoDoPlano = (grupo: string, codigo: string): { pai?: string; subdivisao?: string } => {
+   const conta = PLANO_CONTAS.filter(item => item.grupo === grupo && item.codigo === codigo)[0];
+   return conta ? { pai: conta.pai, subdivisao: conta.subdivisao } : {};
+@@ -453,6 +495,24 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
+ 
+   const dre: ResultadoDre = React.useMemo(() => calcularDre(totais), [totais]);
+ 
++  const mostrarExecutado = !!props.executado && props.executado.mostrar;
++  const dreExecutado: ResultadoDre = React.useMemo(
++    () => (mostrarExecutado
++      ? calcularDre(totais.map(linha => ({ ...linha, valores: linha.executado || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] })))
++      : {}),
++    [totais, mostrarExecutado]
++  );
++
++  // Soma (com sinal) do executado de um conjunto de linhas.
++  const somaExecutado = (linhas: ILinhaOrcamento[]): number[] => {
++    const soma = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
++    linhas.forEach(linha => {
++      const sinal = sinalDaConta(linha.codigo);
++      (linha.executado || []).forEach((valor, mes) => { soma[mes] += (valor || 0) * sinal; });
++    });
++    return soma.map(valor => Math.round(valor * 100) / 100);
++  };
++
+   // Linhas exibidas por grupo, na ordem do plano.
+   const porGrupo = React.useMemo(() => {
+     const mapa: { [grupo: string]: ILinhaOrcamento[] } = {};
+@@ -483,25 +543,44 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
+     chave: string,
+     rotulo: React.ReactNode,
+     valores: number[],
+-    estilo: { fundo: string; negrito?: boolean; percentual?: boolean; recuo?: number; cor?: string }
++    estilo: { fundo: string; negrito?: boolean; percentual?: boolean; recuo?: number; cor?: string },
++    // Executado (padrão: o item da DRE com a mesma chave).
++    valoresExecutado?: number[]
+   ): JSX.Element => {
+     const total =
+       estilo.percentual
+         ? totalAnualDre(chave, dre)
+         : Math.round(valores.reduce((soma, valor) => soma + valor, 0) * 100) / 100;
++    const executado = valoresExecutado || dreExecutado[chave] || [];
++    const totalExecutado =
++      estilo.percentual
++        ? totalAnualDre(chave, dreExecutado)
++        : Math.round(executado.reduce((soma, valor) => soma + (valor || 0), 0) * 100) / 100;
+     return (
+       <tr key={chave}>
+         <td style={{ ...celula, ...colunaFixa(estilo.fundo), fontWeight: estilo.negrito ? 700 : 600, whiteSpace: 'normal', paddingLeft: `${8 + (estilo.recuo || 0) * 14}px`, color: estilo.cor || COR.azul }}>
+           {rotulo}
+         </td>
+         {meses.map(mes => (
+-          <td key={mes} style={{ ...celulaNumero, background: estilo.fundo, fontWeight: estilo.negrito ? 700 : 600 }}>
+-            <Valor valor={valores[mes] || 0} percentual={estilo.percentual} />
+-          </td>
++          <React.Fragment key={mes}>
++            <td style={{ ...celulaNumero, background: estilo.fundo, fontWeight: estilo.negrito ? 700 : 600 }}>
++              <Valor valor={valores[mes] || 0} percentual={estilo.percentual} />
++            </td>
++            {mostrarExecutado && (
++              <td style={{ ...celulaNumero, background: FUNDO_EXECUTADO, fontWeight: estilo.negrito ? 700 : 600 }}>
++                <Valor valor={executado[mes] || 0} percentual={estilo.percentual} />
++              </td>
++            )}
++          </React.Fragment>
+         ))}
+         <td style={{ ...celulaTotal, background: estilo.fundo }}>
+           <Valor valor={total} percentual={estilo.percentual} />
+         </td>
++        {mostrarExecutado && (
++          <td style={{ ...celulaTotal, background: FUNDO_EXECUTADO }}>
++            <Valor valor={totalExecutado} percentual={estilo.percentual} />
++          </td>
++        )}
+       </tr>
+     );
+   };
+@@ -537,7 +616,8 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
+             </span>
+           </span>,
+           soma.map(valor => Math.round(valor * 100) / 100),
+-          { fundo: '#F8FAFC', negrito: true, recuo: 1 }
++          { fundo: '#F8FAFC', negrito: true, recuo: 1 },
++          somaExecutado(totais.filter(item => item.grupo === grupo && (infoDoPlano(item.grupo, item.codigo).pai === pai || item.codigo === pai)))
+         ));
+       }
+ 
+@@ -561,7 +641,7 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
+           subdivisaoAtual = info.subdivisao;
+           saida.push(
+             <tr key={`sub-${grupo}-${info.subdivisao}`}>
+-              <td colSpan={meses.length + 2} style={{ ...celula, background: '#FFFFFF', paddingLeft: '30px', fontSize: '11.5px', fontWeight: 700, color: '#0F4C81', textTransform: 'uppercase', letterSpacing: '.3px' }}>
++              <td colSpan={meses.length * (mostrarExecutado ? 2 : 1) + (mostrarExecutado ? 3 : 2)} style={{ ...celula, background: '#FFFFFF', paddingLeft: '30px', fontSize: '11.5px', fontWeight: 700, color: '#0F4C81', textTransform: 'uppercase', letterSpacing: '.3px' }}>
+                 {info.subdivisao}
+               </td>
+             </tr>
+@@ -582,6 +662,10 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
+             onColarValores={props.onColarValores}
+             onAlterarDescricao={props.onAlterarDescricao}
+             onRepetirJaneiro={props.onRepetirJaneiro}
++            mostrarExecutado={mostrarExecutado}
++            executadoEditavel={mostrarExecutado && !!props.executado && props.executado.editavel}
++            onAlterarExecutado={props.executado ? props.executado.onAlterar : undefined}
++            onColarExecutado={props.executado ? props.executado.onColar : undefined}
+           />
+         );
+       }
+@@ -626,7 +710,7 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
+               type="button"
+               onClick={() => setRecolhidos(
+                 ITENS_DRE.filter(item => item.tipo === 'grupo').map(item => item.id)
+-                  .concat(Object.keys(CONTAS_MAE).map(codigo => `pai-Custos Diretos Locações Bens (sem amortização)-${codigo}`))
++                  .concat(Object.keys(CONTAS_MAE).map(codigo => `pai-${grupoDaContaMae(codigo)}-${codigo}`))
+               )}
+               style={{ padding: '5px 12px', borderRadius: '999px', border: `1px solid ${COR.borda}`, background: '#FFFFFF', color: COR.texto2, fontWeight: 700, fontSize: '12px', cursor: 'pointer', fontFamily: FONTE }}
+             >
+@@ -665,9 +749,17 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
+             <tr>
+               <th style={{ ...celula, ...colunaFixa('#F1F5F9'), ...cabecalhoFixo, left: 0, textAlign: 'left', zIndex: 3 }}>Conta</th>
+               {meses.map(mes => (
+-                <th key={mes} style={{ ...celulaNumero, ...cabecalhoFixo }}>{NOMES_MESES[mes]}/{sufixoAno}</th>
++                <React.Fragment key={mes}>
++                  <th style={{ ...celulaNumero, ...cabecalhoFixo }}>{NOMES_MESES[mes]}/{sufixoAno}</th>
++                  {mostrarExecutado && (
++                    <th style={{ ...celulaNumero, ...cabecalhoFixo, background: '#EDE9FE', color: '#5B21B6' }}>Exec. {NOMES_MESES[mes]}</th>
++                  )}
++                </React.Fragment>
+               ))}
+-              <th style={{ ...celulaTotal, ...cabecalhoFixo }}>Total (ano)</th>
++              <th style={{ ...celulaTotal, ...cabecalhoFixo }}>{mostrarExecutado ? 'Orçado (ano)' : 'Total (ano)'}</th>
++              {mostrarExecutado && (
++                <th style={{ ...celulaTotal, ...cabecalhoFixo, background: '#EDE9FE', color: '#5B21B6' }}>Executado (ano)</th>
++              )}
+             </tr>
+           </thead>
+ 
+@@ -701,7 +793,7 @@ const TabelaOrcamento: React.FC<ITabelaOrcamentoProps> = (props) => {
+               (porGrupo[grupo] || []).forEach(linha => valoresComSinal(linha).forEach((valor, mes) => { valores[mes] += valor; }));
+               return (
+                 <React.Fragment key={`fora-${grupo}`}>
+-                  {linhaTotal(`fora-${grupo}`, `${grupo} (fora do plano atual)`, valores, { fundo: '#FFF8E1', negrito: true })}
++                  {linhaTotal(`fora-${grupo}`, `${grupo} (fora do plano atual)`, valores, { fundo: '#FFF8E1', negrito: true }, somaExecutado(porGrupo[grupo] || []))}
+                   {renderContas(grupo)}
+                 </React.Fragment>
+               );
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TodasPlanilhasView.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TodasPlanilhasView.tsx
+index 0717e33..745ff19 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TodasPlanilhasView.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/TodasPlanilhasView.tsx
+@@ -44,6 +44,12 @@ import ConsolidadoMensal from './ConsolidadoMensal';
+ import PainelFluxoOrcamento from './PainelFluxoOrcamento';
+ import EtapasFluxoOrcamento from './EtapasFluxoOrcamento';
+ 
++import {
++  estaNoPreenchimento,
++  etapaDePreenchimento,
++  etapasHumanasEmOrdem
++} from '../../services/orcamento/situacaoFluxoOrcamento';
++
+ import {
+   COR,
+   CaixaMensagem,
+@@ -62,6 +68,8 @@ import {
+   formatarDataHora,
+   formatarMoeda,
+   gerarCsvOrcamento,
++  gerarModeloExecutadoCsv,
++  lerExecutadoCsv,
+   nomeArquivoSeguro,
+   somar,
+   somarComSinal
+@@ -96,6 +104,11 @@ export interface ITodasPlanilhasViewProps {
+   // Administrador da área: só as planilhas destas áreas (undefined =
+   // todas, Administrador global).
+   areasPermitidas?: string[];
++  // Controladoria / Administrador: lança e importa o Executado.
++  podeEditarExecutado?: boolean;
++  // Controladoria / Administrador: cria as planilhas das áreas (com o
++  // fluxo, a 1ª etapa é a definição dos responsáveis).
++  podeIniciarPlanilhas?: boolean;
+ }
+ 
+ type Visao = 'lista' | 'planilha' | 'consolidado';
+@@ -128,6 +141,21 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
+   const [enviandoDevolucao, setEnviandoDevolucao] = React.useState(false);
+   const [erroDevolucao, setErroDevolucao] = React.useState('');
+ 
++  // Executado (realizado) da planilha aberta.
++  const [mostrarExecutado, setMostrarExecutado] = React.useState(false);
++  const [executadoEditado, setExecutadoEditado] = React.useState<{ [chave: string]: number[] }>({});
++  const [salvandoExecutado, setSalvandoExecutado] = React.useState('');
++  const arquivoExecutado = React.useRef<HTMLInputElement>(null);
++
++  // Iniciar planilhas das áreas (Controladoria).
++  const [iniciando, setIniciando] = React.useState(false);
++  const [areasParaIniciar, setAreasParaIniciar] = React.useState<string[]>([]);
++  const [progressoInicio, setProgressoInicio] = React.useState('');
++
++  React.useEffect(() => {
++    setExecutadoEditado({});
++  }, [abertaId]);
++
+   const carregar = React.useCallback(async (): Promise<void> => {
+     setCarregando(true);
+     setErro('');
+@@ -371,11 +399,105 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
+ 
+   if (visao === 'planilha' && aberta) {
+ 
+-    // Só as linhas preenchidas (valor ou descrição).
++    // Todas as linhas da planilha, com o executado ainda não salvo.
++    const todasDaAberta =
++      linhas
++        .filter(linha => linha.planilhaId === aberta.id)
++        .map(linha => (executadoEditado[linha.chave] ? { ...linha, executado: executadoEditado[linha.chave] } : linha));
++
++    // Só as linhas preenchidas (valor, descrição ou executado). Com o
++    // executado em edição, todas (para poder lançar em qualquer conta).
++    const editandoExecutado = mostrarExecutado && !!props.podeEditarExecutado;
+     const linhasDaAberta =
+-      linhas.filter(linha =>
+-        linha.planilhaId === aberta.id &&
+-        (totalLinha(linha) !== 0 || !!linha.descricao));
++      editandoExecutado
++        ? todasDaAberta
++        : todasDaAberta.filter(linha =>
++          totalLinha(linha) !== 0 || !!linha.descricao || (linha.executado || []).some(valor => !!valor));
++
++    const qtdExecutadoAlterado = Object.keys(executadoEditado).length;
++
++    const alterarExecutado = (chave: string, mes: number, valor: number): void => {
++      const linha = todasDaAberta.filter(item => item.chave === chave)[0];
++      const atual = (linha && linha.executado ? linha.executado : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).slice();
++      atual[mes] = valor;
++      setExecutadoEditado(mapa => ({ ...mapa, [chave]: atual }));
++    };
++
++    const colarExecutado = (chave: string, mesInicial: number, valores: number[]): void => {
++      const linha = todasDaAberta.filter(item => item.chave === chave)[0];
++      const atual = (linha && linha.executado ? linha.executado : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).slice();
++      valores.forEach((valor, indice) => {
++        if (mesInicial + indice < 12) {
++          atual[mesInicial + indice] = valor;
++        }
++      });
++      setExecutadoEditado(mapa => ({ ...mapa, [chave]: atual }));
++    };
++
++    const salvarExecutado = async (): Promise<void> => {
++      const alteradas = todasDaAberta.filter(linha => !!executadoEditado[linha.chave]);
++      const anteriores: { [chave: string]: number[] | undefined } = {};
++      linhas.forEach(linha => { anteriores[linha.chave] = linha.executado; });
++      setSalvandoExecutado('Salvando o executado...');
++      setErro('');
++      try {
++        const resultado =
++          await servico.salvarExecutado(
++            aberta,
++            alteradas,
++            anteriores,
++            contexto.nome,
++            (feitas, total) => setSalvandoExecutado(`Salvando o executado (${feitas} de ${total})...`)
++          );
++        await carregar();
++        await carregarDetalhes(aberta.id);
++        setExecutadoEditado({});
++        if (resultado.falhas.length > 0) {
++          setErro(`Algumas contas não foram gravadas:\n${resultado.falhas.join('\n')}`);
++        } else {
++          setAviso(`✓ Executado salvo (${resultado.gravadas} conta(s)) e registrado no log.`);
++        }
++        if (resultado.avisos.length > 0) {
++          setAlerta(resultado.avisos.join('\n'));
++        }
++      } catch (falha) {
++        setErro(explicarErro(falha));
++      } finally {
++        setSalvandoExecutado('');
++      }
++    };
++
++    const importarExecutado = (arquivo: File): void => {
++      const leitor = new FileReader();
++      leitor.onload = () => {
++        const conteudo = String(leitor.result || '');
++        // Arquivo do Excel em ANSI: relê como Windows-1252.
++        if (conteudo.indexOf('\uFFFD') >= 0 && !(leitor as unknown as { releitura?: boolean }).releitura) {
++          (leitor as unknown as { releitura?: boolean }).releitura = true;
++          leitor.readAsText(arquivo, 'windows-1252');
++          return;
++        }
++        try {
++          const importacao = lerExecutadoCsv(conteudo, todasDaAberta);
++          setExecutadoEditado(mapa => ({ ...mapa, ...importacao.valores }));
++          setMostrarExecutado(true);
++          setAviso(
++            `Arquivo lido: ${importacao.contasLidas} conta(s) com executado. Confira na tabela e clique em "Salvar executado".`
++          );
++          const problemas: string[] = [];
++          if (importacao.naoEncontradas.length > 0) {
++            problemas.push(`Códigos que não existem nesta planilha (ignorados): ${importacao.naoEncontradas.slice(0, 15).join(', ')}${importacao.naoEncontradas.length > 15 ? '…' : ''}`);
++          }
++          if (importacao.invalidas.length > 0) {
++            problemas.push(`Linhas com valor inválido (ignoradas): ${importacao.invalidas.slice(0, 10).join(', ')}`);
++          }
++          setAlerta(problemas.join('\n'));
++        } catch (falha) {
++          setErro(explicarErro(falha));
++        }
++      };
++      leitor.readAsText(arquivo, 'utf-8');
++    };
+ 
+     // Linhas alteradas pelo gestor depois da última devolução.
+     const destacadas: { [chave: string]: string } = {};
+@@ -445,6 +567,16 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
+           </div>
+         )}
+ 
++        {estadoFluxo && podeAgirFluxo && estadoFluxo.instancia.status !== 'concluido' &&
++          !estaNoPreenchimento(estadoFluxo.instancia, estadoFluxo.definicao) &&
++          etapasHumanasEmOrdem(estadoFluxo.definicao).map(etapa => etapa.id).indexOf(estadoFluxo.instancia.elementoAtualId) <
++          etapasHumanasEmOrdem(estadoFluxo.definicao).map(etapa => etapa.id).indexOf((etapaDePreenchimento(estadoFluxo.definicao) || { id: '' }).id) && (
++          <CaixaMensagem
++            tipo="alerta"
++            texto='Esta planilha aguarda você: no quadro "Fluxo de aprovação" (abaixo da tabela), escolha o Responsável pelo preenchimento e o Diretor responsável e clique na ação da etapa para liberar o preenchimento.'
++          />
++        )}
++
+         {estadoFluxo && (
+           <EtapasFluxoOrcamento
+             estado={estadoFluxo}
+@@ -471,10 +603,84 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
+           />
+         )}
+ 
++        {/* Executado (realizado) */}
++        <div style={{ ...cartao, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', background: '#FAF8FF', borderColor: '#DDD6FE' }}>
++          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 700, color: '#5B21B6', cursor: 'pointer' }}>
++            <input type="checkbox" checked={mostrarExecutado} onChange={evento => setMostrarExecutado(evento.target.checked)} />
++            Mostrar executado (realizado)
++          </label>
++          <span style={{ flex: 1, minWidth: '200px', fontSize: '12px', color: COR.texto2 }}>
++            {props.podeEditarExecutado
++              ? 'Digite o executado nas colunas "Exec." ou importe um CSV (mesmo layout do Exportar CSV). Pode ser lançado a qualquer momento; o orçado não muda.'
++              : 'O executado é lançado pela Controladoria.'}
++          </span>
++          {props.podeEditarExecutado && (
++            <>
++              <button
++                type="button"
++                onClick={() => baixarCsv(
++                  `${nomeArquivoSeguro(`Executado_${ano}_${aberta.areaNome || 'Geral'}`)}.csv`,
++                  gerarModeloExecutadoCsv(ano, todasDaAberta)
++                )}
++                style={botao('secundario')}
++                title="CSV com todas as contas da planilha e o executado atual, para preencher e importar"
++              >
++                Baixar modelo
++              </button>
++              <button type="button" onClick={() => { if (arquivoExecutado.current) { arquivoExecutado.current.click(); } }} style={botao('secundario')}>
++                Importar CSV
++              </button>
++              <input
++                ref={arquivoExecutado}
++                type="file"
++                accept=".csv,text/csv"
++                style={{ display: 'none' }}
++                onChange={evento => {
++                  const arquivo = evento.target.files && evento.target.files[0];
++                  if (arquivo) {
++                    importarExecutado(arquivo);
++                  }
++                  evento.target.value = '';
++                }}
++              />
++              <button
++                type="button"
++                onClick={() => setExecutadoEditado({})}
++                disabled={qtdExecutadoAlterado === 0 || !!salvandoExecutado}
++                style={botao('secundario', qtdExecutadoAlterado === 0 || !!salvandoExecutado)}
++              >
++                Descartar
++              </button>
++              <button
++                type="button"
++                onClick={() => { salvarExecutado().catch(() => undefined); }}
++                disabled={qtdExecutadoAlterado === 0 || !!salvandoExecutado}
++                style={botao('principal', qtdExecutadoAlterado === 0 || !!salvandoExecutado)}
++              >
++                {salvandoExecutado || `Salvar executado${qtdExecutadoAlterado > 0 ? ` (${qtdExecutadoAlterado})` : ''}`}
++              </button>
++            </>
++          )}
++        </div>
++
+         {linhasDaAberta.length === 0 ? (
+           <div style={{ ...cartao, textAlign: 'center', color: COR.texto2 }}>Esta planilha ainda não tem valores preenchidos.</div>
+         ) : (
+-          <TabelaOrcamento linhas={linhasDaAberta} ano={ano} somenteLeitura={true} calculadas={calculadas} destacadas={destacadas} />
++          <TabelaOrcamento
++            linhas={linhasDaAberta}
++            linhasTotais={todasDaAberta}
++            ano={ano}
++            somenteLeitura={true}
++            calculadas={calculadas}
++            destacadas={destacadas}
++            chavesAlteradas={Object.keys(executadoEditado)}
++            executado={{
++              mostrar: mostrarExecutado,
++              editavel: editandoExecutado,
++              onAlterar: alterarExecutado,
++              onColar: colarExecutado
++            }}
++          />
+         )}
+ 
+         {estadoFluxo && (
+@@ -622,6 +828,16 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
+           Atualizar
+         </button>
+         <div style={{ flex: 1 }} />
++        {props.podeIniciarPlanilhas && (
++          <button
++            type="button"
++            onClick={() => { setAreasParaIniciar([]); setIniciando(true); }}
++            style={botao('secundario')}
++            title="Cria a planilha de cada área escolhida, com as contas do plano, e inicia o fluxo de aprovação"
++          >
++            + Iniciar planilhas de {ano}
++          </button>
++        )}
+         <button
+           type="button"
+           onClick={() => setVisao('consolidado')}
+@@ -633,6 +849,101 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
+         </button>
+       </div>
+ 
++      {iniciando && (() => {
++        const semPlanilha = props.areas.filter(area => !!area.id && !planilhas.some(item => item.areaId === area.id));
++        const todasMarcadas = semPlanilha.length > 0 && semPlanilha.every(area => areasParaIniciar.indexOf(area.id) >= 0);
++        const iniciar = async (): Promise<void> => {
++          const escolhidas = semPlanilha.filter(area => areasParaIniciar.indexOf(area.id) >= 0);
++          const falhas: string[] = [];
++          let configs: Array<{ areaId: string; equipeId: string; grupos: string[] }> = [];
++          try {
++            configs = await servico.listarConfigAreas();
++          } catch {
++            configs = [];
++          }
++          for (let indice = 0; indice < escolhidas.length; indice++) {
++            const area = escolhidas[indice];
++            setProgressoInicio(`Criando a planilha de ${area.nome} (${indice + 1} de ${escolhidas.length})...`);
++            try {
++              const config = configs.filter(item => item.areaId === area.id)[0];
++              const criada = await servico.criarPlanilha(ano, contexto, area, config ? config.equipeId : undefined);
++              await servico.preencherComModelo(criada, config && config.grupos.length > 0 ? config.grupos : undefined);
++              if (fluxoAtivo) {
++                const inicio = await fluxo.iniciar(criada, contexto);
++                if (!inicio.ok) {
++                  falhas.push(`${area.nome}: ${inicio.erros.join(' ')}`);
++                }
++              }
++            } catch (falha) {
++              falhas.push(`${area.nome}: ${explicarErro(falha)}`);
++            }
++          }
++          setProgressoInicio('');
++          setIniciando(false);
++          await carregar();
++          if (falhas.length > 0) {
++            setErro(`Algumas planilhas não foram criadas por completo:\n${falhas.join('\n')}`);
++          } else {
++            setAviso(
++              `✓ ${escolhidas.length} planilha(s) criada(s). ` +
++              (fluxoAtivo
++                ? 'Abra cada uma (👁 Ver) e, no quadro "Fluxo de aprovação", defina o Responsável pelo preenchimento e o Diretor responsável para liberar o preenchimento.'
++                : 'Os gestores das áreas já podem preencher.')
++            );
++          }
++        };
++        return (
++          <div style={{ ...cartao, borderColor: COR.ciano, borderWidth: '2px' }}>
++            <div style={{ fontSize: '16px', fontWeight: 700, color: COR.azul, marginBottom: '6px' }}>Iniciar planilhas de {ano}</div>
++            <div style={{ fontSize: '13px', color: COR.texto2, marginBottom: '10px' }}>
++              Escolha as áreas. Cada planilha é criada com as contas do plano (ou os grupos da área, em Contas por área)
++              {fluxoAtivo ? ' e entra na 1ª etapa do fluxo, em que você define o responsável pelo preenchimento e o diretor responsável.' : '.'}
++            </div>
++            {semPlanilha.length === 0 ? (
++              <div style={{ fontSize: '13px', color: COR.texto2 }}>Todas as áreas já têm planilha de {ano}.</div>
++            ) : (
++              <>
++                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: COR.azul, marginBottom: '6px', cursor: 'pointer' }}>
++                  <input
++                    type="checkbox"
++                    checked={todasMarcadas}
++                    onChange={() => setAreasParaIniciar(todasMarcadas ? [] : semPlanilha.map(area => area.id))}
++                  />
++                  Todas as áreas sem planilha ({semPlanilha.length})
++                </label>
++                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '6px', marginBottom: '12px' }}>
++                  {semPlanilha.map(area => {
++                    const marcada = areasParaIniciar.indexOf(area.id) >= 0;
++                    return (
++                      <label key={area.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: COR.azul, padding: '6px 8px', borderRadius: '6px', border: `1px solid ${marcada ? COR.ciano : COR.borda}`, background: marcada ? '#F0FCFE' : '#FFFFFF', cursor: 'pointer' }}>
++                        <input
++                          type="checkbox"
++                          checked={marcada}
++                          onChange={() => setAreasParaIniciar(atual => (marcada ? atual.filter(id => id !== area.id) : atual.concat([area.id])))}
++                        />
++                        {area.nome}
++                      </label>
++                    );
++                  })}
++                </div>
++              </>
++            )}
++            {progressoInicio && <div style={{ fontSize: '13px', color: COR.azul, marginBottom: '8px' }}>{progressoInicio}</div>}
++            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
++              <button type="button" onClick={() => setIniciando(false)} disabled={!!progressoInicio} style={botao('secundario', !!progressoInicio)}>Cancelar</button>
++              <button
++                type="button"
++                onClick={() => { iniciar().catch(() => undefined); }}
++                disabled={areasParaIniciar.length === 0 || !!progressoInicio}
++                style={botao('principal', areasParaIniciar.length === 0 || !!progressoInicio)}
++              >
++                {progressoInicio ? 'Criando...' : `Iniciar ${areasParaIniciar.length} planilha(s)`}
++              </button>
++            </div>
++          </div>
++        );
++      })()}
++
+       <div style={{ ...cartao, padding: 0, overflowX: 'auto' }}>
+         {visiveis.length === 0 ? (
+           <div style={{ padding: '28px', textAlign: 'center', color: COR.texto2, fontSize: '13.5px' }}>
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/executadoCsv.test.ts b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/executadoCsv.test.ts
+new file mode 100644
+index 0000000..4f96a26
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/executadoCsv.test.ts
+@@ -0,0 +1,61 @@
++import {
++  gerarModeloExecutadoCsv,
++  lerExecutadoCsv
++} from './orcamentoComum';
++
++import {
++  ILinhaOrcamento
++} from '../../services/orcamento/OrcamentoService';
++
++// ============================================================
++// TESTES — Executado: modelo e importação por CSV
++// ============================================================
++
++const linha = (grupo: string, codigo: string, conta: string): ILinhaOrcamento => ({
++  id: codigo,
++  chave: `${grupo}|${codigo}`,
++  planilhaId: 'p',
++  grupo,
++  codigo,
++  conta,
++  descricao: '',
++  ordem: 1,
++  valores: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
++});
++
++const LINHAS = [
++  linha('RECEITA BRUTA', '3.1.1.02.01.001', 'RECEITA DE LOCAÇÃO'),
++  linha('Despesas Gerais', '4.2.1.01.06.002', 'ASSISTENCIA CONTABIL'),
++  linha('Custos Diretos Locações Bens (sem amortização)', '6.1.1.01.01.001', 'SALARIOS E ORDENADOS')
++];
++
++describe('Executado por CSV', () => {
++
++  it('lê o arquivo no layout do Exportar CSV (valores como na tela)', () => {
++    const csv = [
++      'Cenário;Linha;Código;Conta;Jan/2027;Fev/2027;Mar/2027;Abr/2027;Mai/2027;Jun/2027;Jul/2027;Ago/2027;Set/2027;Out/2027;Nov/2027;Dez/2027;Total',
++      'Executado;RECEITA BRUTA;;TOTAL;1000;0;0;0;0;0;0;0;0;0;0;0;1000',
++      'Executado;RECEITA BRUTA;3.1.1.02.01.001;RECEITA DE LOCAÇÃO;1.000,50;0;0;0;0;0;0;0;0;0;0;0;1000,5',
++      'Executado;Despesas Gerais;4.2.1.01.06.002;ASSISTENCIA CONTABIL;-250;-R$ 300,00;0;0;0;0;0;0;0;0;0;0;-550',
++      'Executado;X;9.9.9;INEXISTENTE;1;0;0;0;0;0;0;0;0;0;0;0;1',
++      'Executado;Custos Diretos Locações Bens (sem amortização);4.1.4.01.01.018;MÃE;5;0;0;0;0;0;0;0;0;0;0;0;5'
++    ].join('\r\n');
++    const resultado = lerExecutadoCsv(csv, LINHAS);
++    expect(resultado.contasLidas).toBe(2);
++    expect(resultado.valores['RECEITA BRUTA|3.1.1.02.01.001'][0]).toBe(1000.5);
++    // Despesa negativa na tela → gravada positiva.
++    expect(resultado.valores['Despesas Gerais|4.2.1.01.06.002'].slice(0, 2)).toEqual([250, 300]);
++    expect(resultado.naoEncontradas).toEqual(['9.9.9']);
++  });
++
++  it('o modelo gerado volta igual na importação', () => {
++    const comExecutado = LINHAS.map(item => ({ ...item, executado: [10, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }));
++    const lido = lerExecutadoCsv(gerarModeloExecutadoCsv(2027, comExecutado), LINHAS);
++    expect(lido.contasLidas).toBe(3);
++    expect(lido.valores['Despesas Gerais|4.2.1.01.06.002'].slice(0, 2)).toEqual([10, 20]);
++  });
++
++  it('recusa arquivo sem cabeçalho reconhecido', () => {
++    expect(() => lerExecutadoCsv('a;b\r\n1;2', LINHAS)).toThrow('Cabeçalho não reconhecido');
++  });
++});
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/orcamentoComum.tsx b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/orcamentoComum.tsx
+index 4764e55..5861376 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Orcamento/orcamentoComum.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Orcamento/orcamentoComum.tsx
+@@ -6,6 +6,7 @@ import {
+ } from '../../services/orcamento/OrcamentoService';
+ 
+ import {
++  CENARIO_EXECUTADO,
+   CENARIO_ORCADO,
+   NOMES_MESES,
+   StatusPlanilha
+@@ -20,6 +21,7 @@ import {
+ import {
+   ITENS_DRE,
+   calcularDre,
++  sinalDaConta,
+   totalAnualDre,
+   valoresComSinal
+ } from '../../services/orcamento/dreOrcamento';
+@@ -416,9 +418,169 @@ export const gerarCsvOrcamento = (
+     .filter(grupo => !ITENS_DRE.some(item => item.tipo === 'grupo' && item.id === grupo.grupo))
+     .forEach(exportarGrupo);
+ 
++  // Executado (realizado), quando houver: uma linha por conta.
++  linhas
++    .filter(linha => (linha.executado || []).some(valor => !!valor))
++    .forEach(linha => {
++      const sinal = sinalDaConta(linha.codigo);
++      const valores = (linha.executado || []).map(valor => arredondar((valor || 0) * sinal));
++      saida.push(
++        [CENARIO_EXECUTADO, linha.grupo, linha.codigo, linha.conta].map(textoCsv)
++          .concat(valores.map(numeroCsv))
++          .concat([numeroCsv(somar(valores))])
++          .join(';')
++      );
++    });
++
++  return saida.join('\r\n');
++};
++
++// ------------------------------------------------------------
++// EXECUTADO — modelo e importação por CSV
++//
++// Mesmo layout do "Exportar CSV": Cenário;Linha;Código;Conta;Jan…Dez;
++// Total. Valores como aparecem na tela (receitas positivas, deduções,
++// custos e despesas negativos). Linhas sem código (TOTAL, resultados)
++// e as contas mãe (soma dos subitens) são ignoradas. Do Excel: Salvar
++// como → "CSV (separado por ponto e vírgula)".
++// ------------------------------------------------------------
++
++export const gerarModeloExecutadoCsv = (
++  ano: number,
++  linhas: ILinhaOrcamento[]
++): string => {
++  const cabecalho =
++    ['Cenário', 'Linha', 'Código', 'Conta']
++      .concat(NOMES_MESES.map(mes => `${mes}/${ano}`))
++      .concat(['Total']);
++  const saida: string[] = [cabecalho.join(';')];
++  linhas
++    .filter(linha => !CONTAS_MAE[linha.codigo])
++    .forEach(linha => {
++      const sinal = sinalDaConta(linha.codigo);
++      const valores = (linha.executado || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).map(valor => arredondar((valor || 0) * sinal));
++      saida.push(
++        [CENARIO_EXECUTADO, linha.grupo, linha.codigo, linha.conta].map(textoCsv)
++          .concat(valores.map(numeroCsv))
++          .concat([numeroCsv(somar(valores))])
++          .join(';')
++      );
++    });
+   return saida.join('\r\n');
+ };
+ 
++export interface IImportacaoExecutado {
++  // chave da linha → executado (12 meses, como gravado).
++  valores: { [chave: string]: number[] };
++  contasLidas: number;
++  // Códigos do arquivo que não existem na planilha.
++  naoEncontradas: string[];
++  // Linhas ignoradas por valor inválido.
++  invalidas: string[];
++}
++
++// "-R$ 1.234,56" / "1234.56" / "(1.234,56)" → número.
++const lerNumeroCsv = (texto: string): number | undefined => {
++  let limpo = (texto || '').replace(/R\$|\s|"/g, '');
++  if (!limpo || limpo === '-') {
++    return 0;
++  }
++  let negativo = false;
++  if (/^\(.*\)$/.test(limpo)) {
++    negativo = true;
++    limpo = limpo.slice(1, -1);
++  }
++  if (limpo.indexOf(',') >= 0) {
++    limpo = limpo.replace(/\./g, '').replace(',', '.');
++  }
++  const valor = Number(limpo);
++  if (!isFinite(valor)) {
++    return undefined;
++  }
++  return negativo ? -valor : valor;
++};
++
++const dividirCsv = (linha: string, separador: string): string[] => {
++  const campos: string[] = [];
++  let atual = '';
++  let aspas = false;
++  for (let i = 0; i < linha.length; i++) {
++    const c = linha[i];
++    if (c === '"') {
++      if (aspas && linha[i + 1] === '"') {
++        atual += '"';
++        i++;
++      } else {
++        aspas = !aspas;
++      }
++    } else if (c === separador && !aspas) {
++      campos.push(atual);
++      atual = '';
++    } else {
++      atual += c;
++    }
++  }
++  campos.push(atual);
++  return campos.map(campo => campo.trim());
++};
++
++const semAcento = (texto: string): string =>
++  (texto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
++
++export const lerExecutadoCsv = (
++  conteudo: string,
++  linhas: ILinhaOrcamento[]
++): IImportacaoExecutado => {
++
++  const registros = (conteudo || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter(linha => linha.trim() !== '');
++  if (registros.length < 2) {
++    throw new Error('O arquivo está vazio.');
++  }
++
++  const separador = registros[0].split(';').length >= registros[0].split(',').length ? ';' : ',';
++  const cabecalho = dividirCsv(registros[0], separador).map(semAcento);
++  const colCodigo = cabecalho.findIndex(nome => nome === 'codigo');
++  const colLinha = cabecalho.findIndex(nome => nome === 'linha' || nome === 'grupo');
++  const prefixos = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
++  const colMeses = prefixos.map(prefixo => cabecalho.findIndex(nome => nome.indexOf(prefixo) === 0));
++
++  if (colCodigo < 0 || colMeses.some(indice => indice < 0)) {
++    throw new Error('Cabeçalho não reconhecido. Use o modelo: Cenário;Linha;Código;Conta;Jan/AAAA…Dez/AAAA;Total.');
++  }
++
++  const resultado: IImportacaoExecutado = { valores: {}, contasLidas: 0, naoEncontradas: [], invalidas: [] };
++
++  registros.slice(1).forEach((texto, indice) => {
++    const campos = dividirCsv(texto, separador);
++    const codigo = campos[colCodigo] || '';
++    if (!codigo || CONTAS_MAE[codigo]) {
++      return;
++    }
++    const grupo = colLinha >= 0 ? campos[colLinha] : '';
++    const candidatas = linhas.filter(linha => linha.codigo === codigo);
++    const linha =
++      candidatas.filter(item => !!grupo && item.grupo === grupo)[0] ||
++      (candidatas.length === 1 ? candidatas[0] : undefined);
++    if (!linha) {
++      if (resultado.naoEncontradas.indexOf(codigo) < 0) {
++        resultado.naoEncontradas.push(codigo);
++      }
++      return;
++    }
++    const numeros = colMeses.map(coluna => lerNumeroCsv(campos[coluna]));
++    if (numeros.some(numero => numero === undefined)) {
++      resultado.invalidas.push(`linha ${indice + 2} (${codigo})`);
++      return;
++    }
++    // Arquivo com sinal da tela → valor gravado (positivo nas deduções).
++    const sinal = sinalDaConta(codigo);
++    resultado.valores[linha.chave] = (numeros as number[]).map(numero => arredondar(numero * sinal));
++    resultado.contasLidas++;
++  });
++
++  return resultado;
++};
++
+ // Baixa o CSV no navegador (UTF-8 com BOM para o Excel abrir os acentos).
+ export const baixarCsv = (
+   nomeArquivo: string,
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoFluxoService.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoFluxoService.ts
+index cf3a261..22ed15b 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoFluxoService.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoFluxoService.ts
+@@ -232,6 +232,11 @@ export interface IPendenciaAprovacao {
+   tarefa: IFluxoTarefa;
+ }
+ 
++// Atualiza a lista em memória (evita nova leitura da planilha).
++const guardarParticipantes = (planilha: IPlanilhaOrcamento, lista: string[]): void => {
++  planilha.participantes = lista;
++};
++
+ export class OrcamentoFluxoService {
+ 
+   private readonly dataverse: DataverseService;
+@@ -699,10 +704,26 @@ export class OrcamentoFluxoService {
+ 
+     try {
+       await this.dataverse.atualizarRegistro(TABELAS_ORCAMENTO.planilha, planilha.id, corpo);
+-      return '';
+     } catch (erro) {
+       return `O fluxo avançou, mas a situação da planilha não foi atualizada: ${mensagem(erro)}`;
+     }
++
++    // Participantes: quem responde pela etapa atual (ex.: o usuário do
++    // metadado "Responsável pelo preenchimento") passa a ver a planilha
++    // na "Minha planilha", mesmo sem ser da área.
++    if (tarefa) {
++      try {
++        const ids =
++          resolverResponsaveis(tarefa.responsaveis, this.dadosResponsaveis(planilha, instancia))
++            .map(item => item.usuarioId || '')
++            .filter(Boolean);
++        const participantes = await this.orcamento.registrarParticipantes(planilha, ids);
++        guardarParticipantes(planilha, participantes);
++      } catch {
++        // Sem a coluna ou sem permissão: segue (a pessoa vê pela pendência).
++      }
++    }
++    return '';
+   }
+ 
+   // ----------------------------------------------------------
+@@ -737,8 +758,8 @@ export class OrcamentoFluxoService {
+         if (!estado || !tarefa) {
+           continue;
+         }
++        // Resolve na hora (metadados e hierarquia atuais).
+         const resolvidos =
+-          tarefa.responsaveisResolvidos ||
+           resolverResponsaveis(tarefa.responsaveis, this.dadosResponsaveis(planilha, estado.instancia));
+         if (resolvidos.some(item => usuarioAtende(item, contexto.usuarioId, vinculos))) {
+           resultado.push({ planilha, estado, tarefa });
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoService.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoService.ts
+index 4c2e03c..8211965 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoService.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/OrcamentoService.ts
+@@ -15,6 +15,7 @@ import {
+   ALTERACAO,
+   BIND_ORCAMENTO,
+   BIND_PROPRIETARIO,
++  CENARIO_EXECUTADO,
+   CENARIO_ORCADO,
+   CONFIG_AREA,
+   EVENTO,
+@@ -94,6 +95,8 @@ export interface IPlanilhaOrcamento {
+   // Fluxo de aprovação: etapa atual e prazo dela (vazio = sem fluxo).
+   etapaAtual: string;
+   prazoEtapa: string;
++  // Responsáveis (atuais e anteriores) do fluxo — ids de dgt_usuario.
++  participantes: string[];
+   criadoEm: string;
+   alteradoEm: string;
+ }
+@@ -119,6 +122,10 @@ export interface ILinhaOrcamento {
+   ordem: number;
+   // Sempre 12 posições (janeiro a dezembro).
+   valores: number[];
++  // Executado (realizado) do mês, quando lançado (12 posições).
++  executado?: number[];
++  // Id da linha "Executado" no Dataverse (undefined = ainda não existe).
++  executadoId?: string;
+ }
+ 
+ export interface IAlteracoesOrcamento {
+@@ -366,6 +373,7 @@ export class OrcamentoService {
+       prazoAjuste: texto(registro, PLANILHA.prazoAjuste),
+       equipeId: guid(registro[PLANILHA.equipeValor]),
+       etapaAtual: texto(registro, PLANILHA.etapaAtual),
++      participantes: texto(registro, PLANILHA.participantes).split(';').map(id => guid(id)).filter(Boolean),
+       prazoEtapa: texto(registro, PLANILHA.prazoEtapa),
+       criadoEm: texto(registro, PLANILHA.criadoEm),
+       alteradoEm: texto(registro, PLANILHA.alteradoEm)
+@@ -413,9 +421,47 @@ export class OrcamentoService {
+ 
+   private async selectPlanilha(): Promise<string> {
+     const base = this.camposPlanilha();
+-    return (await this.temColunasFluxo())
+-      ? `${base},${PLANILHA.etapaAtual},${PLANILHA.prazoEtapa}`
+-      : base;
++    const comFluxo =
++      (await this.temColunasFluxo())
++        ? `${base},${PLANILHA.etapaAtual},${PLANILHA.prazoEtapa}`
++        : base;
++    return (await this.temColunaParticipantes())
++      ? `${comFluxo},${PLANILHA.participantes}`
++      : comFluxo;
++  }
++
++  // Coluna dgt_participantes existe? (criar-tabelas-orcamento.ps1)
++  private colunaParticipantes: boolean | undefined;
++
++  public async temColunaParticipantes(): Promise<boolean> {
++    if (this.colunaParticipantes === undefined) {
++      try {
++        await this.dataverse.listarRegistros(TABELAS_ORCAMENTO.planilha, `$select=${PLANILHA.participantes}&$top=1`);
++        this.colunaParticipantes = true;
++      } catch {
++        this.colunaParticipantes = false;
++      }
++    }
++    return this.colunaParticipantes;
++  }
++
++  // Acrescenta pessoas aos participantes da planilha (não tira ninguém).
++  public async registrarParticipantes(
++    planilha: IPlanilhaOrcamento,
++    usuarioIds: string[]
++  ): Promise<string[]> {
++    const atuais = planilha.participantes || [];
++    const novos = usuarioIds.map(id => guid(id)).filter(id => !!id && atuais.indexOf(id) < 0);
++    if (novos.length === 0 || !(await this.temColunaParticipantes())) {
++      return atuais;
++    }
++    const lista = atuais.concat(novos);
++    await this.dataverse.atualizarRegistro(
++      TABELAS_ORCAMENTO.planilha,
++      planilha.id,
++      { [PLANILHA.participantes]: lista.join(';').substring(0, 4000) }
++    );
++    return lista;
+   }
+ 
+   private camposPlanilha(): string {
+@@ -448,10 +494,51 @@ export class OrcamentoService {
+       LINHA.codigo,
+       LINHA.conta,
+       LINHA.descricao,
+-      LINHA.ordem
++      LINHA.ordem,
++      LINHA.cenario
+     ].concat(LINHA.meses).join(',');
+   }
+ 
++  // Separa as linhas "Executado" e as junta à linha orçada da mesma
++  // conta (executado/executadoId). Executado sem linha orçada vira uma
++  // linha só com o executado.
++  private juntarCenarios(registros: IDataverseRecord[]): ILinhaOrcamento[] {
++    const orcadas: ILinhaOrcamento[] = [];
++    const executadas: ILinhaOrcamento[] = [];
++    registros.forEach(registro => {
++      const linha = this.mapearLinha(registro);
++      if (texto(registro, LINHA.cenario) === CENARIO_EXECUTADO) {
++        executadas.push(linha);
++      } else {
++        orcadas.push(linha);
++      }
++    });
++    const chave = (linha: ILinhaOrcamento): string => `${linha.planilhaId}|${linha.grupo}|${linha.codigo}`;
++    const porChave: { [chave: string]: ILinhaOrcamento } = {};
++    orcadas.forEach(linha => {
++      if (!porChave[chave(linha)]) {
++        porChave[chave(linha)] = linha;
++      }
++    });
++    executadas.forEach(executada => {
++      const orcada = porChave[chave(executada)];
++      if (orcada) {
++        orcada.executado = executada.valores;
++        orcada.executadoId = executada.id;
++      } else {
++        orcadas.push({
++          ...executada,
++          chave: `exec-${executada.chave}`,
++          id: undefined,
++          valores: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
++          executado: executada.valores,
++          executadoId: executada.id
++        });
++      }
++    });
++    return orcadas;
++  }
++
+   // Corpo gravado de uma linha (sem a pesquisa da planilha).
+   private corpoLinha(linha: ILinhaOrcamento): Record<string, unknown> {
+ 
+@@ -519,6 +606,10 @@ export class OrcamentoService {
+ 
+     if (usuarioId) {
+       condicoes.push(`(${PLANILHA.areaValor} eq null and ${PLANILHA.gestorValor} eq ${guid(usuarioId)})`);
++      // Responsável por alguma etapa (ex.: preenchimento) sem ser da área.
++      if (await this.temColunaParticipantes()) {
++        condicoes.push(`contains(${PLANILHA.participantes},'${guid(usuarioId)}')`);
++      }
+     }
+ 
+     if (condicoes.length === 0) {
+@@ -568,7 +659,7 @@ export class OrcamentoService {
+         `&$orderby=${LINHA.ordem} asc`
+       );
+ 
+-    return registros.map(registro => this.mapearLinha(registro));
++    return this.juntarCenarios(registros);
+   }
+ 
+   // Linhas de várias planilhas (consolidado do Administrador).
+@@ -577,7 +668,7 @@ export class OrcamentoService {
+     planilhaIds: string[]
+   ): Promise<ILinhaOrcamento[]> {
+ 
+-    const resultado: ILinhaOrcamento[] = [];
++    const registrosTodos: IDataverseRecord[] = [];
+     const tamanhoBloco = 15;
+ 
+     for (let inicio = 0; inicio < planilhaIds.length; inicio += tamanhoBloco) {
+@@ -596,7 +687,102 @@ export class OrcamentoService {
+           `&$orderby=${LINHA.ordem} asc`
+         );
+ 
+-      registros.forEach(registro => resultado.push(this.mapearLinha(registro)));
++      registros.forEach(registro => registrosTodos.push(registro));
++    }
++
++    return this.juntarCenarios(registrosTodos);
++  }
++
++  // ----------------------------------------------------------
++  // Executado (realizado) — Controladoria / Administrador
++  // ----------------------------------------------------------
++
++  // Grava o executado das linhas informadas (cria a linha "Executado"
++  // da conta quando ainda não existe) e registra cada alteração no log
++  // com origem "Executado". anteriores: chave → executado antes.
++  public async salvarExecutado(
++    planilha: IPlanilhaOrcamento,
++    linhas: ILinhaOrcamento[],
++    anteriores: { [chave: string]: number[] | undefined },
++    usuarioNome: string,
++    aoProgredir?: (feitas: number, total: number) => void
++  ): Promise<IResultadoGravacao> {
++
++    const resultado: IResultadoGravacao = { gravadas: 0, falhas: [], avisos: [], idsCriados: {} };
++    const referenciaPlanilha = await this.dataverse.referenciaLookup(TABELAS_ORCAMENTO.planilha, planilha.id);
++    const referenciaEquipe = planilha.equipeId ? await this.dataverse.referenciaLookup('team', planilha.equipeId) : '';
++    const registrosLog: Array<Record<string, unknown>> = [];
++    let feitas = 0;
++
++    await executarEmParalelo(linhas, GRAVACOES_SIMULTANEAS, async linha => {
++      const valores = (linha.executado || mesesVazios()).map(valor => arredondar(valor || 0));
++      const corpo: Record<string, unknown> = {
++        [LINHA.nome]: `${linha.codigo} ${linha.conta} (executado)`.trim().substring(0, 200),
++        [LINHA.cenario]: CENARIO_EXECUTADO,
++        [LINHA.grupo]: linha.grupo,
++        [LINHA.codigo]: linha.codigo,
++        [LINHA.conta]: linha.conta,
++        [LINHA.descricao]: '',
++        [LINHA.ordem]: linha.ordem
++      };
++      LINHA.meses.forEach((campo, indice) => {
++        corpo[campo] = valores[indice];
++      });
++      try {
++        let id = linha.executadoId;
++        if (id) {
++          await this.dataverse.atualizarRegistro(TABELAS_ORCAMENTO.linha, id, corpo);
++        } else {
++          corpo[LINHA.ativo] = true;
++          corpo[BIND_ORCAMENTO.linhaPlanilha] = referenciaPlanilha;
++          if (referenciaEquipe) {
++            corpo[BIND_PROPRIETARIO] = referenciaEquipe;
++          }
++          id = guid(await this.dataverse.criarRegistro(TABELAS_ORCAMENTO.linha, corpo));
++          resultado.idsCriados[linha.chave] = id;
++        }
++        resultado.gravadas++;
++        const antes = anteriores[linha.chave];
++        const detalhes = diferencasLinha(
++          antes ? { ...linha, valores: antes, descricao: '' } : undefined,
++          { ...linha, valores, descricao: '' }
++        );
++        if (detalhes.length > 0) {
++          registrosLog.push({
++            [ALTERACAO.nome]: `Executado — ${linha.codigo} ${linha.conta}`.substring(0, 200),
++            [ALTERACAO.linhaId]: id,
++            [ALTERACAO.grupo]: linha.grupo,
++            [ALTERACAO.codigo]: linha.codigo,
++            [ALTERACAO.conta]: linha.conta,
++            [ALTERACAO.tipo]: antes ? 'Alteração' : 'Inclusão',
++            [ALTERACAO.origem]: 'Executado',
++            [ALTERACAO.detalhes]: JSON.stringify(detalhes).substring(0, 4000),
++            [ALTERACAO.resumo]: `Executado — ${resumirDetalhes(detalhes)}`.substring(0, 4000),
++            [ALTERACAO.usuarioNome]: usuarioNome.substring(0, 200),
++            [BIND_ORCAMENTO.alteracaoPlanilha]: referenciaPlanilha,
++            ...(referenciaEquipe ? { [BIND_PROPRIETARIO]: referenciaEquipe } : {})
++          });
++        }
++      } catch (erro) {
++        resultado.falhas.push(`Executado "${linha.codigo} ${linha.conta}": ${erro instanceof Error ? erro.message : String(erro)}`);
++      } finally {
++        feitas++;
++        if (aoProgredir) {
++          aoProgredir(feitas, linhas.length);
++        }
++      }
++    });
++
++    let falhasLog = 0;
++    await executarEmParalelo(registrosLog, GRAVACOES_SIMULTANEAS, async corpo => {
++      try {
++        await this.dataverse.criarRegistro(TABELAS_ORCAMENTO.alteracao, corpo);
++      } catch {
++        falhasLog++;
++      }
++    });
++    if (falhasLog > 0) {
++      resultado.avisos.push(`${falhasLog} registro(s) do log não foram gravados.`);
+     }
+ 
+     return resultado;
+@@ -1151,7 +1337,7 @@ export class OrcamentoService {
+       }
+       const tipoGravado = texto(registro, REGRA.tipoBase);
+       const tipoBase: TipoBaseRegra =
+-        tipoGravado === 'Contas' || tipoGravado === 'Misto' ? tipoGravado : 'Grupo';
++        tipoGravado === 'Contas' || tipoGravado === 'Misto' || tipoGravado === 'Formula' ? tipoGravado : 'Grupo';
+       return {
+         id: guid(registro[REGRA.id]),
+         nome: texto(registro, REGRA.nome),
+@@ -1181,7 +1367,7 @@ export class OrcamentoService {
+       [REGRA.tipoBase]: regra.tipoBase,
+       // Com grupo destino ou referências mistas: { refs, grupoDestino }.
+       [REGRA.base]: (
+-        regra.tipoBase === 'Misto' || regra.grupoDestino
++        regra.tipoBase === 'Misto' || regra.tipoBase === 'Formula' || regra.grupoDestino
+           ? JSON.stringify({ refs: regra.base, grupoDestino: regra.grupoDestino || '' })
+           : JSON.stringify(regra.base)
+       ).substring(0, 4000),
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/calculoOrcamento.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/calculoOrcamento.ts
+index a8e322f..b440ccf 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/orcamento/calculoOrcamento.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/calculoOrcamento.ts
+@@ -11,10 +11,17 @@ import {
+   ILinhaDre,
+   calcularDre,
+   nomeDaReferencia,
++  sinalDaConta,
+   valoresComSinal,
+   valoresDaConta
+ } from './dreOrcamento';
+ 
++import {
++  avaliarFormula,
++  referenciasDaFormula,
++  validarFormula
++} from './formulaOrcamento';
++
+ // ============================================================
+ // REGRAS DE CÁLCULO DO ORÇAMENTO
+ //
+@@ -75,11 +82,13 @@ export const regrasAtivas = (
+     .filter(regra => regra.ativo && !!regra.contaDestino)
+     .sort((a, b) => a.ordem - b.ordem);
+ 
+-// Referências da base no formato 'Misto'.
++// Referências da base no formato 'Misto' (na fórmula: as usadas nela).
+ export const referenciasDaRegra = (
+   regra: Pick<IRegraCalculo, 'tipoBase' | 'base'>
+ ): string[] =>
+-  regra.tipoBase === 'Misto'
++  regra.tipoBase === 'Formula'
++    ? referenciasDaFormula(regra.base[0] || '')
++    : regra.tipoBase === 'Misto'
+     ? regra.base
+     : regra.tipoBase === 'Grupo'
+       ? regra.base.map(grupo => `grupo:${nomeGrupoAtual(grupo)}`)
+@@ -92,38 +101,65 @@ const ehDestino = (
+   linha.codigo === regra.contaDestino &&
+   (!regra.grupoDestino || linha.grupo === regra.grupoDestino);
+ 
+-// Base (com sinal) de uma regra, mês a mês.
+-const baseDaRegra = <T extends ILinhaCalculavel>(
++// Valores (com sinal) de cada referência, sem a conta destino.
++const leitorDeReferencias = <T extends ILinhaCalculavel>(
+   regra: IRegraCalculo,
+   linhas: T[]
+-): number[] => {
+-
+-  const base = zeros();
+-  const referencias = referenciasDaRegra(regra);
++): ((ref: string) => number[]) => {
+   // A conta destino nunca entra na própria base.
+   const semDestino = linhas.filter(linha => !ehDestino(linha, regra));
+-  const precisaDre = referencias.some(ref => ref.indexOf('linha:') === 0);
+-  const dre = precisaDre ? calcularDre(semDestino) : {};
+-
+-  referencias.forEach(ref => {
+-    let valores: number[];
++  let dre: { [id: string]: number[] } | undefined;
++  return (ref: string): number[] => {
+     if (ref.indexOf('conta:') === 0) {
+-      valores = valoresDaConta(ref, semDestino);
+-    } else if (ref.indexOf('linha:') === 0) {
+-      valores = dre[ref.substring(6)] || zeros();
+-    } else {
+-      const grupo = ref.replace(/^grupo:/, '');
+-      valores = zeros();
+-      semDestino
+-        .filter(linha => linha.grupo === grupo)
+-        .forEach(linha => valoresComSinal(linha).forEach((valor, mes) => { valores[mes] += valor; }));
++      return valoresDaConta(ref, semDestino);
+     }
+-    valores.forEach((valor, mes) => { base[mes] += valor || 0; });
+-  });
++    if (ref.indexOf('linha:') === 0) {
++      dre = dre || calcularDre(semDestino);
++      return dre[ref.substring(6)] || zeros();
++    }
++    const grupo = nomeGrupoAtual(ref.replace(/^grupo:/, ''));
++    const valores = zeros();
++    semDestino
++      .filter(linha => linha.grupo === grupo)
++      .forEach(linha => valoresComSinal(linha).forEach((valor, mes) => { valores[mes] += valor; }));
++    return valores;
++  };
++};
+ 
++// Base (com sinal) de uma regra de percentual, mês a mês.
++const baseDaRegra = <T extends ILinhaCalculavel>(
++  regra: IRegraCalculo,
++  linhas: T[]
++): number[] => {
++  const base = zeros();
++  const ler = leitorDeReferencias(regra, linhas);
++  referenciasDaRegra(regra).forEach(ref => {
++    ler(ref).forEach((valor, mes) => { base[mes] += valor || 0; });
++  });
+   return base;
+ };
+ 
++// Valor gravado na conta destino, mês a mês.
++//  • Percentual: percentual × base.
++//  • Fórmula: o resultado é o valor COMO APARECE NA TELA (com sinal,
++//    como na planilha: "-[linha:LAIR]*9%" dá a CSLL negativa); o valor
++//    gravado é convertido pelo sinal da conta destino.
++const valoresDaRegra = <T extends ILinhaCalculavel>(
++  regra: IRegraCalculo,
++  linhas: T[]
++): number[] => {
++  if (regra.tipoBase === 'Formula') {
++    try {
++      const sinal = sinalDaConta(regra.contaDestino);
++      return avaliarFormula(regra.base[0] || '', leitorDeReferencias(regra, linhas))
++        .map(valor => arredondar(valor * sinal));
++    } catch {
++      return zeros();
++    }
++  }
++  return baseDaRegra(regra, linhas).map(valor => arredondar(valor * (regra.percentual || 0) / 100));
++};
++
+ // Uma passada por todas as regras ativas, na ordem.
+ const umaPassada = <T extends ILinhaCalculavel>(
+   linhas: T[],
+@@ -148,7 +184,7 @@ const umaPassada = <T extends ILinhaCalculavel>(
+     // Valor digitado = percentual × base (com sinal). Na tela, a conta
+     // de dedução aparece negativa (sinal da conta).
+     const calculados =
+-      baseDaRegra(regra, resultado).map(valor => arredondar(valor * (regra.percentual || 0) / 100));
++      valoresDaRegra(regra, resultado);
+ 
+     resultado = resultado.map(linha => {
+       const indice = destinos.indexOf(linha);
+@@ -200,6 +236,12 @@ const formatarPercentual = (valor: number): string =>
+ export const descreverRegra = (
+   regra: IRegraCalculo
+ ): string => {
++  if (regra.tipoBase === 'Formula') {
++    // Fórmula com os nomes no lugar dos códigos, para leitura.
++    const legivel =
++      (regra.base[0] || '').replace(/\[([^\]]+)\]/g, (_trecho, ref: string) => `[${nomeDaReferencia(ref.trim())}]`);
++    return `= ${legivel}`;
++  }
+   const nomes = referenciasDaRegra(regra).map(ref => nomeDaReferencia(ref));
+   const base =
+     nomes.length <= 3
+@@ -243,7 +285,12 @@ export const validarRegra = (
+     problemas.push('Escolha a conta que será calculada.');
+   }
+ 
+-  if (regra.base.length === 0) {
++  if (regra.tipoBase === 'Formula') {
++    const erro = validarFormula(regra.base[0] || '');
++    if (erro) {
++      problemas.push(`Fórmula: ${erro}`);
++    }
++  } else if (regra.base.length === 0) {
+     problemas.push('Escolha pelo menos um item como base.');
+   }
+ 
+@@ -255,7 +302,7 @@ export const validarRegra = (
+     problemas.push('A conta calculada não pode fazer parte da própria base.');
+   }
+ 
+-  if (!isFinite(regra.percentual) || regra.percentual < 0 || regra.percentual > 100) {
++  if (regra.tipoBase !== 'Formula' && (!isFinite(regra.percentual) || regra.percentual < 0 || regra.percentual > 100)) {
+     problemas.push('O percentual deve estar entre 0 e 100.');
+   }
+ 
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/esquemaOrcamento.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/esquemaOrcamento.ts
+index b36b9c7..b45d3d1 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/orcamento/esquemaOrcamento.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/esquemaOrcamento.ts
+@@ -68,6 +68,10 @@ export const PLANILHA = {
+   // (etapa, tarefas, prazos, histórico) + resumo para as listas.
+   fluxoEstado: 'dgt_fluxoestado',
+   etapaAtual: 'dgt_etapaatual',
++  // Quem já foi responsável por alguma etapa (ids de dgt_usuario,
++  // separados por ;). A planilha aparece na "Minha planilha" dessas
++  // pessoas (ex.: responsável pelo preenchimento que não é da área).
++  participantes: 'dgt_participantes',
+   prazoEtapa: 'dgt_prazoetapa',
+   // Equipe proprietária (null quando o dono é um usuário).
+   equipeValor: '_owningteam_value',
+@@ -103,7 +107,7 @@ export const ALTERACAO = {
+ };
+ 
+ export type TipoAlteracao = 'Inclusão' | 'Alteração' | 'Remoção';
+-export type OrigemAlteracao = 'Gestor' | 'Cálculo automático';
++export type OrigemAlteracao = 'Gestor' | 'Cálculo automático' | 'Executado';
+ 
+ export const REGRA = {
+   id: 'dgt_orcamentoregraid',
+@@ -120,7 +124,8 @@ export const REGRA = {
+ 
+ // 'Misto': referências "grupo:…", "linha:…" e "conta:…" (ver
+ // calculoOrcamento.ts). 'Grupo'/'Contas': formato antigo.
+-export type TipoBaseRegra = 'Grupo' | 'Contas' | 'Misto';
++// 'Formula': base[0] é a expressão (formulaOrcamento.ts).
++export type TipoBaseRegra = 'Grupo' | 'Contas' | 'Misto' | 'Formula';
+ 
+ export const CONFIG_AREA = {
+   id: 'dgt_orcamentoconfigareaid',
+@@ -250,6 +255,10 @@ export const AREA_GERAL = { id: '', nome: 'Geral (sem área)' };
+ 
+ export const CENARIO_ORCADO = 'Orçado';
+ 
++// Valores realizados (lançados pela Controladoria/Administrador) ficam
++// em linhas da mesma planilha com este cenário, uma por conta.
++export const CENARIO_EXECUTADO = 'Executado';
++
+ // Ano sugerido ao abrir a tela: o próximo ano (o orçamento é
+ // preenchido no ano anterior ao de execução).
+ export const anoPadraoOrcamento = (): number =>
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/formulaOrcamento.test.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/formulaOrcamento.test.ts
+new file mode 100644
+index 0000000..4be7b8c
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/formulaOrcamento.test.ts
+@@ -0,0 +1,66 @@
++import {
++  avaliarFormula,
++  referenciasDaFormula,
++  validarFormula
++} from './formulaOrcamento';
++
++import {
++  IRegraCalculo,
++  ILinhaCalculavel,
++  aplicarRegras
++} from './calculoOrcamento';
++
++import {
++  calcularDre
++} from './dreOrcamento';
++
++// ============================================================
++// TESTES — fórmulas das regras de cálculo (+ − * / e %)
++// ============================================================
++
++const constante = (valor: number): number[] => [valor, valor, valor, valor, valor, valor, valor, valor, valor, valor, valor, valor];
++
++describe('Fórmulas das regras', () => {
++
++  it('respeita precedência, parênteses, % e números com vírgula', () => {
++    const valores = (ref: string): number[] => constante(ref === 'grupo:A' ? 100 : 40);
++    expect(avaliarFormula('[grupo:A] + [grupo:B] * 2', valores)[0]).toBe(180);
++    expect(avaliarFormula('([grupo:A] + [grupo:B]) * 2', valores)[0]).toBe(280);
++    expect(avaliarFormula('-[grupo:A] * 1,65%', valores)[0]).toBeCloseTo(-1.65, 6);
++    expect(avaliarFormula('[grupo:A] / [grupo:B]', valores)[0]).toBe(2.5);
++    expect(avaliarFormula('[grupo:A] / 0', valores)[0]).toBe(0);
++  });
++
++  it('aponta erros de escrita', () => {
++    expect(validarFormula('[grupo:A] +')).toContain('incompleta');
++    expect(validarFormula('([grupo:A]')).toContain('Parêntese');
++    expect(validarFormula('[xyz]')).toContain('Referência inválida');
++    expect(validarFormula('2 # 3')).toContain('não permitido');
++    expect(validarFormula('-[linha:LAIR] * 9%')).toBeUndefined();
++  });
++
++  it('lista as referências usadas', () => {
++    expect(referenciasDaFormula('-([grupo:RECEITA BRUTA] + [conta:4.3.1.01.01.001]) * 7,6% + [grupo:RECEITA BRUTA]'))
++      .toEqual(['grupo:RECEITA BRUTA', 'conta:4.3.1.01.01.001']);
++  });
++
++  it('CSLL por fórmula "-[linha:LAIR] * 9%" fecha com o LAIR', () => {
++    const linha = (grupo: string, codigo: string, valor: number, ordem: number): ILinhaCalculavel =>
++      ({ chave: `${grupo}|${codigo}`, grupo, codigo, ordem, valores: constante(valor) });
++    const linhas = [
++      linha('RECEITA BRUTA', '3.1.1.02.01.001', 1000, 1),
++      linha('Despesas Gerais', '4.2.1.01.06.002', 300, 2),
++      linha('CSLL', '3.1.2.01.02.005', 0, 3)
++    ];
++    const regra: IRegraCalculo = {
++      id: 'r1', nome: 'CSLL', contaDestino: '3.1.2.01.02.005', contaDestinoNome: 'CSLL', grupoDestino: 'CSLL',
++      tipoBase: 'Formula', base: ['-[linha:LAIR] * 9%'], percentual: 0, ordem: 1, ativo: true
++    };
++    const calculadas = aplicarRegras(linhas, [regra]);
++    const dre = calcularDre(calculadas);
++    // LAIR = 1000 − 300 = 700; CSLL = −63 na tela (63 gravado).
++    expect(dre.LAIR[0]).toBe(700);
++    expect(dre.CSLL[0]).toBe(-63);
++    expect(calculadas[2].valores[0]).toBe(63);
++  });
++});
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/formulaOrcamento.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/formulaOrcamento.ts
+new file mode 100644
+index 0000000..b320bf4
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/formulaOrcamento.ts
+@@ -0,0 +1,263 @@
++// ============================================================
++// FÓRMULAS DAS REGRAS DE CÁLCULO
++//
++// Expressões com + − * / e parênteses, números (1,65 ou 1.65), % (9%
++// = 0,09) e referências entre colchetes:
++//   [grupo:RECEITA BRUTA]          total do grupo
++//   [linha:LAIR]                   seção/resultado da DRE
++//   [conta:3.1.1.02.01.005]        conta (todas as linhas do código)
++//   [conta:4.2.1.01.08.001@Despesas financeiras]  conta de um grupo
++//
++// Os valores das referências vêm COM SINAL (receitas +, custos e
++// despesas −), como na planilha. Exemplos:
++//   -[conta:3.1.1.02.01.005] * 17%
++//   -([grupo:RECEITA BRUTA] + [conta:4.3.1.01.01.001]) * 7,6%
++//   -[linha:LAIR] * 9%
++// Divisão por zero dá 0.
++// ============================================================
++
++type No =
++  | { tipo: 'numero'; valor: number }
++  | { tipo: 'ref'; ref: string }
++  | { tipo: 'negativo'; no: No }
++  | { tipo: 'binario'; operador: '+' | '-' | '*' | '/'; esquerda: No; direita: No };
++
++interface IToken {
++  tipo: 'numero' | 'ref' | 'operador' | 'abre' | 'fecha' | 'porcento';
++  texto: string;
++  posicao: number;
++}
++
++const PREFIXOS_VALIDOS = ['grupo:', 'linha:', 'conta:'];
++
++const tokenizar = (expressao: string): IToken[] => {
++  const tokens: IToken[] = [];
++  let i = 0;
++  while (i < expressao.length) {
++    const c = expressao[i];
++    if (/\s/.test(c)) {
++      i++;
++      continue;
++    }
++    if (c === '[') {
++      const fim = expressao.indexOf(']', i);
++      if (fim < 0) {
++        throw new Error(`Colchete aberto sem fechar na posição ${i + 1}.`);
++      }
++      const ref = expressao.substring(i + 1, fim).trim();
++      if (!PREFIXOS_VALIDOS.some(prefixo => ref.indexOf(prefixo) === 0) || ref.length <= 6) {
++        throw new Error(`Referência inválida "[${ref}]". Use [grupo:…], [linha:…] ou [conta:…].`);
++      }
++      tokens.push({ tipo: 'ref', texto: ref, posicao: i });
++      i = fim + 1;
++      continue;
++    }
++    if (/[0-9]/.test(c)) {
++      let fim = i;
++      while (fim < expressao.length && /[0-9.,]/.test(expressao[fim])) {
++        fim++;
++      }
++      tokens.push({ tipo: 'numero', texto: expressao.substring(i, fim), posicao: i });
++      i = fim;
++      continue;
++    }
++    if ('+-*/'.indexOf(c) >= 0) {
++      tokens.push({ tipo: 'operador', texto: c, posicao: i });
++    } else if (c === '(') {
++      tokens.push({ tipo: 'abre', texto: c, posicao: i });
++    } else if (c === ')') {
++      tokens.push({ tipo: 'fecha', texto: c, posicao: i });
++    } else if (c === '%') {
++      tokens.push({ tipo: 'porcento', texto: c, posicao: i });
++    } else {
++      throw new Error(`Caractere não permitido "${c}" na posição ${i + 1}.`);
++    }
++    i++;
++  }
++  return tokens;
++};
++
++// "1.234,56" / "1,65" / "1.65" → número.
++const lerNumero = (texto: string): number => {
++  let limpo = texto;
++  if (limpo.indexOf(',') >= 0) {
++    limpo = limpo.replace(/\./g, '').replace(',', '.');
++  }
++  const valor = Number(limpo);
++  if (!isFinite(valor)) {
++    throw new Error(`Número inválido "${texto}".`);
++  }
++  return valor;
++};
++
++// Gramática: expressão = termo (('+'|'-') termo)* ;
++//            termo = fator (('*'|'/') fator)* ;
++//            fator = '-' fator | '+' fator | primário '%'? ;
++//            primário = número | referência | '(' expressão ')'.
++class Analisador {
++
++  private readonly tokens: IToken[];
++  private pos = 0;
++
++  public constructor(tokens: IToken[]) {
++    this.tokens = tokens;
++  }
++
++  public analisar(): No {
++    if (this.tokens.length === 0) {
++      throw new Error('Escreva a fórmula.');
++    }
++    const raiz = this.expressao();
++    if (this.pos < this.tokens.length) {
++      const sobra = this.tokens[this.pos];
++      throw new Error(`"${sobra.texto}" inesperado na posição ${sobra.posicao + 1}.`);
++    }
++    return raiz;
++  }
++
++  private atual(): IToken | undefined {
++    return this.tokens[this.pos];
++  }
++
++  private ehOperador(...operadores: string[]): boolean {
++    const token = this.atual();
++    return !!token && token.tipo === 'operador' && operadores.indexOf(token.texto) >= 0;
++  }
++
++  private expressao(): No {
++    let no = this.termo();
++    while (this.ehOperador('+', '-')) {
++      const operador = (this.atual() as IToken).texto as '+' | '-';
++      this.pos++;
++      no = { tipo: 'binario', operador, esquerda: no, direita: this.termo() };
++    }
++    return no;
++  }
++
++  private termo(): No {
++    let no = this.fator();
++    while (this.ehOperador('*', '/')) {
++      const operador = (this.atual() as IToken).texto as '*' | '/';
++      this.pos++;
++      no = { tipo: 'binario', operador, esquerda: no, direita: this.fator() };
++    }
++    return no;
++  }
++
++  private fator(): No {
++    if (this.ehOperador('-', '+')) {
++      const negativo = (this.atual() as IToken).texto === '-';
++      this.pos++;
++      const interno = this.fator();
++      return negativo ? { tipo: 'negativo', no: interno } : interno;
++    }
++    let no = this.primario();
++    const token = this.atual();
++    if (token && token.tipo === 'porcento') {
++      this.pos++;
++      no = { tipo: 'binario', operador: '/', esquerda: no, direita: { tipo: 'numero', valor: 100 } };
++    }
++    return no;
++  }
++
++  private primario(): No {
++    const token = this.atual();
++    if (!token) {
++      throw new Error('Fórmula incompleta.');
++    }
++    if (token.tipo === 'numero') {
++      this.pos++;
++      return { tipo: 'numero', valor: lerNumero(token.texto) };
++    }
++    if (token.tipo === 'ref') {
++      this.pos++;
++      return { tipo: 'ref', ref: token.texto };
++    }
++    if (token.tipo === 'abre') {
++      this.pos++;
++      const no = this.expressao();
++      const fecha = this.atual();
++      if (!fecha || fecha.tipo !== 'fecha') {
++        throw new Error('Parêntese aberto sem fechar.');
++      }
++      this.pos++;
++      return no;
++    }
++    throw new Error(`"${token.texto}" inesperado na posição ${token.posicao + 1}.`);
++  }
++}
++
++export const compilarFormula = (expressao: string): No =>
++  new Analisador(tokenizar(expressao || '')).analisar();
++
++// Referências usadas na fórmula (sem repetir).
++export const referenciasDaFormula = (expressao: string): string[] => {
++  const lista: string[] = [];
++  const coletar = (no: No): void => {
++    if (no.tipo === 'ref' && lista.indexOf(no.ref) < 0) {
++      lista.push(no.ref);
++    } else if (no.tipo === 'negativo') {
++      coletar(no.no);
++    } else if (no.tipo === 'binario') {
++      coletar(no.esquerda);
++      coletar(no.direita);
++    }
++  };
++  try {
++    coletar(compilarFormula(expressao));
++  } catch {
++    // Fórmula inválida: sem referências.
++  }
++  return lista;
++};
++
++// undefined = fórmula válida; senão, a mensagem do problema.
++export const validarFormula = (expressao: string): string | undefined => {
++  try {
++    compilarFormula(expressao);
++    return undefined;
++  } catch (erro) {
++    return erro instanceof Error ? erro.message : String(erro);
++  }
++};
++
++// Calcula a fórmula mês a mês. valorDe devolve os 12 meses (com sinal)
++// de uma referência.
++export const avaliarFormula = (
++  expressao: string,
++  valorDe: (ref: string) => number[]
++): number[] => {
++  const raiz = compilarFormula(expressao);
++  const cache: { [ref: string]: number[] } = {};
++  const valores = (ref: string): number[] => {
++    if (!cache[ref]) {
++      cache[ref] = valorDe(ref);
++    }
++    return cache[ref];
++  };
++  const avaliar = (no: No, mes: number): number => {
++    switch (no.tipo) {
++      case 'numero':
++        return no.valor;
++      case 'ref':
++        return valores(no.ref)[mes] || 0;
++      case 'negativo':
++        return -avaliar(no.no, mes);
++      default: {
++        const a = avaliar(no.esquerda, mes);
++        const b = avaliar(no.direita, mes);
++        if (no.operador === '+') {
++          return a + b;
++        }
++        if (no.operador === '-') {
++          return a - b;
++        }
++        if (no.operador === '*') {
++          return a * b;
++        }
++        return b === 0 ? 0 : a / b;
++      }
++    }
++  };
++  return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(mes => avaliar(raiz, mes));
++};
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/planoContasOrcamento.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/planoContasOrcamento.ts
+index 77d85c0..12c9226 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/orcamento/planoContasOrcamento.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/planoContasOrcamento.ts
+@@ -5,7 +5,9 @@
+ //   • aba ORÇAMENTO 2027 → grupos, contas e a ordem da DRE;
+ //   • aba SUPORTE        → subitens 6.1.1.01.* da conta
+ //     4.1.4.01.01.018 (CUSTO MOD PROJETOS C/TAD), com as subdivisões
+-//     (Despesas com pessoal, Custos gerais, Veículos, Viagens).
++//     (Despesas com pessoal, Custos gerais, Veículos, Viagens);
++//   • subitens 6.5.1.01.01.* da conta 4.1.5.01.01.001 (CUSTO MOD P&D),
++//     em Custos Pesquisa e Desenvolvimento.
+ //
+ // As linhas já gravadas no Dataverse guardam código, conta e grupo
+ // como TEXTO: mudar este arquivo nunca altera o histórico. Nomes de
+@@ -29,7 +31,10 @@ export interface IContaOrcamento {
+ }
+ 
+ // Contas "mãe" (valor = soma dos subitens), com o nome da planilha.
+-export const CONTAS_MAE: { [codigo: string]: string } = {"4.1.4.01.01.018": "CUSTO MOD PROJETOS C/TAD"};
++export const CONTAS_MAE: { [codigo: string]: string } = {
++  "4.1.4.01.01.018": "CUSTO MOD PROJETOS C/TAD",
++  "4.1.5.01.01.001": "CUSTO MOD P&D"
++};
+ 
+ // Grupos que recebem lançamentos, na ordem da planilha.
+ export const GRUPOS_ORCAMENTO: string[] = [
+@@ -210,7 +215,32 @@ export const PLANO_CONTAS: IContaOrcamento[] = [
+   { grupo: "Custos Diretos Locações Bens (sem amortização)", codigo: "4.1.4.01.02.001", conta: "SERVICOS PRESTADOS POR TERCEIRO INDIRETO" },
+   { grupo: "Custos Diretos Locações Bens (sem amortização)", codigo: "4.1.4.01.02.002", conta: "TAXAS" },
+   { grupo: "Amortização Projetos", codigo: "4.1.2.01.01.001", conta: "CUSTOS PROJETOS AMORTIZADOS" },
+-  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "4.1.5.01.01.001", conta: "CUSTO MOD P&D" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.001", conta: "SALARIOS E ORDENADOS - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.002", conta: "PROVISAO 13º SALARIO - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.003", conta: "PROVISAO DE FERIAS - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.004", conta: "ENCARGO FGTS S/PROVISOES - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.005", conta: "ENCARGO INSS S/PROVISOES - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.006", conta: "FGTS - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.007", conta: "HORAS EXTRAS - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.008", conta: "INSS PATRONAL - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.009", conta: "ASSISTENCIA MEDICA - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.010", conta: "CURSOS E TREINAMENTOS - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.011", conta: "VALE TRANSPORTE - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.012", conta: "REEMBOLSO USO TELEFONE CELULAR - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.013", conta: "UNIFORMES - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.014", conta: "SEGURO DE VIDA EMPREGADOS - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.015", conta: "DESPESA COM ALIMENTACAO - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.016", conta: "MEDICINA DO TRABALHO - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.017", conta: "PRÊMIOS E GRATIFICAÇÕES - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.018", conta: "HORAS DE SOBREAVISO - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.019", conta: "AUXILIO MOBILIDADE - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.020", conta: "BOLSA AUXILIO - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.021", conta: "SERVICO SELECAO PESSOAS - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.022", conta: "PLANO ODONTOLÓGICO - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.023", conta: "AUXILIO ATIVIDADE FISICA - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.024", conta: "PLR EMPREGADOS - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.025", conta: "AJUDA DE CUSTO HOME OFFICE - P&D", pai: "4.1.5.01.01.001" },
++  { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "6.5.1.01.01.026", conta: "SERVICO TERCEIROS PJ - P&D", pai: "4.1.5.01.01.001" },
+   { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "4.1.5.01.02.001", conta: "SERVICOS PRESTADOS POR TERCEIROS - P&D" },
+   { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "4.1.5.01.02.002", conta: "MATERIAL CONSUMO - P&D" },
+   { grupo: "Custos Pesquisa e Desenvolvimento", codigo: "4.1.5.01.02.003", conta: "HOSPEDAGEM - P&D" },
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/situacaoFluxoOrcamento.test.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/situacaoFluxoOrcamento.test.ts
+index cb869d2..6ec7790 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/orcamento/situacaoFluxoOrcamento.test.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/situacaoFluxoOrcamento.test.ts
+@@ -12,6 +12,7 @@ import {
+ } from '../fluxo/FluxoEngine';
+ 
+ import {
++  estaNoPreenchimento,
+   etapaDePreenchimento,
+   situacaoDoFluxo
+ } from './situacaoFluxoOrcamento';
+@@ -175,4 +176,59 @@ describe('Fluxo de aprovação do orçamento (CONT-001)', () => {
+     const pendente = instancia.tarefas.filter(tarefa => tarefa.status === 'pendente')[0];
+     expect(pendente.elementoId).toBe('preench');
+   });
++
++  it('com a 1ª etapa da Controladoria (Definição de responsáveis), o preenchimento é a etapa "Elaboração"', () => {
++    const definicaoComControladoria: IFluxoDefinicao = {
++      ...definicao,
++      id: 'cont-001-v4',
++      elementos: [
++        simples('inicio', 'inicio', 'Início'),
++        { ...etapa('definicao', 'Definição de responsáveis', 'controladoria', false) },
++        { ...preenchimento, statusDocumento: 'Elaboração' },
++        etapa('diretor', 'Avaliação do Diretor da Área', 'diretor', true),
++        simples('g1', 'gateway', 'Decisão diretor'),
++        etapa('financeiro', 'Diretoria Financeira', 'financeiro', false),
++        simples('fim', 'fim', 'Fim')
++      ],
++      transicoes: [
++        transicao('t0', 'inicio', 'definicao'),
++        transicao('t1', 'definicao', 'preench'),
++        transicao('t2', 'preench', 'diretor'),
++        transicao('t3', 'diretor', 'g1'),
++        transicao('t4', 'g1', 'financeiro', 'aprovado'),
++        transicao('t5', 'g1', 'preench', 'reprovado', true),
++        transicao('t9', 'financeiro', 'fim')
++      ]
++    };
++    const agirEm = (instancia: IFluxoInstancia, papel: string, acaoChave: string, comentario = ''): IFluxoInstancia => {
++      const resultado = executarAcao(definicaoComControladoria, instancia, { acaoChave, comentario, valores: {}, ator: ator(papel) });
++      expect(resultado.erros).toEqual([]);
++      return resultado.instancia as IFluxoInstancia;
++    };
++
++    expect((etapaDePreenchimento(definicaoComControladoria) as IFluxoElemento).id).toBe('preench');
++
++    let instancia = iniciarInstancia(definicaoComControladoria, {
++      revisaoId: 'planilha-4', documentoId: 'planilha-4', revisao: '2027', ator: ator('controladoria'), simulado: true
++    }).instancia as IFluxoInstancia;
++
++    // Etapa da Controladoria: não entregue, mas ainda não é preenchimento.
++    expect(instancia.elementoAtualId).toBe('definicao');
++    expect(situacaoDoFluxo(instancia, definicaoComControladoria)).toBe('Em preenchimento');
++    expect(estaNoPreenchimento(instancia, definicaoComControladoria)).toBe(false);
++
++    // Liberou: preenchimento (NÃO é devolução).
++    instancia = agirEm(instancia, 'controladoria', 'aprovar');
++    expect(instancia.elementoAtualId).toBe('preench');
++    expect(situacaoDoFluxo(instancia, definicaoComControladoria)).toBe('Em preenchimento');
++    expect(estaNoPreenchimento(instancia, definicaoComControladoria)).toBe(true);
++
++    instancia = agirEm(instancia, 'gestor', 'enviar');
++    expect(situacaoDoFluxo(instancia, definicaoComControladoria)).toBe('Em aprovação');
++
++    // Reprovação volta ao preenchimento (devolvida), não à Controladoria.
++    instancia = agirEm(instancia, 'diretor', 'reprovar', 'Rever');
++    expect(instancia.elementoAtualId).toBe('preench');
++    expect(situacaoDoFluxo(instancia, definicaoComControladoria)).toBe('Devolvida para ajuste');
++  });
+ });
+diff --git a/src/webparts/portalTreinamentosWebPart/services/orcamento/situacaoFluxoOrcamento.ts b/src/webparts/portalTreinamentosWebPart/services/orcamento/situacaoFluxoOrcamento.ts
+index 0ae9d9e..28a7901 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/orcamento/situacaoFluxoOrcamento.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/orcamento/situacaoFluxoOrcamento.ts
+@@ -21,22 +21,18 @@ import {
+ //   fluxo concluído                           → Aprovada
+ // ============================================================
+ 
+-// Primeira etapa com responsável a partir do início: é a etapa de
+-// preenchimento da planilha (no CONT-001, "Preenchimento de
+-// Informações").
+-export const etapaDePreenchimento = (
++// Etapas com responsável na ordem do caminho principal (sem as setas
++// de reprovação).
++export const etapasHumanasEmOrdem = (
+   definicao: IFluxoDefinicao
+-): IFluxoElemento | undefined => {
+-
++): IFluxoElemento[] => {
+   const inicio = definicao.elementos.filter(item => item.tipo === 'inicio')[0];
+-
+   if (!inicio) {
+-    return undefined;
++    return [];
+   }
+-
+   const visitados: string[] = [];
++  const etapas: IFluxoElemento[] = [];
+   const fila: string[] = [inicio.id];
+-
+   while (fila.length > 0) {
+     const atual = fila.shift() as string;
+     if (visitados.indexOf(atual) >= 0) {
+@@ -45,14 +41,24 @@ export const etapaDePreenchimento = (
+     visitados.push(atual);
+     const elemento = definicao.elementos.filter(item => item.id === atual)[0];
+     if (elemento && elemento.tipo === 'tarefaHumana') {
+-      return elemento;
++      etapas.push(elemento);
+     }
+     definicao.transicoes
+       .filter(transicao => transicao.origemId === atual && !transicao.excecao)
+       .forEach(transicao => fila.push(transicao.destinoId));
+   }
++  return etapas;
++};
+ 
+-  return undefined;
++// Etapa de PREENCHIMENTO da planilha: a etapa marcada no processo com
++// "Status do documento = Elaboração"; sem essa marcação, a primeira
++// etapa com responsável (CONT-001 antigo). Etapas ANTES dela (ex.:
++// "Definição de responsáveis", da Controladoria) não editam valores.
++export const etapaDePreenchimento = (
++  definicao: IFluxoDefinicao
++): IFluxoElemento | undefined => {
++  const etapas = etapasHumanasEmOrdem(definicao);
++  return etapas.filter(etapa => etapa.statusDocumento === 'Elaboração')[0] || etapas[0];
+ };
+ 
+ // Último passo feito por uma pessoa (não pelo sistema). O motor grava
+@@ -78,16 +84,36 @@ export const situacaoDoFluxo = (
+     return STATUS_PLANILHA.aprovada;
+   }
+ 
++  const etapas = etapasHumanasEmOrdem(definicao);
+   const preenchimento = etapaDePreenchimento(definicao);
++  const posicao = (id?: string): number => etapas.map(etapa => etapa.id).indexOf(id || '');
++  const posicaoPreenchimento = preenchimento ? posicao(preenchimento.id) : -1;
++  const posicaoAtual = posicao(instancia.elementoAtualId);
++
++  // Etapa anterior ao preenchimento (ex.: Definição de responsáveis):
++  // a planilha ainda não foi entregue.
++  if (preenchimento && posicaoAtual >= 0 && posicaoAtual < posicaoPreenchimento) {
++    return STATUS_PLANILHA.emPreenchimento;
++  }
+ 
+   if (!preenchimento || instancia.elementoAtualId !== preenchimento.id) {
+     return STATUS_PLANILHA.emAprovacao;
+   }
+ 
+-  // Voltou ao preenchimento depois de alguma avaliação?
++  // Voltou ao preenchimento depois de uma avaliação (etapa POSTERIOR)?
+   const ultimo = ultimoPassoHumano(instancia);
+ 
+-  return ultimo && ultimo.elementoId !== preenchimento.id
++  return ultimo && posicao(ultimo.elementoId) > posicaoPreenchimento
+     ? STATUS_PLANILHA.devolvida
+     : STATUS_PLANILHA.emPreenchimento;
+ };
++
++// A etapa atual é a de preenchimento (a única em que os valores são
++// editados, e só pelo responsável dela)?
++export const estaNoPreenchimento = (
++  instancia: IFluxoInstancia,
++  definicao: IFluxoDefinicao
++): boolean => {
++  const preenchimento = etapaDePreenchimento(definicao);
++  return instancia.status !== 'concluido' && !!preenchimento && instancia.elementoAtualId === preenchimento.id;
++};

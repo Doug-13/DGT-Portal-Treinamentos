@@ -73,6 +73,14 @@
   situação da planilha; registrar o histórico.
   (ex.: "DGT Orçamento - Aprovadores")
 
+.PARAMETER PapelPreenchedores
+  Opcional. Nome do perfil de segurança de quem PREENCHE o orçamento de
+  uma área sem ser gestor dela (o "Responsável pelo preenchimento"
+  definido na aba Responsáveis). Recebe: ler e gravar planilhas e
+  linhas, criar linhas e registrar log e histórico. Quem edita o quê
+  continua controlado no portal.
+  (ex.: "DGT Orçamento - Preenchedores")
+
 .PARAMETER PapelAdministradores
   Opcional. Nome do perfil de segurança dos administradores do portal
   (ex.: "DGT Treinamentos - Administradores").
@@ -94,6 +102,7 @@ param(
   [string] $PapelGestores,
   [string] $PapelAdministradores,
   [string] $PapelAprovadores,
+  [string] $PapelPreenchedores,
   [string] $Token
 )
 
@@ -377,6 +386,7 @@ New-Tabela 'dgt_OrcamentoEvento'   'Evento do orçamento'   'Eventos do orçamen
 New-Tabela 'dgt_OrcamentoAlteracao'  'Alteração do orçamento'  'Alterações do orçamento'  'Log de alterações das linhas da planilha orçamentária (valor anterior e novo, quem e quando). Nunca é alterado nem excluído pelo portal.'
 New-Tabela 'dgt_OrcamentoRegra'      'Regra de cálculo do orçamento' 'Regras de cálculo do orçamento' 'Conta calculada = percentual da soma de outras contas/grupos (ex.: impostos sobre a Receita bruta).'
 New-Tabela 'dgt_OrcamentoConfigArea' 'Contas por área do orçamento'  'Contas por área do orçamento'   'Grupos de contas que cada área preenche no planejamento orçamentário.'
+New-Tabela 'dgt_OrcamentoPlanoAjuste' 'Ajuste do plano de contas' 'Ajustes do plano de contas' 'Alterações do plano de contas feitas pelo Administrador (contas incluídas, renomeadas ou desativadas e termos de grupos/linhas da DRE), aplicadas sobre o plano base.'
 
 # ------------------------------------------------------------
 # 2) Colunas da planilha
@@ -500,6 +510,21 @@ New-Texto      $C 'dgt_AreaNome'     'Nome da área' 200
 New-TextoLongo $C 'dgt_Grupos'       'Grupos (JSON)' 4000
 New-SimNao     $C 'dgt_Ativo'        'Ativo' $true
 New-Texto      $C 'dgt_EquipeId'     'Equipe da área (id)' 100
+# Responsáveis da área (aba Responsáveis): { preenchimento, diretor }.
+New-TextoLongo $C 'dgt_Responsaveis' 'Responsáveis da área (JSON)' 4000
+
+# Ajustes do plano de contas (aba Plano de contas): um registro por
+# conta ou termo alterado (dgt_name = chave). Tipo: conta | termo.
+$A = 'dgt_orcamentoplanoajuste'
+
+New-Texto      $A 'dgt_Tipo'         'Tipo (conta ou termo)' 20
+New-Texto      $A 'dgt_Grupo'        'Grupo' 200
+New-Texto      $A 'dgt_Codigo'       'Código' 100
+New-Texto      $A 'dgt_Nome'         'Nome / termo exibido' 400
+New-Texto      $A 'dgt_Pai'          'Conta mãe (subitem)' 100
+New-SimNao     $A 'dgt_Incluida'     'Conta incluída' $false
+New-SimNao     $A 'dgt_ContaAtiva'   'Conta ativa' $true
+New-TextoLongo $A 'dgt_Historico'    'Histórico de alterações (JSON)' 100000
 
 # ------------------------------------------------------------
 # 4) Publicação
@@ -508,7 +533,7 @@ New-Texto      $C 'dgt_EquipeId'     'Equipe da área (id)' 100
 Write-Host "`n4) Publicando as tabelas..." -ForegroundColor Cyan
 
 Invoke-Dv -Metodo 'POST' -Caminho 'PublishXml' -Corpo @{
-  ParameterXml = '<importexportxml><entities><entity>dgt_orcamentoplanilha</entity><entity>dgt_orcamentolinha</entity><entity>dgt_orcamentoevento</entity><entity>dgt_orcamentoalteracao</entity><entity>dgt_orcamentoregra</entity><entity>dgt_orcamentoconfigarea</entity></entities></importexportxml>'
+  ParameterXml = '<importexportxml><entities><entity>dgt_orcamentoplanilha</entity><entity>dgt_orcamentolinha</entity><entity>dgt_orcamentoevento</entity><entity>dgt_orcamentoalteracao</entity><entity>dgt_orcamentoregra</entity><entity>dgt_orcamentoconfigarea</entity><entity>dgt_orcamentoplanoajuste</entity></entities></importexportxml>'
 } | Out-Null
 
 # ------------------------------------------------------------
@@ -567,7 +592,7 @@ function Grant-Privilegios {
 $tabelasOrcamento = @('dgt_orcamentoplanilha', 'dgt_orcamentolinha')
 $acoesOrcamento = @('Create', 'Read', 'Write', 'Append', 'AppendTo')
 
-if ($PapelGestores -or $PapelAdministradores -or $PapelAprovadores) {
+if ($PapelGestores -or $PapelAdministradores -or $PapelAprovadores -or $PapelPreenchedores) {
   Write-Host "`n5) Privilégios" -ForegroundColor Cyan
 }
 
@@ -575,7 +600,7 @@ if ($PapelGestores -or $PapelAdministradores -or $PapelAprovadores) {
 $acoesEvento = @('Create', 'Read', 'Append')
 
 # Configuração (regras e contas por área): gestor só lê.
-$tabelasConfig = @('dgt_orcamentoregra', 'dgt_orcamentoconfigarea')
+$tabelasConfig = @('dgt_orcamentoregra', 'dgt_orcamentoconfigarea', 'dgt_orcamentoplanoajuste')
 
 # Assign: o gestor cria linhas/log já com a EQUIPE da área como
 # proprietária (planilha compartilhada pelos gestores da área).
@@ -597,6 +622,17 @@ if ($PapelAprovadores) {
   Grant-Privilegios $PapelAprovadores 'Global' @('dgt_orcamentolinha', 'dgt_orcamentoalteracao') @('Read')
   Grant-Privilegios $PapelAprovadores 'Global' @('dgt_orcamentoevento') @('Create', 'Read', 'Append', 'Assign')
   Grant-Privilegios $PapelAprovadores 'Global' $tabelasConfig @('Read')
+}
+
+# Preenchedores (Responsável pelo preenchimento de outra área): leem e
+# gravam planilhas e linhas, criam a planilha e as linhas e registram
+# log/histórico — tudo com a equipe da área (Atribuir).
+if ($PapelPreenchedores) {
+  Grant-Privilegios $PapelPreenchedores 'Global' $tabelasOrcamento @('Create', 'Read', 'Write', 'Append', 'AppendTo')
+  Grant-Privilegios $PapelPreenchedores 'Global' $tabelasComEquipe @('Assign')
+  Grant-Privilegios $PapelPreenchedores 'Global' @('dgt_orcamentoevento', 'dgt_orcamentoalteracao') $acoesEvento
+  Grant-Privilegios $PapelPreenchedores 'Global' $tabelasConfig @('Read')
+  Grant-Privilegios $PapelPreenchedores 'Global' @('dgt_usuario', 'dgt_area') @('AppendTo')
 }
 
 if ($PapelAdministradores) {

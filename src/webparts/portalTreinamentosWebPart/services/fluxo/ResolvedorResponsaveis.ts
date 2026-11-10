@@ -43,6 +43,10 @@ export interface IDadosRevisaoResponsaveis {
   // Valores dos metadados já preenchidos na revisão (para o
   // responsável "Usuário do campo").
   valores?: Record<string, string>;
+
+  // Pessoas definidas por área no módulo (responsável "definidoPorArea"):
+  // papel ('preenchimento' ou 'diretor') → ids de dgt_usuario.
+  pessoasPorPapel?: { [papel: string]: string[] };
 }
 
 export const TIPOS_RESOLVIDOS: string[] = [
@@ -52,7 +56,8 @@ export const TIPOS_RESOLVIDOS: string[] = [
   'usuario',
   'cargoArea',
   'nivelHierarquico',
-  'campoUsuario'
+  'campoUsuario',
+  'definidoPorArea'
 ];
 
 export const tipoResolvido = (
@@ -92,6 +97,12 @@ export const resolverResponsavel = (
 
     case 'usuario':
       return { ...base, usuarioId: guid(responsavel.referenciaId) || undefined };
+
+    case 'definidoPorArea':
+      return {
+        ...base,
+        pessoas: ((dados.pessoasPorPapel || {})[responsavel.referenciaId || ''] || []).map(id => guid(id)).filter(Boolean)
+      };
 
     case 'campoUsuario': {
       // Usuário escolhido no metadado. Se o campo ainda não foi
@@ -189,6 +200,11 @@ export const usuarioAtende = (
     return false;
   }
 
+  // Pessoa definida por área no módulo.
+  if (resolvido.pessoas !== undefined) {
+    return resolvido.pessoas.some(id => guid(id) === eu);
+  }
+
   // Hierarquia: tem o cargo (ou o cargo do nível) na área — da área
   // fixa, do documento ou de quem criou.
   if (ehHierarquico(resolvido)) {
@@ -267,6 +283,21 @@ export const descreverResolvido = (
 ): string => {
 
   const resolvido = resolvidoOriginal;
+
+  // Pessoa definida por área no módulo.
+  if (resolvido.pessoas !== undefined) {
+    const nomes =
+      resolvido.pessoas
+        .map(id => {
+          const usuario = usuarios.find(item => guid(item.id) === guid(id));
+          const vinculo = vinculos.find(item => guid(item.usuarioId) === guid(id));
+          return usuario ? usuario.nome : vinculo ? vinculo.usuarioNome : '';
+        })
+        .filter((nome, indice, lista) => !!nome && lista.indexOf(nome) === indice);
+    return nomes.length > 0
+      ? `${resolvido.descricao}: ${nomes.join(', ')}`
+      : `${resolvido.descricao} (não definido para esta área)`;
+  }
 
   // Hierarquia: "Head da área PROCESSOS: Hugo" /
   // "2º nível da hierarquia (Head) da área de quem criou (PROCESSOS): Hugo".

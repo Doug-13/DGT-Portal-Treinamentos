@@ -1,6 +1,7 @@
 import {
   CONTAS_MAE,
-  PLANO_CONTAS
+  PLANO_CONTAS,
+  termoExibido
 } from './planoContasOrcamento';
 
 // ============================================================
@@ -241,5 +242,5 @@ export const nomeDaReferencia = (ref: string): string => {
   }
   const ref2 = ref.replace(/^(grupo|linha):/, '');
   const item = ITENS_DRE.filter(atual => atual.id === ref2)[0];
-  return item ? item.nome : ref2;
+  return termoExibido(ref2, item ? item.nome : ref2);
 };

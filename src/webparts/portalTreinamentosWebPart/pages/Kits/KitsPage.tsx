@@ -30,6 +30,7 @@ import CatalogoItensView from './CatalogoItensView';
 import ComposicaoKitView from './ComposicaoKitView';
 import HistoricoKitsView from './HistoricoKitsView';
 import LogicaKitsView from './LogicaKitsView';
+import ServidoresView from './ServidoresView';
 import VisaoGeralKits from './VisaoGeralKits';
 
 import {
@@ -58,12 +59,13 @@ export interface IKitsPageProps {
   contexto?: IContextoAcesso;
 }
 
-type AbaKits = 'visao' | 'itens' | 'kits' | 'logica' | 'historico';
+type AbaKits = 'visao' | 'itens' | 'kits' | 'servidores' | 'logica' | 'historico';
 
 const ABAS: Array<{ id: AbaKits; rotulo: string }> = [
   { id: 'visao', rotulo: 'Visão geral' },
   { id: 'itens', rotulo: 'Equipamentos e itens' },
   { id: 'kits', rotulo: 'Composição dos kits' },
+  { id: 'servidores', rotulo: 'Servidores' },
   { id: 'logica', rotulo: 'Como o montador calcula' },
   { id: 'historico', rotulo: 'Histórico' }
 ];
@@ -275,6 +277,13 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
               aoSalvar={salvarKit}
               aoMudarPendencia={setPendente}
               aoCriarKit={criarKit}
+            />
+          )}
+          {aba === 'servidores' && (
+            <ServidoresView
+              dataverseService={dataverseService}
+              podeEditar={administra}
+              usuarioNome={usuarioNome}
             />
           )}
           {aba === 'logica' && <LogicaKitsView />}

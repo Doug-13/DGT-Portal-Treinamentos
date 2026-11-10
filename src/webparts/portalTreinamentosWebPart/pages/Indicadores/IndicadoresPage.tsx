@@ -18,6 +18,24 @@ import {
 import GerenciarDashboardsModal from
   './GerenciarDashboardsModal';
 
+import DashboardPortalView from './DashboardPortalView';
+
+import {
+  IContextoAcesso
+} from '../../services/AutorizacaoService';
+
+import {
+  AreaAdminService
+} from '../../services/AreaAdminService';
+
+import {
+  validarDashboard
+} from '../../services/dashboards/dashboardModelo';
+
+import {
+  CATALOGO_DASHBOARD
+} from '../../services/dashboards/fontesDashboard';
+
 // ============================================================
 // INDICADORES
 //
@@ -54,6 +72,10 @@ export interface IIndicadoresPageProps {
 
   podeGerenciarDashboards?:
     boolean;
+
+  // Áreas do usuário (dashboards do portal: quem vê e quais dados).
+  contexto?:
+    IContextoAcesso;
 }
 
 const IndicadoresPage:
@@ -90,6 +112,38 @@ const IndicadoresPage:
 
     const [gerenciando, setGerenciando] =
       React.useState(false);
+
+    // Áreas (seletor dos dashboards do portal e "Áreas que veem").
+    const [areas, setAreas] =
+      React.useState<Array<{ id: string; nome: string }>>([]);
+
+    React.useEffect(
+      () => {
+        if (!props.dataverseService) {
+          return;
+        }
+        new AreaAdminService(props.dataverseService).listarAreas()
+          .then(lista => setAreas(
+            lista
+              .filter(area => area.ativa !== false)
+              .map(area => ({ id: area.id.replace(/[{}]/g, '').toLowerCase(), nome: area.sigla ? `${area.sigla} · ${area.nome}` : area.nome }))
+              .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+          ))
+          .catch(() => setAreas([]));
+      },
+      [props.dataverseService]
+    );
+
+    // Áreas do usuário; Administrador (ou administrador do módulo
+    // Indicadores) vê os dados de todas.
+    const areasDoUsuario =
+      (props.contexto && props.contexto.vinculosArea ? props.contexto.vinculosArea : [])
+        .map(vinculo => String(vinculo.areaId || '').replace(/[{}]/g, '').toLowerCase())
+        .filter((id, indice, lista) => !!id && lista.indexOf(id) === indice);
+
+    const veTodasAsAreas =
+      (props.perfil || '').toLowerCase() === 'administrador' ||
+      (!!props.contexto && (props.contexto.modulosAdministrados || []).indexOf('indicadores') >= 0);
 
     const carregarDashboards =
       React.useCallback(
@@ -131,7 +185,8 @@ const IndicadoresPage:
           d.ativo &&
           podeVerDashboard(
             d,
-            props.perfil
+            veTodasAsAreas ? 'Administrador' : props.perfil,
+            areasDoUsuario
           )
       );
 
@@ -248,7 +303,26 @@ const IndicadoresPage:
 
         {/* ===================== DASHBOARD SELECIONADO ===================== */}
 
-        {dashboardAtivo && (
+        {dashboardAtivo && dashboardAtivo.tipo === 'Portal' && props.dataverseService && (() => {
+          const validacao = validarDashboard(dashboardAtivo.definicao, CATALOGO_DASHBOARD);
+          return validacao.definicao
+            ? (
+              <DashboardPortalView
+                key={dashboardAtivo.id}
+                definicao={validacao.definicao}
+                dataverseService={props.dataverseService}
+                areasPermitidas={veTodasAsAreas ? undefined : areasDoUsuario}
+                areas={areas}
+              />
+            )
+            : (
+              <div style={{ padding: '14px 16px', borderRadius: '12px', background: '#FDECEA', color: '#A2352A', fontSize: '13px', whiteSpace: 'pre-line' }}>
+                {`A definição deste dashboard tem problemas:\n${validacao.erros.join('\n')}`}
+              </div>
+            );
+        })()}
+
+        {dashboardAtivo && dashboardAtivo.tipo !== 'Portal' && (
           <article
             style={{
               background: '#fff',
@@ -355,6 +429,7 @@ const IndicadoresPage:
             dashboards={dashboards}
             onFechar={() => setGerenciando(false)}
             onAlterado={carregarDashboards}
+            areas={areas}
           />
         )}
       </section>

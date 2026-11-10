@@ -6,7 +6,8 @@ import {
 
 import {
   GRUPOS_ORCAMENTO,
-  PLANO_CONTAS
+  PLANO_CONTAS,
+  termoExibido
 } from '../../services/orcamento/planoContasOrcamento';
 
 import {
@@ -108,7 +109,11 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
 
   // Abre para edição já no formato 'Misto' (converte regras antigas).
   const abrir = (regra: IRegraCalculo): void => {
-    setEditando({ ...regra, tipoBase: 'Misto', base: referenciasDaRegra(regra), grupoDestino: regra.grupoDestino || '' });
+    setEditando(
+      regra.tipoBase === 'Formula'
+        ? { ...regra, base: [regra.base[0] || ''], grupoDestino: regra.grupoDestino || '' }
+        : { ...regra, tipoBase: 'Misto', base: referenciasDaRegra(regra), grupoDestino: regra.grupoDestino || '' }
+    );
     setPercentualTexto(formatarPercentual(regra.percentual));
     setBuscaConta('');
     setErro('');
@@ -122,8 +127,33 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
       ...editando,
       grupoDestino: editando.grupoDestino || undefined,
       contaDestinoNome: nomeContaDoPlano(editando.contaDestino, editando.grupoDestino || undefined),
-      percentual: isNaN(percentualConvertido) ? -1 : percentualConvertido
+      percentual: editando.tipoBase === 'Formula' ? 0 : isNaN(percentualConvertido) ? -1 : percentualConvertido
     };
+
+  const ehFormula = !!editando && editando.tipoBase === 'Formula';
+
+  // Troca entre "percentual da soma" e "fórmula" (converte a base).
+  const trocarModo = (formula: boolean): void => {
+    if (!editando || formula === ehFormula) {
+      return;
+    }
+    if (formula) {
+      const soma = editando.base.map(ref => `[${ref}]`).join(' + ');
+      const pct = isNaN(percentualConvertido) ? 0 : percentualConvertido;
+      setEditando({ ...editando, tipoBase: 'Formula', base: [soma ? `-(${soma}) * ${String(pct).replace('.', ',')}%` : ''] });
+    } else {
+      setEditando({ ...editando, tipoBase: 'Misto', base: referenciasDaRegra(editando) });
+    }
+  };
+
+  // Fórmula: acrescenta um trecho (referência ou operador) no fim.
+  const inserirNaFormula = (trecho: string): void => {
+    if (!editando) {
+      return;
+    }
+    const atual = (editando.base[0] || '').replace(/\s+$/, '');
+    setEditando({ ...editando, base: [`${atual}${atual ? ' ' : ''}${trecho}`] });
+  };
 
   const problemas = regraAtual ? validarRegra(regraAtual, props.regras) : [];
 
@@ -213,12 +243,23 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
     if (!editando) {
       return;
     }
+    if (editando.tipoBase === 'Formula') {
+      inserirNaFormula(`[${ref}]`);
+      return;
+    }
     const base =
       editando.base.indexOf(ref) >= 0
         ? editando.base.filter(valor => valor !== ref)
         : editando.base.concat([ref]);
     setEditando({ ...editando, base });
   };
+
+  // Item usado na base (ou citado na fórmula).
+  const marcado = (ref: string): boolean =>
+    !!editando &&
+    (editando.tipoBase === 'Formula'
+      ? (editando.base[0] || '').indexOf(`[${ref}]`) >= 0
+      : editando.base.indexOf(ref) >= 0);
 
   const contasFiltradas =
     PLANO_CONTAS.filter(item => {
@@ -279,8 +320,8 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
               >
                 <option value="|">Escolha a conta...</option>
                 {GRUPOS_ORCAMENTO.map(grupo => (
-                  <optgroup key={grupo} label={grupo}>
-                    {PLANO_CONTAS.filter(item => item.grupo === grupo).map(item => (
+                  <optgroup key={grupo} label={termoExibido(grupo)}>
+                    {PLANO_CONTAS.filter(item => item.grupo === grupo && !item.inativa).map(item => (
                       <option key={`${grupo}|${item.codigo}`} value={`${grupo}|${item.codigo}`}>
                         {item.conta} ({item.codigo})
                       </option>
@@ -290,8 +331,16 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
               </select>
             </label>
             <label>
-              <span style={rotulo}>Percentual (%) *</span>
-              <input type="text" inputMode="decimal" value={percentualTexto} onChange={evento => setPercentualTexto(evento.target.value)} placeholder="Ex.: 1,65" style={campo} />
+              <span style={rotulo}>Percentual (%) {ehFormula ? '' : '*'}</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={ehFormula ? 'Na fórmula' : percentualTexto}
+                disabled={ehFormula}
+                onChange={evento => setPercentualTexto(evento.target.value)}
+                placeholder="Ex.: 1,65"
+                style={{ ...campo, opacity: ehFormula ? 0.6 : 1 }}
+              />
             </label>
             <label>
               <span style={rotulo}>Ordem</span>
@@ -305,15 +354,74 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
             </label>
           </div>
 
-          <span style={rotulo}>Base do cálculo * <span style={{ fontWeight: 400, color: COR.texto2 }}>(soma com sinal dos itens marcados)</span></span>
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ ...rotulo, marginBottom: 0, marginRight: '6px' }}>Tipo de cálculo</span>
+            {[
+              { formula: false, texto: 'Percentual da soma' },
+              { formula: true, texto: 'Fórmula (+ − × ÷)' }
+            ].map(opcao => (
+              <button
+                key={opcao.texto}
+                type="button"
+                aria-pressed={ehFormula === opcao.formula}
+                onClick={() => trocarModo(opcao.formula)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '999px',
+                  border: `1px solid ${ehFormula === opcao.formula ? COR.azulAcao : COR.borda}`,
+                  background: ehFormula === opcao.formula ? '#E8F2FF' : '#FFFFFF',
+                  color: ehFormula === opcao.formula ? COR.azulAcao : COR.texto2,
+                  fontWeight: 700,
+                  fontSize: '12.5px',
+                  cursor: 'pointer',
+                  fontFamily: FONTE
+                }}
+              >
+                {opcao.texto}
+              </button>
+            ))}
+          </div>
+
+          {ehFormula ? (
+            <div style={{ marginBottom: '12px' }}>
+              <span style={rotulo}>Fórmula * <span style={{ fontWeight: 400, color: COR.texto2 }}>(o resultado é o valor como aparece na tela, com sinal — como na planilha)</span></span>
+              <textarea
+                value={editando.base[0] || ''}
+                onChange={evento => setEditando({ ...editando, base: [evento.target.value] })}
+                rows={3}
+                spellCheck={false}
+                placeholder="Ex.: -([grupo:RECEITA BRUTA] + [conta:4.3.1.01.01.001]) * 7,6%"
+                style={{ ...campo, width: '100%', fontFamily: 'Consolas, monospace', fontSize: '13px', resize: 'vertical' }}
+              />
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '6px 0' }}>
+                {['+', '-', '*', '/', '(', ')', '%'].map(operador => (
+                  <button
+                    key={operador}
+                    type="button"
+                    onClick={() => inserirNaFormula(operador)}
+                    style={{ minWidth: '34px', padding: '4px 8px', border: `1px solid ${COR.borda}`, borderRadius: '6px', background: '#FFFFFF', color: COR.azul, fontWeight: 700, cursor: 'pointer', fontFamily: 'Consolas, monospace' }}
+                  >
+                    {operador}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: '12px', color: COR.texto2 }}>
+                Clique nos grupos, linhas da DRE e contas abaixo para inserir na fórmula. Valores com sinal: receitas positivas,
+                deduções, custos e despesas negativos. Ex.: <code>-[linha:LAIR] * 9%</code> (CSLL) ·{' '}
+                <code>-[conta:3.1.1.02.01.005] * 17%</code> (ICMS) · <code>[linha:EBITDA] / [grupo:RECEITA BRUTA]</code>.
+              </div>
+            </div>
+          ) : (
+            <span style={rotulo}>Base do cálculo * <span style={{ fontWeight: 400, color: COR.texto2 }}>(soma com sinal dos itens marcados)</span></span>
+          )}
 
           <div style={{ fontSize: '12.5px', fontWeight: 700, color: COR.texto2, margin: '6px 0' }}>Grupos</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '6px', marginBottom: '10px' }}>
             {GRUPOS_ORCAMENTO.map(grupo => {
               const ref = `grupo:${grupo}`;
               return (
-                <label key={ref} style={chip(editando.base.indexOf(ref) >= 0)}>
-                  <input type="checkbox" checked={editando.base.indexOf(ref) >= 0} onChange={() => alternarRef(ref)} />
+                <label key={ref} style={chip(marcado(ref))}>
+                  <input type="checkbox" checked={marcado(ref)} onChange={() => alternarRef(ref)} />
                   {grupo}
                 </label>
               );
@@ -325,8 +433,8 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
             {LINHAS_DRE.map(item => {
               const ref = `linha:${item.id}`;
               return (
-                <label key={ref} style={chip(editando.base.indexOf(ref) >= 0)}>
-                  <input type="checkbox" checked={editando.base.indexOf(ref) >= 0} onChange={() => alternarRef(ref)} />
+                <label key={ref} style={chip(marcado(ref))}>
+                  <input type="checkbox" checked={marcado(ref)} onChange={() => alternarRef(ref)} />
                   {item.nome}
                 </label>
               );
@@ -341,14 +449,14 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
               const destino = item.codigo === editando.contaDestino;
               return (
                 <label key={`${item.grupo}|${item.codigo}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: COR.azul, padding: '4px 0', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={editando.base.indexOf(ref) >= 0} disabled={destino} onChange={() => alternarRef(ref)} />
+                  <input type="checkbox" checked={marcado(ref)} disabled={destino} onChange={() => alternarRef(ref)} />
                   <span>{item.conta} <span style={{ color: COR.texto2, fontSize: '12px' }}>· {item.codigo} · {item.grupo}</span></span>
                 </label>
               );
             })}
           </div>
 
-          {editando.base.length > 0 && (
+          {!ehFormula && editando.base.length > 0 && (
             <div style={{ fontSize: '12.5px', color: COR.texto2, marginBottom: '10px' }}>
               Base: {editando.base.map(ref => nomeDaReferencia(ref)).join(' + ')}
             </div>
@@ -361,8 +469,8 @@ const RegrasCalculoView: React.FC<IRegrasCalculoViewProps> = (props) => {
 
           {problemas.length === 0 && regraAtual.contaDestino && (
             <div style={{ fontSize: '13px', color: '#00707F', background: '#E0F7FA', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px' }}>
-              <strong>{regraAtual.contaDestinoNome}</strong> = {descreverRegra(regraAtual)}.
-              Exemplo: base de R$ 100.000,00 no mês → R$ {formatarValor(100000 * regraAtual.percentual / 100)}.
+              <strong>{regraAtual.contaDestinoNome}</strong> {ehFormula ? descreverRegra(regraAtual) : `= ${descreverRegra(regraAtual)}`}.
+              {!ehFormula && ` Exemplo: base de R$ 100.000,00 no mês → R$ ${formatarValor(100000 * regraAtual.percentual / 100)}.`}
             </div>
           )}
 

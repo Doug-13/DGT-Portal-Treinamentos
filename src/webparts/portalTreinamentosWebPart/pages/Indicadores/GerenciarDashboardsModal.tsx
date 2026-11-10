@@ -6,14 +6,29 @@ import {
   DashboardService,
   IDashboard,
   IDashboardEdicao,
-  PublicoDashboard
+  PublicoDashboard,
+  TipoDashboard
 } from '../../services/DashboardService';
+
+import {
+  validarDashboard
+} from '../../services/dashboards/dashboardModelo';
+
+import {
+  CATALOGO_DASHBOARD
+} from '../../services/dashboards/fontesDashboard';
+
+import {
+  EXEMPLOS_DASHBOARD
+} from '../../services/dashboards/exemplosDashboard';
 
 export interface IGerenciarDashboardsModalProps {
   service: DashboardService;
   dashboards: IDashboard[];
   onFechar: () => void;
   onAlterado: () => Promise<void>;
+  // Áreas (para "Áreas que veem" dos dashboards do portal).
+  areas?: Array<{ id: string; nome: string }>;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -51,7 +66,10 @@ const vazio = (ordem: number): IDashboardEdicao => ({
   ordem,
   altura: ALTURA_PADRAO,
   publico: 'Todos',
-  ativo: true
+  ativo: true,
+  tipo: 'Portal',
+  definicao: '',
+  areas: []
 });
 
 const GerenciarDashboardsModal: React.FC<IGerenciarDashboardsModalProps> = props => {
@@ -66,7 +84,36 @@ const GerenciarDashboardsModal: React.FC<IGerenciarDashboardsModalProps> = props
   const [erro, setErro] = React.useState('');
   const [previa, setPrevia] = React.useState(false);
 
-  const link = edicao ? analisarLink(edicao.url) : undefined;
+  const portal = !!edicao && edicao.tipo === 'Portal';
+  const link = edicao && !portal ? analisarLink(edicao.url) : undefined;
+  const validacao =
+    portal && edicao && edicao.definicao.trim()
+      ? validarDashboard(edicao.definicao, CATALOGO_DASHBOARD)
+      : undefined;
+
+  // Arquivo .json gerado pela skill "dashboard-dgt".
+  const lerArquivo = (arquivo: File): void => {
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      const conteudo = String(leitor.result || '');
+      setEdicao(atual => {
+        if (!atual) {
+          return atual;
+        }
+        let nome = atual.nome;
+        let descricao = atual.descricao;
+        try {
+          const lido = JSON.parse(conteudo);
+          nome = nome || String(lido.titulo || '');
+          descricao = descricao || String(lido.descricao || '');
+        } catch {
+          // A validação mostra o erro.
+        }
+        return { ...atual, definicao: conteudo, nome, descricao };
+      });
+    };
+    leitor.readAsText(arquivo, 'utf-8');
+  };
 
   const executar = async (acao: () => Promise<void>): Promise<void> => {
     setErro('');
@@ -150,6 +197,22 @@ const GerenciarDashboardsModal: React.FC<IGerenciarDashboardsModalProps> = props
               {edicao.id ? 'Editar dashboard' : 'Novo dashboard'}
             </strong>
 
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+              {([
+                ['Portal', 'Dashboard do portal (definição JSON da skill)'],
+                ['Link', 'Link (Power BI ou outro)']
+              ] as Array<[TipoDashboard, string]>).map(([tipo, rotulo]) => (
+                <button
+                  key={tipo}
+                  type="button"
+                  onClick={() => { alterar('tipo', tipo); setPrevia(false); }}
+                  style={{ ...botao, ...(edicao.tipo === tipo ? { background: '#e8f2ff', borderColor: '#1f4e96', color: '#1f4e96' } : {}) }}
+                >
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '12px' }}>
               <div>
                 <label style={{ fontSize: '13px' }}>Nome da aba *</label>
@@ -198,6 +261,76 @@ const GerenciarDashboardsModal: React.FC<IGerenciarDashboardsModalProps> = props
               </div>
             </div>
 
+            {portal && (
+              <div style={{ marginTop: '12px' }}>
+                <label style={{ fontSize: '13px' }}>Definição do dashboard (JSON gerado pela skill “dashboard-dgt”) *</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '5px', flexWrap: 'wrap' }}>
+                  <label style={{ ...botao, display: 'inline-block' }}>
+                    Carregar arquivo .json
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      style={{ display: 'none' }}
+                      onChange={e => { const arquivo = e.target.files && e.target.files[0]; if (arquivo) { lerArquivo(arquivo); } e.target.value = ''; }}
+                    />
+                  </label>
+                  {Object.keys(EXEMPLOS_DASHBOARD).map(nome => (
+                    <button
+                      key={nome}
+                      type="button"
+                      style={botao}
+                      onClick={() => setEdicao(atual => (atual ? {
+                        ...atual,
+                        definicao: JSON.stringify(EXEMPLOS_DASHBOARD[nome], undefined, 2),
+                        nome: atual.nome || EXEMPLOS_DASHBOARD[nome].titulo,
+                        descricao: atual.descricao || EXEMPLOS_DASHBOARD[nome].descricao || ''
+                      } : atual))}
+                    >
+                      Usar exemplo: {EXEMPLOS_DASHBOARD[nome].titulo}
+                    </button>
+                  ))}
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>ou cole o conteúdo abaixo</span>
+                </div>
+                <textarea
+                  rows={8}
+                  value={edicao.definicao}
+                  spellCheck={false}
+                  placeholder='{ "formato": "dgt-portal/dashboard@1", "titulo": "...", "secoes": [ ... ] }'
+                  onChange={e => alterar('definicao', e.target.value)}
+                  style={{ ...inputStyle, fontFamily: 'Consolas, monospace', fontSize: '12px', resize: 'vertical' }}
+                />
+                {validacao && (
+                  <div style={{ marginTop: '6px', fontSize: '12px', color: validacao.erros.length > 0 ? '#a4262c' : '#13795b', whiteSpace: 'pre-line' }}>
+                    {validacao.erros.length > 0
+                      ? `Definição com problemas:\n${validacao.erros.map(item => `• ${item}`).join('\n')}`
+                      : `✓ Definição válida: ${(validacao.definicao ? validacao.definicao.secoes : []).length} seção(ões), ${(validacao.definicao ? validacao.definicao.secoes : []).reduce((total, secao) => total + secao.itens.length, 0)} item(ns).`}
+                    {validacao.avisos.length > 0 && <div style={{ color: '#7a5600' }}>{validacao.avisos.map(item => `• ${item}`).join('\n')}</div>}
+                  </div>
+                )}
+
+                <label style={{ fontSize: '13px', display: 'block', marginTop: '12px' }}>Áreas que veem (nenhuma marcada = todas)</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '6px', marginTop: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                  {(props.areas || []).map(area => {
+                    const marcada = edicao.areas.indexOf(area.id) >= 0;
+                    return (
+                      <label key={area.id} style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12.5px' }}>
+                        <input
+                          type="checkbox"
+                          checked={marcada}
+                          onChange={() => alterar('areas', marcada ? edicao.areas.filter(id => id !== area.id) : edicao.areas.concat([area.id]))}
+                        />
+                        {area.nome}
+                      </label>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+                  Cada pessoa vê os dados só das áreas a que tem acesso (o Administrador vê todas).
+                </div>
+              </div>
+            )}
+
+            {!portal && (
             <div style={{ marginTop: '12px' }}>
               <label style={{ fontSize: '13px' }}>Link do dashboard *</label>
               <input
@@ -225,6 +358,7 @@ const GerenciarDashboardsModal: React.FC<IGerenciarDashboardsModalProps> = props
                 </div>
               )}
             </div>
+            )}
 
             <div style={{ marginTop: '12px' }}>
               <label style={{ fontSize: '13px' }}>Descrição (opcional)</label>

@@ -6,6 +6,7 @@ import {
 } from '../../services/orcamento/OrcamentoService';
 
 import {
+  CENARIO_EXECUTADO,
   CENARIO_ORCADO,
   NOMES_MESES,
   StatusPlanilha
@@ -14,12 +15,14 @@ import {
 import {
   CONTAS_MAE,
   GRUPOS_ORCAMENTO,
-  PLANO_CONTAS
+  PLANO_CONTAS,
+  termoExibido
 } from '../../services/orcamento/planoContasOrcamento';
 
 import {
   ITENS_DRE,
   calcularDre,
+  sinalDaConta,
   totalAnualDre,
   valoresComSinal
 } from '../../services/orcamento/dreOrcamento';
@@ -377,7 +380,7 @@ export const gerarCsvOrcamento = (
   const dre = calcularDre(linhas);
 
   const exportarGrupo = (grupo: { grupo: string; totais: number[]; contas: IContaSomada[] }): void => {
-    saida.push(linhaCsv(grupo.grupo, '', 'TOTAL', grupo.totais));
+    saida.push(linhaCsv(termoExibido(grupo.grupo), '', 'TOTAL', grupo.totais));
     const paisExportados: string[] = [];
     grupo.contas.forEach(conta => {
       if (conta.pai && paisExportados.indexOf(conta.pai) < 0) {
@@ -386,10 +389,10 @@ export const gerarCsvOrcamento = (
         grupo.contas
           .filter(item => item.pai === conta.pai)
           .forEach(item => item.valores.forEach((valor, mes) => { soma[mes] = arredondar(soma[mes] + valor); }));
-        saida.push(linhaCsv(grupo.grupo, conta.pai, CONTAS_MAE[conta.pai] || conta.pai, soma));
+        saida.push(linhaCsv(termoExibido(grupo.grupo), conta.pai, CONTAS_MAE[conta.pai] || conta.pai, soma));
       }
       if (conta.codigo !== conta.pai) {
-        saida.push(linhaCsv(grupo.grupo, conta.codigo, conta.conta, conta.valores));
+        saida.push(linhaCsv(termoExibido(grupo.grupo), conta.codigo, conta.conta, conta.valores));
       }
     });
   };
@@ -403,7 +406,7 @@ export const gerarCsvOrcamento = (
       return;
     }
     saida.push(linhaCsv(
-      item.nome,
+      termoExibido(item.id, item.nome),
       '',
       item.tipo === 'percentual' ? '%' : 'RESULTADO',
       dre[item.id] || [],
@@ -416,7 +419,167 @@ export const gerarCsvOrcamento = (
     .filter(grupo => !ITENS_DRE.some(item => item.tipo === 'grupo' && item.id === grupo.grupo))
     .forEach(exportarGrupo);
 
+  // Executado (realizado), quando houver: uma linha por conta.
+  linhas
+    .filter(linha => (linha.executado || []).some(valor => !!valor))
+    .forEach(linha => {
+      const sinal = sinalDaConta(linha.codigo);
+      const valores = (linha.executado || []).map(valor => arredondar((valor || 0) * sinal));
+      saida.push(
+        [CENARIO_EXECUTADO, termoExibido(linha.grupo), linha.codigo, linha.conta].map(textoCsv)
+          .concat(valores.map(numeroCsv))
+          .concat([numeroCsv(somar(valores))])
+          .join(';')
+      );
+    });
+
   return saida.join('\r\n');
+};
+
+// ------------------------------------------------------------
+// EXECUTADO — modelo e importação por CSV
+//
+// Mesmo layout do "Exportar CSV": Cenário;Linha;Código;Conta;Jan…Dez;
+// Total. Valores como aparecem na tela (receitas positivas, deduções,
+// custos e despesas negativos). Linhas sem código (TOTAL, resultados)
+// e as contas mãe (soma dos subitens) são ignoradas. Do Excel: Salvar
+// como → "CSV (separado por ponto e vírgula)".
+// ------------------------------------------------------------
+
+export const gerarModeloExecutadoCsv = (
+  ano: number,
+  linhas: ILinhaOrcamento[]
+): string => {
+  const cabecalho =
+    ['Cenário', 'Linha', 'Código', 'Conta']
+      .concat(NOMES_MESES.map(mes => `${mes}/${ano}`))
+      .concat(['Total']);
+  const saida: string[] = [cabecalho.join(';')];
+  linhas
+    .filter(linha => !CONTAS_MAE[linha.codigo])
+    .forEach(linha => {
+      const sinal = sinalDaConta(linha.codigo);
+      const valores = (linha.executado || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).map(valor => arredondar((valor || 0) * sinal));
+      saida.push(
+        [CENARIO_EXECUTADO, termoExibido(linha.grupo), linha.codigo, linha.conta].map(textoCsv)
+          .concat(valores.map(numeroCsv))
+          .concat([numeroCsv(somar(valores))])
+          .join(';')
+      );
+    });
+  return saida.join('\r\n');
+};
+
+export interface IImportacaoExecutado {
+  // chave da linha → executado (12 meses, como gravado).
+  valores: { [chave: string]: number[] };
+  contasLidas: number;
+  // Códigos do arquivo que não existem na planilha.
+  naoEncontradas: string[];
+  // Linhas ignoradas por valor inválido.
+  invalidas: string[];
+}
+
+// "-R$ 1.234,56" / "1234.56" / "(1.234,56)" → número.
+const lerNumeroCsv = (texto: string): number | undefined => {
+  let limpo = (texto || '').replace(/R\$|\s|"/g, '');
+  if (!limpo || limpo === '-') {
+    return 0;
+  }
+  let negativo = false;
+  if (/^\(.*\)$/.test(limpo)) {
+    negativo = true;
+    limpo = limpo.slice(1, -1);
+  }
+  if (limpo.indexOf(',') >= 0) {
+    limpo = limpo.replace(/\./g, '').replace(',', '.');
+  }
+  const valor = Number(limpo);
+  if (!isFinite(valor)) {
+    return undefined;
+  }
+  return negativo ? -valor : valor;
+};
+
+const dividirCsv = (linha: string, separador: string): string[] => {
+  const campos: string[] = [];
+  let atual = '';
+  let aspas = false;
+  for (let i = 0; i < linha.length; i++) {
+    const c = linha[i];
+    if (c === '"') {
+      if (aspas && linha[i + 1] === '"') {
+        atual += '"';
+        i++;
+      } else {
+        aspas = !aspas;
+      }
+    } else if (c === separador && !aspas) {
+      campos.push(atual);
+      atual = '';
+    } else {
+      atual += c;
+    }
+  }
+  campos.push(atual);
+  return campos.map(campo => campo.trim());
+};
+
+const semAcento = (texto: string): string =>
+  (texto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+export const lerExecutadoCsv = (
+  conteudo: string,
+  linhas: ILinhaOrcamento[]
+): IImportacaoExecutado => {
+
+  const registros = (conteudo || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter(linha => linha.trim() !== '');
+  if (registros.length < 2) {
+    throw new Error('O arquivo está vazio.');
+  }
+
+  const separador = registros[0].split(';').length >= registros[0].split(',').length ? ';' : ',';
+  const cabecalho = dividirCsv(registros[0], separador).map(semAcento);
+  const colCodigo = cabecalho.findIndex(nome => nome === 'codigo');
+  const colLinha = cabecalho.findIndex(nome => nome === 'linha' || nome === 'grupo');
+  const prefixos = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const colMeses = prefixos.map(prefixo => cabecalho.findIndex(nome => nome.indexOf(prefixo) === 0));
+
+  if (colCodigo < 0 || colMeses.some(indice => indice < 0)) {
+    throw new Error('Cabeçalho não reconhecido. Use o modelo: Cenário;Linha;Código;Conta;Jan/AAAA…Dez/AAAA;Total.');
+  }
+
+  const resultado: IImportacaoExecutado = { valores: {}, contasLidas: 0, naoEncontradas: [], invalidas: [] };
+
+  registros.slice(1).forEach((texto, indice) => {
+    const campos = dividirCsv(texto, separador);
+    const codigo = campos[colCodigo] || '';
+    if (!codigo || CONTAS_MAE[codigo]) {
+      return;
+    }
+    const grupo = colLinha >= 0 ? campos[colLinha] : '';
+    const candidatas = linhas.filter(linha => linha.codigo === codigo);
+    const linha =
+      candidatas.filter(item => !!grupo && (item.grupo === grupo || termoExibido(item.grupo) === grupo))[0] ||
+      (candidatas.length === 1 ? candidatas[0] : undefined);
+    if (!linha) {
+      if (resultado.naoEncontradas.indexOf(codigo) < 0) {
+        resultado.naoEncontradas.push(codigo);
+      }
+      return;
+    }
+    const numeros = colMeses.map(coluna => lerNumeroCsv(campos[coluna]));
+    if (numeros.some(numero => numero === undefined)) {
+      resultado.invalidas.push(`linha ${indice + 2} (${codigo})`);
+      return;
+    }
+    // Arquivo com sinal da tela → valor gravado (positivo nas deduções).
+    const sinal = sinalDaConta(codigo);
+    resultado.valores[linha.chave] = (numeros as number[]).map(numero => arredondar(numero * sinal));
+    resultado.contasLidas++;
+  });
+
+  return resultado;
 };
 
 // Baixa o CSV no navegador (UTF-8 com BOM para o Excel abrir os acentos).

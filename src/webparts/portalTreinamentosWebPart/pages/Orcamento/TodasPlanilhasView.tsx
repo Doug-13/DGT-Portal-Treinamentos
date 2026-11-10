@@ -44,6 +44,7 @@ import ConsolidadoMensal from './ConsolidadoMensal';
 import PainelFluxoOrcamento from './PainelFluxoOrcamento';
 import EtapasFluxoOrcamento from './EtapasFluxoOrcamento';
 
+
 import {
   COR,
   CaixaMensagem,
@@ -62,6 +63,8 @@ import {
   formatarDataHora,
   formatarMoeda,
   gerarCsvOrcamento,
+  gerarModeloExecutadoCsv,
+  lerExecutadoCsv,
   nomeArquivoSeguro,
   somar,
   somarComSinal
@@ -96,6 +99,11 @@ export interface ITodasPlanilhasViewProps {
   // Administrador da área: só as planilhas destas áreas (undefined =
   // todas, Administrador global).
   areasPermitidas?: string[];
+  // Controladoria / Administrador: lança e importa o Executado.
+  podeEditarExecutado?: boolean;
+  // Abrir esta planilha ao carregar (vindo de Contas por área).
+  abrirPlanilhaId?: string;
+  onPlanilhaAberta?: () => void;
 }
 
 type Visao = 'lista' | 'planilha' | 'consolidado';
@@ -128,6 +136,16 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
   const [enviandoDevolucao, setEnviandoDevolucao] = React.useState(false);
   const [erroDevolucao, setErroDevolucao] = React.useState('');
 
+  // Executado (realizado) da planilha aberta.
+  const [mostrarExecutado, setMostrarExecutado] = React.useState(false);
+  const [executadoEditado, setExecutadoEditado] = React.useState<{ [chave: string]: number[] }>({});
+  const [salvandoExecutado, setSalvandoExecutado] = React.useState('');
+  const arquivoExecutado = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    setExecutadoEditado({});
+  }, [abertaId]);
+
   const carregar = React.useCallback(async (): Promise<void> => {
     setCarregando(true);
     setErro('');
@@ -151,6 +169,13 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
     setAbertaId('');
     carregar().catch(() => undefined);
   }, [carregar]);
+
+  // Vindo de "Contas por área → Iniciar planilha": abre a planilha
+  // criada (para definir os responsáveis).
+  const abrirAoCarregar = React.useRef(props.abrirPlanilhaId || '');
+  React.useEffect(() => {
+    abrirAoCarregar.current = props.abrirPlanilhaId || '';
+  }, [props.abrirPlanilhaId]);
 
   const carregarDetalhes = async (planilhaId: string): Promise<void> => {
     setEstadoFluxo(undefined);
@@ -194,6 +219,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
     }
   };
 
+
   const abrirPlanilha = (id: string): void => {
     setAbertaId(id);
     setVisao('planilha');
@@ -203,6 +229,19 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
     setAlteracoes([]);
     carregarDetalhes(id).catch(() => undefined);
   };
+
+  React.useEffect(() => {
+    const id = abrirAoCarregar.current;
+    if (id && !carregando && planilhas.some(item => item.id === id)) {
+      abrirAoCarregar.current = '';
+      abrirPlanilha(id);
+      if (props.onPlanilhaAberta) {
+        props.onPlanilhaAberta();
+      }
+    }
+  // abrirPlanilha só usa estados estáveis.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carregando, planilhas]);
 
   const voltarLista = (): void => {
     setVisao('lista');
@@ -371,11 +410,105 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
 
   if (visao === 'planilha' && aberta) {
 
-    // Só as linhas preenchidas (valor ou descrição).
+    // Todas as linhas da planilha, com o executado ainda não salvo.
+    const todasDaAberta =
+      linhas
+        .filter(linha => linha.planilhaId === aberta.id)
+        .map(linha => (executadoEditado[linha.chave] ? { ...linha, executado: executadoEditado[linha.chave] } : linha));
+
+    // Só as linhas preenchidas (valor, descrição ou executado). Com o
+    // executado em edição, todas (para poder lançar em qualquer conta).
+    const editandoExecutado = mostrarExecutado && !!props.podeEditarExecutado;
     const linhasDaAberta =
-      linhas.filter(linha =>
-        linha.planilhaId === aberta.id &&
-        (totalLinha(linha) !== 0 || !!linha.descricao));
+      editandoExecutado
+        ? todasDaAberta
+        : todasDaAberta.filter(linha =>
+          totalLinha(linha) !== 0 || !!linha.descricao || (linha.executado || []).some(valor => !!valor));
+
+    const qtdExecutadoAlterado = Object.keys(executadoEditado).length;
+
+    const alterarExecutado = (chave: string, mes: number, valor: number): void => {
+      const linha = todasDaAberta.filter(item => item.chave === chave)[0];
+      const atual = (linha && linha.executado ? linha.executado : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).slice();
+      atual[mes] = valor;
+      setExecutadoEditado(mapa => ({ ...mapa, [chave]: atual }));
+    };
+
+    const colarExecutado = (chave: string, mesInicial: number, valores: number[]): void => {
+      const linha = todasDaAberta.filter(item => item.chave === chave)[0];
+      const atual = (linha && linha.executado ? linha.executado : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).slice();
+      valores.forEach((valor, indice) => {
+        if (mesInicial + indice < 12) {
+          atual[mesInicial + indice] = valor;
+        }
+      });
+      setExecutadoEditado(mapa => ({ ...mapa, [chave]: atual }));
+    };
+
+    const salvarExecutado = async (): Promise<void> => {
+      const alteradas = todasDaAberta.filter(linha => !!executadoEditado[linha.chave]);
+      const anteriores: { [chave: string]: number[] | undefined } = {};
+      linhas.forEach(linha => { anteriores[linha.chave] = linha.executado; });
+      setSalvandoExecutado('Salvando o executado...');
+      setErro('');
+      try {
+        const resultado =
+          await servico.salvarExecutado(
+            aberta,
+            alteradas,
+            anteriores,
+            contexto.nome,
+            (feitas, total) => setSalvandoExecutado(`Salvando o executado (${feitas} de ${total})...`)
+          );
+        await carregar();
+        await carregarDetalhes(aberta.id);
+        setExecutadoEditado({});
+        if (resultado.falhas.length > 0) {
+          setErro(`Algumas contas não foram gravadas:\n${resultado.falhas.join('\n')}`);
+        } else {
+          setAviso(`✓ Executado salvo (${resultado.gravadas} conta(s)) e registrado no log.`);
+        }
+        if (resultado.avisos.length > 0) {
+          setAlerta(resultado.avisos.join('\n'));
+        }
+      } catch (falha) {
+        setErro(explicarErro(falha));
+      } finally {
+        setSalvandoExecutado('');
+      }
+    };
+
+    const importarExecutado = (arquivo: File): void => {
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        const conteudo = String(leitor.result || '');
+        // Arquivo do Excel em ANSI: relê como Windows-1252.
+        if (conteudo.indexOf('\uFFFD') >= 0 && !(leitor as unknown as { releitura?: boolean }).releitura) {
+          (leitor as unknown as { releitura?: boolean }).releitura = true;
+          leitor.readAsText(arquivo, 'windows-1252');
+          return;
+        }
+        try {
+          const importacao = lerExecutadoCsv(conteudo, todasDaAberta);
+          setExecutadoEditado(mapa => ({ ...mapa, ...importacao.valores }));
+          setMostrarExecutado(true);
+          setAviso(
+            `Arquivo lido: ${importacao.contasLidas} conta(s) com executado. Confira na tabela e clique em "Salvar executado".`
+          );
+          const problemas: string[] = [];
+          if (importacao.naoEncontradas.length > 0) {
+            problemas.push(`Códigos que não existem nesta planilha (ignorados): ${importacao.naoEncontradas.slice(0, 15).join(', ')}${importacao.naoEncontradas.length > 15 ? '…' : ''}`);
+          }
+          if (importacao.invalidas.length > 0) {
+            problemas.push(`Linhas com valor inválido (ignoradas): ${importacao.invalidas.slice(0, 10).join(', ')}`);
+          }
+          setAlerta(problemas.join('\n'));
+        } catch (falha) {
+          setErro(explicarErro(falha));
+        }
+      };
+      leitor.readAsText(arquivo, 'utf-8');
+    };
 
     // Linhas alteradas pelo gestor depois da última devolução.
     const destacadas: { [chave: string]: string } = {};
@@ -471,10 +604,84 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
           />
         )}
 
+        {/* Executado (realizado) */}
+        <div style={{ ...cartao, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', background: '#FAF8FF', borderColor: '#DDD6FE' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 700, color: '#5B21B6', cursor: 'pointer' }}>
+            <input type="checkbox" checked={mostrarExecutado} onChange={evento => setMostrarExecutado(evento.target.checked)} />
+            Mostrar executado (realizado)
+          </label>
+          <span style={{ flex: 1, minWidth: '200px', fontSize: '12px', color: COR.texto2 }}>
+            {props.podeEditarExecutado
+              ? 'Digite o executado nas colunas "Exec." ou importe um CSV (mesmo layout do Exportar CSV). Pode ser lançado a qualquer momento; o orçado não muda.'
+              : 'O executado é lançado pela Controladoria.'}
+          </span>
+          {props.podeEditarExecutado && (
+            <>
+              <button
+                type="button"
+                onClick={() => baixarCsv(
+                  `${nomeArquivoSeguro(`Executado_${ano}_${aberta.areaNome || 'Geral'}`)}.csv`,
+                  gerarModeloExecutadoCsv(ano, todasDaAberta)
+                )}
+                style={botao('secundario')}
+                title="CSV com todas as contas da planilha e o executado atual, para preencher e importar"
+              >
+                Baixar modelo
+              </button>
+              <button type="button" onClick={() => { if (arquivoExecutado.current) { arquivoExecutado.current.click(); } }} style={botao('secundario')}>
+                Importar CSV
+              </button>
+              <input
+                ref={arquivoExecutado}
+                type="file"
+                accept=".csv,text/csv"
+                style={{ display: 'none' }}
+                onChange={evento => {
+                  const arquivo = evento.target.files && evento.target.files[0];
+                  if (arquivo) {
+                    importarExecutado(arquivo);
+                  }
+                  evento.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setExecutadoEditado({})}
+                disabled={qtdExecutadoAlterado === 0 || !!salvandoExecutado}
+                style={botao('secundario', qtdExecutadoAlterado === 0 || !!salvandoExecutado)}
+              >
+                Descartar
+              </button>
+              <button
+                type="button"
+                onClick={() => { salvarExecutado().catch(() => undefined); }}
+                disabled={qtdExecutadoAlterado === 0 || !!salvandoExecutado}
+                style={botao('principal', qtdExecutadoAlterado === 0 || !!salvandoExecutado)}
+              >
+                {salvandoExecutado || `Salvar executado${qtdExecutadoAlterado > 0 ? ` (${qtdExecutadoAlterado})` : ''}`}
+              </button>
+            </>
+          )}
+        </div>
+
         {linhasDaAberta.length === 0 ? (
           <div style={{ ...cartao, textAlign: 'center', color: COR.texto2 }}>Esta planilha ainda não tem valores preenchidos.</div>
         ) : (
-          <TabelaOrcamento linhas={linhasDaAberta} ano={ano} somenteLeitura={true} calculadas={calculadas} destacadas={destacadas} />
+          <TabelaOrcamento
+            linhas={linhasDaAberta}
+            linhasTotais={todasDaAberta}
+            ano={ano}
+            somenteLeitura={true}
+            calculadas={calculadas}
+            destacadas={destacadas}
+            chavesAlteradas={Object.keys(executadoEditado)}
+            executado={{
+              mostrar: mostrarExecutado,
+              editavel: editandoExecutado,
+              onAlterar: alterarExecutado,
+              onColar: colarExecutado
+            }}
+          />
         )}
 
         {estadoFluxo && (
@@ -632,6 +839,7 @@ const TodasPlanilhasView: React.FC<ITodasPlanilhasViewProps> = (props) => {
           <IconeOlho /> Consolidado mês a mês
         </button>
       </div>
+
 
       <div style={{ ...cartao, padding: 0, overflowX: 'auto' }}>
         {visiveis.length === 0 ? (

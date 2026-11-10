@@ -1,4 +1,10 @@
 import {
+  IAnaliseServidor,
+  IServidorSelecao,
+  analisarServidor
+} from './servidores';
+
+import {
   CAMERAS_BASE_DIGIFORT,
   CAMERAS_OCR,
   CAMERAS_VIDEO,
@@ -49,6 +55,9 @@ import {
 // kit antes de gravar. Sem isto, vale COMPOSICAO_KITS.
 export interface IOpcoesMontagem {
   composicoes?: Record<string, IComponenteKit[]>;
+  // Meses do contrato (tipo de projeto "Locação N meses"): define o
+  // Care Plus do Milestone.
+  prazoContratoMeses?: number;
 }
 
 export type TipoPonto =
@@ -120,7 +129,9 @@ export interface IPontoKit {
   catracasPne: number;
 }
 
-export type VmsBom = 'safeCity' | 'digifort';
+// Safe City = nuvem (sem servidor). Digifort e Milestone = VMS
+// on-premise, com servidor escolhido no memorial (servidores.ts).
+export type VmsBom = 'safeCity' | 'digifort' | 'milestone';
 
 export interface ISoftwaresKit {
   vms: VmsBom;
@@ -138,6 +149,8 @@ export interface ISelecaoKit {
   versao: 1;
   pontos: IPontoKit[];
   softwares: ISoftwaresKit;
+  // Servidor da central (item do projeto inteiro).
+  servidor?: IServidorSelecao;
   atualizadoEm?: string;
   atualizadoPor?: string;
 }
@@ -153,7 +166,8 @@ export interface IItemBom {
 }
 
 export interface IAlertaBom {
-  nivel: 'erro' | 'aviso';
+  // info = informação (azul), não impede nada.
+  nivel: 'erro' | 'aviso' | 'info';
   origem: string;
   mensagem: string;
 }
@@ -167,7 +181,9 @@ export interface IResultadoBom {
     camerasVideo: number;
     camerasOcr: number;
     leitoras: number;
+    porteiros: number;
   };
+  servidor: IAnaliseServidor;
 }
 
 // ------------------------------------------------------------
@@ -712,14 +728,60 @@ export const montarBom = (
     }
   });
 
+  // ---- porteiros (consomem canal de VMS como uma câmera)
+  const codigoPorteiro = (ITENS.porteiroHikvision || { codigo: '5500010274' }).codigo;
+  const porteiros = porPonto.reduce((soma, grupo) =>
+    soma + grupo.itens.filter(i => i.codigo === codigoPorteiro).reduce((t, i) => t + i.quantidade, 0), 0);
+
+  // ---- servidor da central (servidores.ts)
+  const usaWAccess = selecao.pontos.some(p => !ehBridgefy(p.tipo) && p.usaWAccess);
+  const servidor = analisarServidor(selecao.servidor, {
+    vms: softwares.vms,
+    ipx: softwares.ipx,
+    usaWAccess,
+    v: camerasVideo,
+    p: porteiros,
+    l: camerasOcr,
+    prazoContratoMeses: opcoes && opcoes.prazoContratoMeses
+  });
+
+  servidor.alertas.forEach(x => alertas.push({
+    nivel: x.nivel === 'bloqueio' ? 'erro' : x.nivel === 'aviso' ? 'aviso' : 'info',
+    origem: 'Servidor da central',
+    mensagem: x.texto
+  }));
+
+  if (servidor.local === 'onPremise' && servidor.baseGravacao > 0 && !servidor.definido && !(selecao.servidor && selecao.servidor.orcamentoManual)) {
+    alertas.push({ nivel: 'aviso', origem: 'Servidor da central', mensagem: 'Servidor ainda não definido: escolha a faixa no painel "Servidor da central" (ou use o orçamento manual).' });
+  }
+
   // ---- softwares do projeto
   const projeto = new Lista('Softwares do projeto');
+  const central = new Lista('Servidor da central');
 
-  if (softwares.vms === 'digifort' && camerasVideo > 0) {
-    if (!(inteiro(softwares.digifortServidores) > 0)) {
+  servidor.itens.forEach(item => {
+    if (item.chave) {
+      projeto.adicionar(item.chave, item.quantidade);
+    } else {
+      central.livre(item.codigo, item.descricao, /^Servidor/.test(item.descricao) ? 'Equipamento' : /Care Plus/.test(item.descricao) ? 'Licença' : 'Infraestrutura', item.quantidade);
+    }
+  });
+
+  // Digifort: 1 licença base por servidor de gravação (do seletor) e
+  // packs pela necessidade real (câmeras de vídeo + porteiros).
+  const canaisDigifort = camerasVideo + porteiros;
+  if (softwares.vms === 'digifort' && canaisDigifort > 0) {
+    const doSeletor = servidor.conjuntos
+      .filter(c => c.papel !== 'analitico' && c.linha && !c.pendente)
+      .reduce((t, c) => t + (c.linha ? c.linha.qtdServidores : 0), 0);
+    const servidoresDigifort =
+      selecao.servidor && selecao.servidor.orcamentoManual ? servidor.servidoresTotal
+        : doSeletor > 0 ? doSeletor
+          : inteiro(softwares.digifortServidores);
+    if (!(servidoresDigifort > 0)) {
       alertas.push({ nivel: 'erro', origem: 'Digifort', mensagem: 'Informe o número de servidores: cada servidor exige a própria base de 8 câmeras.' });
     }
-    packsDigifort(camerasVideo, softwares.digifortServidores).forEach(p => projeto.adicionar(p.chave, p.quantidade));
+    packsDigifort(canaisDigifort, servidoresDigifort).forEach(p => projeto.adicionar(p.chave, p.quantidade));
   }
 
   if (softwares.ipx) {
@@ -759,6 +821,10 @@ export const montarBom = (
     porPonto.push({ ponto: { ...novoPonto('torre', 0), id: 'softwares', nome: 'Softwares do projeto', quantidade: 1 }, itens: projeto.itens });
   }
 
+  if (central.itens.length > 0) {
+    porPonto.push({ ponto: { ...novoPonto('torre', 0), id: 'servidor', nome: 'Servidor da central', quantidade: 1 }, itens: central.itens });
+  }
+
   // ---- consolidação (mesmo código + descrição)
   const consolidado: IItemBom[] = [];
 
@@ -789,7 +855,8 @@ export const montarBom = (
     itens: consolidado,
     porPonto,
     alertas,
-    totais: { pontos, camerasVideo, camerasOcr, leitoras }
+    totais: { pontos, camerasVideo, camerasOcr, leitoras, porteiros },
+    servidor
   };
 };
 

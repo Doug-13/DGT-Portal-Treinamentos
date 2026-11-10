@@ -3425,6 +3425,10 @@ const PortalRouter:
               !!props.contextoAcesso?.podeGerenciarDashboards
             }
 
+            contexto={
+              props.contextoAcesso
+            }
+
             onVoltar={() =>
               props.navegar(
                 'inicio'
