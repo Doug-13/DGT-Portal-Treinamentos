@@ -80,6 +80,8 @@ export interface IFormCondicaoLigacaoProps {
   onAlterar: (parcial: Partial<IConfigTransicao>) => void;
   editavel: boolean;
   tipoOrigem?: TipoElementoFluxo;
+  // Tipo do elemento de destino (para avisar etapa → decisão).
+  tipoDestino?: TipoElementoFluxo;
   resultadosDisponiveis: IResultadoDisponivel[];
   metadados: IFluxoMetadado[];
   prefixoId: string;
@@ -90,6 +92,7 @@ export const FormCondicaoLigacao: React.FC<IFormCondicaoLigacaoProps> = ({
   onAlterar,
   editavel,
   tipoOrigem,
+  tipoDestino,
   resultadosDisponiveis,
   metadados,
   prefixoId
@@ -124,11 +127,35 @@ export const FormCondicaoLigacao: React.FC<IFormCondicaoLigacaoProps> = ({
         {
           tipoOrigem === 'tarefaHumana' && config.tipoCondicao === 'sempre' && (
             <div style={{ fontSize: '12px', marginTop: '4px' }}>
-              Qualquer botão da etapa segue por aqui. Para separar os botões, escolha “O botão clicado for”.
+              {tipoDestino === 'gateway'
+                ? 'Qualquer botão da etapa segue para a decisão — os botões são separados nos caminhos da decisão. (Correto.)'
+                : 'Qualquer botão da etapa segue por aqui. Para separar os botões, escolha “O botão clicado for”.'}
             </div>
           )
         }
       </div>
+
+      {
+        // Armadilha comum: botão na ligação ETAPA → DECISÃO barra os
+        // outros botões (eles nunca chegam à decisão).
+        tipoOrigem === 'tarefaHumana' && tipoDestino === 'gateway' && config.tipoCondicao === 'resultado' && (
+          <div style={{ fontSize: '12.5px', lineHeight: '18px', padding: '8px 10px', borderRadius: '6px', background: '#FFFAEB', color: '#B54708' }}>
+            <strong>Atenção:</strong> esta ligação vai para uma <strong>decisão</strong>. Com um botão aqui, os outros botões da etapa
+            não chegam à decisão. Deixe “Qualquer botão” e separe os botões nos caminhos da decisão.
+            {editavel && (
+              <div style={{ marginTop: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => onAlterar({ tipoCondicao: 'sempre', resultado: '' })}
+                  style={{ border: '1px solid #B54708', background: '#FFFFFF', color: '#B54708', borderRadius: '6px', padding: '4px 10px', fontWeight: 700, fontSize: '12px', cursor: 'pointer' }}
+                >
+                  Usar “Qualquer botão”
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      }
 
       {
         config.tipoCondicao === 'resultado' && (
@@ -489,6 +516,7 @@ const CaminhosSaida: React.FC<ICaminhosSaidaProps> = ({
                   onAlterar={alterar}
                   editavel={editavel}
                   tipoOrigem={tipoOrigem}
+                  tipoDestino={saida.destinoTipo}
                   resultadosDisponiveis={resultadosDisponiveis}
                   metadados={metadados}
                   prefixoId={`saida-${saida.id}`}

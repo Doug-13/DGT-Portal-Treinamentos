@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Correção: ligação etapa → decisão com botão (que impedia os outros botões, ex.: Devolver, de chegarem à decisão) — mensagem aponta a ligação exata, botão "Corrigir automaticamente" no editor, aviso na aba Caminhos e correção automática na importação JSON.
 - Novo: estrutura para dashboards no próprio portal, com visualização e componentes de gráficos, acompanhada de documentação em docs/dashboards/.
 - Novo: cadastro de servidores no módulo de Kits, com serviço de dados e script scripts/dataverse/criar-tabelas-servidores.ps1.
 - Novo: painel de servidor central na Arquitetura de Soluções.

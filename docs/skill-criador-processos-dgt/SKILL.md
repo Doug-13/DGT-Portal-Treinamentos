@@ -46,6 +46,9 @@ Se o usuário já deu as informações, não pergunte de novo: assuma o razoáve
   com valores que o usuário informou — nunca invente siglas ou e-mails.
 - Toda etapa com mais de um botão: dê um `resultado` diferente a cada botão e crie um caminho
   (`quando.resultado`) para cada um. Devoluções levam `"excecao": true`.
+- **Etapa → decisão: SEM `quando`.** A ligação da etapa para uma decisão é sempre "qualquer botão";
+  quem separa os botões são os caminhos que SAEM da decisão. (Um `quando.resultado` nessa ligação
+  impede os outros botões de chegarem à decisão — o portal corrige e avisa, mas evite.)
 - Decisão (`gateway`): um caminho por condição + **um** caminho `"padrao": true`.
   Condição por campo só com `simNao`, `lista`, `texto`, `numero` ou `data`.
 - Não informe `posicao` nem `pontos`: o portal desenha sozinho.
@@ -74,7 +77,7 @@ Se o usuário já deu as informações, não pergunte de novo: assuma o razoáve
 - [ ] Todo `de`/`para` existe em `elementos`; todo campo de etapa existe em `metadados`.
 - [ ] `lista` tem `opcoes`; `tabela` tem `colunas`.
 - [ ] Nenhuma etapa sem `responsaveis`; nenhuma etapa com dois botões de mesmo `resultado`.
-- [ ] Decisões com ≥ 2 caminhos e no máximo um `padrao`.
+- [ ] Decisões com ≥ 2 caminhos e no máximo um `padrao`; ligação etapa → decisão sem `quando`.
 - [ ] Ambiente só em processo de solicitação (não de documento).
 
 ## 4. Entregar

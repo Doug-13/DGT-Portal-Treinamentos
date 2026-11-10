@@ -1,4 +1,9 @@
 import {
+  ligacoesQueBarramBotoes,
+  mensagemLigacaoQueBarra
+} from './correcoesFluxo';
+
+import {
   validarConfigComponente
 } from './valorComponente';
 
@@ -499,9 +504,17 @@ export const validarDefinicao = (
               saidas.length > 0 &&
               !rotaExiste(definicao, item.id, acao.resultado, [])
             ) {
-              erros.push(
-                `A ação "${acao.rotulo}" da etapa "${item.nome}" não leva a lugar nenhum: crie uma ligação para o resultado "${acao.resultado}".`
-              );
+              // Caso comum: a ligação etapa → decisão barra o botão.
+              const barrando =
+                ligacoesQueBarramBotoes(definicao)
+                  .find(ligacao => ligacao.etapaId === item.id && ligacao.botoesBarrados.indexOf(acao.rotulo) >= 0);
+              const mensagem =
+                barrando
+                  ? mensagemLigacaoQueBarra(barrando)
+                  : `A ação "${acao.rotulo}" da etapa "${item.nome}" não leva a lugar nenhum: crie uma ligação para o resultado "${acao.resultado}".`;
+              if (erros.indexOf(mensagem) < 0) {
+                erros.push(mensagem);
+              }
             }
           }
         );

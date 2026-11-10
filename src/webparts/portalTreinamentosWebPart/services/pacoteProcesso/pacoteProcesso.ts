@@ -24,6 +24,10 @@ import {
 } from '../../components/common/Icones';
 
 import {
+  corrigirLigacoesParaDecisao
+} from '../fluxo/correcoesFluxo';
+
+import {
   validarConfigAvaliacao
 } from '../fluxo/valorAvaliacao';
 
@@ -780,6 +784,19 @@ export const interpretarPacote = (
       transicoes,
       metadados
     };
+  }
+
+  // Armadilha comum (inclusive em JSON gerado por IA): botão na ligação
+  // etapa → decisão. Corrige para "Qualquer botão" e avisa.
+  if (definicao) {
+    const correcao = corrigirLigacoesParaDecisao(definicao);
+    if (correcao.corrigidas.length > 0) {
+      definicao = correcao.definicao;
+      correcao.corrigidas.forEach(item => avisos.push(
+        `Ligação "${item.etapaNome} → ${item.decisaoNome}" ajustada para "Qualquer botão": com o botão "${item.botaoPermitido}" nela, ` +
+        `"${item.botoesBarrados.join('", "')}" não chegaria à decisão.`
+      ));
+    }
   }
 
   const errosPublicacao = definicao ? validarDefinicao(definicao) : [];

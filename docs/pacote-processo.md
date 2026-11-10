@@ -255,6 +255,10 @@ Todo fluxo tem **um** `inicio` e ao menos um `fim`.
 | `excecao` | **retorno/devolução** (volta para trás); desenhado por baixo |
 | `rotulo` | texto no desenho |
 
+> **Etapa → decisão sem `quando`.** A ligação de uma etapa para uma decisão deve ser "qualquer botão":
+> a decisão é quem separa os botões. Se o JSON trouxer `quando.resultado` nessa ligação e a decisão tratar
+> outros botões da etapa, a importação **corrige para "qualquer botão" e avisa**.
+
 ### Regras para PUBLICAR (as mesmas do botão Publicar do editor)
 
 Se alguma falhar, o pacote ainda pode ser importado como **rascunho**; o portal lista o que corrigir.

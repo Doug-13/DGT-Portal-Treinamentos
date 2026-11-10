@@ -71,6 +71,10 @@ import ModalConfiguracaoFluxo, {
   IAbaModalFluxo
 } from './ModalConfiguracaoFluxo';
 
+import {
+  ligacoesQueBarramBotoes
+} from '../../services/fluxo/correcoesFluxo';
+
 import ImportarPacoteModal from './ImportarPacoteModal';
 
 import {
@@ -310,6 +314,10 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
   const [mensagens, setMensagens] =
     React.useState<{ tipo: 'erro' | 'ok'; titulo: string; textos: string[] } | undefined>(undefined);
 
+  // Ligações etapa → decisão que barram botões (corrigíveis sozinhas).
+  const [ligacoesCorrigiveis, setLigacoesCorrigiveis] =
+    React.useState<string[]>([]);
+
   // Importar/Exportar JSON
   const [importarJsonAberto, setImportarJsonAberto] = React.useState(false);
   const [exportandoJson, setExportandoJson] = React.useState(false);
@@ -539,6 +547,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     const erros =
       validarDefinicao(definicao);
 
+    setLigacoesCorrigiveis(ligacoesQueBarramBotoes(definicao).map(item => item.transicaoId));
+
     if (publicar && erros.length > 0) {
       setMensagens({
         tipo: 'erro',
@@ -599,6 +609,8 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
 
     const erros =
       validarDefinicao(definicao);
+
+    setLigacoesCorrigiveis(ligacoesQueBarramBotoes(definicao).map(item => item.transicaoId));
 
     setMensagens(
       erros.length === 0
@@ -1418,6 +1430,36 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                 <ul style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
                   {mensagens.textos.map(item => <li key={item}>{item}</li>)}
                 </ul>
+              )
+            }
+            {
+              editavel && edicao && ligacoesCorrigiveis.length > 0 && (
+                <div style={{ marginTop: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // A ligação etapa → decisão passa a "Qualquer botão".
+                      if (!edicao) {
+                        return;
+                      }
+                      const configs = { ...edicao.configsTransicoes };
+                      ligacoesCorrigiveis.forEach(id => {
+                        configs[id] = { ...(configs[id] || configPadraoTransicao()), tipoCondicao: 'sempre', resultado: '' };
+                      });
+                      setEdicao({ ...edicao, configsTransicoes: configs });
+                      setAlterado(true);
+                      setMensagens({
+                        tipo: 'ok',
+                        titulo: `${ligacoesCorrigiveis.length} ligação(ões) etapa → decisão ajustada(s) para "Qualquer botão". Use "Verificar fluxo" e "Salvar rascunho".`,
+                        textos: []
+                      });
+                      setLigacoesCorrigiveis([]);
+                    }}
+                    style={estiloBotao(true, false)}
+                  >
+                    Corrigir automaticamente ({ligacoesCorrigiveis.length})
+                  </button>
+                </div>
               )
             }
           </div>
