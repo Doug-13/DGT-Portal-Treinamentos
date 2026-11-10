@@ -1,0 +1,2836 @@
+diff --git a/scripts/dataverse/criar-tabelas-servidores.ps1 b/scripts/dataverse/criar-tabelas-servidores.ps1
+new file mode 100644
+index 0000000..d067b60
+--- /dev/null
++++ b/scripts/dataverse/criar-tabelas-servidores.ps1
+@@ -0,0 +1,394 @@
++﻿<#
++.SYNOPSIS
++  Cria no Dataverse as tabelas do SELETOR DE SERVIDOR (aba Kits →
++  Servidores; painel "Servidor da central" da Seleção de kit):
++    dgt_servidorcatalogo  uma linha por faixa/opção de memorial de cálculo
++    dgt_servidoralerta    textos e níveis dos alertas do seletor
++
++.DESCRIPTION
++  Pode ser executado mais de uma vez: o que já existe é mantido e só o
++  que falta é criado. Os nomes DEVEM ser iguais aos de
++  src/webparts/portalTreinamentosWebPart/services/bom/ServidoresService.ts
++
++  Tabelas da ORGANIZAÇÃO (um catálogo para todos). Privilégios (opcional):
++    -PapelLeitores      Ler            (quem monta B.O.M.)
++    -PapelMantenedores  Criar, Ler, Gravar  (quem mantém os memoriais)
++  Ninguém recebe Excluir: linha fora de uso é desativada.
++
++  Depois: portal → Kits → Servidores → "Importar catálogo padrão".
++
++.EXAMPLE
++  .\scripts\dataverse\criar-tabelas-servidores.ps1 -UrlAmbiente https://suaorg.crm2.dynamics.com -Solucao NOME_EXCLUSIVO -PapelLeitores "DGT Treinamentos - Colaboradores" -PapelMantenedores "DGT Treinamentos - Administradores"
++#>
++
++param(
++  [Parameter(Mandatory = $true)] [string] $UrlAmbiente,
++  [Parameter(Mandatory = $true)] [string] $Solucao,
++  [string] $PapelLeitores,
++  [string] $PapelMantenedores,
++  [string] $Token
++)
++
++$ErrorActionPreference = 'Stop'
++
++$UrlAmbiente = $UrlAmbiente.TrimEnd('/')
++$Api = "$UrlAmbiente/api/data/v9.2"
++
++# ------------------------------------------------------------
++# Autenticação
++# ------------------------------------------------------------
++
++if (-not $Token) {
++
++  if (-not (Get-Module -ListAvailable -Name Az.Accounts)) {
++    Write-Host 'Instalando o módulo Az.Accounts (apenas para o seu usuário)...' -ForegroundColor Yellow
++    Install-Module Az.Accounts -Scope CurrentUser -Force -AllowClobber
++  }
++
++  Import-Module Az.Accounts
++
++  if (-not (Get-AzContext)) {
++    Connect-AzAccount | Out-Null
++  }
++
++  $resultadoToken = Get-AzAccessToken -ResourceUrl $UrlAmbiente
++
++  if ($resultadoToken.Token -is [System.Security.SecureString]) {
++    $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($resultadoToken.Token)
++    try { $Token = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
++    finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
++  }
++  else {
++    $Token = $resultadoToken.Token
++  }
++}
++
++$Cabecalhos = @{
++  'Authorization'              = "Bearer $Token"
++  'Accept'                     = 'application/json'
++  'OData-MaxVersion'           = '4.0'
++  'OData-Version'              = '4.0'
++  'MSCRM.SolutionUniqueName'   = $Solucao
++}
++
++function Invoke-Dv {
++  param([string] $Metodo, [string] $Caminho, $Corpo)
++
++  $parametros = @{
++    Method      = $Metodo
++    Uri         = "$Api/$Caminho"
++    Headers     = $Cabecalhos
++    ContentType = 'application/json; charset=utf-8'
++  }
++
++  if ($null -ne $Corpo) {
++    $json = $Corpo | ConvertTo-Json -Depth 30
++    $parametros.Body = [System.Text.Encoding]::UTF8.GetBytes($json)
++  }
++
++  Invoke-RestMethod @parametros
++}
++
++function Test-Existe {
++  param([string] $Caminho)
++  try {
++    Invoke-Dv -Metodo 'GET' -Caminho $Caminho | Out-Null
++    return $true
++  }
++  catch {
++    $status = $null
++    if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
++    if ($status -eq 404) { return $false }
++    throw
++  }
++}
++
++# ------------------------------------------------------------
++# Idioma base do ambiente (os rótulos precisam dele)
++# ------------------------------------------------------------
++
++$org = Invoke-Dv -Metodo 'GET' -Caminho 'organizations?$select=languagecode'
++$Idioma = [int]$org.value[0].languagecode
++Write-Host "Ambiente: $UrlAmbiente  |  Solução: $Solucao  |  Idioma base: $Idioma" -ForegroundColor Cyan
++
++function Rotulo {
++  param([string] $Texto)
++  @{
++    '@odata.type'   = 'Microsoft.Dynamics.CRM.Label'
++    LocalizedLabels = @(
++      @{
++        '@odata.type' = 'Microsoft.Dynamics.CRM.LocalizedLabel'
++        Label         = $Texto
++        LanguageCode  = $Idioma
++      }
++    )
++  }
++}
++
++# ------------------------------------------------------------
++# Criadores
++# ------------------------------------------------------------
++
++function New-Tabela {
++  param([string] $Schema, [string] $Nome, [string] $Plural, [string] $Descricao)
++
++  $logico = $Schema.ToLower()
++
++  if (Test-Existe "EntityDefinitions(LogicalName='$logico')?`$select=LogicalName") {
++    Write-Host "  = tabela $logico já existe"
++    return
++  }
++
++  Write-Host "  + criando tabela $logico..." -ForegroundColor Green
++
++  Invoke-Dv -Metodo 'POST' -Caminho 'EntityDefinitions' -Corpo @{
++    '@odata.type'          = 'Microsoft.Dynamics.CRM.EntityMetadata'
++    SchemaName             = $Schema
++    DisplayName            = Rotulo $Nome
++    DisplayCollectionName  = Rotulo $Plural
++    Description            = Rotulo $Descricao
++    OwnershipType          = 'OrganizationOwned'
++    IsActivity             = $false
++    HasActivities          = $false
++    HasNotes               = $false
++    Attributes             = @(
++      @{
++        '@odata.type'  = 'Microsoft.Dynamics.CRM.StringAttributeMetadata'
++        SchemaName     = 'dgt_Name'
++        IsPrimaryName  = $true
++        RequiredLevel  = @{ Value = 'None' }
++        MaxLength      = 200
++        FormatName     = @{ Value = 'Text' }
++        DisplayName    = Rotulo 'Nome'
++      }
++    )
++  } | Out-Null
++}
++
++function New-Coluna {
++  param([string] $Tabela, [string] $Schema, [hashtable] $Corpo)
++
++  $logico = $Schema.ToLower()
++
++  if (Test-Existe "EntityDefinitions(LogicalName='$Tabela')/Attributes(LogicalName='$logico')?`$select=LogicalName") {
++    Write-Host "  = $Tabela.$logico já existe"
++    return
++  }
++
++  Write-Host "  + $Tabela.$logico" -ForegroundColor Green
++
++  $Corpo.SchemaName = $Schema
++  $Corpo.RequiredLevel = @{ Value = 'None' }
++
++  Invoke-Dv -Metodo 'POST' -Caminho "EntityDefinitions(LogicalName='$Tabela')/Attributes" -Corpo $Corpo | Out-Null
++}
++
++function New-Texto {
++  param([string] $Tabela, [string] $Schema, [string] $Nome, [int] $Tamanho)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.StringAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    MaxLength     = $Tamanho
++    FormatName    = @{ Value = 'Text' }
++  }
++}
++
++function New-TextoLongo {
++  param([string] $Tabela, [string] $Schema, [string] $Nome, [int] $Tamanho)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.MemoAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    MaxLength     = $Tamanho
++    Format        = 'TextArea'
++  }
++}
++
++function New-Inteiro {
++  param([string] $Tabela, [string] $Schema, [string] $Nome)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.IntegerAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    Format        = 'None'
++    MinValue      = -2147483648
++    MaxValue      = 2147483647
++  }
++}
++
++function New-SimNao {
++  param([string] $Tabela, [string] $Schema, [string] $Nome, [bool] $Padrao = $false)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.BooleanAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    DefaultValue  = $Padrao
++    OptionSet     = @{
++      '@odata.type'  = 'Microsoft.Dynamics.CRM.BooleanOptionSetMetadata'
++      OptionSetType  = 'Boolean'
++      TrueOption     = @{ Value = 1; Label = Rotulo 'Sim' }
++      FalseOption    = @{ Value = 0; Label = Rotulo 'Não' }
++    }
++  }
++}
++
++function New-DataHora {
++  param([string] $Tabela, [string] $Schema, [string] $Nome)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type'    = 'Microsoft.Dynamics.CRM.DateTimeAttributeMetadata'
++    DisplayName      = Rotulo $Nome
++    Format           = 'DateAndTime'
++    DateTimeBehavior = @{ Value = 'UserLocal' }
++  }
++}
++
++# Valor em reais: aceita negativos (estornos/receitas negativas).
++function New-Decimal {
++  param([string] $Tabela, [string] $Schema, [string] $Nome)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.DecimalAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    Precision     = 2
++    MinValue      = -100000000000
++    MaxValue      = 100000000000
++  }
++}
++
++# Percentual com 4 casas (0 a 100).
++function New-Percentual {
++  param([string] $Tabela, [string] $Schema, [string] $Nome)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.DecimalAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    Precision     = 4
++    MinValue      = 0
++    MaxValue      = 100
++  }
++}
++
++# Quantidade: 2 casas, não negativa.
++function New-Quantidade {
++  param([string] $Tabela, [string] $Schema, [string] $Nome)
++  New-Coluna $Tabela $Schema @{
++    '@odata.type' = 'Microsoft.Dynamics.CRM.DecimalAttributeMetadata'
++    DisplayName   = Rotulo $Nome
++    Precision     = 2
++    MinValue      = 0
++    MaxValue      = 1000000
++  }
++}
++
++
++# ------------------------------------------------------------
++# 1) Tabelas
++# ------------------------------------------------------------
++
++Write-Host "`n1) Tabelas" -ForegroundColor Cyan
++
++New-Tabela 'dgt_ServidorCatalogo' 'Servidor (memorial)' 'Servidores (memoriais)' 'Faixa/opção de memorial de cálculo de servidor (Digifort, Milestone, IPX, Digifort + IPX).'
++New-Tabela 'dgt_ServidorAlerta' 'Alerta do seletor de servidor' 'Alertas do seletor de servidor' 'Texto e nível de um alerta do seletor de servidor (regra geral ou de uma linha).'
++
++# ------------------------------------------------------------
++# 2) Colunas
++# ------------------------------------------------------------
++
++Write-Host "`n2) Colunas de dgt_servidorcatalogo" -ForegroundColor Cyan
++$T = 'dgt_servidorcatalogo'
++New-Texto      $T 'dgt_Software'             'Software' 30
++New-Texto      $T 'dgt_Finalidade'           'Finalidade' 30
++New-Inteiro    $T 'dgt_Capacidade'           'Capacidade (câmeras)'
++New-Texto      $T 'dgt_Opcao'                'Opção (A, B, C)' 10
++New-Inteiro    $T 'dgt_QtdServidores'        'Quantidade de servidores'
++New-Inteiro    $T 'dgt_CamerasPorServidor'   'Câmeras por servidor'
++New-TextoLongo $T 'dgt_Processadores'        'Processadores (um por linha)' 2000
++New-Texto      $T 'dgt_Ram'                  'RAM' 100
++New-Texto      $T 'dgt_DiscoSo'              'Disco do SO' 200
++New-Quantidade $T 'dgt_ArmazServidorTb'      'Armazenamento por servidor (TB)'
++New-Quantidade $T 'dgt_ArmazTotalTb'         'Armazenamento total (TB)'
++New-Inteiro    $T 'dgt_DiscosQtd'            'Discos por servidor'
++New-Quantidade $T 'dgt_DiscoTamanhoTb'       'Tamanho do disco (TB)'
++New-Texto      $T 'dgt_Arranjo'              'Arranjo' 100
++New-TextoLongo $T 'dgt_Gpus'                 'GPUs (uma por linha)' 2000
++New-TextoLongo $T 'dgt_SistemasOperacionais' 'Sistemas operacionais (um por linha)' 2000
++New-Texto      $T 'dgt_CompressaoRef'        'Compressão de referência' 10
++New-Texto      $T 'dgt_Iops'                 'IOPS' 100
++New-Quantidade $T 'dgt_RedeCamerasMbps'      'Rede das câmeras (Mbps)'
++New-Texto      $T 'dgt_CodigoCigam'          'Código CIGAM' 50
++New-Texto      $T 'dgt_VersaoMemorial'       'Versão do memorial' 300
++New-TextoLongo $T 'dgt_Observacao'           'Observação' 2000
++New-SimNao     $T 'dgt_Ativo'                'Ativo' $true
++
++Write-Host "`n3) Colunas de dgt_servidoralerta" -ForegroundColor Cyan
++$T = 'dgt_servidoralerta'
++New-Texto      $T 'dgt_Nivel'                'Nível (bloqueio, aviso, informacao)' 20
++New-TextoLongo $T 'dgt_Texto'                'Texto' 2000
++New-SimNao     $T 'dgt_Ativo'                'Ativo' $true
++
++# ------------------------------------------------------------
++# 4) Publicação
++# ------------------------------------------------------------
++
++Write-Host "`n4) Publicando..." -ForegroundColor Cyan
++
++Invoke-Dv -Metodo 'POST' -Caminho 'PublishXml' -Corpo @{
++  ParameterXml = '<importexportxml><entities><entity>dgt_servidorcatalogo</entity><entity>dgt_servidoralerta</entity></entities></importexportxml>'
++} | Out-Null
++
++# ------------------------------------------------------------
++# 5) Privilégios (opcional) — nível ORGANIZAÇÃO, sem Excluir
++# ------------------------------------------------------------
++
++# ------------------------------------------------------------
++# 7) Privilégios (opcional) — nível ORGANIZAÇÃO, sem Excluir
++# ------------------------------------------------------------
++function Get-PrivilegioId {
++  param([string] $Nome)
++  $resultado = Invoke-Dv -Metodo 'GET' -Caminho "privileges?`$select=privilegeid&`$filter=name eq '$Nome'"
++  if ($resultado.value.Count -eq 0) {
++    throw "Privilégio $Nome não encontrado. A tabela foi publicada?"
++  }
++  return $resultado.value[0].privilegeid
++}
++
++function Grant-Privilegios {
++  param([string] $NomePapel, [string] $Profundidade, [string[]] $Tabelas, [string[]] $Acoes)
++
++  $nomeFiltro = $NomePapel.Replace("'", "''")
++  $papeis = Invoke-Dv -Metodo 'GET' -Caminho "roles?`$select=roleid,name,_businessunitid_value&`$filter=name eq '$nomeFiltro' and _parentroleid_value eq null"
++
++  if ($papeis.value.Count -eq 0) {
++    Write-Host "  ! perfil de segurança '$NomePapel' não encontrado — conceda os privilégios manualmente." -ForegroundColor Yellow
++    return
++  }
++
++  $papel = $papeis.value[0]
++  $lista = @()
++
++  foreach ($tabela in $Tabelas) {
++    foreach ($acao in $Acoes) {
++      $lista += @{
++        PrivilegeId    = (Get-PrivilegioId "prv$acao$tabela")
++        Depth          = $Profundidade
++        BusinessUnitId = $papel._businessunitid_value
++      }
++    }
++  }
++
++  Invoke-Dv -Metodo 'POST' -Caminho "roles($($papel.roleid))/Microsoft.Dynamics.CRM.AddPrivilegesRole" -Corpo @{
++    Privileges = $lista
++  } | Out-Null
++
++  Write-Host "  + '$NomePapel': $($Acoes -join ', ') ($Profundidade) em $($Tabelas -join ', ')" -ForegroundColor Green
++}
++
++$tabelasServidor = @('dgt_servidorcatalogo', 'dgt_servidoralerta')
++
++if ($PapelLeitores) {
++  Grant-Privilegios $PapelLeitores 'Global' $tabelasServidor @('Read')
++}
++if ($PapelMantenedores) {
++  Grant-Privilegios $PapelMantenedores 'Global' $tabelasServidor @('Create', 'Read', 'Write')
++}
++
++Write-Host "`nConcluído." -ForegroundColor Green
++Write-Host 'Próximos passos:' -ForegroundColor Green
++Write-Host '  1. Quem monta B.O.M. precisa LER as duas tabelas (senão o seletor usa o catálogo padrão do código).'
++Write-Host '  2. Portal > Kits > Servidores > "Importar catálogo padrão".'
++Write-Host '  3. Cole as linhas da planilha "Servidores — Consolidado Memoriais de Cálculo" (Digifort, Milestone, IPX).'
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/ArquiteturaPage.tsx b/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/ArquiteturaPage.tsx
+index 8e9e7a0..2114ab9 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/ArquiteturaPage.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/ArquiteturaPage.tsx
+@@ -45,6 +45,10 @@ import {
+   garantirCatalogoKitsAplicado
+ } from '../../services/bom/KitsService';
+ 
++import {
++  mesesDoTipoProjeto
++} from '../../services/bom/servidores';
++
+ import EtapaHHBom from './EtapaHHBom';
+ 
+ import {
+@@ -716,6 +720,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
+                   selecaoInicial={selecaoKit}
+                   semColuna={kitSemColuna}
+                   canal={demanda.canal}
++                  prazoContratoMeses={mesesDoTipoProjeto(demanda.tipoProjeto)}
+                   salvando={salvando}
+                   somenteLeitura={etapa === 'Enviado para aprovação'}
+                   onSalvar={async (selecao, concluir) => {
+@@ -740,7 +745,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
+           aba === 'hh' && (
+             <EtapaHHBom
+               dataverseService={dataverseService}
+-              resumoKit={selecaoKit ? montarBom(selecaoKit) : undefined}
++              resumoKit={selecaoKit ? montarBom(selecaoKit, { prazoContratoMeses: mesesDoTipoProjeto(demanda.tipoProjeto) }) : undefined}
+               aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
+             />
+           )
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/SelecaoKitEtapa.tsx b/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/SelecaoKitEtapa.tsx
+index c1b06b2..7d3a69e 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/SelecaoKitEtapa.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/SelecaoKitEtapa.tsx
+@@ -39,6 +39,8 @@ import {
+   campo
+ } from './arquiteturaComum';
+ 
++import ServidorCentralPainel from './ServidorCentralPainel';
++
+ import {
+   IconeKit,
+   NomeIconeKit
+@@ -65,6 +67,8 @@ export interface ISelecaoKitEtapaProps {
+   // Simulador da aba Kits: monta a lista normalmente, mas sem a
+   // barra de salvar/concluir (não existe B.O.M. por trás).
+   modoSimulacao?: boolean;
++  // Meses do contrato ("Locação N meses"): Care Plus do Milestone.
++  prazoContratoMeses?: number;
+ }
+ 
+ const VERDE = '#107C10';
+@@ -260,8 +264,8 @@ const ListaAlertas: React.FC<{ alertas: IAlertaBom[]; mostrarOrigem?: boolean }>
+         key={i}
+         style={{
+           display: 'flex', gap: '8px', alignItems: 'flex-start',
+-          background: a.nivel === 'erro' ? '#FDE7E9' : '#FFF4E5',
+-          color: a.nivel === 'erro' ? VERMELHO : '#7C2D12',
++          background: a.nivel === 'erro' ? '#FDE7E9' : a.nivel === 'info' ? '#EEF0FB' : '#FFF4E5',
++          color: a.nivel === 'erro' ? VERMELHO : a.nivel === 'info' ? COR.indigo : '#7C2D12',
+           borderRadius: '8px', padding: '7px 10px', fontSize: '12.5px', lineHeight: 1.4
+         }}
+       >
+@@ -325,7 +329,8 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
+   salvando,
+   somenteLeitura,
+   onSalvar,
+-  modoSimulacao
++  modoSimulacao,
++  prazoContratoMeses
+ }) => {
+ 
+   const [selecao, setSelecao] = React.useState<ISelecaoKit>(() => normalizarSelecao(selecaoInicial || selecaoVazia()));
+@@ -348,7 +353,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
+     setAlterado(false);
+   }, [selecaoInicial]);
+ 
+-  const resultado = React.useMemo(() => montarBom(selecao), [selecao]);
++  const resultado = React.useMemo(() => montarBom(selecao, { prazoContratoMeses }), [selecao, prazoContratoMeses]);
+   const erros = resultado.alertas.filter(a => a.nivel === 'erro');
+   const bloqueado = somenteLeitura || salvando;
+   const sw = selecao.softwares;
+@@ -444,7 +449,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
+     const usaVideo =
+       (parcial.safeCity !== undefined ? parcial.safeCity : ponto.safeCity) ||
+       (parcial.faceDetect !== undefined ? parcial.faceDetect : ponto.faceDetect) ||
+-      sw.vms === 'digifort';
++      sw.vms !== 'safeCity';
+ 
+     if (!usaVideo) {
+       parcial.camerasVideo = 0;
+@@ -491,17 +496,16 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
+           onMudar={id => mudarSoftwares({ vms: id as ISoftwaresKit['vms'] })}
+           opcoes={[
+             { id: 'safeCity', texto: 'Safe City (nuvem)', icone: 'nuvem' },
+-            { id: 'digifort', texto: 'Digifort (terceiro)', icone: 'servidor' }
++            { id: 'digifort', texto: 'Digifort (terceiro)', icone: 'servidor' },
++            { id: 'milestone', texto: 'Milestone (terceiro)', icone: 'servidor' }
+           ]}
+         />
+       </div>
+ 
+       {sw.vms === 'digifort' && (
+         <>
+-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul, fontWeight: 700 }} title="Cada servidor exige a própria base de 8 câmeras">
+-            Servidores
+-            <Numero valor={sw.digifortServidores} aoMudar={n => mudarSoftwares({ digifortServidores: n })} minimo={1} maximo={99} desabilitado={bloqueado} largura="70px" />
+-          </label>
++          {/* O número de servidores não é mais perguntado: vem do
++              painel "Servidor da central" (memorial de cálculo). */}
+           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: COR.azul, cursor: 'pointer' }} title="Analíticos por IA (IP Extreme) — roda sobre o Digifort">
+             <input type="checkbox" checked={sw.ipx} disabled={bloqueado} onChange={e => mudarSoftwares({ ipx: e.target.checked })} />
+             <strong>IPX Analytics</strong>
+@@ -702,7 +706,9 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
+             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+               {sw.vms === 'safeCity'
+                 ? <Ladrilho caixa icone="nuvem" titulo="Safe City" descricao="VMS em nuvem · RTMP · licença por câmera" marcado={ponto.safeCity} desabilitado={bloqueado} onClick={() => alternarSolucao('safeCity')} />
+-                : <Ladrilho caixa icone="servidor" titulo="Digifort (VMS do projeto)" descricao="Licença por servidor + packs, no projeto" marcado desabilitado onClick={() => undefined} />}
++                : sw.vms === 'milestone'
++                  ? <Ladrilho caixa icone="servidor" titulo="Milestone (VMS do projeto)" descricao="1 licença Professional+ por câmera, no projeto" marcado desabilitado onClick={() => undefined} />
++                  : <Ladrilho caixa icone="servidor" titulo="Digifort (VMS do projeto)" descricao="Licença base por servidor + packs, no projeto" marcado desabilitado onClick={() => undefined} />}
+               <Ladrilho caixa icone="radar" titulo="Smart Detect" descricao="Módulo do Safe City · licença inclusa" marcado={ponto.smartDetect} desabilitado={bloqueado || sw.vms !== 'safeCity'} onClick={() => alternarSolucao('smartDetect')} />
+               <Ladrilho caixa icone="rosto" titulo="Face Detect" descricao="Facial · SFTP · licença por câmera" marcado={ponto.faceDetect} desabilitado={bloqueado} onClick={() => alternarSolucao('faceDetect')} />
+               <Ladrilho caixa icone="placa" titulo="Safe Way" descricao={estrutura.aceitaOcr ? 'Leitura de placas · SFTP · licença por faixa' : 'O Box não comporta câmera OCR/LPR'} marcado={ponto.safeWay && estrutura.aceitaOcr} desabilitado={bloqueado || !estrutura.aceitaOcr} onClick={() => alternarSolucao('safeWay')} />
+@@ -936,6 +942,15 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
+       )}
+ 
+       {blocoProjeto}
++
++      <ServidorCentralPainel
++        analise={resultado.servidor}
++        selecao={selecao.servidor}
++        vms={sw.vms}
++        prazoContratoMeses={prazoContratoMeses}
++        bloqueado={bloqueado}
++        onMudar={servidor => { setSelecao(atual => ({ ...atual, servidor })); setAlterado(true); }}
++      />
+       {selecao.pontos.length > 0 && blocoPontos}
+ 
+       <div style={{ display: 'grid', gridTemplateColumns: largo ? 'minmax(0, 1.1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: '14px', alignItems: 'start' }}>
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/ServidorCentralPainel.tsx b/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/ServidorCentralPainel.tsx
+new file mode 100644
+index 0000000..5aca341
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/pages/Arquitetura/ServidorCentralPainel.tsx
+@@ -0,0 +1,399 @@
++import * as React from 'react';
++
++import {
++  Compressao,
++  IAnaliseServidor,
++  IConjuntoServidor,
++  IEscolhaServidor,
++  IServidorSelecao,
++  LIMITE_COMBINADO,
++  RESERVAS,
++  codigoSugerido,
++  necessidadeDe,
++  nomeSoftware,
++  servidorPadrao
++} from '../../services/bom/servidores';
++
++import {
++  COR,
++  FONTE
++} from './arquiteturaComum';
++
++import {
++  IconeKit
++} from './IconesKit';
++
++// ============================================================
++// SELEÇÃO DE KIT — SERVIDOR DA CENTRAL
++//
++// Uma pergunta por vez, na ordem da especificação:
++//   montagem (combinado/separados) → compressão → câmeras (reserva,
++//   ajuste) → faixa → opção → GPU → processador → SO.
++// Opção única vira automática (selo "automático"); alterar uma
++// resposta apaga as seguintes; faixas que não comportam ficam cinza;
++// cada opção mostra o efeito (TB, servidores, processador) antes do
++// clique. "Orçamento manual" tira o servidor do seletor.
++// ============================================================
++
++export interface IServidorCentralPainelProps {
++  analise: IAnaliseServidor;
++  selecao?: IServidorSelecao;
++  vms: 'safeCity' | 'digifort' | 'milestone';
++  prazoContratoMeses?: number;
++  bloqueado: boolean;
++  onMudar: (s: IServidorSelecao) => void;
++}
++
++const VERMELHO = '#B42318';
++
++const Selo: React.FC<{ texto: string; tom?: 'auto' | 'ok' | 'pendente' | 'erro' | 'cinza' }> = ({ texto, tom = 'auto' }) => {
++  const cores = {
++    auto: { c: COR.indigo, f: '#EEF0FB' },
++    ok: { c: '#0E6E7C', f: '#E6F9FC' },
++    pendente: { c: '#B45309', f: '#FFF4E5' },
++    erro: { c: '#FFFFFF', f: VERMELHO },
++    cinza: { c: COR.texto2, f: COR.fundo }
++  }[tom];
++  return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '999px', fontSize: '11.5px', fontWeight: 700, color: cores.c, background: cores.f, whiteSpace: 'nowrap' }}>{texto}</span>;
++};
++
++const Pergunta: React.FC<{ numero: number; titulo: string; ajuda?: string; auto?: boolean; children: React.ReactNode }> = ({ numero, titulo, ajuda, auto, children }) => (
++  <div style={{ borderTop: `1px solid ${COR.borda}`, padding: '12px 0' }}>
++    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
++      <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: COR.azul, color: '#FFFFFF', fontSize: '12px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{numero}</span>
++      <strong style={{ fontSize: '13.5px', color: COR.azul }}>{titulo}</strong>
++      {auto && <Selo texto="automático" />}
++      {ajuda && <span style={{ fontSize: '12px', color: COR.texto2 }}>{ajuda}</span>}
++    </div>
++    {children}
++  </div>
++);
++
++const Opcao: React.FC<{ marcado: boolean; desabilitado?: boolean; onClick: () => void; titulo: string; detalhe?: string; selo?: React.ReactNode; minimo?: number }> =
++  ({ marcado, desabilitado, onClick, titulo, detalhe, selo, minimo = 150 }) => (
++    <button
++      type="button"
++      disabled={desabilitado}
++      onClick={onClick}
++      aria-pressed={marcado}
++      style={{
++        textAlign: 'left', minWidth: `${minimo}px`, flex: `0 1 ${minimo + 40}px`, padding: '9px 12px', borderRadius: '10px',
++        border: `${marcado ? 2 : 1}px solid ${marcado ? COR.ciano : COR.borda}`,
++        background: desabilitado ? COR.fundo : marcado ? '#E6F9FC' : '#FFFFFF',
++        color: COR.azul, cursor: desabilitado ? 'not-allowed' : 'pointer', opacity: desabilitado ? 0.5 : 1, fontFamily: FONTE
++      }}
++    >
++      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'space-between' }}>
++        <strong style={{ fontSize: '13.5px' }}>{titulo}</strong>
++        {selo}
++      </span>
++      {detalhe && <span style={{ display: 'block', fontSize: '11.5px', color: COR.texto2, marginTop: '3px', lineHeight: 1.35 }}>{detalhe}</span>}
++    </button>
++  );
++
++const tb = (n: number): string => `${String(Math.round(n * 100) / 100).replace('.', ',')} TB`;
++
++const PAPEL: Record<string, string> = {
++  gravacao: 'Gravação',
++  analitico: 'Analítico',
++  combinado: 'Gravação + analítico (mesmo servidor)'
++};
++
++const ServidorCentralPainel: React.FC<IServidorCentralPainelProps> = ({ analise, selecao, vms, prazoContratoMeses, bloqueado, onMudar }) => {
++
++  const s: IServidorSelecao = selecao || servidorPadrao();
++  const [aberto, setAberto] = React.useState(true);
++
++  const mudar = (parcial: Partial<IServidorSelecao>): void => onMudar({ ...s, ...parcial });
++
++  // Alterar uma resposta apaga as seguintes.
++  const limparEscolhas = (): Partial<IServidorSelecao> => ({ gravacao: undefined, analitico: undefined, combinado: undefined });
++
++  const mudarEscolha = (papel: IConjuntoServidor['papel'], parcial: Partial<IEscolhaServidor>, ordem: Array<keyof IEscolhaServidor>): void => {
++    const atual: IEscolhaServidor = { ...((papel === 'gravacao' ? s.gravacao : papel === 'analitico' ? s.analitico : s.combinado) || {}) };
++    const primeiro = Object.keys(parcial)[0] as keyof IEscolhaServidor;
++    const indice = ordem.indexOf(primeiro);
++    ordem.slice(indice + 1).forEach(k => { delete atual[k]; });
++    const nova = { ...atual, ...parcial };
++    mudar({ [papel]: nova, baseNaEscolha: analise.baseGravacao } as Partial<IServidorSelecao>);
++  };
++
++  const ORDEM: Array<keyof IEscolhaServidor> = ['ajusteNecessidade', 'capacidade', 'opcao', 'gpu', 'processador', 'so'];
++
++  const temGravacao = analise.conjuntos.some(c => c.papel !== 'analitico');
++  const status =
++    analise.local === 'nuvem' && !analise.usaIpx ? <Selo texto="Nuvem — sem servidor" tom="ok" />
++      : analise.local === 'nenhum' ? <Selo texto="Sem câmeras" tom="cinza" />
++        : s.orcamentoManual ? <Selo texto="Orçamento manual" tom="pendente" />
++          : analise.definido ? <Selo texto={`Definido · ${analise.servidoresTotal} servidor(es)`} tom="ok" />
++            : <Selo texto="Pendente" tom="pendente" />;
++
++  const revisar = analise.alertas.some(a => a.regra === 'revisar');
++
++  let numero = 0;
++
++  const blocoConjunto = (c: IConjuntoServidor): React.ReactNode => {
++    const escolha = c.escolha;
++    const faixaAtual = c.linha ? c.linha.capacidade : undefined;
++    const faixa = c.faixas.filter(f => f.capacidade === faixaAtual)[0];
++    const fatorH265 = (c.software === 'digifort' || c.software === 'digifortIpx') && s.compressao === 'H.265' ? 0.5 : 1;
++
++    return (
++      <div key={c.papel} style={{ border: `1px solid ${COR.borda}`, borderRadius: '12px', padding: '12px 14px', marginTop: '10px', background: '#FFFFFF' }}>
++        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
++          <IconeKit nome="servidor" tamanho={18} cor={COR.indigo} />
++          <strong style={{ color: COR.azul, fontSize: '14px' }}>{PAPEL[c.papel]} — {nomeSoftware(c.software)}</strong>
++          <span style={{ fontSize: '12px', color: COR.texto2 }}>
++            base {c.base} câmera(s){c.papel === 'analitico' ? ' de vídeo' : ' (vídeo + porteiros)'} → necessidade <strong>{c.necessidade}</strong>
++          </span>
++          <span style={{ marginLeft: 'auto' }}>{c.pendente ? <Selo texto={c.pendente === 'faixa' ? 'Sem faixa' : 'Falta responder'} tom={c.pendente === 'faixa' ? 'erro' : 'pendente'} /> : <Selo texto="Definido" tom="ok" />}</span>
++        </div>
++
++        <Pergunta numero={++numero} titulo="Câmeras" ajuda="reserva sobre a base; arredonda sempre para cima">
++          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
++            <label style={{ fontSize: '12.5px', color: COR.azul, display: 'flex', gap: '6px', alignItems: 'center' }}>
++              Ajuste manual da necessidade
++              <input
++                type="number"
++                min={c.base}
++                disabled={bloqueado}
++                value={escolha.ajusteNecessidade || ''}
++                placeholder={String(necessidadeDe(c.base, s.reservaPct))}
++                onChange={e => mudarEscolha(c.papel, { ajusteNecessidade: Number(e.target.value) || undefined }, ORDEM)}
++                style={{ width: '80px', padding: '6px 8px', border: `1px solid ${COR.borda}`, borderRadius: '8px', fontSize: '13px', fontFamily: FONTE }}
++              />
++            </label>
++            {escolha.ajusteNecessidade !== undefined && escolha.ajusteNecessidade < c.base && <span style={{ fontSize: '12px', color: VERMELHO }}>Menor que a base: ignorado.</span>}
++          </div>
++        </Pergunta>
++
++        <Pergunta numero={++numero} titulo="Faixa do memorial" auto={!escolha.capacidade && !!faixa} ajuda="a recomendada é a menor que comporta">
++          {c.faixas.length === 0
++            ? <span style={{ fontSize: '12.5px', color: VERMELHO }}>Sem linha ativa no catálogo para {nomeSoftware(c.software)}. Cadastre o memorial em Kits → Servidores ou use o orçamento manual.</span>
++            : (
++              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
++                {c.faixas.map(f => {
++                  const l = f.linhas[0];
++                  return (
++                    <Opcao
++                      key={f.capacidade}
++                      minimo={130}
++                      marcado={f.capacidade === faixaAtual}
++                      desabilitado={bloqueado || !f.habilitada}
++                      onClick={() => mudarEscolha(c.papel, { capacidade: f.capacidade }, ORDEM)}
++                      titulo={`${f.capacidade} câmeras`}
++                      selo={f.recomendada ? <Selo texto="recomendada" tom="ok" /> : f.habilitada ? <Selo texto={`folga ${f.folga}`} tom="cinza" /> : undefined}
++                      detalhe={[
++                        tb(l.armazTotalTb * fatorH265),
++                        `${l.qtdServidores} servidor${l.qtdServidores > 1 ? 'es' : ''}`,
++                        l.gpus.length === 1 ? l.gpus[0].replace('NVIDIA ', '') : l.gpus.length > 1 ? `${l.gpus.length} GPUs` : 'sem GPU',
++                        l.processadores[0] || ''
++                      ].filter(Boolean).join(' · ')}
++                    />
++                  );
++                })}
++              </div>
++            )}
++          {c.papel === 'combinado' && <div style={{ fontSize: '11.5px', color: COR.texto2, marginTop: '6px' }}>Servidor combinado vai até {LIMITE_COMBINADO} câmeras. Acima disso: gravação e analítico separados.</div>}
++        </Pergunta>
++
++        {faixa && faixa.linhas.length > 1 && (
++          <Pergunta numero={++numero} titulo="Distribuição (opção)" ajuda="decisão de projeto">
++            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
++              {faixa.linhas.map(l => (
++                <Opcao
++                  key={l.opcao}
++                  marcado={!!c.linha && c.linha.opcao === l.opcao && !!escolha.opcao}
++                  desabilitado={bloqueado}
++                  onClick={() => mudarEscolha(c.papel, { opcao: l.opcao }, ORDEM)}
++                  titulo={`Opção ${l.opcao || '—'}`}
++                  detalhe={`${l.qtdServidores} servidor(es) · ${l.camerasPorServidor} câm./servidor · ${tb(l.armazTotalTb * fatorH265)}${l.discosQtd ? ` · ${l.discosQtd * l.qtdServidores} discos` : ''}`}
++                />
++              ))}
++            </div>
++          </Pergunta>
++        )}
++
++        {c.linha && c.linha.gpus.length > 0 && (
++          <Pergunta numero={++numero} titulo="GPU" auto={c.automatico.gpu}>
++            {c.automatico.gpu
++              ? <span style={{ fontSize: '13px', color: COR.azul }}>{c.gpu}</span>
++              : (
++                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
++                  {c.linha.gpus.map(g => <Opcao key={g} marcado={c.gpu === g} desabilitado={bloqueado} onClick={() => mudarEscolha(c.papel, { gpu: g }, ORDEM)} titulo={g} />)}
++                </div>
++              )}
++          </Pergunta>
++        )}
++
++        {c.linha && c.linha.processadores.length > 0 && (c.pendente !== 'gpu') && (
++          <Pergunta numero={++numero} titulo="Processador" auto={c.automatico.processador} ajuda={c.automatico.processador ? undefined : 'alternativas equivalentes do memorial'}>
++            {c.automatico.processador
++              ? <span style={{ fontSize: '13px', color: COR.azul }}>{c.processador}</span>
++              : (
++                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
++                  {c.linha.processadores.map(p => <Opcao key={p} marcado={c.processador === p} desabilitado={bloqueado} onClick={() => mudarEscolha(c.papel, { processador: p }, ORDEM)} titulo={p} />)}
++                </div>
++              )}
++          </Pergunta>
++        )}
++
++        {c.linha && c.linha.sistemasOperacionais.length > 0 && c.pendente !== 'gpu' && c.pendente !== 'processador' && (
++          <Pergunta numero={++numero} titulo="Sistema operacional" auto={c.automatico.so}>
++            {c.automatico.so
++              ? <span style={{ fontSize: '13px', color: COR.azul }}>{c.so}</span>
++              : (
++                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
++                  {c.linha.sistemasOperacionais.map(o => <Opcao key={o} marcado={c.so === o} desabilitado={bloqueado} onClick={() => mudarEscolha(c.papel, { so: o }, ORDEM)} titulo={o} />)}
++                </div>
++              )}
++          </Pergunta>
++        )}
++
++        {c.linha && !c.pendente && (
++          <div style={{ marginTop: '6px', padding: '10px 12px', background: COR.fundo, borderRadius: '10px', fontSize: '12.5px', color: COR.azul, lineHeight: 1.5 }}>
++            <strong>{c.linha.qtdServidores}× {codigoSugerido(c.linha)}</strong> — {[c.processador, c.linha.ram, tb(c.armazenamentoTb), c.gpu || 'sem GPU', c.so].filter(Boolean).join(' · ')}
++            <span style={{ display: 'block', color: COR.texto2 }}>
++              {c.linha.codigoCigam ? `CIGAM ${c.linha.codigoCigam}` : 'Sem código CIGAM: não orçável até o cadastro.'} · Memorial: {c.linha.versaoMemorial || '—'}
++            </span>
++          </div>
++        )}
++      </div>
++    );
++  };
++
++  return (
++    <div style={{ background: '#FFFFFF', border: `1px solid ${revisar ? '#F3B8B3' : COR.borda}`, borderRadius: '14px', padding: '14px 18px', marginBottom: '14px', fontFamily: FONTE }}>
++      <button type="button" onClick={() => setAberto(!aberto)} aria-expanded={aberto}
++        style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: FONTE, textAlign: 'left' }}>
++        <IconeKit nome="servidor" tamanho={20} cor={COR.indigo} />
++        <strong style={{ color: COR.azul, fontSize: '15px' }}>Servidor da central</strong>
++        <span style={{ fontSize: '12px', color: COR.texto2 }}>item do projeto inteiro</span>
++        {revisar && <Selo texto="revisar servidor" tom="erro" />}
++        <span style={{ marginLeft: 'auto' }}>{status}</span>
++        <span aria-hidden="true" style={{ color: COR.texto2 }}>{aberto ? '▴' : '▾'}</span>
++      </button>
++
++      {aberto && (
++        <div style={{ marginTop: '10px' }}>
++          <div style={{ fontSize: '12px', color: COR.texto2, background: '#EEF0FB', borderRadius: '8px', padding: '8px 10px', marginBottom: '10px', lineHeight: 1.45 }}>
++            O seletor cobre <strong>Digifort, Milestone e IPX Analytics</strong> (3 dos 7 softwares que exigem servidor).
++            Axxon, Briefcam, Invenzi (W-Access) e NX Witness: só o lembrete — servidor dimensionado à parte. Safe City é nuvem.
++          </div>
++
++          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
++            {[
++              [`${analise.v}`, 'câmeras de vídeo'],
++              [`${analise.p}`, 'porteiros (entram na base)'],
++              [`${analise.l}`, 'LPR (não entram)'],
++              [`${analise.baseGravacao}`, 'base de gravação']
++            ].map(([v, r]) => (
++              <span key={r} style={{ background: COR.fundo, border: `1px solid ${COR.borda}`, borderRadius: '10px', padding: '6px 10px', fontSize: '12px', color: COR.texto2 }}>
++                <strong style={{ color: COR.azul, fontSize: '14px' }}>{v}</strong> {r}
++              </span>
++            ))}
++          </div>
++
++          {analise.local === 'nuvem' && !analise.usaIpx && (
++            <p style={{ fontSize: '13px', color: COR.azul, margin: '8px 0 0' }}>Gravação em nuvem (Bridgefy Safe City): o projeto não leva servidor.</p>
++          )}
++
++          {analise.conjuntos.length > 0 && !s.orcamentoManual && (
++            <>
++              {vms === 'digifort' && analise.usaIpx && (
++                <Pergunta numero={++numero} titulo="Montagem" auto={!analise.podeCombinar} ajuda={analise.podeCombinar ? 'até 50 câmeras dá para usar um servidor só' : 'acima de 50 câmeras: dois servidores'}>
++                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
++                    <Opcao marcado={analise.modo === 'combinado'} desabilitado={bloqueado || !analise.podeCombinar} onClick={() => mudar({ modo: 'combinado', compressao: undefined, ...limparEscolhas() })}
++                      titulo="Combinado (Digifort + IPX)" detalhe="Um servidor, com GPU · sugerido até 50 câmeras" minimo={220} />
++                    <Opcao marcado={analise.modo === 'separado'} desabilitado={bloqueado} onClick={() => mudar({ modo: 'separado', compressao: undefined, ...limparEscolhas() })}
++                      titulo="Separados" detalhe="Gravação Digifort + analítico IPX" minimo={220} />
++                  </div>
++                </Pergunta>
++              )}
++
++              {temGravacao && (
++                <Pergunta numero={++numero} titulo="Compressão" ajuda="decisão de projeto">
++                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
++                    {(['H.264', 'H.265'] as Compressao[]).map(cmp => (
++                      <Opcao key={cmp} marcado={s.compressao === cmp} desabilitado={bloqueado}
++                        onClick={() => mudar({ compressao: cmp, ...limparEscolhas() })}
++                        titulo={cmp}
++                        detalhe={cmp === 'H.265' && vms === 'digifort' ? 'Digifort: metade do armazenamento do memorial' : 'Armazenamento do memorial'} />
++                    ))}
++                  </div>
++                </Pergunta>
++              )}
++
++              {(!temGravacao || s.compressao) && (
++                <>
++                  <Pergunta numero={++numero} titulo="Reserva" ajuda="sobre a base de câmeras">
++                    <div style={{ display: 'inline-flex', background: COR.fundo, border: `1px solid ${COR.borda}`, borderRadius: '10px', padding: '3px', gap: '3px' }}>
++                      {RESERVAS.map(r => (
++                        <button key={r} type="button" disabled={bloqueado} onClick={() => mudar({ reservaPct: r, ...limparEscolhas() })}
++                          style={{ border: 0, borderRadius: '8px', padding: '6px 12px', background: s.reservaPct === r ? COR.azul : 'transparent', color: s.reservaPct === r ? '#FFFFFF' : COR.azul, fontWeight: 700, fontSize: '12.5px', cursor: 'pointer', fontFamily: FONTE }}>
++                          {r}%
++                        </button>
++                      ))}
++                    </div>
++                  </Pergunta>
++                  {analise.conjuntos.map(blocoConjunto)}
++                </>
++              )}
++            </>
++          )}
++
++          {vms === 'milestone' && analise.carePlus && (
++            <Pergunta numero={++numero} titulo="Care Plus (Milestone)" auto={!!analise.carePlus.item && !s.carePlus}
++              ajuda={prazoContratoMeses ? `contrato de ${prazoContratoMeses} meses` : 'tipo de projeto sem prazo de locação'}>
++              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
++                {([['', `Pelo contrato${prazoContratoMeses ? ` (${prazoContratoMeses} meses)` : ''}`], ['12', '1 ano'], ['36', '3 anos'], ['60', '5 anos'], ['cotacao', 'Cotação específica']] as Array<[IServidorSelecao['carePlus'], string]>).map(([v, t]) => (
++                  <Opcao key={v || 'auto'} minimo={110} marcado={(s.carePlus || '') === v} desabilitado={bloqueado} onClick={() => mudar({ carePlus: v })} titulo={t} />
++                ))}
++              </div>
++            </Pergunta>
++          )}
++
++          {analise.local === 'onPremise' && analise.baseGravacao > 0 && (
++            <div style={{ borderTop: `1px solid ${COR.borda}`, marginTop: '10px', paddingTop: '10px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
++              <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '13px', color: COR.azul, cursor: bloqueado ? 'default' : 'pointer' }}>
++                <input type="checkbox" checked={!!s.orcamentoManual} disabled={bloqueado} onChange={e => mudar({ orcamentoManual: e.target.checked, baseNaEscolha: analise.baseGravacao })} />
++                <strong>Orçamento manual</strong>
++              </label>
++              <span style={{ fontSize: '12px', color: COR.texto2 }}>Sai do seletor quando a faixa acima ou um contrato-mãe sair mais barato. Decisão comercial.</span>
++              {s.orcamentoManual && (
++                <>
++                  <label style={{ fontSize: '12.5px', color: COR.azul, display: 'flex', gap: '6px', alignItems: 'center' }}>
++                    Servidores
++                    <input type="number" min={1} value={s.orcamentoManualServidores || 1} disabled={bloqueado}
++                      onChange={e => mudar({ orcamentoManualServidores: Math.max(1, Number(e.target.value) || 1) })}
++                      style={{ width: '70px', padding: '6px 8px', border: `1px solid ${COR.borda}`, borderRadius: '8px', fontFamily: FONTE }} />
++                  </label>
++                  <input value={s.orcamentoManualMotivo || ''} disabled={bloqueado} placeholder="Motivo (ex.: contrato-mãe do suprimentos)"
++                    onChange={e => mudar({ orcamentoManualMotivo: e.target.value })}
++                    style={{ flex: '1 1 260px', padding: '7px 10px', border: `1px solid ${COR.borda}`, borderRadius: '8px', fontSize: '13px', fontFamily: FONTE }} />
++                </>
++              )}
++            </div>
++          )}
++
++          {analise.alertas.length > 0 && (
++            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
++              {analise.alertas.map(a => (
++                <div key={a.texto} style={{
++                  display: 'flex', gap: '8px', alignItems: 'flex-start', borderRadius: '8px', padding: '7px 10px', fontSize: '12.5px', lineHeight: 1.4,
++                  background: a.nivel === 'bloqueio' ? '#FDE7E9' : a.nivel === 'aviso' ? '#FFF4E5' : '#EEF0FB',
++                  color: a.nivel === 'bloqueio' ? VERMELHO : a.nivel === 'aviso' ? '#7C2D12' : COR.indigo
++                }}>
++                  <IconeKit nome="alerta" tamanho={15} />
++                  <span>{a.texto}</span>
++                </div>
++              ))}
++            </div>
++          )}
++        </div>
++      )}
++    </div>
++  );
++};
++
++export default ServidorCentralPainel;
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Kits/KitsPage.tsx b/src/webparts/portalTreinamentosWebPart/pages/Kits/KitsPage.tsx
+index e9f5005..bfc5cbc 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Kits/KitsPage.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Kits/KitsPage.tsx
+@@ -30,6 +30,7 @@ import CatalogoItensView from './CatalogoItensView';
+ import ComposicaoKitView from './ComposicaoKitView';
+ import HistoricoKitsView from './HistoricoKitsView';
+ import LogicaKitsView from './LogicaKitsView';
++import ServidoresView from './ServidoresView';
+ import VisaoGeralKits from './VisaoGeralKits';
+ 
+ import {
+@@ -58,12 +59,13 @@ export interface IKitsPageProps {
+   contexto?: IContextoAcesso;
+ }
+ 
+-type AbaKits = 'visao' | 'itens' | 'kits' | 'logica' | 'historico';
++type AbaKits = 'visao' | 'itens' | 'kits' | 'servidores' | 'logica' | 'historico';
+ 
+ const ABAS: Array<{ id: AbaKits; rotulo: string }> = [
+   { id: 'visao', rotulo: 'Visão geral' },
+   { id: 'itens', rotulo: 'Equipamentos e itens' },
+   { id: 'kits', rotulo: 'Composição dos kits' },
++  { id: 'servidores', rotulo: 'Servidores' },
+   { id: 'logica', rotulo: 'Como o montador calcula' },
+   { id: 'historico', rotulo: 'Histórico' }
+ ];
+@@ -277,6 +279,13 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
+               aoCriarKit={criarKit}
+             />
+           )}
++          {aba === 'servidores' && (
++            <ServidoresView
++              dataverseService={dataverseService}
++              podeEditar={administra}
++              usuarioNome={usuarioNome}
++            />
++          )}
+           {aba === 'logica' && <LogicaKitsView />}
+           {aba === 'historico' && <HistoricoKitsView alteracoes={catalogo.alteracoes} origemDataverse={catalogo.origem === 'dataverse'} />}
+         </div>
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Kits/LogicaKitsView.tsx b/src/webparts/portalTreinamentosWebPart/pages/Kits/LogicaKitsView.tsx
+index bd08912..e26a397 100644
+--- a/src/webparts/portalTreinamentosWebPart/pages/Kits/LogicaKitsView.tsx
++++ b/src/webparts/portalTreinamentosWebPart/pages/Kits/LogicaKitsView.tsx
+@@ -48,7 +48,7 @@ const PASSOS: Array<{ titulo: string; texto: string }> = [
+   },
+   {
+     titulo: 'O montador confere e consolida',
+-    texto: 'Soma itens iguais de todos os pontos, ordena por categoria, marca o que não tem código CIGAM e mostra os erros e avisos antes de concluir.'
++    texto: 'Escolhe o servidor da central pela faixa do memorial (vídeo + porteiros, com reserva), soma itens iguais, marca o que não tem código CIGAM e mostra erros e avisos antes de concluir.'
+   }
+ ];
+ 
+@@ -60,7 +60,8 @@ const VALIDACOES: string[] = [
+   'Face Detect em ponto alto com câmera sem zoom óptico.',
+   'Equipamento ou item sem código CIGAM: entra como pendente, não orçável.',
+   'Item usado no kit que foi desativado no catálogo.',
+-  'IPX Analytics sem o Digifort como VMS.'
++  'IPX Analytics sem o Digifort como VMS.',
++  'Servidor da central (Digifort, Milestone, IPX): faixa acima da maior do memorial, combinado acima de 50 câmeras, servidor sem código CIGAM, SO fora do suporte e Care Plus com prazo irregular.'
+ ];
+ 
+ const LogicaKitsView: React.FC = () => {
+@@ -113,7 +114,8 @@ const LogicaKitsView: React.FC = () => {
+             <li>Safe City: 1 licença por câmera de vídeo com a solução marcada.</li>
+             <li>Face Detect: 1 por câmera de vídeo do ponto com Face Detect.</li>
+             <li>Safe Way: 1 por faixa monitorada em cada câmera OCR/LPR.</li>
+-            <li>Digifort: base de {CAMERAS_BASE_DIGIFORT} câmeras por servidor; o excedente é coberto pelo menor pack que resolve ({packs} câmeras).</li>
++            <li>Digifort: 1 licença base de {CAMERAS_BASE_DIGIFORT} câmeras por servidor (o número de servidores vem do memorial); packs pela necessidade real — vídeo + porteiros ({packs} câmeras).</li>
++            <li>Milestone XProtect Professional+: 1 licença por câmera (vídeo + porteiros) e Care Plus pelo prazo do contrato (12, 36 ou 60 meses; outro prazo = cotação).</li>
+             <li>IPX Analytics: câmeras de vídeo × pacotes; só com Digifort.</li>
+             <li>W-Access: 1 licença por leitora, 1 a cada 1000 cadastros de face e 1 a cada 2 canais de visualização.</li>
+           </ul>
+diff --git a/src/webparts/portalTreinamentosWebPart/pages/Kits/ServidoresView.tsx b/src/webparts/portalTreinamentosWebPart/pages/Kits/ServidoresView.tsx
+new file mode 100644
+index 0000000..c9bc8fe
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/pages/Kits/ServidoresView.tsx
+@@ -0,0 +1,478 @@
++import * as React from 'react';
++
++import {
++  DataverseService
++} from '../../services/DataverseService';
++
++import {
++  KitsService,
++  invalidarCatalogoKits
++} from '../../services/bom/KitsService';
++
++import {
++  COLUNAS_MODELO,
++  IAlertaServidorGravado,
++  ICatalogoServidoresCarregado,
++  ILinhaServidorGravada,
++  ServidoresService,
++  aplicarServidoresNoMontador,
++  chaveDaLinha,
++  interpretarColado
++} from '../../services/bom/ServidoresService';
++
++import {
++  Compressao,
++  NivelAlertaServidor,
++  REGRAS_ALERTA,
++  SOFTWARES_SERVIDOR,
++  SoftwareServidor,
++  codigoSugerido,
++  nomeSoftware
++} from '../../services/bom/servidores';
++
++import {
++  Aviso,
++  COR,
++  CampoMotivo,
++  Interruptor,
++  Modal,
++  Selo,
++  TomSelo,
++  ajuda,
++  botao,
++  campo,
++  celula,
++  celulaCabecalho,
++  painel,
++  rotulo
++} from './kitsComum';
++
++// ============================================================
++// KITS — SERVIDORES (memoriais de cálculo)
++//
++// Catálogo que o painel "Servidor da central" da Seleção de kit usa:
++// uma linha por faixa/opção de memorial (Digifort, Milestone, IPX e
++// Digifort + IPX), com código CIGAM, versão do memorial e ativo.
++// Também os textos e níveis dos alertas — corrigir um memorial não
++// exige nova versão do portal.
++// ============================================================
++
++export interface IServidoresViewProps {
++  dataverseService?: DataverseService;
++  podeEditar: boolean;
++  usuarioNome: string;
++}
++
++const TOM_NIVEL: Record<NivelAlertaServidor, TomSelo> = { bloqueio: 'indigo', aviso: 'azul', informacao: 'ciano' };
++const NOME_NIVEL: Record<NivelAlertaServidor, string> = { bloqueio: 'Bloqueio', aviso: 'Aviso', informacao: 'Informação' };
++
++const tb = (n: number): string => (n ? `${String(n).replace('.', ',')} TB` : '—');
++
++// ------------------------------------------------------------
++// Editor de linha
++// ------------------------------------------------------------
++
++const EditorLinha: React.FC<{
++  linha: ILinhaServidorGravada;
++  podeEditar: boolean;
++  aoFechar: () => void;
++  aoSalvar: (l: ILinhaServidorGravada, motivo: string) => Promise<void>;
++}> = ({ linha, podeEditar, aoFechar, aoSalvar }) => {
++
++  const [d, setD] = React.useState<ILinhaServidorGravada>({ ...linha });
++  const [alt, setAlt] = React.useState({ processadores: linha.processadores.join('\n'), gpus: linha.gpus.join('\n'), sos: linha.sistemasOperacionais.join('\n') });
++  const [motivo, setMotivo] = React.useState('');
++  const [salvando, setSalvando] = React.useState(false);
++  const [erro, setErro] = React.useState('');
++  const mudar = (p: Partial<ILinhaServidorGravada>): void => setD(atual => ({ ...atual, ...p }));
++  const bloq = !podeEditar || salvando;
++  const nova = !linha.registroId;
++
++  const numero = (rot: string, valor: number, aoMudar: (n: number) => void, passo = 1): React.ReactElement => (
++    <div>
++      <label style={rotulo}>{rot}</label>
++      <input type="number" step={passo} min={0} style={campo} value={valor || ''} disabled={bloq} onChange={e => aoMudar(Number(e.target.value) || 0)} />
++    </div>
++  );
++  const texto = (rot: string, valor: string, aoMudar: (v: string) => void, dica?: string): React.ReactElement => (
++    <div>
++      <label style={rotulo}>{rot}</label>
++      <input style={campo} value={valor} disabled={bloq} onChange={e => aoMudar(e.target.value)} />
++      {dica && <div style={ajuda}>{dica}</div>}
++    </div>
++  );
++  const alternativas = (rot: string, chave: 'processadores' | 'gpus' | 'sos', dica: string): React.ReactElement => (
++    <div>
++      <label style={rotulo}>{rot}</label>
++      <textarea rows={3} style={{ ...campo, resize: 'vertical' }} value={alt[chave]} disabled={bloq} onChange={e => setAlt({ ...alt, [chave]: e.target.value })} />
++      <div style={ajuda}>{dica}</div>
++    </div>
++  );
++
++  const salvar = async (): Promise<void> => {
++    if (!motivo.trim()) {
++      setErro('Informe o motivo: ele vai para o histórico.');
++      return;
++    }
++    const sep = (v: string): string[] => v.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
++    const final: ILinhaServidorGravada = {
++      ...d,
++      finalidade: (SOFTWARES_SERVIDOR.filter(s => s.software === d.software)[0]).finalidade,
++      processadores: sep(alt.processadores),
++      gpus: sep(alt.gpus),
++      sistemasOperacionais: sep(alt.sos),
++      camerasPorServidor: d.camerasPorServidor || Math.ceil(d.capacidade / Math.max(1, d.qtdServidores))
++    };
++    final.id = nova ? chaveDaLinha(final) : d.id;
++    setSalvando(true);
++    setErro('');
++    try {
++      await aoSalvar(final, motivo.trim());
++      aoFechar();
++    } catch (e) {
++      setErro(String((e as Error)?.message || e));
++      setSalvando(false);
++    }
++  };
++
++  return (
++    <Modal
++      titulo={nova ? 'Nova linha de memorial' : `Linha ${codigoSugerido(d)}`}
++      subtitulo="Cada linha é uma faixa (e opção) de um memorial de cálculo do fabricante."
++      largura={820}
++      aoFechar={aoFechar}
++      rodape={(
++        <>
++          <button type="button" style={botao('secundario')} onClick={aoFechar}>{podeEditar ? 'Cancelar' : 'Fechar'}</button>
++          {podeEditar && <button type="button" style={botao('principal', salvando)} disabled={salvando} onClick={() => { salvar().catch(() => undefined); }}>{salvando ? 'Salvando…' : 'Salvar linha'}</button>}
++        </>
++      )}
++    >
++      {erro && <Aviso tipo="alerta">{erro}</Aviso>}
++      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '12px' }}>
++        <div>
++          <label style={rotulo}>Software</label>
++          <select style={campo} value={d.software} disabled={bloq || !nova} onChange={e => mudar({ software: e.target.value as SoftwareServidor })}>
++            {SOFTWARES_SERVIDOR.map(s => <option key={s.software} value={s.software}>{s.nome}</option>)}
++          </select>
++        </div>
++        {numero('Capacidade (câmeras)', d.capacidade, n => mudar({ capacidade: Math.round(n) }))}
++        {texto('Opção', d.opcao, v => mudar({ opcao: v.toUpperCase().substring(0, 2) }), 'A, B, C ou vazio')}
++        {numero('Qtd. de servidores', d.qtdServidores, n => mudar({ qtdServidores: Math.max(1, Math.round(n)) }))}
++        {numero('Câmeras por servidor', d.camerasPorServidor, n => mudar({ camerasPorServidor: Math.round(n) }))}
++      </div>
++      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '12px' }}>
++        {alternativas('Processadores', 'processadores', 'Uma alternativa por linha (equivalentes).')}
++        {alternativas('GPUs', 'gpus', 'Uma por linha; vazio = sem GPU. Uma só = automática.')}
++        {alternativas('Sistemas operacionais', 'sos', 'Uma por linha. Uma só = automático.')}
++      </div>
++      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '12px' }}>
++        {texto('RAM', d.ram, v => mudar({ ram: v }))}
++        {texto('Disco do SO', d.discoSo, v => mudar({ discoSo: v }))}
++        {numero('Armaz. por servidor (TB)', d.armazServidorTb, n => mudar({ armazServidorTb: n }), 0.1)}
++        {numero('Armaz. total (TB)', d.armazTotalTb, n => mudar({ armazTotalTb: n }), 0.1)}
++        {numero('Discos por servidor', d.discosQtd, n => mudar({ discosQtd: Math.round(n) }))}
++        {numero('Tamanho do disco (TB)', d.discoTamanhoTb, n => mudar({ discoTamanhoTb: n }), 0.1)}
++        {texto('Arranjo', d.arranjo, v => mudar({ arranjo: v }))}
++        <div>
++          <label style={rotulo}>Compressão de referência</label>
++          <select style={campo} value={d.compressaoRef} disabled={bloq} onChange={e => mudar({ compressaoRef: e.target.value as Compressao })}>
++            <option value="H.264">H.264</option>
++            <option value="H.265">H.265</option>
++          </select>
++        </div>
++        {texto('IOPS', d.iops, v => mudar({ iops: v }))}
++        {numero('Rede das câmeras (Mbps)', d.redeCamerasMbps, n => mudar({ redeCamerasMbps: n }), 0.1)}
++      </div>
++      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '12px' }}>
++        {texto('Código CIGAM', d.codigoCigam, v => mudar({ codigoCigam: v }), d.codigoCigam ? undefined : 'Sem ele o servidor não é orçável.')}
++        {texto('Versão do memorial', d.versaoMemorial, v => mudar({ versaoMemorial: v }), 'Rastreabilidade: qual memorial gerou a linha.')}
++      </div>
++      <div style={{ marginBottom: '12px' }}>
++        <label style={rotulo}>Observação</label>
++        <input style={campo} value={d.observacao} disabled={bloq} onChange={e => mudar({ observacao: e.target.value })} />
++      </div>
++      <Interruptor marcado={d.ativo} desabilitado={bloq} texto={d.ativo ? 'Linha ativa (usada pelo seletor)' : 'Linha desativada'} aoMudar={v => mudar({ ativo: v })} />
++      {podeEditar && <CampoMotivo valor={motivo} aoMudar={setMotivo} desabilitado={salvando} />}
++    </Modal>
++  );
++};
++
++// ------------------------------------------------------------
++// View
++// ------------------------------------------------------------
++
++const ServidoresView: React.FC<IServidoresViewProps> = ({ dataverseService, podeEditar, usuarioNome }) => {
++
++  const servico = React.useMemo(() => (dataverseService ? new ServidoresService(dataverseService) : undefined), [dataverseService]);
++  const log = React.useMemo(() => (dataverseService ? new KitsService(dataverseService) : undefined), [dataverseService]);
++
++  const [cat, setCat] = React.useState<ICatalogoServidoresCarregado | undefined>(undefined);
++  const [erro, setErro] = React.useState('');
++  const [mensagem, setMensagem] = React.useState('');
++  const [filtro, setFiltro] = React.useState<'' | SoftwareServidor>('');
++  const [editando, setEditando] = React.useState<ILinhaServidorGravada | undefined>(undefined);
++  const [colar, setColar] = React.useState(false);
++  const [textoColado, setTextoColado] = React.useState('');
++  const [alertaEditando, setAlertaEditando] = React.useState<IAlertaServidorGravado | undefined>(undefined);
++  const [ocupado, setOcupado] = React.useState(false);
++
++  const carregar = React.useCallback(async (): Promise<void> => {
++    if (!servico) {
++      return;
++    }
++    try {
++      const c = await servico.carregar();
++      aplicarServidoresNoMontador(c);
++      invalidarCatalogoKits();
++      setCat(c);
++    } catch (e) {
++      setErro(String((e as Error)?.message || e));
++    }
++  }, [servico]);
++
++  React.useEffect(() => { carregar().catch(() => undefined); }, [carregar]);
++
++  const avisar = (t: string): void => { setMensagem(t); window.setTimeout(() => setMensagem(''), 5000); };
++
++  if (!cat) {
++    return erro ? <Aviso tipo="alerta">{erro}</Aviso> : <div style={{ padding: '30px', color: COR.texto2 }}>Carregando o catálogo de servidores…</div>;
++  }
++
++  const editavel = podeEditar && cat.origem === 'dataverse' && !cat.vazio;
++  const linhas = cat.linhas.filter(l => !filtro || l.software === filtro);
++
++  const salvarLinha = async (l: ILinhaServidorGravada, motivo: string): Promise<void> => {
++    if (!servico || !log) {
++      return;
++    }
++    const anterior = cat.linhas.filter(x => x.registroId && x.registroId === l.registroId)[0];
++    await servico.salvarLinha(l);
++    await log.registrarAlteracao({ entidade: 'Servidor', chave: l.id, acao: anterior ? 'Alteração' : 'Inclusão', resumo: `Servidor ${codigoSugerido(l)} (${nomeSoftware(l.software)})`, motivo, antes: anterior, depois: l, usuarioNome });
++    await carregar();
++    avisar(`Linha ${codigoSugerido(l)} salva. O seletor de servidor já usa a versão nova.`);
++  };
++
++  const importarPadrao = async (): Promise<void> => {
++    if (!servico || !log) {
++      return;
++    }
++    setOcupado(true);
++    try {
++      const n = await servico.importarPadrao(cat);
++      await log.registrarAlteracao({ entidade: 'Servidor', chave: 'importacao', acao: 'Importação', resumo: `Catálogo de servidores padrão importado (${n} registros)`, motivo: 'Carga inicial: memorial Digifort + IPX (nov/2026), linhas parciais Digifort e alertas.', usuarioNome });
++      await carregar();
++      avisar(`${n} registro(s) criados.`);
++    } catch (e) {
++      setErro(String((e as Error)?.message || e));
++    } finally {
++      setOcupado(false);
++    }
++  };
++
++  const colados = textoColado.trim() ? interpretarColado(textoColado) : [];
++  const validos = colados.filter(x => x.dado).map(x => x.dado as ILinhaServidorGravada);
++
++  const importarColado = async (): Promise<void> => {
++    if (!servico || !log) {
++      return;
++    }
++    setOcupado(true);
++    try {
++      const r = await servico.importarLinhas(cat, validos);
++      await log.registrarAlteracao({ entidade: 'Servidor', chave: 'colado', acao: 'Importação', resumo: `Memorial colado: ${r.criadas} linha(s) nova(s), ${r.atualizadas} atualizada(s)`, motivo: 'Importação da planilha Servidores — Consolidado Memoriais de Cálculo.', depois: validos, usuarioNome });
++      await carregar();
++      setColar(false);
++      setTextoColado('');
++      avisar(`${r.criadas} linha(s) criadas e ${r.atualizadas} atualizadas.`);
++    } catch (e) {
++      setErro(String((e as Error)?.message || e));
++    } finally {
++      setOcupado(false);
++    }
++  };
++
++  const baixarModelo = (): void => {
++    const blob = new Blob(['\ufeff' + COLUNAS_MODELO.join(';') + '\r\n'], { type: 'text/csv;charset=utf-8' });
++    const url = URL.createObjectURL(blob);
++    const a = document.createElement('a');
++    a.href = url;
++    a.download = 'modelo-servidores-memorial.csv';
++    document.body.appendChild(a);
++    a.click();
++    document.body.removeChild(a);
++    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
++  };
++
++  const chip = (ativo: boolean): React.CSSProperties => ({ padding: '6px 12px', borderRadius: '999px', border: `1px solid ${ativo ? COR.azul : COR.cinzaClaro}`, background: ativo ? COR.azul : COR.branco, color: ativo ? COR.branco : COR.azul, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' });
++
++  return (
++    <div>
++      {mensagem && <Aviso tipo="ok">{mensagem}</Aviso>}
++      {erro && <Aviso tipo="alerta">{erro}</Aviso>}
++      {cat.origem === 'padrao' && <Aviso tipo="info">{cat.motivoPadrao} Mostrando o catálogo padrão (memorial Digifort + IPX de nov/2026) — é o que o seletor usa hoje.</Aviso>}
++      {podeEditar && cat.origem === 'dataverse' && (cat.vazio || cat.alertas.some(a => !a.registroId)) && (
++        <Aviso tipo="alerta" acao={<button type="button" style={botao('principal', ocupado)} disabled={ocupado} onClick={() => { importarPadrao().catch(() => undefined); }}>{ocupado ? 'Importando…' : 'Importar catálogo padrão'}</button>}>
++          {cat.vazio ? 'As tabelas de servidores existem, mas estão vazias. Importe o padrão para começar.' : 'Há alertas padrão ainda não gravados no Dataverse.'}
++        </Aviso>
++      )}
++
++      <Aviso tipo="info">
++        Cobertura do seletor: <strong>Digifort, Milestone e IPX Analytics</strong> (e o combinado Digifort + IPX até 50 câmeras).
++        Linhas desativadas não são oferecidas. Milestone e IPX avulso precisam do memorial cadastrado (planilha Consolidado).
++      </Aviso>
++
++      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '12px' }}>
++        <button type="button" style={chip(filtro === '')} onClick={() => setFiltro('')}>Todos ({cat.linhas.length})</button>
++        {SOFTWARES_SERVIDOR.map(s => (
++          <button key={s.software} type="button" style={chip(filtro === s.software)} onClick={() => setFiltro(s.software)}>
++            {s.nome} ({cat.linhas.filter(l => l.software === s.software && l.ativo).length}/{cat.linhas.filter(l => l.software === s.software).length})
++          </button>
++        ))}
++        <span style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
++          {editavel && <button type="button" style={botao('secundario')} onClick={() => setColar(true)}>Colar do Consolidado</button>}
++          {editavel && <button type="button" style={botao('principal')} onClick={() => setEditando({ ...cat.linhas[0], registroId: undefined, id: '', software: filtro || 'digifort', capacidade: 0, opcao: '', processadores: [], gpus: [], sistemasOperacionais: [], codigoCigam: '', versaoMemorial: '', observacao: '', ativo: true, qtdServidores: 1, camerasPorServidor: 0, armazServidorTb: 0, armazTotalTb: 0, discosQtd: 0, discoTamanhoTb: 0, ram: '', discoSo: '', arranjo: '', iops: '', redeCamerasMbps: 0, compressaoRef: 'H.264', finalidade: 'gravacao' })}>+ Nova linha</button>}
++        </span>
++      </div>
++
++      <div style={{ ...painel, padding: 0, overflowX: 'auto', marginBottom: '18px' }}>
++        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px', boxShadow: 'none', borderRadius: 0 }}>
++          <thead>
++            <tr>{['Linha', 'Software', 'Faixa', 'Servidores', 'Processador', 'RAM', 'Armaz.', 'GPU', 'SO', 'CIGAM', 'Memorial', ''].map(h => <th key={h} style={celulaCabecalho}>{h}</th>)}</tr>
++          </thead>
++          <tbody>
++            {linhas.length === 0 && <tr><td colSpan={12} style={{ ...celula, textAlign: 'center', padding: '28px', color: COR.texto2 }}>Nenhuma linha para este software. {editavel ? 'Use “Colar do Consolidado” ou “+ Nova linha”.' : ''}</td></tr>}
++            {linhas.map(l => (
++              <tr key={l.registroId || l.id} style={{ opacity: l.ativo ? 1 : 0.55 }}>
++                <td style={{ ...celula, whiteSpace: 'nowrap', fontWeight: 700 }}>{codigoSugerido(l)}{!l.ativo && <div><Selo tom="cinza">desativada</Selo></div>}</td>
++                <td style={celula}>{nomeSoftware(l.software)}</td>
++                <td style={{ ...celula, whiteSpace: 'nowrap' }}>{l.capacidade} câm.{l.opcao ? ` · opção ${l.opcao}` : ''}</td>
++                <td style={celula}>{l.qtdServidores}{l.qtdServidores > 1 ? ` (${l.camerasPorServidor}/serv.)` : ''}</td>
++                <td style={{ ...celula, fontSize: '13px' }}>{l.processadores.length ? l.processadores.join(' · ') : <Selo tom="indigo">a preencher</Selo>}</td>
++                <td style={celula}>{l.ram || '—'}</td>
++                <td style={{ ...celula, whiteSpace: 'nowrap' }}>{tb(l.armazTotalTb)}{l.discosQtd ? <div style={{ fontSize: '12px', color: COR.texto2 }}>{l.discosQtd} discos/serv.</div> : null}</td>
++                <td style={{ ...celula, fontSize: '13px' }}>{l.gpus.length ? l.gpus.join(' · ') : 'sem GPU'}</td>
++                <td style={{ ...celula, fontSize: '13px' }}>{l.sistemasOperacionais.length ? l.sistemasOperacionais.join(' · ') : <Selo tom="indigo">a preencher</Selo>}</td>
++                <td style={{ ...celula, whiteSpace: 'nowrap' }}>{l.codigoCigam || <Selo tom="indigo">! sem código</Selo>}</td>
++                <td style={{ ...celula, fontSize: '12.5px', color: COR.texto2 }}>{l.versaoMemorial || '—'}{l.observacao && <div style={{ color: COR.indigo }}>{l.observacao}</div>}</td>
++                <td style={{ ...celula, textAlign: 'right' }}><button type="button" style={botao('secundario')} onClick={() => setEditando(l)}>{editavel ? 'Alterar' : 'Ver'}</button></td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      </div>
++
++      <h3 style={{ fontSize: '14px', textTransform: 'uppercase', letterSpacing: '.03em', color: COR.azul, margin: '0 0 8px' }}>Alertas do seletor</h3>
++      <div style={{ ...ajuda, marginBottom: '8px' }}>A condição é fixa no sistema; o texto, o nível e se está ativo vêm daqui. Alertas de uma linha específica usam a regra “linha:CHAVE” (ex.: linha:DGFIPX-050).</div>
++      <div style={{ ...painel, padding: 0, overflowX: 'auto' }}>
++        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px', boxShadow: 'none', borderRadius: 0 }}>
++          <thead><tr>{['Regra', 'Nível', 'Texto', ''].map(h => <th key={h} style={celulaCabecalho}>{h}</th>)}</tr></thead>
++          <tbody>
++            {cat.alertas.map(a => (
++              <tr key={a.registroId || a.regra} style={{ opacity: a.ativo ? 1 : 0.55 }}>
++                <td style={{ ...celula, fontSize: '13px' }}>
++                  <strong>{a.regra}</strong>
++                  <div style={{ fontSize: '12px', color: COR.texto2 }}>{(REGRAS_ALERTA.filter(r => r.regra === a.regra)[0] || { descricao: 'Alerta de linha do catálogo' }).descricao}</div>
++                </td>
++                <td style={celula}><Selo tom={TOM_NIVEL[a.nivel]}>{NOME_NIVEL[a.nivel]}</Selo></td>
++                <td style={{ ...celula, fontSize: '13px' }}>{a.texto}</td>
++                <td style={{ ...celula, textAlign: 'right' }}>{editavel && <button type="button" style={botao('secundario')} onClick={() => setAlertaEditando({ ...a })}>Alterar</button>}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      </div>
++      {editavel && (
++        <button type="button" style={{ ...botao('discreto'), marginTop: '8px' }} onClick={() => setAlertaEditando({ id: '', regra: 'linha:', nivel: 'informacao', texto: '', ativo: true })}>+ Alerta de uma linha</button>
++      )}
++
++      {editando && (
++        <EditorLinha linha={editando} podeEditar={editavel} aoFechar={() => setEditando(undefined)} aoSalvar={salvarLinha} />
++      )}
++
++      {alertaEditando && (
++        <Modal
++          titulo="Alerta do seletor"
++          aoFechar={() => setAlertaEditando(undefined)}
++          rodape={(
++            <>
++              <button type="button" style={botao('secundario')} onClick={() => setAlertaEditando(undefined)}>Cancelar</button>
++              <button type="button" style={botao('principal', ocupado)} disabled={ocupado} onClick={() => {
++                if (!servico || !log || !alertaEditando.texto.trim() || !alertaEditando.regra.trim() || alertaEditando.regra === 'linha:') {
++                  setErro('Informe a regra e o texto do alerta.');
++                  return;
++                }
++                setOcupado(true);
++                servico.salvarAlerta(alertaEditando)
++                  .then(() => log.registrarAlteracao({ entidade: 'Servidor', chave: alertaEditando.regra, acao: 'Alerta', resumo: `Alerta do seletor: ${alertaEditando.regra}`, motivo: 'Texto/nível do alerta ajustado.', depois: alertaEditando, usuarioNome }))
++                  .then(() => carregar())
++                  .then(() => { setAlertaEditando(undefined); avisar('Alerta salvo.'); })
++                  .catch(e => setErro(String((e as Error)?.message || e)))
++                  .then(() => setOcupado(false), () => setOcupado(false));
++              }}>Salvar</button>
++            </>
++          )}
++        >
++          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
++            <div>
++              <label style={rotulo}>Regra</label>
++              <input style={campo} value={alertaEditando.regra} disabled={!!alertaEditando.registroId || REGRAS_ALERTA.some(r => r.regra === alertaEditando.regra)} onChange={e => setAlertaEditando({ ...alertaEditando, regra: e.target.value.trim() })} />
++            </div>
++            <div>
++              <label style={rotulo}>Nível</label>
++              <select style={campo} value={alertaEditando.nivel} onChange={e => setAlertaEditando({ ...alertaEditando, nivel: e.target.value as NivelAlertaServidor })}>
++                <option value="bloqueio">Bloqueio (impede concluir)</option>
++                <option value="aviso">Aviso</option>
++                <option value="informacao">Informação</option>
++              </select>
++            </div>
++          </div>
++          <label style={rotulo}>Texto</label>
++          <textarea rows={3} style={{ ...campo, resize: 'vertical' }} value={alertaEditando.texto} onChange={e => setAlertaEditando({ ...alertaEditando, texto: e.target.value })} />
++          <div style={{ marginTop: '10px' }}>
++            <Interruptor marcado={alertaEditando.ativo} texto={alertaEditando.ativo ? 'Ativo' : 'Desligado'} aoMudar={v => setAlertaEditando({ ...alertaEditando, ativo: v })} />
++          </div>
++        </Modal>
++      )}
++
++      {colar && (
++        <Modal
++          titulo="Colar linhas do memorial"
++          subtitulo="Organize as colunas como no modelo, copie as linhas no Excel e cole aqui. Linhas com a mesma chave (software + faixa + opção) são atualizadas."
++          largura={900}
++          aoFechar={() => setColar(false)}
++          rodape={(
++            <>
++              <button type="button" style={botao('discreto')} onClick={baixarModelo}>Baixar modelo (CSV)</button>
++              <button type="button" style={botao('secundario')} onClick={() => setColar(false)}>Cancelar</button>
++              <button type="button" style={botao('principal', ocupado || validos.length === 0)} disabled={ocupado || validos.length === 0} onClick={() => { importarColado().catch(() => undefined); }}>{ocupado ? 'Importando…' : `Importar ${validos.length} linha(s)`}</button>
++            </>
++          )}
++        >
++          <div style={{ ...ajuda, marginTop: 0, marginBottom: '8px' }}>Colunas, na ordem: {COLUNAS_MODELO.join(' · ')}.</div>
++          <textarea aria-label="Linhas coladas" rows={7} style={{ ...campo, fontFamily: 'Consolas, monospace', fontSize: '12.5px' }} value={textoColado} onChange={e => setTextoColado(e.target.value)} />
++          {colados.length > 0 && (
++            <div style={{ maxHeight: '260px', overflow: 'auto', marginTop: '10px', border: `1px solid ${COR.cinzaClaro}`, borderRadius: '8px' }}>
++              <table style={{ width: '100%', borderCollapse: 'collapse', boxShadow: 'none', borderRadius: 0 }}>
++                <thead><tr>{['Linha', 'Chave', 'Processadores', 'Armaz.', 'Situação'].map(h => <th key={h} style={celulaCabecalho}>{h}</th>)}</tr></thead>
++                <tbody>
++                  {colados.map(x => (
++                    <tr key={x.linha}>
++                      <td style={celula}>{x.linha}</td>
++                      <td style={celula}>{x.dado ? codigoSugerido(x.dado) : '—'}</td>
++                      <td style={{ ...celula, fontSize: '13px' }}>{x.dado ? x.dado.processadores.join(' · ') : ''}</td>
++                      <td style={celula}>{x.dado ? tb(x.dado.armazTotalTb) : ''}</td>
++                      <td style={{ ...celula, color: x.erro ? COR.indigo : COR.azul, fontWeight: 600 }}>{x.erro || (cat.linhas.some(l => l.registroId && x.dado && l.id === x.dado.id) ? 'Atualiza' : 'Nova')}</td>
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            </div>
++          )}
++        </Modal>
++      )}
++    </div>
++  );
++};
++
++export default ServidoresView;
+diff --git a/src/webparts/portalTreinamentosWebPart/services/bom/KitsService.ts b/src/webparts/portalTreinamentosWebPart/services/bom/KitsService.ts
+index ad5ddc9..e2921f5 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/bom/KitsService.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/bom/KitsService.ts
+@@ -23,6 +23,10 @@ import {
+   restaurarCatalogoPadrao
+ } from './catalogoKits';
+ 
++import {
++  carregarEAplicarServidores
++} from './ServidoresService';
++
+ import {
+   COL_ALTERACAO,
+   COL_COMPOSICAO,
+@@ -791,8 +795,10 @@ export const garantirCatalogoKitsAplicado = (
+   if (!carregamento) {
+     carregamento = new KitsService(dataverse)
+       .carregar()
+-      .then(catalogo => {
++      .then(async catalogo => {
+         aplicarNoMontador(catalogo);
++        // Catálogo de servidores (memoriais): falhou, fica o padrão.
++        await carregarEAplicarServidores(dataverse).catch(() => undefined);
+         return catalogo;
+       })
+       .catch(() => {
+diff --git a/src/webparts/portalTreinamentosWebPart/services/bom/ServidoresService.ts b/src/webparts/portalTreinamentosWebPart/services/bom/ServidoresService.ts
+new file mode 100644
+index 0000000..04311f4
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/services/bom/ServidoresService.ts
+@@ -0,0 +1,393 @@
++import {
++  DataverseService,
++  IDataverseRecord
++} from '../DataverseService';
++
++import {
++  ALERTAS_PADRAO,
++  CATALOGO_SERVIDORES_PADRAO,
++  Compressao,
++  FinalidadeServidor,
++  IAlertaServidorRegra,
++  ILinhaServidor,
++  NivelAlertaServidor,
++  SOFTWARES_SERVIDOR,
++  SoftwareServidor,
++  aplicarCatalogoServidores
++} from './servidores';
++
++import {
++  detectarDadoSensivel
++} from '../LicitacaoParecerService';
++
++// ============================================================
++// SERVIDORES — CATÁLOGO NO DATAVERSE (aba Kits → Servidores)
++//
++//   dgt_servidorcatalogo  uma linha por faixa/opção de um memorial
++//   dgt_servidoralerta    textos e níveis dos alertas (regras gerais
++//                         ou "linha:<chave>")
++//
++// Alternativas (processador, GPU, SO) ficam em campos próprios, uma
++// por linha de texto — nada de interpretar "X ou (Y / Z)" na hora.
++// Nada é apagado: linha fora de uso é desativada. As alterações vão
++// para o histórico da aba Kits (dgt_kitalteracao).
++//
++// Tabelas: scripts/dataverse/criar-tabelas-servidores.ps1
++// ============================================================
++
++export const TABELA_SERVIDOR = 'dgt_servidorcatalogo';
++export const TABELA_ALERTA_SERVIDOR = 'dgt_servidoralerta';
++
++const C = {
++  id: 'dgt_servidorcatalogoid',
++  chave: 'dgt_name',
++  software: 'dgt_software',
++  finalidade: 'dgt_finalidade',
++  capacidade: 'dgt_capacidade',
++  opcao: 'dgt_opcao',
++  qtdServidores: 'dgt_qtdservidores',
++  camerasPorServidor: 'dgt_camerasporservidor',
++  processadores: 'dgt_processadores',
++  ram: 'dgt_ram',
++  discoSo: 'dgt_discoso',
++  armazServidorTb: 'dgt_armazservidortb',
++  armazTotalTb: 'dgt_armaztotaltb',
++  discosQtd: 'dgt_discosqtd',
++  discoTamanhoTb: 'dgt_discotamanhotb',
++  arranjo: 'dgt_arranjo',
++  gpus: 'dgt_gpus',
++  sistemasOperacionais: 'dgt_sistemasoperacionais',
++  compressaoRef: 'dgt_compressaoref',
++  iops: 'dgt_iops',
++  redeCamerasMbps: 'dgt_redecamerasmbps',
++  codigoCigam: 'dgt_codigocigam',
++  versaoMemorial: 'dgt_versaomemorial',
++  observacao: 'dgt_observacao',
++  ativo: 'dgt_ativo'
++};
++
++const CA = {
++  id: 'dgt_servidoralertaid',
++  regra: 'dgt_name',
++  nivel: 'dgt_nivel',
++  texto: 'dgt_texto',
++  ativo: 'dgt_ativo'
++};
++
++export interface ILinhaServidorGravada extends ILinhaServidor {
++  registroId?: string;
++}
++
++export interface IAlertaServidorGravado extends IAlertaServidorRegra {
++  registroId?: string;
++}
++
++export interface ICatalogoServidoresCarregado {
++  origem: 'dataverse' | 'padrao';
++  motivoPadrao?: string;
++  vazio: boolean;
++  linhas: ILinhaServidorGravada[];
++  alertas: IAlertaServidorGravado[];
++}
++
++const texto = (r: IDataverseRecord, campo: string): string => {
++  const v = r[campo];
++  return v === undefined || v === null ? '' : String(v).trim();
++};
++
++const numero = (r: IDataverseRecord, campo: string): number => {
++  const v = Number(r[campo]);
++  return isNaN(v) ? 0 : v;
++};
++
++const lista = (valor: string): string[] =>
++  (valor || '').split(/\r?\n|\s\|\s/).map(x => x.trim()).filter(Boolean);
++
++const guid = (v: unknown): string => String(v || '').replace(/[{}]/g, '').trim().toLowerCase();
++
++const ehTabelaInexistente = (erro: unknown): boolean =>
++  /404|could not find|does not exist|não localizado|0x80060888/i.test(String((erro as Error)?.message || erro || ''));
++
++const catalogoPadrao = (motivo: string): ICatalogoServidoresCarregado => ({
++  origem: 'padrao',
++  motivoPadrao: motivo,
++  vazio: true,
++  linhas: CATALOGO_SERVIDORES_PADRAO.map(l => ({ ...l })),
++  alertas: ALERTAS_PADRAO.map(x => ({ ...x }))
++});
++
++export const aplicarServidoresNoMontador = (c: ICatalogoServidoresCarregado): void => {
++  if (c.origem === 'dataverse' && !c.vazio) {
++    aplicarCatalogoServidores(c.linhas, c.alertas);
++  } else {
++    aplicarCatalogoServidores(CATALOGO_SERVIDORES_PADRAO, ALERTAS_PADRAO);
++  }
++};
++
++// ------------------------------------------------------------
++// Importação (colar do Excel) — colunas do modelo
++// ------------------------------------------------------------
++
++export const COLUNAS_MODELO = [
++  'Software (Digifort, Milestone, IPX, Digifort + IPX)',
++  'Capacidade (câmeras)',
++  'Opção (A/B/C ou vazio)',
++  'Qtd. servidores',
++  'Câmeras por servidor',
++  'Processadores (alternativas separadas por |)',
++  'RAM',
++  'Disco do SO',
++  'Armazenamento por servidor (TB)',
++  'Armazenamento total (TB)',
++  'Discos por servidor',
++  'Tamanho do disco (TB)',
++  'Arranjo',
++  'GPUs (alternativas separadas por |)',
++  'Sistemas operacionais (separados por |)',
++  'Compressão de referência (H.264/H.265)',
++  'IOPS',
++  'Rede das câmeras (Mbps)',
++  'Código CIGAM',
++  'Versão do memorial',
++  'Ativo (Sim/Não)'
++];
++
++const softwareDe = (valor: string): SoftwareServidor | undefined => {
++  const v = (valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, '');
++  if (/digifort.*ipx|dgfipx|combinado/.test(v)) { return 'digifortIpx'; }
++  if (/digifort|dgf/.test(v)) { return 'digifort'; }
++  if (/milestone|xprotect|mil/.test(v)) { return 'milestone'; }
++  if (/ipx/.test(v)) { return 'ipx'; }
++  return undefined;
++};
++
++const decimal = (valor: string): number => {
++  const v = Number((valor || '').replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
++  return isNaN(v) ? 0 : v;
++};
++
++export const chaveDaLinha = (l: Pick<ILinhaServidor, 'software' | 'capacidade' | 'opcao'>): string => {
++  const sigla = (SOFTWARES_SERVIDOR.filter(s => s.software === l.software)[0] || { sigla: 'SRV' }).sigla;
++  return `${sigla}-${('00' + l.capacidade).slice(-3)}${l.opcao ? `-${l.opcao}` : ''}`;
++};
++
++export const interpretarColado = (textoColado: string): Array<{ linha: number; dado?: ILinhaServidor; erro?: string }> =>
++  textoColado
++    .split(/\r?\n/)
++    .map((l, i) => ({ c: l.split('\t'), i }))
++    .filter(x => x.c.some(v => v.trim()))
++    .filter(x => !/^software/i.test((x.c[0] || '').trim()))
++    .map(({ c, i }) => {
++      const software = softwareDe(c[0]);
++      const capacidade = Math.round(decimal(c[1]));
++      if (!software) {
++        return { linha: i + 1, erro: `Software não reconhecido: "${c[0]}".` };
++      }
++      if (!(capacidade > 0)) {
++        return { linha: i + 1, erro: 'Capacidade inválida.' };
++      }
++      const finalidade: FinalidadeServidor = (SOFTWARES_SERVIDOR.filter(s => s.software === software)[0]).finalidade;
++      const qtd = Math.max(1, Math.round(decimal(c[3])) || 1);
++      const opcao = (c[2] || '').trim().toUpperCase().substring(0, 2);
++      const dado: ILinhaServidor = {
++        id: '',
++        software,
++        finalidade,
++        capacidade,
++        opcao,
++        qtdServidores: qtd,
++        camerasPorServidor: Math.round(decimal(c[4])) || Math.ceil(capacidade / qtd),
++        processadores: lista((c[5] || '').replace(/\|/g, ' | ')),
++        ram: (c[6] || '').trim(),
++        discoSo: (c[7] || '').trim(),
++        armazServidorTb: decimal(c[8]),
++        armazTotalTb: decimal(c[9]) || decimal(c[8]) * qtd,
++        discosQtd: Math.round(decimal(c[10])),
++        discoTamanhoTb: decimal(c[11]),
++        arranjo: (c[12] || '').trim(),
++        gpus: lista((c[13] || '').replace(/\|/g, ' | ')),
++        sistemasOperacionais: lista((c[14] || '').replace(/\|/g, ' | ')),
++        compressaoRef: /265/.test(c[15] || '') ? 'H.265' : 'H.264',
++        iops: (c[16] || '').trim(),
++        redeCamerasMbps: decimal(c[17]),
++        codigoCigam: (c[18] || '').trim(),
++        versaoMemorial: (c[19] || '').trim(),
++        ativo: !/^n(ao|ão)?$/i.test((c[20] || '').trim()),
++        observacao: ''
++      };
++      dado.id = chaveDaLinha(dado);
++      const sensivel = detectarDadoSensivel([dado.processadores.join(' '), dado.ram, dado.versaoMemorial, dado.iops].join(' '));
++      return sensivel ? { linha: i + 1, erro: `Contém ${sensivel}.` } : { linha: i + 1, dado };
++    });
++
++// ------------------------------------------------------------
++// Serviço
++// ------------------------------------------------------------
++
++export class ServidoresService {
++
++  private readonly dataverse: DataverseService;
++
++  public constructor(dataverse: DataverseService) {
++    this.dataverse = dataverse;
++  }
++
++  public async carregar(): Promise<ICatalogoServidoresCarregado> {
++
++    let registros: IDataverseRecord[];
++    try {
++      registros = await this.dataverse.listarRegistros(TABELA_SERVIDOR, `$select=${Object.keys(C).map(k => (C as Record<string, string>)[k]).join(',')}`);
++    } catch (erro) {
++      return catalogoPadrao(ehTabelaInexistente(erro)
++        ? 'As tabelas de servidores ainda não foram criadas no Dataverse (script criar-tabelas-servidores.ps1).'
++        : `Não foi possível ler o catálogo de servidores: ${String((erro as Error)?.message || erro).substring(0, 200)}`);
++    }
++
++    const regAlertas = await this.dataverse
++      .listarRegistros(TABELA_ALERTA_SERVIDOR, `$select=${Object.keys(CA).map(k => (CA as Record<string, string>)[k]).join(',')}`)
++      .catch(() => [] as IDataverseRecord[]);
++
++    const linhas: ILinhaServidorGravada[] = registros.map(r => {
++      const software = (texto(r, C.software) || 'digifort') as SoftwareServidor;
++      return {
++        registroId: guid(r[C.id]),
++        id: texto(r, C.chave),
++        software,
++        finalidade: (texto(r, C.finalidade) || 'gravacao') as FinalidadeServidor,
++        capacidade: numero(r, C.capacidade),
++        opcao: texto(r, C.opcao),
++        qtdServidores: numero(r, C.qtdServidores) || 1,
++        camerasPorServidor: numero(r, C.camerasPorServidor),
++        processadores: lista(texto(r, C.processadores)),
++        ram: texto(r, C.ram),
++        discoSo: texto(r, C.discoSo),
++        armazServidorTb: numero(r, C.armazServidorTb),
++        armazTotalTb: numero(r, C.armazTotalTb),
++        discosQtd: numero(r, C.discosQtd),
++        discoTamanhoTb: numero(r, C.discoTamanhoTb),
++        arranjo: texto(r, C.arranjo),
++        gpus: lista(texto(r, C.gpus)),
++        sistemasOperacionais: lista(texto(r, C.sistemasOperacionais)),
++        compressaoRef: (texto(r, C.compressaoRef) || 'H.264') as Compressao,
++        iops: texto(r, C.iops),
++        redeCamerasMbps: numero(r, C.redeCamerasMbps),
++        codigoCigam: texto(r, C.codigoCigam),
++        versaoMemorial: texto(r, C.versaoMemorial),
++        observacao: texto(r, C.observacao),
++        ativo: r[C.ativo] !== false
++      };
++    }).sort((x, y) => x.software.localeCompare(y.software) || x.capacidade - y.capacidade || x.opcao.localeCompare(y.opcao));
++
++    const gravados: IAlertaServidorGravado[] = regAlertas.map(r => ({
++      registroId: guid(r[CA.id]),
++      id: texto(r, CA.regra),
++      regra: texto(r, CA.regra),
++      nivel: (texto(r, CA.nivel) || 'aviso') as NivelAlertaServidor,
++      texto: texto(r, CA.texto),
++      ativo: r[CA.ativo] !== false
++    }));
++
++    // Regras gerais sem registro aparecem com o texto padrão.
++    const alertas: IAlertaServidorGravado[] = [
++      ...ALERTAS_PADRAO.filter(p => !gravados.some(g => g.regra === p.regra)).map(p => ({ ...p })),
++      ...gravados
++    ];
++
++    return { origem: 'dataverse', vazio: registros.length === 0, linhas, alertas };
++  }
++
++  private dadosLinha(l: ILinhaServidor): Record<string, unknown> {
++    return {
++      [C.chave]: (l.id || chaveDaLinha(l)).substring(0, 100),
++      [C.software]: l.software,
++      [C.finalidade]: l.finalidade,
++      [C.capacidade]: Math.round(l.capacidade),
++      [C.opcao]: l.opcao || '',
++      [C.qtdServidores]: Math.max(1, Math.round(l.qtdServidores || 1)),
++      [C.camerasPorServidor]: Math.round(l.camerasPorServidor || 0),
++      [C.processadores]: l.processadores.join('\n'),
++      [C.ram]: l.ram,
++      [C.discoSo]: l.discoSo,
++      [C.armazServidorTb]: l.armazServidorTb || 0,
++      [C.armazTotalTb]: l.armazTotalTb || 0,
++      [C.discosQtd]: Math.round(l.discosQtd || 0),
++      [C.discoTamanhoTb]: l.discoTamanhoTb || 0,
++      [C.arranjo]: l.arranjo,
++      [C.gpus]: l.gpus.join('\n'),
++      [C.sistemasOperacionais]: l.sistemasOperacionais.join('\n'),
++      [C.compressaoRef]: l.compressaoRef,
++      [C.iops]: l.iops,
++      [C.redeCamerasMbps]: l.redeCamerasMbps || 0,
++      [C.codigoCigam]: l.codigoCigam.trim(),
++      [C.versaoMemorial]: l.versaoMemorial,
++      [C.observacao]: l.observacao,
++      [C.ativo]: l.ativo
++    };
++  }
++
++  public async salvarLinha(l: ILinhaServidorGravada): Promise<void> {
++    if (!(l.capacidade > 0)) {
++      throw new Error('Informe a capacidade (câmeras).');
++    }
++    if (!l.versaoMemorial.trim()) {
++      throw new Error('Informe a versão do memorial (rastreabilidade).');
++    }
++    const sensivel = detectarDadoSensivel([l.processadores.join(' '), l.ram, l.versaoMemorial, l.observacao].join(' '));
++    if (sensivel) {
++      throw new Error(`Os campos contêm ${sensivel}. Remova esse dado (política da DGT).`);
++    }
++    if (l.registroId) {
++      await this.dataverse.atualizarRegistro(TABELA_SERVIDOR, l.registroId, this.dadosLinha(l));
++    } else {
++      await this.dataverse.criarRegistro(TABELA_SERVIDOR, this.dadosLinha(l));
++    }
++  }
++
++  public async salvarAlerta(x: IAlertaServidorGravado): Promise<void> {
++    const dados = { [CA.regra]: x.regra.substring(0, 100), [CA.nivel]: x.nivel, [CA.texto]: x.texto.substring(0, 2000), [CA.ativo]: x.ativo };
++    if (x.registroId) {
++      await this.dataverse.atualizarRegistro(TABELA_ALERTA_SERVIDOR, x.registroId, dados);
++    } else {
++      await this.dataverse.criarRegistro(TABELA_ALERTA_SERVIDOR, dados);
++    }
++  }
++
++  // Leva o padrão (memorial combinado + linhas parciais + alertas) ao
++  // Dataverse. Só cria o que não existe.
++  public async importarPadrao(atual: ICatalogoServidoresCarregado): Promise<number> {
++    let n = 0;
++    for (const l of CATALOGO_SERVIDORES_PADRAO) {
++      if (!atual.linhas.some(x => x.registroId && x.id === l.id)) {
++        await this.dataverse.criarRegistro(TABELA_SERVIDOR, this.dadosLinha(l));
++        n++;
++      }
++    }
++    for (const x of ALERTAS_PADRAO) {
++      if (!atual.alertas.some(y => y.registroId && y.regra === x.regra)) {
++        await this.salvarAlerta(x);
++        n++;
++      }
++    }
++    return n;
++  }
++
++  // Linhas coladas: atualiza pela chave (software + capacidade + opção)
++  // ou cria.
++  public async importarLinhas(atual: ICatalogoServidoresCarregado, novas: ILinhaServidor[]): Promise<{ criadas: number; atualizadas: number }> {
++    let criadas = 0;
++    let atualizadas = 0;
++    for (const l of novas) {
++      const existente = atual.linhas.filter(x => x.registroId && x.id === l.id)[0];
++      await this.salvarLinha({ ...l, registroId: existente ? existente.registroId : undefined, observacao: existente ? existente.observacao : l.observacao });
++      if (existente) { atualizadas++; } else { criadas++; }
++    }
++    return { criadas, atualizadas };
++  }
++}
++
++// Usado pelo montador (garantirCatalogoKitsAplicado).
++export const carregarEAplicarServidores = async (dataverse: DataverseService): Promise<ICatalogoServidoresCarregado> => {
++  const c = await new ServidoresService(dataverse).carregar();
++  aplicarServidoresNoMontador(c);
++  return c;
++};
+diff --git a/src/webparts/portalTreinamentosWebPart/services/bom/catalogoKits.ts b/src/webparts/portalTreinamentosWebPart/services/bom/catalogoKits.ts
+index d51af2d..7ff9729 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/bom/catalogoKits.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/bom/catalogoKits.ts
+@@ -151,7 +151,14 @@ const ITENS_PADRAO = {
+   // Licenças W-Access (Invenzi) — confirmar a cada cotação da Invenzi
+   waccessLeitora: item('3300800009', 'Invenzi WXS-S-1R-FR-E — licença leitora facial Expert', 'Licença'),
+   waccess1000: item('3300800007', 'Invenzi WXS-S-1KCRD-E — 1000 usuários ativos', 'Licença'),
+-  waccess2Conexoes: item('3300800008', 'Invenzi WXS-S-2CNX-E — 2 conexões simultâneas', 'Licença')
++  waccess2Conexoes: item('3300800008', 'Invenzi WXS-S-2CNX-E — 2 conexões simultâneas', 'Licença'),
++
++  // Milestone XProtect Professional+ (edição vendida pela DGT).
++  // NÃO usar os itens de Express+ (3300110014 e 3300110016).
++  milestoneLicenca: item('3300110002', 'Milestone XProtect Professional+ Device License (XPPPLUSDL)', 'Licença'),
++  milestoneCare1: item('3300110005', 'Milestone Care Plus 1 ano — XProtect Professional+ DL (YXPPPLUSDL)', 'Licença'),
++  milestoneCare3: item('3300110006', 'Milestone Care Plus 3 anos — XProtect Professional (Y3XPPCL)', 'Licença'),
++  milestoneCare5: item('3300110017', 'Milestone Care Plus 5 anos — XProtect Professional+ DL (Y5XPPPLUSDL)', 'Licença')
+ };
+ 
+ export type ChaveItem = keyof typeof ITENS_PADRAO;
+@@ -523,6 +530,10 @@ export const ITENS_EM_REGRAS: Record<string, string> = {
+   ipxIntegracao: REGRA_LICENCAS,
+   waccess1000: REGRA_LICENCAS,
+   waccess2Conexoes: REGRA_LICENCAS,
++  milestoneLicenca: REGRA_LICENCAS,
++  milestoneCare1: REGRA_LICENCAS,
++  milestoneCare3: REGRA_LICENCAS,
++  milestoneCare5: REGRA_LICENCAS,
+   waccessLeitora: REGRA_CATRACA,
+   catracaCap3100: REGRA_CATRACA,
+   catracaPne: REGRA_CATRACA,
+diff --git a/src/webparts/portalTreinamentosWebPart/services/bom/montadorBom.ts b/src/webparts/portalTreinamentosWebPart/services/bom/montadorBom.ts
+index 01471cf..9f6d2ec 100644
+--- a/src/webparts/portalTreinamentosWebPart/services/bom/montadorBom.ts
++++ b/src/webparts/portalTreinamentosWebPart/services/bom/montadorBom.ts
+@@ -1,3 +1,9 @@
++import {
++  IAnaliseServidor,
++  IServidorSelecao,
++  analisarServidor
++} from './servidores';
++
+ import {
+   CAMERAS_BASE_DIGIFORT,
+   CAMERAS_OCR,
+@@ -49,6 +55,9 @@ import {
+ // kit antes de gravar. Sem isto, vale COMPOSICAO_KITS.
+ export interface IOpcoesMontagem {
+   composicoes?: Record<string, IComponenteKit[]>;
++  // Meses do contrato (tipo de projeto "Locação N meses"): define o
++  // Care Plus do Milestone.
++  prazoContratoMeses?: number;
+ }
+ 
+ export type TipoPonto =
+@@ -120,7 +129,9 @@ export interface IPontoKit {
+   catracasPne: number;
+ }
+ 
+-export type VmsBom = 'safeCity' | 'digifort';
++// Safe City = nuvem (sem servidor). Digifort e Milestone = VMS
++// on-premise, com servidor escolhido no memorial (servidores.ts).
++export type VmsBom = 'safeCity' | 'digifort' | 'milestone';
+ 
+ export interface ISoftwaresKit {
+   vms: VmsBom;
+@@ -138,6 +149,8 @@ export interface ISelecaoKit {
+   versao: 1;
+   pontos: IPontoKit[];
+   softwares: ISoftwaresKit;
++  // Servidor da central (item do projeto inteiro).
++  servidor?: IServidorSelecao;
+   atualizadoEm?: string;
+   atualizadoPor?: string;
+ }
+@@ -153,7 +166,8 @@ export interface IItemBom {
+ }
+ 
+ export interface IAlertaBom {
+-  nivel: 'erro' | 'aviso';
++  // info = informação (azul), não impede nada.
++  nivel: 'erro' | 'aviso' | 'info';
+   origem: string;
+   mensagem: string;
+ }
+@@ -167,7 +181,9 @@ export interface IResultadoBom {
+     camerasVideo: number;
+     camerasOcr: number;
+     leitoras: number;
++    porteiros: number;
+   };
++  servidor: IAnaliseServidor;
+ }
+ 
+ // ------------------------------------------------------------
+@@ -712,14 +728,60 @@ export const montarBom = (
+     }
+   });
+ 
++  // ---- porteiros (consomem canal de VMS como uma câmera)
++  const codigoPorteiro = (ITENS.porteiroHikvision || { codigo: '5500010274' }).codigo;
++  const porteiros = porPonto.reduce((soma, grupo) =>
++    soma + grupo.itens.filter(i => i.codigo === codigoPorteiro).reduce((t, i) => t + i.quantidade, 0), 0);
++
++  // ---- servidor da central (servidores.ts)
++  const usaWAccess = selecao.pontos.some(p => !ehBridgefy(p.tipo) && p.usaWAccess);
++  const servidor = analisarServidor(selecao.servidor, {
++    vms: softwares.vms,
++    ipx: softwares.ipx,
++    usaWAccess,
++    v: camerasVideo,
++    p: porteiros,
++    l: camerasOcr,
++    prazoContratoMeses: opcoes && opcoes.prazoContratoMeses
++  });
++
++  servidor.alertas.forEach(x => alertas.push({
++    nivel: x.nivel === 'bloqueio' ? 'erro' : x.nivel === 'aviso' ? 'aviso' : 'info',
++    origem: 'Servidor da central',
++    mensagem: x.texto
++  }));
++
++  if (servidor.local === 'onPremise' && servidor.baseGravacao > 0 && !servidor.definido && !(selecao.servidor && selecao.servidor.orcamentoManual)) {
++    alertas.push({ nivel: 'aviso', origem: 'Servidor da central', mensagem: 'Servidor ainda não definido: escolha a faixa no painel "Servidor da central" (ou use o orçamento manual).' });
++  }
++
+   // ---- softwares do projeto
+   const projeto = new Lista('Softwares do projeto');
++  const central = new Lista('Servidor da central');
+ 
+-  if (softwares.vms === 'digifort' && camerasVideo > 0) {
+-    if (!(inteiro(softwares.digifortServidores) > 0)) {
++  servidor.itens.forEach(item => {
++    if (item.chave) {
++      projeto.adicionar(item.chave, item.quantidade);
++    } else {
++      central.livre(item.codigo, item.descricao, /^Servidor/.test(item.descricao) ? 'Equipamento' : /Care Plus/.test(item.descricao) ? 'Licença' : 'Infraestrutura', item.quantidade);
++    }
++  });
++
++  // Digifort: 1 licença base por servidor de gravação (do seletor) e
++  // packs pela necessidade real (câmeras de vídeo + porteiros).
++  const canaisDigifort = camerasVideo + porteiros;
++  if (softwares.vms === 'digifort' && canaisDigifort > 0) {
++    const doSeletor = servidor.conjuntos
++      .filter(c => c.papel !== 'analitico' && c.linha && !c.pendente)
++      .reduce((t, c) => t + (c.linha ? c.linha.qtdServidores : 0), 0);
++    const servidoresDigifort =
++      selecao.servidor && selecao.servidor.orcamentoManual ? servidor.servidoresTotal
++        : doSeletor > 0 ? doSeletor
++          : inteiro(softwares.digifortServidores);
++    if (!(servidoresDigifort > 0)) {
+       alertas.push({ nivel: 'erro', origem: 'Digifort', mensagem: 'Informe o número de servidores: cada servidor exige a própria base de 8 câmeras.' });
+     }
+-    packsDigifort(camerasVideo, softwares.digifortServidores).forEach(p => projeto.adicionar(p.chave, p.quantidade));
++    packsDigifort(canaisDigifort, servidoresDigifort).forEach(p => projeto.adicionar(p.chave, p.quantidade));
+   }
+ 
+   if (softwares.ipx) {
+@@ -759,6 +821,10 @@ export const montarBom = (
+     porPonto.push({ ponto: { ...novoPonto('torre', 0), id: 'softwares', nome: 'Softwares do projeto', quantidade: 1 }, itens: projeto.itens });
+   }
+ 
++  if (central.itens.length > 0) {
++    porPonto.push({ ponto: { ...novoPonto('torre', 0), id: 'servidor', nome: 'Servidor da central', quantidade: 1 }, itens: central.itens });
++  }
++
+   // ---- consolidação (mesmo código + descrição)
+   const consolidado: IItemBom[] = [];
+ 
+@@ -789,7 +855,8 @@ export const montarBom = (
+     itens: consolidado,
+     porPonto,
+     alertas,
+-    totais: { pontos, camerasVideo, camerasOcr, leitoras }
++    totais: { pontos, camerasVideo, camerasOcr, leitoras, porteiros },
++    servidor
+   };
+ };
+ 
+diff --git a/src/webparts/portalTreinamentosWebPart/services/bom/servidores.test.ts b/src/webparts/portalTreinamentosWebPart/services/bom/servidores.test.ts
+new file mode 100644
+index 0000000..42cbbc0
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/services/bom/servidores.test.ts
+@@ -0,0 +1,102 @@
++import {
++  CATALOGO_SERVIDORES_PADRAO,
++  aplicarCatalogoServidores,
++  ALERTAS_PADRAO,
++  analisarServidor,
++  necessidadeDe
++} from './servidores';
++
++import {
++  ISelecaoKit,
++  IPontoKit,
++  montarBom,
++  novoPonto,
++  softwaresPadrao
++} from './montadorBom';
++
++// ============================================================
++// TESTE — seleção de servidor (complemento de nov/2026)
++// ============================================================
++
++const torre = (v: number, o: number, interfone: boolean, qtd = 1): IPontoKit =>
++  ({ ...novoPonto('torre', 1), id: `t${v}${o}${interfone}${qtd}`, nome: `T${v}${o}${qtd}`, quantidade: qtd, camerasVideo: v, camerasOcr: o, safeWay: o > 0, comunicacaoBidirecional: interfone });
++
++describe('servidor da central', () => {
++
++  beforeEach(() => aplicarCatalogoServidores(CATALOGO_SERVIDORES_PADRAO, ALERTAS_PADRAO));
++
++  it('necessidade arredonda sempre para cima', () => {
++    expect(necessidadeDe(35, 10)).toBe(39);
++    expect(necessidadeDe(10, 10)).toBe(11);
++    expect(necessidadeDe(20, 0)).toBe(20);
++    expect(necessidadeDe(20, 10, 25)).toBe(25);
++  });
++
++  it('Safe City sem IPX: nuvem, sem servidor', () => {
++    const r = analisarServidor(undefined, { vms: 'safeCity', ipx: false, usaWAccess: false, v: 20, p: 0, l: 5 });
++    expect(r.local).toBe('nuvem');
++    expect(r.itens.length).toBe(0);
++  });
++
++  it('Digifort + IPX com 35 câmeras: combinado de 40, GPU automática, processador a escolher', () => {
++    const r = analisarServidor({ reservaPct: 10 }, { vms: 'digifort', ipx: true, usaWAccess: false, v: 33, p: 2, l: 10 });
++    expect(r.modo).toBe('combinado');
++    const c = r.conjuntos[0];
++    expect(c.base).toBe(35);           // V + P, sem LPR
++    expect(c.necessidade).toBe(39);
++    expect(c.linha && c.linha.capacidade).toBe(40);
++    expect(c.gpu).toBe('NVIDIA RTX 5060 Ti');
++    expect(c.automatico.gpu).toBe(true);
++    expect(c.pendente).toBe('processador');
++    expect(c.faixas.filter(f => !f.habilitada).map(f => f.capacidade)).toEqual([10, 20, 30]);
++  });
++
++  it('combinado definido gera servidor (sem CIGAM = pendente) e SO, com alerta de SO fora do suporte', () => {
++    const r = analisarServidor(
++      { reservaPct: 10, combinado: { processador: 'Intel Xeon 6505P' } },
++      { vms: 'digifort', ipx: true, usaWAccess: false, v: 33, p: 2, l: 0 });
++    expect(r.definido).toBe(true);
++    expect(r.itens[0].descricao).toContain('[SRV-DGFIPX-040]');
++    expect(r.itens[0].pendente).toBe(true);
++    expect(r.alertas.map(a => a.regra)).toEqual(expect.arrayContaining(['semCigam', 'soForaSuporte']));
++  });
++
++  it('acima de 50 câmeras: servidores separados', () => {
++    const r = analisarServidor({ reservaPct: 10 }, { vms: 'digifort', ipx: true, usaWAccess: false, v: 60, p: 0, l: 0 });
++    expect(r.modo).toBe('separado');
++    expect(r.conjuntos.map(c => c.papel)).toEqual(['gravacao', 'analitico']);
++  });
++
++  it('H.265 no Digifort reduz o armazenamento à metade', () => {
++    const r = analisarServidor(
++      { reservaPct: 0, compressao: 'H.265', combinado: { processador: 'Intel Xeon 6325P', so: 'Windows 10 Pro' } },
++      { vms: 'digifort', ipx: true, usaWAccess: false, v: 20, p: 0, l: 0 });
++    expect(r.conjuntos[0].armazenamentoTb).toBe(9.5);
++    expect(r.alertas.map(a => a.regra)).toContain('h265Digifort');
++  });
++
++  it('Milestone: 1 licença por câmera e Care Plus pelo prazo; prazo irregular vira cotação', () => {
++    const r36 = analisarServidor(undefined, { vms: 'milestone', ipx: false, usaWAccess: false, v: 18, p: 2, l: 4, prazoContratoMeses: 36 });
++    expect(r36.itens.filter(i => i.chave === 'milestoneLicenca')[0].quantidade).toBe(20);
++    expect(r36.itens.filter(i => i.chave === 'milestoneCare3')[0].quantidade).toBe(20);
++    const r24 = analisarServidor(undefined, { vms: 'milestone', ipx: false, usaWAccess: false, v: 18, p: 2, l: 4, prazoContratoMeses: 24 });
++    expect(r24.carePlus && r24.carePlus.cotacao).toBe(true);
++    expect(r24.itens.some(i => i.pendente && /cotação pendente/.test(i.descricao))).toBe(true);
++    // Sem linha ativa de Milestone no catálogo padrão: bloqueio.
++    expect(r24.alertas.map(a => a.regra)).toContain('semLinhaCatalogo');
++  });
++
++  it('no B.O.M.: porteiro entra na base e Digifort usa 1 base por servidor do seletor', () => {
++    const sel: ISelecaoKit = {
++      versao: 1,
++      pontos: [torre(2, 1, true, 3)],
++      softwares: { ...softwaresPadrao(), vms: 'digifort', ipx: true },
++      servidor: { reservaPct: 10, combinado: { processador: 'Intel Xeon Bronze 3106', so: 'Windows 10 Pro' } }
++    };
++    const r = montarBom(sel);
++    expect(r.totais.porteiros).toBe(3);
++    expect(r.servidor.baseGravacao).toBe(9);   // 6 vídeo + 3 porteiros
++    expect(r.servidor.conjuntos[0].linha && r.servidor.conjuntos[0].linha.capacidade).toBe(10);
++    expect(r.itens.filter(i => i.codigo === '625.001.0012')[0].quantidade).toBe(1);
++  });
++});
+diff --git a/src/webparts/portalTreinamentosWebPart/services/bom/servidores.ts b/src/webparts/portalTreinamentosWebPart/services/bom/servidores.ts
+new file mode 100644
+index 0000000..eafef35
+--- /dev/null
++++ b/src/webparts/portalTreinamentosWebPart/services/bom/servidores.ts
+@@ -0,0 +1,611 @@
++// ============================================================
++// SERVIDOR DA CENTRAL — CATÁLOGO E REGRAS
++//
++// Complemento à especificação do B.O.M. ("seleção de servidor",
++// nov/2026). O servidor deixa de ser "item sem código" e passa a ser
++// escolhido no MEMORIAL DE CÁLCULO do fabricante, pela faixa de
++// câmeras do projeto. É item do PROJETO INTEIRO, não do ponto.
++//
++// Cobertura (3 dos 7 softwares que exigem servidor):
++//   Digifort Enterprise (gravação) · Milestone XProtect Professional+
++//   (gravação) · IPX Analytics (analítico) · Digifort + IPX no mesmo
++//   servidor (combinado, até 50 câmeras).
++//   Axxon, Briefcam, Invenzi (W-Access) e NX Witness: só lembrete.
++//   Bridgefy Safe City: nuvem, sem servidor.
++//
++// Base de câmeras:
++//   V = câmeras de vídeo · P = porteiros (Hikvision DS-KB8113-IME,
++//   consomem canal de VMS) · LPR NUNCA entra (grava só frames de placa).
++//   Gravação e combinado: V + P · Analítico: V.
++//   Necessidade = teto(base × (1 + reserva/100)); faixa = a menor
++//   capacidade ≥ necessidade (arredonda sempre para cima).
++//
++// O catálogo e os textos dos alertas ficam no Dataverse (aba Kits →
++// Servidores): corrigir um memorial não exige nova versão do portal.
++// As premissas de gravação (FPS, qualidade, 30 dias) estão embutidas
++// no memorial e NÃO são editáveis aqui.
++// ============================================================
++
++export type SoftwareServidor = 'digifort' | 'milestone' | 'ipx' | 'digifortIpx';
++
++export type FinalidadeServidor = 'gravacao' | 'analitico' | 'gravacao_analitico';
++
++export type Compressao = 'H.264' | 'H.265';
++
++export const SOFTWARES_SERVIDOR: Array<{ software: SoftwareServidor; nome: string; finalidade: FinalidadeServidor; sigla: string }> = [
++  { software: 'digifort', nome: 'Digifort Enterprise', finalidade: 'gravacao', sigla: 'DGF' },
++  { software: 'milestone', nome: 'Milestone XProtect Professional+', finalidade: 'gravacao', sigla: 'MIL' },
++  { software: 'ipx', nome: 'IPX Analytics', finalidade: 'analitico', sigla: 'IPX' },
++  { software: 'digifortIpx', nome: 'Digifort + IPX Analytics', finalidade: 'gravacao_analitico', sigla: 'DGFIPX' }
++];
++
++export const nomeSoftware = (s: SoftwareServidor): string =>
++  (SOFTWARES_SERVIDOR.filter(x => x.software === s)[0] || { nome: s }).nome;
++
++export const LIMITE_COMBINADO = 50;
++
++export const RESERVAS = [0, 10, 20, 30];
++
++export const RESERVA_PADRAO = 10;
++
++// ------------------------------------------------------------
++// Catálogo (uma linha = uma faixa/opção de um memorial)
++// ------------------------------------------------------------
++
++export interface ILinhaServidor {
++  id: string;                 // chave estável (ex.: DGFIPX-010)
++  software: SoftwareServidor;
++  finalidade: FinalidadeServidor;
++  capacidade: number;         // câmeras
++  opcao: string;              // '' ou A, B, C (distribuição)
++  qtdServidores: number;
++  camerasPorServidor: number;
++  processadores: string[];    // alternativas equivalentes
++  ram: string;
++  discoSo: string;
++  armazServidorTb: number;
++  armazTotalTb: number;
++  discosQtd: number;          // por servidor (Milestone)
++  discoTamanhoTb: number;
++  arranjo: string;
++  gpus: string[];             // vazio = sem GPU
++  sistemasOperacionais: string[];
++  compressaoRef: Compressao;
++  iops: string;
++  redeCamerasMbps: number;
++  codigoCigam: string;
++  versaoMemorial: string;
++  ativo: boolean;
++  observacao: string;
++}
++
++// ------------------------------------------------------------
++// Alertas (texto e nível vêm da tabela; a condição é do código)
++// ------------------------------------------------------------
++
++export type NivelAlertaServidor = 'bloqueio' | 'aviso' | 'informacao';
++
++export interface IAlertaServidorRegra {
++  id: string;
++  // Regra geral (chave abaixo) ou "linha:<id da linha>".
++  regra: string;
++  nivel: NivelAlertaServidor;
++  texto: string;
++  ativo: boolean;
++}
++
++export const REGRAS_ALERTA: Array<{ regra: string; descricao: string }> = [
++  { regra: 'acimaMaiorFaixa', descricao: 'Necessidade acima da maior faixa do memorial' },
++  { regra: 'combinadoAcima50', descricao: 'Digifort + IPX acima de 50 câmeras' },
++  { regra: 'semCigam', descricao: 'Servidor escolhido sem código CIGAM' },
++  { regra: 'soForaSuporte', descricao: 'SO Windows Server 2012 ou Windows 10' },
++  { regra: 'carePlusIrregular', descricao: 'Milestone com prazo de contrato diferente de 12, 36 ou 60 meses' },
++  { regra: 'h265Digifort', descricao: 'Digifort com compressão H.265' },
++  { regra: 'milestoneRede', descricao: 'Milestone (sempre): rede e IOPS — use {rede} e {iops}' },
++  { regra: 'ipxAvulso', descricao: 'Servidor IPX Analytics avulso' },
++  { regra: 'semMemorial', descricao: 'Software sem memorial no projeto (W-Access/Invenzi, Axxon, Briefcam, NX Witness)' },
++  { regra: 'semLinhaCatalogo', descricao: 'Não há linha ativa no catálogo para o software' },
++  { regra: 'revisar', descricao: 'Os pontos mudaram depois de escolher o servidor' }
++];
++
++const a = (regra: string, nivel: NivelAlertaServidor, texto: string): IAlertaServidorRegra =>
++  ({ id: regra, regra, nivel, texto, ativo: true });
++
++export const ALERTAS_PADRAO: IAlertaServidorRegra[] = [
++  a('acimaMaiorFaixa', 'bloqueio', 'Necessidade acima da maior faixa do memorial: peça o dimensionamento ao fornecedor ou divida em mais de um conjunto.'),
++  a('combinadoAcima50', 'bloqueio', 'Acima do limite do servidor combinado (50 câmeras): use servidores separados — um de gravação e um de analítico.'),
++  a('semCigam', 'aviso', 'Servidor sem código CIGAM: não é orçável até o cadastro.'),
++  a('soForaSuporte', 'aviso', 'Sistema operacional fora do suporte da Microsoft (Windows Server 2012 / Windows 10).'),
++  a('carePlusIrregular', 'aviso', 'Prazo de contrato diferente de 12, 36 ou 60 meses: o Care Plus do Milestone precisa de cotação específica com o fabricante.'),
++  a('h265Digifort', 'informacao', 'Digifort com H.265: armazenamento reduzido à metade do memorial (H.264).'),
++  a('milestoneRede', 'informacao', 'Milestone: confira a rede ({rede} Mbps das câmeras) e os IOPS ({iops}) da linha escolhida.'),
++  a('ipxAvulso', 'informacao', 'IPX Analytics avulso: este servidor não grava — a gravação precisa de VMS ou nuvem.'),
++  a('semMemorial', 'informacao', 'W-Access (Invenzi) e outros softwares sem memorial (Axxon, Briefcam, NX Witness) também exigem servidor: dimensionar à parte.'),
++  a('semLinhaCatalogo', 'bloqueio', 'Não há linha ativa no catálogo de servidores para este software: cadastre o memorial na aba Kits → Servidores ou use o orçamento manual.'),
++  a('revisar', 'aviso', 'Os pontos mudaram depois da escolha do servidor: revise a faixa.')
++];
++
++// ------------------------------------------------------------
++// Catálogo padrão (memoriais disponíveis)
++// ------------------------------------------------------------
++
++const VERSAO_COMBINADO = 'Digifort Enterprise + IPX Analytics — 3ª revisão, nov/2026';
++
++const linha = (dados: Partial<ILinhaServidor> & Pick<ILinhaServidor, 'id' | 'software' | 'finalidade' | 'capacidade'>): ILinhaServidor => ({
++  opcao: '',
++  qtdServidores: 1,
++  camerasPorServidor: dados.capacidade,
++  processadores: [],
++  ram: '',
++  discoSo: '',
++  armazServidorTb: 0,
++  armazTotalTb: 0,
++  discosQtd: 0,
++  discoTamanhoTb: 0,
++  arranjo: '',
++  gpus: [],
++  sistemasOperacionais: [],
++  compressaoRef: 'H.264',
++  iops: '',
++  redeCamerasMbps: 0,
++  codigoCigam: '',
++  versaoMemorial: '',
++  ativo: true,
++  observacao: '',
++  ...dados
++});
++
++const XEON_BRONZE = ['Intel Xeon Bronze 3106', 'Intel Xeon 6325P', 'Intel Xeon 6333P'];
++const W_ANTIGO = ['Windows Server 2012 Standard', 'Windows 10 Pro'];
++
++export const CATALOGO_SERVIDORES_PADRAO: ILinhaServidor[] = [
++  // Servidor combinado (memorial completo).
++  linha({ id: 'DGFIPX-010', software: 'digifortIpx', finalidade: 'gravacao_analitico', capacidade: 10, processadores: XEON_BRONZE, ram: '32 GB DDR4', armazServidorTb: 8.3, armazTotalTb: 8.3, gpus: ['NVIDIA RTX 5050 8GB'], sistemasOperacionais: W_ANTIGO, versaoMemorial: VERSAO_COMBINADO }),
++  linha({ id: 'DGFIPX-020', software: 'digifortIpx', finalidade: 'gravacao_analitico', capacidade: 20, processadores: XEON_BRONZE, ram: '32 GB DDR4', armazServidorTb: 19, armazTotalTb: 19, gpus: ['NVIDIA RTX 5060 8GB'], sistemasOperacionais: W_ANTIGO, versaoMemorial: VERSAO_COMBINADO }),
++  linha({ id: 'DGFIPX-030', software: 'digifortIpx', finalidade: 'gravacao_analitico', capacidade: 30, processadores: XEON_BRONZE, ram: '32 GB DDR4', armazServidorTb: 28.5, armazTotalTb: 28.5, gpus: ['NVIDIA RTX 5060 8GB'], sistemasOperacionais: W_ANTIGO, versaoMemorial: VERSAO_COMBINADO }),
++  linha({ id: 'DGFIPX-040', software: 'digifortIpx', finalidade: 'gravacao_analitico', capacidade: 40, processadores: ['Intel Xeon Silver 4210', 'Intel Xeon 6505P', 'Intel Xeon 6511P'], ram: '32 GB DDR4', armazServidorTb: 38, armazTotalTb: 38, gpus: ['NVIDIA RTX 5060 Ti'], sistemasOperacionais: ['Windows Server 2012 Standard'], versaoMemorial: VERSAO_COMBINADO }),
++  linha({ id: 'DGFIPX-050', software: 'digifortIpx', finalidade: 'gravacao_analitico', capacidade: 50, processadores: ['2× Intel Xeon Silver 4214', '2× Intel Xeon 6511P', '2× Intel Xeon 6515P'], ram: '64 GB', armazServidorTb: 47.5, armazTotalTb: 47.5, gpus: ['NVIDIA RTX 5070'], sistemasOperacionais: ['Windows Server 2012 Standard'], versaoMemorial: VERSAO_COMBINADO }),
++
++  // Digifort só gravação, 10 a 50: valores da comparação do memorial
++  // combinado. Faltam processador e SO → DESATIVADAS até completar
++  // pela planilha "Servidores — Consolidado Memoriais de Cálculo".
++  ...[[10, 8], [20, 15], [30, 23], [40, 30], [50, 38]].map(([cap, tb]) => linha({
++    id: `DGF-${('00' + cap).slice(-3)}`, software: 'digifort', finalidade: 'gravacao', capacidade: cap,
++    ram: '16 GB', armazServidorTb: tb, armazTotalTb: tb, ativo: false,
++    versaoMemorial: 'Digifort Enterprise (valores da comparação do memorial combinado)',
++    observacao: 'Linha parcial: completar processador e SO pela planilha Consolidado antes de ativar.'
++  }))
++];
++
++// ------------------------------------------------------------
++// Catálogo EM USO (padrão ou Dataverse) — mutável, como ITENS
++// ------------------------------------------------------------
++
++export const CATALOGO_SERVIDORES: ILinhaServidor[] = CATALOGO_SERVIDORES_PADRAO.map(l => ({ ...l }));
++
++export const ALERTAS_SERVIDOR: IAlertaServidorRegra[] = ALERTAS_PADRAO.map(x => ({ ...x }));
++
++export const aplicarCatalogoServidores = (linhas: ILinhaServidor[], alertas: IAlertaServidorRegra[]): void => {
++  CATALOGO_SERVIDORES.splice(0, CATALOGO_SERVIDORES.length, ...linhas.map(l => ({ ...l })));
++  // Regras gerais que faltarem na tabela usam o texto padrão.
++  const combinados = ALERTAS_PADRAO
++    .filter(p => !alertas.some(x => x.regra === p.regra))
++    .map(p => ({ ...p }))
++    .concat(alertas.map(x => ({ ...x })));
++  ALERTAS_SERVIDOR.splice(0, ALERTAS_SERVIDOR.length, ...combinados);
++};
++
++export const codigoSugerido = (l: Pick<ILinhaServidor, 'software' | 'capacidade' | 'opcao'>): string => {
++  const sigla = (SOFTWARES_SERVIDOR.filter(s => s.software === l.software)[0] || { sigla: 'SRV' }).sigla;
++  return `SRV-${sigla}-${('00' + l.capacidade).slice(-3)}${l.opcao ? `-${l.opcao}` : ''}`;
++};
++
++// ------------------------------------------------------------
++// Escolhas do arquiteto (gravadas na seleção de kit do B.O.M.)
++// ------------------------------------------------------------
++
++export type PapelServidor = 'gravacao' | 'analitico' | 'combinado';
++
++export interface IEscolhaServidor {
++  capacidade?: number;
++  opcao?: string;
++  gpu?: string;
++  processador?: string;
++  so?: string;
++  // Necessidade digitada (substitui base + reserva). Nunca menor que a base.
++  ajusteNecessidade?: number;
++}
++
++export interface IServidorSelecao {
++  reservaPct: number;
++  compressao?: Compressao;
++  // Digifort + IPX até 50 câmeras: combinado (sugerido) ou separados.
++  modo?: 'combinado' | 'separado';
++  gravacao?: IEscolhaServidor;
++  analitico?: IEscolhaServidor;
++  combinado?: IEscolhaServidor;
++  // Sai do seletor: servidor orçado à parte pelo arquiteto.
++  orcamentoManual?: boolean;
++  orcamentoManualMotivo?: string;
++  orcamentoManualServidores?: number;
++  // Care Plus (Milestone) quando o prazo não vem do tipo de projeto.
++  carePlus?: '' | '12' | '36' | '60' | 'cotacao';
++  // Base de câmeras no momento da escolha (selo "revisar servidor").
++  baseNaEscolha?: number;
++}
++
++export const servidorPadrao = (): IServidorSelecao => ({ reservaPct: RESERVA_PADRAO });
++
++// ------------------------------------------------------------
++// Análise
++// ------------------------------------------------------------
++
++export interface IOpcaoFaixa {
++  capacidade: number;
++  linhas: ILinhaServidor[];
++  habilitada: boolean;
++  recomendada: boolean;
++  folga: number;
++}
++
++export interface IConjuntoServidor {
++  papel: PapelServidor;
++  software: SoftwareServidor;
++  base: number;
++  necessidade: number;
++  faixas: IOpcaoFaixa[];
++  escolha: IEscolhaServidor;
++  linha?: ILinhaServidor;
++  // Escolhas resolvidas (automáticas quando há uma opção só).
++  gpu?: string;
++  processador?: string;
++  so?: string;
++  automatico: { opcao: boolean; gpu: boolean; processador: boolean; so: boolean };
++  armazenamentoTb: number;
++  // Próxima pergunta em aberto (undefined = conjunto definido).
++  pendente?: 'faixa' | 'opcao' | 'gpu' | 'processador' | 'so';
++}
++
++export interface IAlertaServidorEmitido {
++  regra: string;
++  nivel: NivelAlertaServidor;
++  texto: string;
++}
++
++export interface IItemServidor {
++  chave?: string;          // item do catálogo de kits (licenças Milestone/Digifort)
++  codigo: string;
++  descricao: string;
++  quantidade: number;
++  pendente: boolean;
++}
++
++export interface IAnaliseServidor {
++  local: 'nuvem' | 'onPremise' | 'nenhum';
++  softwareGravacao?: 'digifort' | 'milestone';
++  usaIpx: boolean;
++  v: number;
++  p: number;
++  l: number;
++  baseGravacao: number;
++  baseAnalitico: number;
++  podeCombinar: boolean;
++  modo?: 'combinado' | 'separado';
++  conjuntos: IConjuntoServidor[];
++  servidoresTotal: number;
++  definido: boolean;
++  alertas: IAlertaServidorEmitido[];
++  itens: IItemServidor[];
++  carePlus?: { meses?: number; item?: string; cotacao: boolean };
++}
++
++export interface IContextoServidor {
++  vms: 'safeCity' | 'digifort' | 'milestone';
++  ipx: boolean;
++  usaWAccess: boolean;
++  v: number;
++  p: number;
++  l: number;
++  // Meses do contrato (tipo de projeto "Locação N meses").
++  prazoContratoMeses?: number;
++}
++
++const textoAlerta = (regra: string, troca?: Record<string, string>): IAlertaServidorEmitido | undefined => {
++  const r = ALERTAS_SERVIDOR.filter(x => x.regra === regra)[0];
++  if (!r || !r.ativo) {
++    return undefined;
++  }
++  let texto = r.texto;
++  Object.keys(troca || {}).forEach(k => { texto = texto.split(`{${k}}`).join((troca as Record<string, string>)[k]); });
++  return { regra, nivel: r.nivel, texto };
++};
++
++export const necessidadeDe = (base: number, reservaPct: number, ajuste?: number): number => {
++  const calculada = Math.ceil(base * (1 + (reservaPct || 0) / 100) - 1e-9);
++  return ajuste && ajuste >= base ? Math.ceil(ajuste) : calculada;
++};
++
++const linhasDe = (software: SoftwareServidor, compressao?: Compressao): ILinhaServidor[] => {
++  const ativas = CATALOGO_SERVIDORES.filter(l => l.software === software && l.ativo);
++  // Milestone: se o catálogo tem linhas por compressão, usa a escolhida.
++  if (software === 'milestone' && compressao && ativas.some(l => l.compressaoRef === compressao)) {
++    return ativas.filter(l => l.compressaoRef === compressao);
++  }
++  if (software === 'milestone' && compressao && ativas.some(l => l.compressaoRef !== compressao)) {
++    return ativas.filter(l => l.compressaoRef === ativas[0].compressaoRef);
++  }
++  return ativas;
++};
++
++const montarConjunto = (
++  papel: PapelServidor,
++  software: SoftwareServidor,
++  base: number,
++  sel: IServidorSelecao
++): IConjuntoServidor => {
++
++  const escolha = (papel === 'gravacao' ? sel.gravacao : papel === 'analitico' ? sel.analitico : sel.combinado) || {};
++  const necessidade = necessidadeDe(base, sel.reservaPct, escolha.ajusteNecessidade);
++
++  const linhas = linhasDe(software, sel.compressao);
++  const capacidades = linhas.map(l => l.capacidade).filter((c, i, lista) => lista.indexOf(c) === i).sort((x, y) => x - y);
++  const recomendada = capacidades.filter(c => c >= necessidade)[0];
++
++  const faixas: IOpcaoFaixa[] = capacidades.map(c => ({
++    capacidade: c,
++    linhas: linhas.filter(l => l.capacidade === c).sort((x, y) => x.opcao.localeCompare(y.opcao)),
++    habilitada: c >= necessidade && (papel !== 'combinado' || c <= LIMITE_COMBINADO),
++    recomendada: c === recomendada,
++    folga: c - necessidade
++  }));
++
++  const conjunto: IConjuntoServidor = {
++    papel, software, base, necessidade, faixas, escolha,
++    automatico: { opcao: false, gpu: false, processador: false, so: false },
++    armazenamentoTb: 0
++  };
++
++  // Faixa: a escolhida (se ainda comporta) ou a recomendada.
++  const faixa = faixas.filter(f => f.capacidade === escolha.capacidade && f.habilitada)[0] ||
++    faixas.filter(f => f.recomendada && f.habilitada)[0];
++  if (!faixa) {
++    conjunto.pendente = 'faixa';
++    return conjunto;
++  }
++
++  // Opção (A, B, C).
++  let linhaEscolhida = faixa.linhas.filter(l => l.opcao === (escolha.opcao || ''))[0];
++  if (faixa.linhas.length === 1) {
++    linhaEscolhida = faixa.linhas[0];
++    conjunto.automatico.opcao = true;
++  }
++  if (!linhaEscolhida) {
++    conjunto.pendente = 'opcao';
++    return conjunto;
++  }
++  conjunto.linha = linhaEscolhida;
++
++  const resolver = (alternativas: string[], escolhida: string | undefined, campo: 'gpu' | 'processador' | 'so'): string | undefined | null => {
++    if (alternativas.length === 0) {
++      return undefined;
++    }
++    if (alternativas.length === 1) {
++      conjunto.automatico[campo] = true;
++      return alternativas[0];
++    }
++    return escolhida && alternativas.indexOf(escolhida) >= 0 ? escolhida : null;
++  };
++
++  const gpu = resolver(linhaEscolhida.gpus, escolha.gpu, 'gpu');
++  if (gpu === null) { conjunto.pendente = 'gpu'; return conjunto; }
++  conjunto.gpu = gpu;
++
++  const processador = resolver(linhaEscolhida.processadores, escolha.processador, 'processador');
++  if (processador === null) { conjunto.pendente = 'processador'; return conjunto; }
++  conjunto.processador = processador;
++
++  const so = resolver(linhaEscolhida.sistemasOperacionais, escolha.so, 'so');
++  if (so === null) { conjunto.pendente = 'so'; return conjunto; }
++  conjunto.so = so;
++
++  const fator = (software === 'digifort' || software === 'digifortIpx') && sel.compressao === 'H.265' ? 0.5 : 1;
++  conjunto.armazenamentoTb = Math.round(linhaEscolhida.armazTotalTb * fator * 100) / 100;
++
++  return conjunto;
++};
++
++const papelNome: Record<PapelServidor, string> = {
++  gravacao: 'Servidor de gravação',
++  analitico: 'Servidor de analítico',
++  combinado: 'Servidor'
++};
++
++export const descricaoServidor = (c: IConjuntoServidor): string => {
++  const l = c.linha as ILinhaServidor;
++  const nome = c.papel === 'combinado' ? `${papelNome.combinado} ${nomeSoftware(c.software)}` : `${papelNome[c.papel]} ${nomeSoftware(c.software)}`;
++  const partes = [c.processador, l.ram, `${String(c.armazenamentoTb).replace('.', ',')} TB${l.qtdServidores > 1 ? ' no total' : ''}`, c.gpu].filter(Boolean);
++  return `${nome} · ${l.capacidade} câmeras${l.qtdServidores > 1 ? ` (${l.camerasPorServidor} por servidor)` : ''} [${codigoSugerido(l)}] — ${partes.join(', ')}`;
++};
++
++export const analisarServidor = (
++  sel: IServidorSelecao | undefined,
++  ctx: IContextoServidor
++): IAnaliseServidor => {
++
++  const s = sel || servidorPadrao();
++  const alertas: IAlertaServidorEmitido[] = [];
++  const emitir = (regra: string, troca?: Record<string, string>): void => {
++    const x = textoAlerta(regra, troca);
++    if (x && !alertas.some(y => y.texto === x.texto)) {
++      alertas.push(x);
++    }
++  };
++
++  const baseGravacao = ctx.v + ctx.p;
++  const baseAnalitico = ctx.v;
++
++  const resultado: IAnaliseServidor = {
++    local: 'nenhum',
++    usaIpx: ctx.ipx,
++    v: ctx.v, p: ctx.p, l: ctx.l,
++    baseGravacao, baseAnalitico,
++    podeCombinar: false,
++    conjuntos: [],
++    servidoresTotal: 0,
++    definido: false,
++    alertas,
++    itens: []
++  };
++
++  if (ctx.usaWAccess) {
++    emitir('semMemorial');
++  }
++
++  if (ctx.vms === 'safeCity' && !ctx.ipx) {
++    resultado.local = baseGravacao > 0 ? 'nuvem' : 'nenhum';
++    resultado.definido = true;
++    return resultado;
++  }
++
++  if (baseGravacao === 0 && ctx.vms !== 'safeCity') {
++    resultado.local = 'onPremise';
++    resultado.definido = true;
++    return resultado;
++  }
++
++  resultado.local = ctx.vms === 'safeCity' ? 'nuvem' : 'onPremise';
++  resultado.softwareGravacao = ctx.vms === 'safeCity' ? undefined : ctx.vms;
++
++  // Finalidade(s).
++  const digifortComIpx = ctx.vms === 'digifort' && ctx.ipx;
++  const necessidadeCombinado = necessidadeDe(baseGravacao, s.reservaPct, s.combinado && s.combinado.ajusteNecessidade);
++  resultado.podeCombinar = digifortComIpx && necessidadeCombinado <= LIMITE_COMBINADO &&
++    CATALOGO_SERVIDORES.some(l => l.software === 'digifortIpx' && l.ativo);
++
++  if (digifortComIpx && necessidadeCombinado > LIMITE_COMBINADO && s.modo === 'combinado') {
++    emitir('combinadoAcima50');
++  }
++
++  const modo: 'combinado' | 'separado' | undefined =
++    !digifortComIpx ? undefined
++      : resultado.podeCombinar ? (s.modo || 'combinado')
++        : 'separado';
++  resultado.modo = modo;
++
++  if (modo === 'combinado') {
++    resultado.conjuntos.push(montarConjunto('combinado', 'digifortIpx', baseGravacao, s));
++  } else {
++    if (ctx.vms === 'digifort' || ctx.vms === 'milestone') {
++      resultado.conjuntos.push(montarConjunto('gravacao', ctx.vms, baseGravacao, s));
++    }
++    if (ctx.ipx) {
++      resultado.conjuntos.push(montarConjunto('analitico', 'ipx', baseAnalitico, s));
++    }
++  }
++
++  // ---- alertas e itens por conjunto
++  resultado.conjuntos.forEach(c => {
++    // Orçamento manual: o servidor sai do seletor (sem alertas de faixa).
++    if (s.orcamentoManual) {
++      return;
++    }
++    if (c.faixas.length === 0) {
++      emitir('semLinhaCatalogo');
++      return;
++    }
++    if (c.pendente === 'faixa') {
++      emitir(c.papel === 'combinado' && c.necessidade > LIMITE_COMBINADO ? 'combinadoAcima50' : 'acimaMaiorFaixa');
++    }
++    if (c.software === 'ipx') {
++      emitir('ipxAvulso');
++    }
++    if ((c.software === 'digifort' || c.software === 'digifortIpx') && s.compressao === 'H.265') {
++      emitir('h265Digifort');
++    }
++    if (!c.linha) {
++      return;
++    }
++    if (c.software === 'milestone') {
++      emitir('milestoneRede', { rede: c.linha.redeCamerasMbps ? String(c.linha.redeCamerasMbps).replace('.', ',') : '—', iops: c.linha.iops || '—' });
++    }
++    ALERTAS_SERVIDOR
++      .filter(x => x.ativo && x.regra === `linha:${c.linha && c.linha.id}`)
++      .forEach(x => alertas.push({ regra: x.regra, nivel: x.nivel, texto: x.texto }));
++    if (c.pendente) {
++      return;
++    }
++    if (!c.linha.codigoCigam) {
++      emitir('semCigam');
++    }
++    if (c.so && /2012|windows\s*10/i.test(c.so)) {
++      emitir('soForaSuporte');
++    }
++  });
++
++  const definidos = resultado.conjuntos.filter(c => c.linha && !c.pendente);
++  resultado.servidoresTotal = definidos.reduce((t, c) => t + (c.linha as ILinhaServidor).qtdServidores, 0);
++  resultado.definido = !s.orcamentoManual && resultado.conjuntos.length > 0 && definidos.length === resultado.conjuntos.length;
++
++  if (s.baseNaEscolha !== undefined && s.baseNaEscolha !== baseGravacao && (resultado.definido || s.orcamentoManual)) {
++    emitir('revisar');
++  }
++
++  // ---- itens
++  if (s.orcamentoManual) {
++    const qtd = Math.max(1, Math.round(s.orcamentoManualServidores || 1));
++    resultado.servidoresTotal = qtd;
++    resultado.itens.push({
++      codigo: '',
++      descricao: `Servidor da central — orçamento manual${s.orcamentoManualMotivo ? ` (${s.orcamentoManualMotivo})` : ''}`,
++      quantidade: qtd,
++      pendente: true
++    });
++  } else {
++    definidos.forEach(c => {
++      const l = c.linha as ILinhaServidor;
++      resultado.itens.push({ codigo: l.codigoCigam, descricao: descricaoServidor(c), quantidade: l.qtdServidores, pendente: !l.codigoCigam });
++      if (c.so) {
++        resultado.itens.push({ codigo: '', descricao: `Sistema operacional ${c.so} — servidor ${codigoSugerido(l)}`, quantidade: l.qtdServidores, pendente: true });
++      }
++      if (c.software === 'milestone' && l.discosQtd > 0) {
++        resultado.itens.push({
++          codigo: '',
++          descricao: `Disco de vigilância${l.discoTamanhoTb ? ` ${String(l.discoTamanhoTb).replace('.', ',')} TB` : ''} — servidor ${codigoSugerido(l)}`,
++          quantidade: l.discosQtd * l.qtdServidores,
++          pendente: true
++        });
++      }
++    });
++  }
++
++  // ---- Milestone: 1 licença por câmera + Care Plus pelo contrato
++  if (ctx.vms === 'milestone' && baseGravacao > 0) {
++    resultado.itens.push({ chave: 'milestoneLicenca', codigo: '', descricao: '', quantidade: baseGravacao, pendente: false });
++
++    const meses =
++      s.carePlus && s.carePlus !== 'cotacao' ? Number(s.carePlus)
++        : s.carePlus === 'cotacao' ? undefined
++          : ctx.prazoContratoMeses;
++    const chave = meses === 12 ? 'milestoneCare1' : meses === 36 ? 'milestoneCare3' : meses === 60 ? 'milestoneCare5' : undefined;
++    resultado.carePlus = { meses, item: chave, cotacao: !chave };
++    if (chave) {
++      resultado.itens.push({ chave, codigo: '', descricao: '', quantidade: baseGravacao, pendente: false });
++    } else {
++      emitir('carePlusIrregular');
++      resultado.itens.push({
++        codigo: '',
++        descricao: `Milestone Care Plus — ${meses ? `${meses} meses` : 'prazo a definir'} (cotação pendente com o fabricante)`,
++        quantidade: baseGravacao,
++        pendente: true
++      });
++    }
++  }
++
++  return resultado;
++};
++
++// Meses do contrato a partir do tipo de projeto ("Locação 36 meses").
++export const mesesDoTipoProjeto = (tipoProjeto?: string): number | undefined => {
++  const m = /(\d+)\s*meses/i.exec(tipoProjeto || '');
++  return m ? Number(m[1]) : undefined;
++};
