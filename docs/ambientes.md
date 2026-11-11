@@ -239,3 +239,16 @@ do SharePoint; vazio = **Documentos** do site do portal). Os arquivos ficam em
   de leitura.
 - **Colunas novas** (rodar o script de novo): `dgt_ambiente.dgt_permiteanexos` e `dgt_bibliotecaanexos`.
 
+---
+
+## Tela de execução da atividade
+
+- **Painel esquerdo:** *Dados do documento* · *Histórico* (eventos já gravados no registro) · *Ver fluxo*
+  (sempre recolhido ao abrir; mostra o desenho em largura total ao clicar).
+- **Sequência de atividades no topo:** cartões compactos (concluída em verde, atual em destaque azul,
+  a fazer em cinza), com rolagem horizontal quando não cabe.
+- **Editar ambiente → Tela do registro → “Mostrar sequência de atividades no topo”**: ligada, a faixa
+  aparece com o controle *Ocultar sequência / Mostrar sequência*; desligada, a faixa e o controle somem
+  (o *Ver fluxo* continua no painel). Ambientes antigos, sem a opção salva, continuam mostrando.
+  Coluna nova: `dgt_ambiente.dgt_mostrarsequencia` (rodar `criar-tabelas-ambientes.ps1`).
+

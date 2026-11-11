@@ -102,6 +102,8 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
   const [perfisPadrao, setPerfisPadrao] = React.useState<string[]>(original ? original.perfisPadrao : []);
   const [ativo, setAtivo] = React.useState(original ? original.ativo : true);
   const [permiteAnexos, setPermiteAnexos] = React.useState(!!(original && original.permiteAnexos));
+  // Ambiente antigo (sem a configuração) = mostra, como antes.
+  const [mostrarSequencia, setMostrarSequencia] = React.useState(!original || original.mostrarSequencia !== false);
   const [bibliotecaAnexos, setBibliotecaAnexos] = React.useState(original && original.bibliotecaAnexos ? original.bibliotecaAnexos : '');
   const [erros, setErros] = React.useState<string[]>([]);
 
@@ -160,6 +162,7 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
     rotuloRegistro: rotuloRegistro.trim(),
     permiteAnexos,
     bibliotecaAnexos: bibliotecaAnexos.trim(),
+    mostrarSequencia,
     ativo,
     processoId:
       novo
@@ -408,6 +411,25 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
                 </span>
               </div>
             )}
+          </fieldset>
+
+          <fieldset style={{ border: `1px solid ${COR.borda}`, borderRadius: '8px', padding: '10px 14px', marginTop: '16px' }}>
+            <legend style={{ ...rotulo, padding: '0 6px', marginBottom: 0 }}>Tela do registro</legend>
+            {!AmbienteService.sequenciaDisponivel() && (
+              <div style={{ ...ajuda, color: '#B54708', marginBottom: '6px' }}>
+                A coluna desta opção ainda não existe no Dataverse: execute scripts/dataverse/criar-tabelas-ambientes.ps1. Até lá, a sequência aparece.
+              </div>
+            )}
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '13px' }}>
+              <input type="checkbox" checked={mostrarSequencia} disabled={props.processando || !AmbienteService.sequenciaDisponivel()} onChange={() => setMostrarSequencia(!mostrarSequencia)} />
+              <span>
+                <strong>Mostrar sequência de atividades no topo</strong>
+                <span style={{ display: 'block', ...ajuda }}>
+                  As etapas do fluxo aparecem no alto do registro (com “Ocultar sequência” na própria tela). Desmarcado, a
+                  faixa não aparece; o desenho continua em “Ver fluxo”, no painel lateral.
+                </span>
+              </span>
+            </label>
           </fieldset>
 
           <fieldset style={{ border: `1px solid ${COR.borda}`, borderRadius: '8px', padding: '10px 14px', marginTop: '16px' }}>

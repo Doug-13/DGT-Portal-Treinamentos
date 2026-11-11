@@ -32,6 +32,8 @@ export const AMBIENTE = {
   // Anexos (colunas opcionais).
   permiteAnexos: 'dgt_permiteanexos',
   bibliotecaAnexos: 'dgt_bibliotecaanexos',
+  // Tela do registro: sequência de atividades (coluna opcional).
+  mostrarSequencia: 'dgt_mostrarsequencia',
   // Lookup → dgt_processo
   processoValor: '_dgt_processo_value',
   processoBind: 'dgt_Processo@odata.bind'

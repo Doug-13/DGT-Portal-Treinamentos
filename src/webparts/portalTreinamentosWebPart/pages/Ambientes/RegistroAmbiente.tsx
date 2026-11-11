@@ -114,6 +114,9 @@ export interface IRegistroAmbienteProps {
   dataverseService?: DataverseService;
   // Fluxo parado em "Assinatura digital": acompanhamento.
   assinatura?: IPainelAssinaturaProps;
+  // Configuração do ambiente: sequência de atividades no topo
+  // (undefined = mostra, como nos ambientes antigos).
+  mostrarSequencia?: boolean;
   // Anexos do registro (ambiente com "Permitir anexar arquivos").
   anexos?: {
     servico: AnexosAmbienteService;
@@ -179,7 +182,17 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
 
   // Duas colunas (padrão): dados à esquerda, campos da etapa à direita.
   const duasColunas = layout.registro.disposicao !== 'umaColuna';
-  const [verFluxo, setVerFluxo] = React.useState(!!layout.registro.mostrarDiagrama);
+  // "Ver fluxo" sempre começa recolhido; a sequência começa visível
+  // (se o ambiente a mostra). Ao abrir outro registro, volta ao início.
+  const [verFluxo, setVerFluxo] = React.useState(false);
+  const [sequenciaVisivel, setSequenciaVisivel] = React.useState(true);
+  // Configuração do ambiente (ambiente antigo sem a opção = mostra).
+  const mostrarSequencia =
+    props.mostrarSequencia !== undefined ? props.mostrarSequencia : ambiente.mostrarSequencia !== false;
+  React.useEffect(() => {
+    setVerFluxo(false);
+    setSequenciaVisivel(true);
+  }, [registro.id]);
 
   const elementoAtual = definicao && instancia ? obterElementoAtual(definicao, instancia) : undefined;
   const tarefaAtual = instancia ? tarefaPendente(instancia) : undefined;
@@ -238,6 +251,16 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
           </span>
           <strong style={{ fontSize: '16px', color: ESCURO.texto, flex: 1, minWidth: '200px' }}>{registro.titulo}</strong>
           <Selo texto={situacao.texto} cor={situacao.cor} fundo={situacao.fundo} />
+          {mostrarSequencia && etapas.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={sequenciaVisivel}
+              onClick={() => setSequenciaVisivel(!sequenciaVisivel)}
+              style={botao('secundario')}
+            >
+              {sequenciaVisivel ? 'Ocultar sequência' : 'Mostrar sequência'}
+            </button>
+          )}
           {props.podeCancelar && registro.situacao === 'emAndamento' && (
             <button type="button" disabled={props.processando} onClick={props.onCancelar} style={botao('perigo', props.processando)}>
               Cancelar registro
@@ -245,28 +268,39 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
           )}
         </div>
 
-        {etapas.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', marginTop: '16px', overflowX: 'auto' }}>
+        {/* Sequência de atividades: cartões compactos, rolagem horizontal. */}
+        {mostrarSequencia && sequenciaVisivel && etapas.length > 0 && (
+          <div
+            role="list"
+            aria-label="Sequência de atividades"
+            style={{ display: 'flex', alignItems: 'center', marginTop: '14px', overflowX: 'auto', paddingBottom: '6px' }}
+          >
             {etapas.map((etapa, indice) => {
               const estadoEtapa = estadoDaEtapa(etapa.elemento.id, instancia);
               const concluida = estadoEtapa === 'concluida';
               const atual = estadoEtapa === 'atual';
               const marcada = selecionada === etapa.elemento.id;
+              const corBorda = atual ? ESCURO.azul : concluida ? ESCURO.verde : '#CBD5E1';
               return (
                 <React.Fragment key={etapa.elemento.id}>
                   <button
                     type="button"
+                    role="listitem"
+                    data-estado={estadoEtapa}
+                    title={`${indice + 1}. ${etapa.rotulo} — ${concluida ? 'concluída' : atual ? 'etapa atual' : 'a fazer'}`}
                     onClick={() => setSelecionada(etapa.elemento.id)}
                     aria-current={atual ? 'step' : undefined}
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      flexShrink: 0,
-                      padding: '6px 8px',
+                      alignItems: 'flex-start',
+                      gap: '8px',
+                      flex: '0 0 auto',
+                      width: atual ? '200px' : '170px',
+                      padding: atual ? '9px 11px' : '7px 10px',
                       borderRadius: '10px',
-                      border: 0,
-                      background: marcada ? '#EEF6FF' : 'transparent',
+                      border: `${atual ? 2 : 1}px solid ${corBorda}`,
+                      background: atual ? ESCURO.azul : concluida ? '#E7F6EC' : '#F7F9FB',
+                      boxShadow: atual ? '0 4px 12px rgba(11,92,171,.25)' : marcada ? `0 0 0 3px ${concluida ? 'rgba(16,124,16,.18)' : 'rgba(100,116,139,.18)'}` : 'none',
                       cursor: 'pointer',
                       fontFamily: FONTE,
                       textAlign: 'left'
@@ -274,27 +308,36 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
                   >
                     <span
                       style={{
-                        width: '30px',
-                        height: '30px',
+                        width: '24px',
+                        height: '24px',
                         borderRadius: '50%',
                         flexShrink: 0,
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        background: concluida ? ESCURO.verde : atual ? ESCURO.azul : '#EEF2F6',
-                        color: concluida || atual ? '#FFFFFF' : ESCURO.texto2,
-                        fontSize: '13px',
-                        fontWeight: 800,
-                        boxShadow: atual ? '0 0 0 4px rgba(11,92,171,.15)' : 'none'
+                        background: atual ? '#FFFFFF' : concluida ? ESCURO.verde : '#E2E8F0',
+                        color: atual ? ESCURO.azul : concluida ? '#FFFFFF' : ESCURO.texto2,
+                        fontSize: '12px',
+                        fontWeight: 800
                       }}
                     >
                       {concluida ? '✓' : indice + 1}
                     </span>
-                    <span>
-                      <strong style={{ display: 'block', fontSize: '13px', color: concluida || atual ? ESCURO.texto : ESCURO.texto2, whiteSpace: 'nowrap' }}>
+                    <span style={{ minWidth: 0 }}>
+                      <strong
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          fontSize: atual ? '13px' : '12.5px',
+                          lineHeight: '16px',
+                          color: atual ? '#FFFFFF' : concluida ? '#0E5A12' : ESCURO.texto2
+                        }}
+                      >
                         {etapa.rotulo}
                       </strong>
-                      <span style={{ display: 'block', marginTop: '2px', fontSize: '11.5px', color: ESCURO.texto2, whiteSpace: 'nowrap' }}>
+                      <span style={{ display: 'block', marginTop: '2px', fontSize: '11px', fontWeight: 700, color: atual ? '#D6E7FB' : concluida ? ESCURO.verde : ESCURO.texto2 }}>
                         {concluida ? 'Concluída' : atual ? 'Etapa atual' : 'A fazer'}
                       </span>
                     </span>
@@ -302,7 +345,7 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
                   {indice < etapas.length - 1 && (
                     <span
                       aria-hidden="true"
-                      style={{ flex: 1, minWidth: '28px', height: '2px', margin: '0 6px', borderRadius: '2px', background: concluida ? ESCURO.verde : ESCURO.trilho }}
+                      style={{ flex: '0 0 18px', height: '2px', margin: '0 4px', borderRadius: '2px', background: concluida ? ESCURO.verde : ESCURO.trilho }}
                     />
                   )}
                 </React.Fragment>
@@ -357,7 +400,7 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
             {/* ESQUERDA: dados do registro */}
             <div style={{ flex: '0 1 340px', minWidth: '260px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ ...cartao, marginBottom: 0 }}>
-                <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>Dados do registro</strong>
+                <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>Dados do documento</strong>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
                   <div><div style={rotuloInfo}>{ambiente.rotuloRegistro}</div><div style={{ ...valorInfo, fontWeight: 700 }}>{registro.titulo}</div></div>
                   <div><div style={rotuloInfo}>Código</div><div style={valorInfo}>{registro.codigo}</div></div>
@@ -378,11 +421,38 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
                   {registro.areaNome && <div><div style={rotuloInfo}>Área</div><div style={valorInfo}>{registro.areaNome}</div></div>}
                   {registro.descricao && <div><div style={rotuloInfo}>Descrição</div><div style={valorInfo}>{registro.descricao}</div></div>}
                 </div>
-                <div style={{ borderTop: `1px solid ${COR.borda}`, marginTop: '12px', paddingTop: '10px' }}>
-                  <button type="button" onClick={() => setVerFluxo(!verFluxo)} style={botao('secundario')}>
-                    {verFluxo ? 'Ocultar fluxo' : 'Ver fluxo'}
-                  </button>
-                </div>
+                {layout.registro.mostrarHistorico !== false && (
+                  <>
+                    <hr style={{ border: 0, borderTop: `1px solid ${COR.borda}`, margin: '14px 0 10px' }} />
+                    <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '8px' }}>
+                      Histórico{instancia ? ` (${instancia.historico.length})` : ''}
+                    </strong>
+                    <div aria-label="Histórico do registro" style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                      {(!instancia || instancia.historico.length === 0) && (
+                        <div style={{ fontSize: '12.5px', color: COR.texto2 }}>Nenhum evento registrado ainda.</div>
+                      )}
+                      {instancia && instancia.historico.map(passo => (
+                        <div key={passo.id} data-historico={passo.id} style={{ fontSize: '12px', color: COR.azul, padding: '6px 0', borderTop: `1px solid ${COR.borda}` }}>
+                          <div style={{ color: COR.texto2 }}>{formatarDataHora(passo.data)} · {passo.executadoPorNome}</div>
+                          <div><strong>{passo.elementoNome}</strong> — {passo.acaoRotulo}</div>
+                          {passo.comentario && <div style={{ color: COR.texto2, whiteSpace: 'pre-line' }}>{passo.comentario}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <hr style={{ border: 0, borderTop: `1px solid ${COR.borda}`, margin: '12px 0 10px' }} />
+                <button
+                  type="button"
+                  aria-expanded={verFluxo}
+                  onClick={() => setVerFluxo(!verFluxo)}
+                  style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: FONTE, fontSize: '14px', fontWeight: 700, color: COR.azul }}
+                >
+                  {verFluxo ? '▼' : '▶'} Ver fluxo
+                </button>
+                {verFluxo && (
+                  <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '4px' }}>O desenho aparece abaixo, em largura total.</div>
+                )}
               </div>
 
               {props.anexos && props.anexos.regra.visivel && (
@@ -427,7 +497,7 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
             </div>
           </div>
 
-          {/* Ver fluxo: desenho + histórico em largura total */}
+          {/* Ver fluxo: desenho em largura total (o histórico fica no painel). */}
           {verFluxo && instancia && definicao && (
             <div style={{ ...cartao, marginBottom: 0 }}>
               <div style={{ fontSize: '11.5px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: '8px' }}>
@@ -436,18 +506,6 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
               <div style={{ overflowX: 'auto', maxWidth: '100%', border: `1px solid ${COR.borda}`, borderRadius: '8px', background: '#FFFFFF' }}>
                 <FluxoDiagrama definicao={definicao} instancia={instancia} />
               </div>
-              {layout.registro.mostrarHistorico && (
-                <div style={{ marginTop: '12px' }}>
-                  <strong style={{ display: 'block', fontSize: '13.5px', color: COR.azul, marginBottom: '6px' }}>Histórico do fluxo ({instancia.historico.length})</strong>
-                  {instancia.historico.map(passo => (
-                    <div key={passo.id} style={{ fontSize: '12.5px', color: COR.azul, padding: '6px 0', borderTop: `1px solid ${COR.borda}` }}>
-                      <strong>{passo.elementoNome}</strong> — {passo.acaoRotulo}
-                      <span style={{ color: COR.texto2 }}> · {passo.executadoPorNome} · {formatarDataHora(passo.data)}</span>
-                      {passo.comentario && <div style={{ color: COR.texto2, whiteSpace: 'pre-line' }}>{passo.comentario}</div>}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </>

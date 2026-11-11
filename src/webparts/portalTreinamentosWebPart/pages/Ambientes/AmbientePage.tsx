@@ -772,6 +772,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
       onIniciarFluxo={() => { iniciarFluxo(registro).catch(() => undefined); }}
       onExecutar={(acaoChave, comentario, valores) => executar(registro, acaoChave, comentario, valores)}
       dataverseService={dataverseService}
+      mostrarSequencia={ambiente.mostrarSequencia !== false}
       assinatura={
         pendenteAssinatura
           ? {

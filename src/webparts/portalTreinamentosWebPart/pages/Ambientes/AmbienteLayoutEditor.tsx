@@ -382,7 +382,7 @@ const AmbienteLayoutEditor: React.FC<IAmbienteLayoutEditorProps> = (props) => {
             </div>
             {([
               ['mostrarDados', 'Mostrar o quadro “Campos preenchidos” no fim da tela'],
-              ['mostrarDiagrama', 'Abrir o desenho do fluxo já ao entrar no registro'],
+              ['mostrarDiagrama', 'Abrir o desenho do fluxo já ao entrar (só no modo uma coluna; em duas colunas, “Ver fluxo” começa recolhido)'],
               ['mostrarHistorico', 'Mostrar o histórico do fluxo']
             ] as Array<['mostrarDados' | 'mostrarDiagrama' | 'mostrarHistorico', string]>).map(([chave, texto]) => (
               <label key={chave} style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px', marginBottom: '6px' }}>

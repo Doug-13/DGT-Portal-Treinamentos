@@ -71,6 +71,10 @@ export interface IAmbiente {
   // Anexos dos registros (SharePoint) — ver AnexosAmbienteService.
   permiteAnexos?: boolean;
   bibliotecaAnexos?: string;
+
+  // Tela do registro: mostrar a sequência de atividades no topo.
+  // undefined (ambiente antigo, sem a configuração) = mostra.
+  mostrarSequencia?: boolean;
 }
 
 export type SituacaoRegistroAmbiente =
@@ -138,6 +142,8 @@ export interface INovoAmbiente {
   permiteAnexos?: boolean;
   // Caminho da biblioteca no site do portal (vazio = Documentos).
   bibliotecaAnexos?: string;
+  // Tela do registro: sequência de atividades no topo (padrão: sim).
+  mostrarSequencia?: boolean;
 }
 
 export interface IEdicaoAmbiente extends INovoAmbiente {

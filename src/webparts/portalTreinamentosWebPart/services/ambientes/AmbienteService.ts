@@ -106,8 +106,17 @@ const marcarColunasLayoutDesconhecidas = (): void => {
 // Colunas de anexos (dgt_permiteanexos, dgt_bibliotecaanexos).
 const estadoColunasAnexos: { disponivel: boolean | undefined } = { disponivel: undefined };
 
-const marcarColunasAnexos = (disponivel: boolean): void => {
-  estadoColunasAnexos.disponivel = disponivel;
+// Coluna dgt_mostrarsequencia.
+const estadoColunasSequencia: { disponivel: boolean | undefined } = { disponivel: undefined };
+
+const marcarGrupo = (estado: { disponivel: boolean | undefined }, disponivel: boolean): void => {
+  estado.disponivel = disponivel;
+};
+
+// "Could not find a property named 'dgt_x' on type ..." → dgt_x
+export const colunaAusente = (texto: string): string | undefined => {
+  const achado = /property named '([A-Za-z0-9_]+)'/i.exec(texto || '');
+  return achado ? achado[1].toLowerCase() : undefined;
 };
 
 const lerValoresJson = (
@@ -320,6 +329,8 @@ export class AmbienteService {
       prefixoCodigo: texto(registro, AMBIENTE.prefixoCodigo),
       rotuloRegistro: texto(registro, AMBIENTE.rotuloRegistro) || 'Registro',
       permiteAnexos: registro[AMBIENTE.permiteAnexos] === true,
+      // Sem a coluna ou sem valor (ambiente antigo): mostra.
+      mostrarSequencia: registro[AMBIENTE.mostrarSequencia] !== false,
       bibliotecaAnexos: texto(registro, AMBIENTE.bibliotecaAnexos),
       layoutJson: texto(registro, AMBIENTE.layout)
     };
@@ -381,23 +392,38 @@ export class AmbienteService {
         AMBIENTE.rotuloRegistro, AMBIENTE.processoValor
       ];
       const ordem = `&$orderby=${AMBIENTE.ordem} asc,${AMBIENTE.nome} asc`;
-      let registros: Array<Record<string, unknown>>;
-      // Colunas dos anexos são opcionais e independentes das telas.
-      if (estadoColunasAnexos.disponivel !== false) {
+      // Colunas opcionais (cada grupo vem de um script; a falta de uma
+      // não desliga as outras). A mensagem do Dataverse diz qual falta.
+      const grupos: Array<{ colunas: string[]; estado: { disponivel: boolean | undefined }; aviso: string }> = [
+        { colunas: [AMBIENTE.permiteAnexos, AMBIENTE.bibliotecaAnexos], estado: estadoColunasAnexos, aviso: 'anexos' },
+        { colunas: [AMBIENTE.mostrarSequencia], estado: estadoColunasSequencia, aviso: 'sequência de atividades' }
+      ];
+      let registros: Array<Record<string, unknown>> | undefined;
+      for (let tentativa = 0; tentativa <= grupos.length && !registros; tentativa++) {
+        const ativos = grupos.filter(grupo => grupo.estado.disponivel !== false);
         try {
-          registros = await this.consultarComLayout(TABELAS_AMBIENTE.ambiente, base.concat(AMBIENTE.permiteAnexos, AMBIENTE.bibliotecaAnexos), [AMBIENTE.layout], ordem);
-          marcarColunasAnexos(true);
+          registros = await this.consultarComLayout(
+            TABELAS_AMBIENTE.ambiente,
+            base.concat(...ativos.map(grupo => grupo.colunas)),
+            [AMBIENTE.layout],
+            ordem
+          );
+          ativos.forEach(grupo => marcarGrupo(grupo.estado, true));
         } catch (erro) {
-          if (!/could not find a property|propert(y|ies).*(not exist|não existe)|Could not find/i.test(mensagem(erro))) {
+          if (!/could not find a property|propert(y|ies).*(not exist|não existe)|Could not find/i.test(mensagem(erro)) || ativos.length === 0) {
             throw erro;
           }
-          marcarColunasAnexos(false);
-          // A tentativa acima pode ter marcado as telas como ausentes.
+          const faltando = colunaAusente(mensagem(erro));
+          const culpados = ativos.filter(grupo => !faltando || grupo.colunas.indexOf(faltando) >= 0);
+          (culpados.length > 0 ? culpados : ativos).forEach(grupo => {
+            marcarGrupo(grupo.estado, false);
+            console.warn(`[Ambientes] Colunas de ${grupo.aviso} ainda não existem. Execute criar-tabelas-ambientes.ps1.`);
+          });
+          // A tentativa pode ter marcado as telas como ausentes por engano.
           marcarColunasLayoutDesconhecidas();
-          console.warn('[Ambientes] Colunas de anexos ainda não existem. Execute criar-tabelas-ambientes.ps1.');
-          registros = await this.consultarComLayout(TABELAS_AMBIENTE.ambiente, base, [AMBIENTE.layout], ordem);
         }
-      } else {
+      }
+      if (!registros) {
         registros = await this.consultarComLayout(TABELAS_AMBIENTE.ambiente, base, [AMBIENTE.layout], ordem);
       }
 
@@ -564,6 +590,7 @@ export class AmbienteService {
           rotuloRegistro: dados.rotuloRegistro.trim(),
           permiteAnexos: !!dados.permiteAnexos,
           bibliotecaAnexos: (dados.bibliotecaAnexos || '').trim(),
+          mostrarSequencia: dados.mostrarSequencia !== false,
           layoutJson: ''
         }
       };
@@ -660,6 +687,9 @@ export class AmbienteService {
       [AMBIENTE.perfisPadrao]: JSON.stringify(dados.perfisPadrao || []),
       [AMBIENTE.prefixoCodigo]: dados.prefixoCodigo.trim().toUpperCase().substring(0, 20),
       [AMBIENTE.rotuloRegistro]: dados.rotuloRegistro.trim().substring(0, 100),
+      ...(estadoColunasSequencia.disponivel === true
+        ? { [AMBIENTE.mostrarSequencia]: dados.mostrarSequencia !== false }
+        : {}),
       // Só grava os anexos se as colunas existirem (script).
       ...(estadoColunasAnexos.disponivel === true
         ? {
@@ -668,6 +698,11 @@ export class AmbienteService {
         }
         : {})
     };
+  }
+
+  // false = falta criar a coluna da sequência (o formulário avisa).
+  public static sequenciaDisponivel(): boolean {
+    return estadoColunasSequencia.disponivel === true;
   }
 
   // false = falta criar as colunas de anexos (o formulário avisa).

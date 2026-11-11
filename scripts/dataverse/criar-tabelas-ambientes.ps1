@@ -12,7 +12,7 @@
       dgt_chave, dgt_descricao, dgt_subtitulo, dgt_icone, dgt_ordem,
       dgt_ativo, dgt_liberadoparatodos, dgt_perfispadrao,
       dgt_prefixocodigo, dgt_rotuloregistro, dgt_layoutjson,
-      dgt_permiteanexos, dgt_bibliotecaanexos,
+      dgt_permiteanexos, dgt_bibliotecaanexos, dgt_mostrarsequencia,
       dgt_Processo (Pesquisa -> dgt_processo)
 
     Tabela dgt_ambienteregistro (Registro de Ambiente / Registros de Ambiente)
@@ -351,6 +351,8 @@ New-TextoLongo 'dgt_ambiente' 'dgt_LayoutJson'     'Configuração das telas (JS
 # Anexos dos registros (SharePoint) — AnexosAmbienteService
 New-SimNao 'dgt_ambiente' 'dgt_PermiteAnexos'  'Permite anexos nos registros'
 New-Texto      'dgt_ambiente' 'dgt_BibliotecaAnexos' 'Biblioteca dos anexos' 400
+# Tela do registro: sequência de atividades no topo (vazio = mostra)
+New-SimNao 'dgt_ambiente' 'dgt_MostrarSequencia' 'Mostrar sequência de atividades' $true
 
 # ------------------------------------------------------------
 # 3) Colunas de dgt_ambienteregistro

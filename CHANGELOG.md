@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Melhoria: tela de execução da atividade — painel esquerdo com "Dados do documento", "Histórico" (eventos do registro) e "Ver fluxo" (sempre recolhido ao abrir); sequência de atividades compacta, com cores por situação, destaque da etapa atual e rolagem horizontal; nova opção do ambiente "Mostrar sequência de atividades no topo" (com Ocultar/Mostrar na tela; ambientes antigos continuam mostrando).
 - Melhoria: regra de exibição ("exibir só quando") passa a ser definida no campo, em Metadados do processo, e vale em todas as atividades que exibem o campo (inclusive versões publicadas). A atividade fica só com o modo (Não exibir/Opcional/Obrigatório/Somente leitura); regras antigas criadas na atividade continuam funcionando e aparecem como "regra antiga desta etapa".
 - Correção: regras de exibição dos campos ("exibir só quando") agora valem também nas etapas dos ambientes — antes o campo condicional aparecia sempre. No editor da atividade, as opções passaram a se chamar "Opcional/Obrigatório — exibir só quando…", o campo condicional ganha a etiqueta "condicional" e há uma explicação no topo do bloco.
 - Novo: tarefa "Assinatura digital" no fluxo (Clicksign, via Power Automate) — o fluxo para até o documento ser assinado; o portal cria o pedido em dgt_assinatura, acompanha os signatários e libera o fluxo com a situação final (recusa/expiração podem seguir para uma decisão). Script criar-tabelas-assinatura.ps1 e guia em docs/assinatura-digital.md.
