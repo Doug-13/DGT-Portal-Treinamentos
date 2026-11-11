@@ -13,6 +13,7 @@ import {
 } from '../../components/common/Icones';
 
 import {
+  AmbienteService,
   gerarChaveAmbiente,
   gerarPrefixoAmbiente,
   validarDadosAmbiente
@@ -100,6 +101,8 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
   const [liberadoParaTodos, setLiberadoParaTodos] = React.useState(original ? original.liberadoParaTodos : false);
   const [perfisPadrao, setPerfisPadrao] = React.useState<string[]>(original ? original.perfisPadrao : []);
   const [ativo, setAtivo] = React.useState(original ? original.ativo : true);
+  const [permiteAnexos, setPermiteAnexos] = React.useState(!!(original && original.permiteAnexos));
+  const [bibliotecaAnexos, setBibliotecaAnexos] = React.useState(original && original.bibliotecaAnexos ? original.bibliotecaAnexos : '');
   const [erros, setErros] = React.useState<string[]>([]);
 
   // Fluxo do ambiente: novo (criado agora) ou um já existente.
@@ -155,6 +158,8 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
     perfisPadrao: perfisPadrao.filter(item => item !== 'Administrador'),
     prefixoCodigo: prefixo.trim().toUpperCase(),
     rotuloRegistro: rotuloRegistro.trim(),
+    permiteAnexos,
+    bibliotecaAnexos: bibliotecaAnexos.trim(),
     ativo,
     processoId:
       novo
@@ -402,6 +407,41 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
                   são ignoradas no ambiente — a aba Configuração lista quais.
                 </span>
               </div>
+            )}
+          </fieldset>
+
+          <fieldset style={{ border: `1px solid ${COR.borda}`, borderRadius: '8px', padding: '10px 14px', marginTop: '16px' }}>
+            <legend style={{ ...rotulo, padding: '0 6px', marginBottom: 0 }}>Anexos</legend>
+            {!AmbienteService.anexosDisponiveis() && (
+              <div style={{ ...ajuda, color: '#B54708', marginBottom: '6px' }}>
+                As colunas de anexos ainda não existem no Dataverse: execute scripts/dataverse/criar-tabelas-ambientes.ps1 e recarregue o portal.
+              </div>
+            )}
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '13px' }}>
+              <input type="checkbox" checked={permiteAnexos} disabled={props.processando || !AmbienteService.anexosDisponiveis()} onChange={() => setPermiteAnexos(!permiteAnexos)} />
+              <span>
+                <strong>Permitir anexar arquivos nos registros</strong>
+                <span style={{ display: 'block', ...ajuda }}>
+                  Em cada etapa do fluxo, a opção <strong>“Anexo de arquivo”</strong> define o que vale nela:
+                  Não = só consultar · Opcional = incluir, substituir e remover · Obrigatório = idem, e a etapa só conclui com ao menos um anexo.
+                </span>
+              </span>
+            </label>
+            {permiteAnexos && (
+              <label style={{ display: 'block', marginTop: '8px', fontSize: '12.5px' }}>
+                <span style={{ display: 'block', fontWeight: 700, marginBottom: '3px' }}>Biblioteca do SharePoint (opcional)</span>
+                <input
+                  value={bibliotecaAnexos}
+                  maxLength={400}
+                  placeholder="Vazio = biblioteca Documentos do site do portal"
+                  onChange={evento => setBibliotecaAnexos(evento.target.value)}
+                  style={campo}
+                />
+                <span style={{ display: 'block', ...ajuda }}>
+                  Caminho no site do portal, ex.: /sites/processostesteproduto/Anexos. Os arquivos ficam em
+                  “Anexos de Ambientes/{chave || 'chave'}/&lt;código do registro&gt;”. Quem inclui anexos precisa de permissão de edição nessa biblioteca.
+                </span>
+              </label>
             )}
           </fieldset>
 

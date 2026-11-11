@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: anexos nos registros de ambiente (SharePoint) — ligados em Editar ambiente → Anexos; cada etapa do fluxo define se os anexos são só consulta, opcionais (incluir/substituir/remover) ou obrigatórios.
 - Melhoria: tela do registro de ambiente em duas colunas — dados do registro, Ver fluxo e documentos relacionados à esquerda; campos da etapa à direita (opção "Disposição" em Personalizar telas).
 - Novo: tarefa "Script" no fluxo (caixa com engrenagem) — roda isolado, consulta o Dataverse (fontes liberadas) ou APIs (endereços liberados, ex.: CEP) e preenche campos antes de o fluxo seguir; pode bloquear a ação com uma mensagem. Teste do script no editor. Guia em docs/scripts.md.
 - Correção: ligação etapa → decisão com botão (que impedia os outros botões, ex.: Devolver, de chegarem à decisão) — mensagem aponta a ligação exata, botão "Corrigir automaticamente" no editor, aviso na aba Caminhos e correção automática na importação JSON.

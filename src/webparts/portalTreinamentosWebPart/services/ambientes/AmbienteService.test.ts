@@ -111,7 +111,9 @@ describe('Fluxo de documentos usado num ambiente', () => {
       elemento({ tipo: 'tarefaSistema', nome: 'Publicar', acaoSistema: 'publicarSemRetreinamento' }),
       elemento({ tipo: 'eventoRevisao', nome: 'Nova revisão' })
     ]));
-    expect(avisos).toHaveLength(3);
+    // "Anexo de arquivo" agora vale no ambiente (anexos do registro).
+    expect(avisos).toHaveLength(2);
     expect(avisos.join(' ')).toMatch(/Publicar/);
+    expect(avisos.join(' ')).not.toMatch(/Elaborar/);
   });
 });

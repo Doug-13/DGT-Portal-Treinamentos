@@ -874,7 +874,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
         </div>
 
         <div style={{ marginTop: '12px' }}>
-          <label htmlFor="prop-anexo-arquivo" style={estiloRotuloPainel}>Arquivo da revisão nesta etapa</label>
+          <label htmlFor="prop-anexo-arquivo" style={estiloRotuloPainel}>Anexo de arquivo nesta etapa</label>
           <select
             id="prop-anexo-arquivo"
             value={config.anexoArquivo || 'nao'}
@@ -882,13 +882,14 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
             onChange={evento => alterar({ anexoArquivo: evento.target.value === 'nao' ? undefined : evento.target.value as AnexoArquivoEtapa })}
             style={estiloEntradaPainel}
           >
-            <option value="nao">Não pede o arquivo</option>
-            <option value="opcional">Permite anexar ou substituir (opcional)</option>
-            <option value="obrigatorio">Exige o arquivo para concluir a etapa</option>
+            <option value="nao">Não (anexos só para consulta)</option>
+            <option value="opcional">Permite incluir/alterar (opcional)</option>
+            <option value="obrigatorio">Exige anexo para concluir a etapa</option>
           </select>
           <div style={{ fontSize: '12px', marginTop: '4px' }}>
-            Mostra ao responsável o campo para anexar o arquivo da revisão. Com “Exige”, as ações da etapa
-            só são liberadas com o arquivo anexado (ações que dispensam campos, como “Reprovar”, continuam liberadas).
+            Documentos: o arquivo da revisão. Ambientes (com “Permitir anexar arquivos”): os anexos do registro — incluir,
+            substituir e remover. Com “Exige”, as ações da etapa só são liberadas com anexo (ações que dispensam campos,
+            como “Reprovar”, continuam liberadas).
           </div>
         </div>
 

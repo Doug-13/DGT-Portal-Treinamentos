@@ -215,3 +215,27 @@ Tarefa e Histórico do fluxo). Recomendação: conceder **só ao perfil de Admin
 os ambientes estiverem em uso real, considerar retirar o Excluir de *Registro de Ambiente* — a partir
 daí, use **Desativar** e **Cancelar registro**, que preservam o histórico.
 
+---
+
+## Anexos dos registros
+
+**Ligar:** Editar ambiente → **Anexos** → *Permitir anexar arquivos nos registros* (opcional: a biblioteca
+do SharePoint; vazio = **Documentos** do site do portal). Os arquivos ficam em
+`<biblioteca>/Anexos de Ambientes/<chave do ambiente>/<código do registro>`.
+
+**Por etapa:** no editor do fluxo, cada etapa tem **Anexo de arquivo nesta etapa**:
+
+| Opção | No registro |
+|---|---|
+| Não | anexos só para **consulta** |
+| Opcional | o responsável da etapa pode **incluir, substituir e remover** |
+| Obrigatório | idem, e a etapa **só conclui com ao menos um anexo** (ações que dispensam campos, como Devolver, continuam liberadas) |
+
+- O quadro **Anexos** fica na coluna da esquerda do registro (com nome, tamanho, quem alterou e quando).
+- **Substituir** mantém o nome e guarda a versão anterior no **histórico de versões** do SharePoint;
+  **Remover** manda para a **lixeira** (recuperável). Nada se perde.
+- Registro concluído/cancelado: anexos só para consulta.
+- **Permissão:** quem inclui anexos precisa de **edição** na biblioteca do SharePoint; quem só consulta,
+  de leitura.
+- **Colunas novas** (rodar o script de novo): `dgt_ambiente.dgt_permiteanexos` e `dgt_bibliotecaanexos`.
+

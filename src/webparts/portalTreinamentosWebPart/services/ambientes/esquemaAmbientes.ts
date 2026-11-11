@@ -29,6 +29,9 @@ export const AMBIENTE = {
   // Telas configuráveis (layoutAmbiente.ts). Coluna opcional: sem ela
   // o ambiente usa o layout gerado do fluxo.
   layout: 'dgt_layoutjson',
+  // Anexos (colunas opcionais).
+  permiteAnexos: 'dgt_permiteanexos',
+  bibliotecaAnexos: 'dgt_bibliotecaanexos',
   // Lookup → dgt_processo
   processoValor: '_dgt_processo_value',
   processoBind: 'dgt_Processo@odata.bind'

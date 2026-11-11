@@ -3557,6 +3557,7 @@ const PortalRouter:
             onEditarAmbiente={props.onEditarAmbiente}
             onLayoutSalvo={props.onLayoutAmbienteSalvo}
             ambientesTodos={props.ambientes}
+            siteUrl={props.siteUrl}
             onAmbienteExcluido={props.onAmbienteExcluido}
           />
         );

@@ -34,9 +34,8 @@ export const avisosFluxoAmbiente = (
       avisos.push(`"${elemento.nome}": subprocesso cria documentos — não cria nada a partir de um ambiente (só fica registrado).`);
     }
 
-    if (elemento.tipo === 'tarefaHumana' && elemento.anexoArquivo && elemento.anexoArquivo !== 'nao') {
-      avisos.push(`"${elemento.nome}": pede o arquivo da revisão — no ambiente o anexo não é solicitado.`);
-    }
+    // "Anexo de arquivo" vale no ambiente para os anexos do registro,
+    // quando o ambiente permite anexos (Editar ambiente → Anexos).
 
     if (elemento.tipo === 'tarefaHumana' && elemento.permiteEditarDocumento) {
       avisos.push(`"${elemento.nome}": permite editar o documento — não se aplica ao ambiente.`);

@@ -99,6 +99,17 @@ const marcarColunasLayout = (disponivel: boolean): void => {
   estadoColunasLayout.disponivel = disponivel;
 };
 
+const marcarColunasLayoutDesconhecidas = (): void => {
+  estadoColunasLayout.disponivel = undefined;
+};
+
+// Colunas de anexos (dgt_permiteanexos, dgt_bibliotecaanexos).
+const estadoColunasAnexos: { disponivel: boolean | undefined } = { disponivel: undefined };
+
+const marcarColunasAnexos = (disponivel: boolean): void => {
+  estadoColunasAnexos.disponivel = disponivel;
+};
+
 const lerValoresJson = (
   valor: unknown
 ): Record<string, string> => {
@@ -308,6 +319,8 @@ export class AmbienteService {
       processoNome: texto(registro, AMBIENTE.processoValor + ANOTACAO_FORMATADA),
       prefixoCodigo: texto(registro, AMBIENTE.prefixoCodigo),
       rotuloRegistro: texto(registro, AMBIENTE.rotuloRegistro) || 'Registro',
+      permiteAnexos: registro[AMBIENTE.permiteAnexos] === true,
+      bibliotecaAnexos: texto(registro, AMBIENTE.bibliotecaAnexos),
       layoutJson: texto(registro, AMBIENTE.layout)
     };
   }
@@ -361,18 +374,32 @@ export class AmbienteService {
   public async listar(): Promise<IResultadoListaAmbientes> {
 
     try {
-      const registros =
-        await this.consultarComLayout(
-          TABELAS_AMBIENTE.ambiente,
-          [
-            AMBIENTE.id, AMBIENTE.nome, AMBIENTE.chave, AMBIENTE.descricao,
-            AMBIENTE.subtitulo, AMBIENTE.icone, AMBIENTE.ordem, AMBIENTE.ativo,
-            AMBIENTE.liberadoParaTodos, AMBIENTE.perfisPadrao, AMBIENTE.prefixoCodigo,
-            AMBIENTE.rotuloRegistro, AMBIENTE.processoValor
-          ],
-          [AMBIENTE.layout],
-          `&$orderby=${AMBIENTE.ordem} asc,${AMBIENTE.nome} asc`
-        );
+      const base = [
+        AMBIENTE.id, AMBIENTE.nome, AMBIENTE.chave, AMBIENTE.descricao,
+        AMBIENTE.subtitulo, AMBIENTE.icone, AMBIENTE.ordem, AMBIENTE.ativo,
+        AMBIENTE.liberadoParaTodos, AMBIENTE.perfisPadrao, AMBIENTE.prefixoCodigo,
+        AMBIENTE.rotuloRegistro, AMBIENTE.processoValor
+      ];
+      const ordem = `&$orderby=${AMBIENTE.ordem} asc,${AMBIENTE.nome} asc`;
+      let registros: Array<Record<string, unknown>>;
+      // Colunas dos anexos são opcionais e independentes das telas.
+      if (estadoColunasAnexos.disponivel !== false) {
+        try {
+          registros = await this.consultarComLayout(TABELAS_AMBIENTE.ambiente, base.concat(AMBIENTE.permiteAnexos, AMBIENTE.bibliotecaAnexos), [AMBIENTE.layout], ordem);
+          marcarColunasAnexos(true);
+        } catch (erro) {
+          if (!/could not find a property|propert(y|ies).*(not exist|não existe)|Could not find/i.test(mensagem(erro))) {
+            throw erro;
+          }
+          marcarColunasAnexos(false);
+          // A tentativa acima pode ter marcado as telas como ausentes.
+          marcarColunasLayoutDesconhecidas();
+          console.warn('[Ambientes] Colunas de anexos ainda não existem. Execute criar-tabelas-ambientes.ps1.');
+          registros = await this.consultarComLayout(TABELAS_AMBIENTE.ambiente, base, [AMBIENTE.layout], ordem);
+        }
+      } else {
+        registros = await this.consultarComLayout(TABELAS_AMBIENTE.ambiente, base, [AMBIENTE.layout], ordem);
+      }
 
       return {
         ambientes: registros.map(item => this.converterAmbiente(item)).filter(item => !!item.chave),
@@ -535,6 +562,8 @@ export class AmbienteService {
           processoNome,
           prefixoCodigo: dados.prefixoCodigo.trim(),
           rotuloRegistro: dados.rotuloRegistro.trim(),
+          permiteAnexos: !!dados.permiteAnexos,
+          bibliotecaAnexos: (dados.bibliotecaAnexos || '').trim(),
           layoutJson: ''
         }
       };
@@ -630,8 +659,20 @@ export class AmbienteService {
       [AMBIENTE.liberadoParaTodos]: dados.liberadoParaTodos,
       [AMBIENTE.perfisPadrao]: JSON.stringify(dados.perfisPadrao || []),
       [AMBIENTE.prefixoCodigo]: dados.prefixoCodigo.trim().toUpperCase().substring(0, 20),
-      [AMBIENTE.rotuloRegistro]: dados.rotuloRegistro.trim().substring(0, 100)
+      [AMBIENTE.rotuloRegistro]: dados.rotuloRegistro.trim().substring(0, 100),
+      // Só grava os anexos se as colunas existirem (script).
+      ...(estadoColunasAnexos.disponivel === true
+        ? {
+          [AMBIENTE.permiteAnexos]: !!dados.permiteAnexos,
+          [AMBIENTE.bibliotecaAnexos]: (dados.bibliotecaAnexos || '').trim().substring(0, 400)
+        }
+        : {})
     };
+  }
+
+  // false = falta criar as colunas de anexos (o formulário avisa).
+  public static anexosDisponiveis(): boolean {
+    return estadoColunasAnexos.disponivel === true;
   }
 
   // ----------------------------------------------------------

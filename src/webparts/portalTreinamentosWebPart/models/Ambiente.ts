@@ -67,6 +67,10 @@ export interface IAmbiente {
   // Configuração das telas (visões, colunas, etapas) em JSON — ver
   // services/ambientes/layoutAmbiente.ts. Vazio = gerada do fluxo.
   layoutJson: string;
+
+  // Anexos dos registros (SharePoint) — ver AnexosAmbienteService.
+  permiteAnexos?: boolean;
+  bibliotecaAnexos?: string;
 }
 
 export type SituacaoRegistroAmbiente =
@@ -129,6 +133,11 @@ export interface INovoAmbiente {
   perfisPadrao: string[];
   prefixoCodigo: string;
   rotuloRegistro: string;
+  // Anexos dos registros (SharePoint). O que cada etapa permite vem da
+  // configuração "Anexo de arquivo" da etapa no fluxo.
+  permiteAnexos?: boolean;
+  // Caminho da biblioteca no site do portal (vazio = Documentos).
+  bibliotecaAnexos?: string;
 }
 
 export interface IEdicaoAmbiente extends INovoAmbiente {

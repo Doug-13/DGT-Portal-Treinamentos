@@ -12,6 +12,7 @@
       dgt_chave, dgt_descricao, dgt_subtitulo, dgt_icone, dgt_ordem,
       dgt_ativo, dgt_liberadoparatodos, dgt_perfispadrao,
       dgt_prefixocodigo, dgt_rotuloregistro, dgt_layoutjson,
+      dgt_permiteanexos, dgt_bibliotecaanexos,
       dgt_Processo (Pesquisa -> dgt_processo)
 
     Tabela dgt_ambienteregistro (Registro de Ambiente / Registros de Ambiente)
@@ -347,6 +348,9 @@ New-Texto   'dgt_ambiente' 'dgt_RotuloRegistro'    'Nome do registro' 100
 New-Lookup  'dgt_ambiente' 'dgt_Processo'          'Processo do fluxo' 'dgt_processo'
 # Telas configuráveis (visões, colunas, etapas) — layoutAmbiente.ts
 New-TextoLongo 'dgt_ambiente' 'dgt_LayoutJson'     'Configuração das telas (JSON)' 100000
+# Anexos dos registros (SharePoint) — AnexosAmbienteService
+New-SimNao 'dgt_ambiente' 'dgt_PermiteAnexos'  'Permite anexos nos registros'
+New-Texto      'dgt_ambiente' 'dgt_BibliotecaAnexos' 'Biblioteca dos anexos' 400
 
 # ------------------------------------------------------------
 # 3) Colunas de dgt_ambienteregistro

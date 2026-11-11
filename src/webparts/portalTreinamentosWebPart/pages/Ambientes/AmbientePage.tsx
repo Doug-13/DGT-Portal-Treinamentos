@@ -43,6 +43,14 @@ import VisaoGeralAmbiente from './VisaoGeralAmbiente';
 
 import RegistroAmbiente from './RegistroAmbiente';
 
+import {
+  AnexosAmbienteService,
+  IRegraAnexos,
+  bibliotecaPadrao,
+  pastaDoRegistro,
+  regraAnexosEtapa
+} from '../../services/ambientes/AnexosAmbienteService';
+
 import ExcluirAmbienteModal from './ExcluirAmbienteModal';
 
 import AmbienteLayoutEditor from './AmbienteLayoutEditor';
@@ -101,6 +109,8 @@ export interface IAmbientePageProps {
   // fluxo compartilhado) e aviso para recarregar o menu.
   ambientesTodos?: IAmbiente[];
   onAmbienteExcluido?: () => void;
+  // Site do portal (anexos dos registros no SharePoint).
+  siteUrl?: string;
 }
 
 type ModoAmbiente = 'inicio' | 'config';
@@ -176,6 +186,19 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
   // Registro aberto
   const [estado, setEstado] = React.useState<IEstadoFluxoRegistro | undefined>(undefined);
   const [podeAgir, setPodeAgir] = React.useState(false);
+  // Anexos do registro aberto (etapa com anexo obrigatório).
+  const [quantidadeAnexos, setQuantidadeAnexos] = React.useState(0);
+  const servicoAnexos = React.useMemo(
+    () => (props.siteUrl ? new AnexosAmbienteService(props.siteUrl) : undefined),
+    [props.siteUrl]
+  );
+  const regraAnexosDoRegistro = (registro: IAmbienteRegistro): IRegraAnexos =>
+    regraAnexosEtapa(
+      !!ambiente.permiteAnexos && !!servicoAnexos,
+      estado ? estado.definicao.elementos.find(item => item.id === estado.instancia.elementoAtualId) : undefined,
+      registro.situacao,
+      podeAgir
+    );
   const [vinculos, setVinculos] = React.useState<IUsuarioAreaAdmin[]>([]);
   const [usuarios, setUsuarios] = React.useState<Array<{ id: string; nome: string }>>([]);
   const [carregandoRegistro, setCarregandoRegistro] = React.useState(false);
@@ -326,6 +349,14 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
   ): Promise<string[]> => {
     if (!fluxo || !contexto) {
       return ['Sem conexão com o Dataverse.'];
+    }
+    // Etapa com anexo obrigatório (ações que dispensam campos, como
+    // Devolver, continuam liberadas).
+    const regra = regraAnexosDoRegistro(registro);
+    const elementoAtual = estado ? estado.definicao.elementos.find(item => item.id === estado.instancia.elementoAtualId) : undefined;
+    const acao = elementoAtual ? elementoAtual.acoes.find(item => item.chave === acaoChave) : undefined;
+    if (regra.obrigatorio && quantidadeAnexos === 0 && !(acao && acao.dispensaCampos)) {
+      return ['Esta etapa exige ao menos um anexo: use “+ Incluir arquivos” no quadro Anexos.'];
     }
     setProcessando(true);
     setSucesso('');
@@ -631,6 +662,16 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
       estado={estado}
       carregando={carregandoRegistro}
       podeAgir={podeAgir}
+      anexos={
+        servicoAnexos && ambiente.permiteAnexos && props.siteUrl
+          ? {
+            servico: servicoAnexos,
+            pasta: pastaDoRegistro(ambiente.bibliotecaAnexos || bibliotecaPadrao(props.siteUrl), ambiente.chave, registro.codigo),
+            regra: regraAnexosDoRegistro(registro),
+            onQuantidade: setQuantidadeAnexos
+          }
+          : undefined
+      }
       processando={processando}
       podeCancelar={administra}
       podeIniciar={podeCriar}

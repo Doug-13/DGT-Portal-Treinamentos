@@ -39,6 +39,13 @@ import {
 import PainelFluxoOrcamento from
   '../Orcamento/PainelFluxoOrcamento';
 
+import AnexosRegistro from './AnexosRegistro';
+
+import {
+  AnexosAmbienteService,
+  IRegraAnexos
+} from '../../services/ambientes/AnexosAmbienteService';
+
 import FluxoDiagrama from '../../components/fluxo/FluxoDiagrama';
 
 import {
@@ -101,6 +108,13 @@ export interface IRegistroAmbienteProps {
   onExecutar: (acaoChave: string, comentario: string, valores: Record<string, string>) => Promise<string[]>;
   // Campos do tipo Componente (dados do Dataverse).
   dataverseService?: DataverseService;
+  // Anexos do registro (ambiente com "Permitir anexar arquivos").
+  anexos?: {
+    servico: AnexosAmbienteService;
+    pasta: string;
+    regra: IRegraAnexos;
+    onQuantidade?: (quantidade: number) => void;
+  };
 }
 
 const CORES_SITUACAO: Record<SituacaoRegistroAmbiente, { texto: string; cor: string; fundo: string }> = {
@@ -365,6 +379,10 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
                 </div>
               </div>
 
+              {props.anexos && props.anexos.regra.visivel && (
+                <AnexosRegistro servico={props.anexos.servico} pasta={props.anexos.pasta} regra={props.anexos.regra} onQuantidade={props.anexos.onQuantidade} />
+              )}
+
               {/* Documentos relacionados */}
               {documentosRelacionados.length > 0 && (
                 <div style={{ ...cartao, marginBottom: 0 }}>
@@ -443,6 +461,10 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
           ocultarHistorico={!layout.registro.mostrarHistorico}
           dataverseService={props.dataverseService}
         />
+      )}
+
+      {!duasColunas && props.anexos && props.anexos.regra.visivel && (
+        <AnexosRegistro servico={props.anexos.servico} pasta={props.anexos.pasta} regra={props.anexos.regra} onQuantidade={props.anexos.onQuantidade} />
       )}
 
       {/* Dados do registro / campos preenchidos */}
