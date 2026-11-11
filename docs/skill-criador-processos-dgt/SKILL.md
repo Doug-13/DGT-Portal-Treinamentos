@@ -52,6 +52,7 @@ Se o usuário já deu as informações, não pergunte de novo: assuma o razoáve
 - Decisão (`gateway`): um caminho por condição + **um** caminho `"padrao": true`.
   Condição por campo só com `simNao`, `lista`, `texto`, `numero` ou `data`.
 - Não informe `posicao` nem `pontos`: o portal desenha sozinho.
+- Campo que só aparece em certa situação: `exibirQuando: { campo, valor }` **no metadado** (não na etapa).
 - Avaliação/pontuação por critérios (Go/No-Go, qualificação, matriz de risco): use um metadado
   `tipo: "avaliacao"` com critérios, pesos e faixas; decida caminhos pela faixa
   (`quando: { campo, valor: <chave da faixa> }`).

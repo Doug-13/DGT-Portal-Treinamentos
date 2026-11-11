@@ -3,6 +3,10 @@ import {
 } from './assinaturaFluxo';
 
 import {
+  validarRegrasExibicao
+} from './regraExibicao';
+
+import {
   validarConfigScript
 } from './scriptFluxo';
 
@@ -301,6 +305,9 @@ export const validarDefinicao = (
   // ---------------- metadados ----------------
 
   const chaves: string[] = [];
+
+  // Regras de exibição definidas nos metadados do processo.
+  validarRegrasExibicao(metadados).forEach(erro => erros.push(erro));
 
   metadados.forEach(
     metadado => {

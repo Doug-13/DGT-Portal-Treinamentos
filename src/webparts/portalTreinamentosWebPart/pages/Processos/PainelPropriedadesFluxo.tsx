@@ -32,6 +32,10 @@ import {
   rotuloNivel
 } from '../../services/fluxo/hierarquiaArea';
 
+import {
+  descreverRegraExibicao
+} from '../../services/fluxo/regraExibicao';
+
 import EditorScript from './EditorScript';
 
 import EditorAssinatura from './EditorAssinatura';
@@ -866,13 +870,16 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                 const campoCondicao =
                   condicao ? metadados.find(item => item.chave === condicao.campo) : undefined;
 
+                // Regra definida nos metadados do processo (vale aqui também).
+                const regraProcesso = metadado.exibirQuando;
+
                 return (
                   <div key={metadado.chave} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 190px', gap: '8px', alignItems: 'center' }}>
                       <span style={{ fontSize: '13px' }}>
                         {metadado.rotulo}
-                        {condicao && (
-                          <span title="Regra de exibição: o campo só aparece quando a condição abaixo é atendida." style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '999px', background: '#EEF4FA', color: '#0F4C81', fontSize: '10.5px', fontWeight: 800 }}>
+                        {(condicao || regraProcesso) && (
+                          <span title="Regra de exibição: o campo só aparece quando a condição é atendida." style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '999px', background: '#EEF4FA', color: '#0F4C81', fontSize: '10.5px', fontWeight: 800 }}>
                             condicional
                           </span>
                         )}
@@ -888,14 +895,25 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                         <option value="editavel">Opcional</option>
                         <option value="obrigatorio">Obrigatório</option>
                         <option value="leitura">Somente leitura</option>
-                        {metadados.length > 1 && <option value="opcionalCondicional">Opcional — exibir só quando…</option>}
-                        {metadados.length > 1 && <option value="condicional">Obrigatório — exibir só quando…</option>}
+                        {/* Regras antigas, criadas na atividade (só para exibir o modo atual). */}
+                        {modo === 'opcionalCondicional' && <option value="opcionalCondicional">Opcional (regra antiga desta etapa)</option>}
+                        {modo === 'condicional' && <option value="condicional">Obrigatório (regra antiga desta etapa)</option>}
                       </select>
                     </div>
 
-                    {/* Regra: o campo só aparece quando outro campo tem o valor indicado. */}
-                    {condicao && (
+                    {/* Regra do processo: definida em Metadados do processo. */}
+                    {regraProcesso && (
+                      <div style={{ fontSize: '12px', background: '#EEF4FA', color: '#0F4C81', borderRadius: '6px', padding: '6px 8px' }}>
+                        Regra do processo: {descreverRegraExibicao(regraProcesso, metadados)}
+                        {modo === 'obrigatorio' ? ' (obrigatório só quando aparece)' : ''}.
+                        {condicao ? ' Ela substitui a regra antiga desta etapa.' : ''}
+                      </div>
+                    )}
+
+                    {/* Regra ANTIGA desta etapa (as novas ficam nos metadados do processo). */}
+                    {condicao && !regraProcesso && (
                       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', fontSize: '12px', background: '#F5F7FA', borderRadius: '6px', padding: '6px 8px' }}>
+                        <span style={{ fontWeight: 700 }}>Regra antiga desta etapa:</span>
                         <span>Exibir só quando</span>
                         <select
                           aria-label={`Campo da condição de ${metadado.rotulo}`}
@@ -949,6 +967,15 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                                 style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px', width: '120px' }}
                               />
                             )}
+                        {editavel && (
+                          <button
+                            type="button"
+                            onClick={() => alterarModoCampo(metadado, campo && campo.obrigatorioQuando ? 'obrigatorio' : 'editavel')}
+                            style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', color: '#B42318', fontWeight: 700, fontSize: '11.5px' }}
+                          >
+                            remover regra da etapa
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1492,9 +1519,9 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           “Não exibir” tira o campo daqui (ele volta para “Campos nesta etapa”, abaixo). Nome, tipo, opções e ajuda
           são editados nos metadados do processo.
           <br />
-          <strong>Regra de exibição:</strong> para o campo aparecer só em certa situação, escolha no modo
-          “Opcional — exibir só quando…” ou “Obrigatório — exibir só quando…” e indique o campo e o valor
-          (ex.: “Justificativa” só quando “Exige retreinamento?” for Não).
+          <strong>Regra de exibição</strong> (“exibir só quando…”): é definida no campo, nos{' '}
+          <strong>metadados do processo</strong> (botão “Metadados do processo” acima do desenho ou aba Metadados),
+          e vale em todas as atividades que exibem o campo. Aqui fica só o modo.
         </div>
 
         {

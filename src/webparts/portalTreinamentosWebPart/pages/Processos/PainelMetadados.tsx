@@ -52,6 +52,94 @@ import {
   configAvaliacaoPadrao
 } from '../../services/fluxo/valorAvaliacao';
 
+import {
+  TIPOS_CONDICAO_EXIBICAO,
+  descreverRegraExibicao
+} from '../../services/fluxo/regraExibicao';
+
+// ------------------------------------------------------------
+// Regra de exibição do campo ("exibir só quando"): vale para todas as
+// atividades que exibem o campo.
+// ------------------------------------------------------------
+const RegraExibicao: React.FC<{
+  metadado: IFluxoMetadado;
+  metadados: IFluxoMetadado[];
+  editavel: boolean;
+  onAlterar: (regra: { campo: string; valor: string } | undefined) => void;
+}> = ({ metadado, metadados, editavel, onAlterar }) => {
+
+  const regra = metadado.exibirQuando;
+  const [aberta, setAberta] = React.useState(false);
+  const candidatos = metadados.filter(item => item.chave !== metadado.chave && TIPOS_CONDICAO_EXIBICAO.indexOf(item.tipo) >= 0);
+  const alvo = regra ? metadados.find(item => item.chave === regra.campo) : undefined;
+  const pequeno: React.CSSProperties = { border: 0, background: 'transparent', padding: 0, cursor: 'pointer', color: '#0874CE', fontWeight: 700, fontSize: '11.5px' };
+  const campoMenor: React.CSSProperties = { minHeight: '28px', fontSize: '12px', border: '1px solid #D9D9D6', borderRadius: '6px', padding: '2px 6px', maxWidth: '220px' };
+
+  const valorPadrao = (chave: string): string => {
+    const outro = metadados.find(item => item.chave === chave);
+    return outro && outro.tipo === 'simNao' ? 'sim' : outro && outro.tipo === 'lista' && outro.opcoes && outro.opcoes.length > 0 ? outro.opcoes[0] : '';
+  };
+
+  if (!regra && !aberta) {
+    return editavel && candidatos.length > 0
+      ? <button type="button" style={{ ...pequeno, marginTop: '3px' }} onClick={() => setAberta(true)}>+ Regra de exibição</button>
+      : null;
+  }
+
+  if (regra && !aberta) {
+    return (
+      <div style={{ marginTop: '3px', fontSize: '11.5px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+        <span style={{ padding: '1px 6px', borderRadius: '999px', background: '#EEF4FA', color: '#0F4C81', fontWeight: 800, fontSize: '10.5px' }}>condicional</span>
+        <span>{descreverRegraExibicao(regra, metadados)}</span>
+        {editavel && <button type="button" style={pequeno} onClick={() => setAberta(true)}>alterar</button>}
+      </div>
+    );
+  }
+
+  const atual = regra || { campo: candidatos[0] ? candidatos[0].chave : '', valor: candidatos[0] ? valorPadrao(candidatos[0].chave) : '' };
+
+  return (
+    <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', fontSize: '12px', background: '#F5F7FA', borderRadius: '6px', padding: '6px 8px' }}>
+      <span>Exibir só quando</span>
+      <select
+        aria-label={`Campo da regra de exibição de ${metadado.rotulo}`}
+        value={atual.campo}
+        disabled={!editavel}
+        onChange={evento => onAlterar({ campo: evento.target.value, valor: valorPadrao(evento.target.value) })}
+        style={campoMenor}
+      >
+        {candidatos.map(item => <option key={item.chave} value={item.chave}>{item.rotulo}</option>)}
+      </select>
+      <span>for</span>
+      {alvo && alvo.tipo === 'simNao'
+        ? (
+          <select aria-label={`Valor da regra de exibição de ${metadado.rotulo}`} value={atual.valor} disabled={!editavel} onChange={evento => onAlterar({ campo: atual.campo, valor: evento.target.value })} style={campoMenor}>
+            <option value="sim">Sim</option>
+            <option value="nao">Não</option>
+          </select>
+        )
+        : alvo && alvo.tipo === 'lista'
+          ? (
+            <select aria-label={`Valor da regra de exibição de ${metadado.rotulo}`} value={atual.valor} disabled={!editavel} onChange={evento => onAlterar({ campo: atual.campo, valor: evento.target.value })} style={campoMenor}>
+              {(alvo.opcoes || []).map(opcao => <option key={opcao} value={opcao}>{opcao}</option>)}
+            </select>
+          )
+          : (
+            <input aria-label={`Valor da regra de exibição de ${metadado.rotulo}`} value={atual.valor} disabled={!editavel} onChange={evento => onAlterar({ campo: atual.campo, valor: evento.target.value })} style={{ ...campoMenor, width: '120px' }} />
+          )}
+      {!regra && editavel && (
+        <button type="button" style={pequeno} onClick={() => { onAlterar(atual); setAberta(false); }}>aplicar</button>
+      )}
+      {regra && <button type="button" style={pequeno} onClick={() => setAberta(false)}>ok</button>}
+      {editavel && (
+        <button type="button" style={{ ...pequeno, color: '#B42318' }} onClick={() => { onAlterar(undefined); setAberta(false); }}>
+          {regra ? 'remover regra' : 'cancelar'}
+        </button>
+      )}
+    </div>
+  );
+};
+
 const COR_BORDA = '#D9D9D6';
 
 const TIPOS: Array<{ valor: TipoCampoFluxo; rotulo: string }> = [
@@ -409,6 +497,12 @@ const PainelMetadados: React.FC<IPainelMetadadosProps> = ({
                               {indice + 1}º · chave: {metadado.chave}
                               {uso ? ` · usado em ${uso} etapa(s)` : ''}
                             </div>
+                            <RegraExibicao
+                              metadado={metadado}
+                              metadados={metadados}
+                              editavel={editavel}
+                              onAlterar={exibirQuando => alterar(indice, { exibirQuando })}
+                            />
                           </div>
 
                           <select

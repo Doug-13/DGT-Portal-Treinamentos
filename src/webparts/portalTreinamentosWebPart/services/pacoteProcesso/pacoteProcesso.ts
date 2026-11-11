@@ -511,6 +511,9 @@ export const interpretarPacote = (
       colunas: meta.tipo === 'tabela' ? (meta.colunas || []).map(coluna => ({ ...coluna, rotulo: coluna.rotulo || coluna.chave })) : undefined,
       avaliacao: meta.tipo === 'avaliacao' ? meta.avaliacao : undefined,
       componente: meta.tipo === 'componente' ? meta.componente : undefined,
+      exibirQuando: meta.exibirQuando && meta.exibirQuando.campo
+        ? { campo: texto(meta.exibirQuando.campo), valor: texto(meta.exibirQuando.valor) }
+        : undefined,
       ajuda: texto(meta.ajuda) || undefined
     });
   });

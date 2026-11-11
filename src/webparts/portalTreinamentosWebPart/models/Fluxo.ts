@@ -291,6 +291,12 @@ export interface IFluxoMetadado {
   // tipo = 'componente'
   componente?: IConfigComponente;
 
+  // REGRA DE EXIBIÇÃO do campo (definida nos metadados do processo):
+  // o campo só aparece — em qualquer atividade que o exiba — quando o
+  // campo "campo" tiver o valor "valor". Se a atividade o marcou como
+  // obrigatório, ele é exigido só quando aparece.
+  exibirQuando?: { campo: string; valor: string };
+
   ajuda?: string;
 }
 

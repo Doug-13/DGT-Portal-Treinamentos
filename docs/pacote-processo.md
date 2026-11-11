@@ -144,6 +144,20 @@ Componente **não** pode ser usado em condição de caminho.
 Colunas de `tabela`: `{ "chave", "rotulo", "tipo", "obrigatoria"?, "opcoes"? }` com
 `tipo` em `texto, textoLongo, numero, data, simNao, lista, usuario, documento, documentos, area`.
 
+### Regra de exibição do campo (`exibirQuando`)
+
+Definida no **metadado** (vale em todas as etapas que exibem o campo):
+
+```json
+{ "chave": "justificativa", "rotulo": "Justificativa", "tipo": "textoLongo",
+  "exibirQuando": { "campo": "exigeRetreinamento", "valor": "nao" } }
+```
+
+O campo da condição deve ser `simNao` (`sim`/`nao`), `lista` (uma das opções), `texto`, `numero` ou `data`.
+Na etapa, use só o modo (`obrigatorio`, `somenteLeitura`); se o campo for obrigatório na etapa, ele é
+exigido apenas quando aparece. Prefira `exibirQuando` no metadado a `mostrarQuando`/`obrigatorioQuando`
+na etapa (formato antigo, ainda aceito).
+
 ## `fluxo.elementos`
 
 Todo fluxo tem **um** `inicio` e ao menos um `fim`.

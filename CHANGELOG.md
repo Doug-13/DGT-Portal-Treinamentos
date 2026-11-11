@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Melhoria: regra de exibição ("exibir só quando") passa a ser definida no campo, em Metadados do processo, e vale em todas as atividades que exibem o campo (inclusive versões publicadas). A atividade fica só com o modo (Não exibir/Opcional/Obrigatório/Somente leitura); regras antigas criadas na atividade continuam funcionando e aparecem como "regra antiga desta etapa".
 - Correção: regras de exibição dos campos ("exibir só quando") agora valem também nas etapas dos ambientes — antes o campo condicional aparecia sempre. No editor da atividade, as opções passaram a se chamar "Opcional/Obrigatório — exibir só quando…", o campo condicional ganha a etiqueta "condicional" e há uma explicação no topo do bloco.
 - Novo: tarefa "Assinatura digital" no fluxo (Clicksign, via Power Automate) — o fluxo para até o documento ser assinado; o portal cria o pedido em dgt_assinatura, acompanha os signatários e libera o fluxo com a situação final (recusa/expiração podem seguir para uma decisão). Script criar-tabelas-assinatura.ps1 e guia em docs/assinatura-digital.md.
 - Melhoria: aba Metadados do editor da atividade — no topo, "Metadados da atividade" só com os campos que a etapa exibe (modo por campo; "Não exibir" tira da lista); abaixo, "Campos nesta etapa" recolhido, com busca, para adicionar metadados do processo ainda não vinculados. A definição dos campos (nome, tipo, opções, ajuda) fica só nos metadados do processo.

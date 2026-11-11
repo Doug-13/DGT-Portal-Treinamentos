@@ -49,6 +49,45 @@ const COLUNAS = [
   METADADO.ativo
 ];
 
+// ------------------------------------------------------------
+// dgt_colunasjson: configuração própria do campo
+//   tabela sem regra             → [ ...colunas ]      (formato antigo)
+//   avaliação/componente/regra   → { colunas?, avaliacao?, componente?,
+//                                    exibirQuando? }
+// ------------------------------------------------------------
+
+export const lerConfigColunasJson = (
+  valor: string
+): Pick<IFluxoMetadado, 'colunas' | 'avaliacao' | 'componente' | 'exibirQuando'> => {
+  const dado = lerJsonSeguro<unknown>(valor, undefined);
+  if (Array.isArray(dado)) {
+    return { colunas: dado as IColunaTabela[] };
+  }
+  if (!dado || typeof dado !== 'object') {
+    return {};
+  }
+  const objeto = dado as { colunas?: IColunaTabela[]; avaliacao?: IConfigAvaliacao; componente?: IConfigComponente; exibirQuando?: { campo: string; valor: string } };
+  return {
+    colunas: Array.isArray(objeto.colunas) ? objeto.colunas : undefined,
+    avaliacao: objeto.avaliacao,
+    componente: objeto.componente,
+    exibirQuando: objeto.exibirQuando && objeto.exibirQuando.campo ? objeto.exibirQuando : undefined
+  };
+};
+
+export const gravarConfigColunasJson = (
+  metadado: IFluxoMetadado
+): string => {
+  const colunas = metadado.tipo === 'tabela' ? metadado.colunas : undefined;
+  const avaliacao = metadado.tipo === 'avaliacao' ? metadado.avaliacao : undefined;
+  const componente = metadado.tipo === 'componente' ? metadado.componente : undefined;
+  const regra = metadado.exibirQuando && metadado.exibirQuando.campo ? metadado.exibirQuando : undefined;
+  if (!avaliacao && !componente && !regra) {
+    return colunas ? JSON.stringify(colunas) : '';
+  }
+  return JSON.stringify({ colunas, avaliacao, componente, exibirQuando: regra });
+};
+
 export class MetadadosRepositorioDataverse
   implements IMetadadosRepositorio {
 
@@ -88,16 +127,9 @@ export class MetadadosRepositorioDataverse
           opcoes: lerJsonSeguro<string[] | undefined>(texto(registro, METADADO.opcoesJson), undefined),
           // tipo 'avaliacao': a configuração (critérios, escala, faixas)
           // fica na mesma coluna JSON, como { "avaliacao": {...} }.
-          colunas: texto(registro, METADADO.tipo) === 'avaliacao' || texto(registro, METADADO.tipo) === 'componente'
-            ? undefined
-            : lerJsonSeguro<IColunaTabela[] | undefined>(texto(registro, METADADO.colunasJson), undefined),
-          avaliacao: texto(registro, METADADO.tipo) === 'avaliacao'
-            ? (lerJsonSeguro<{ avaliacao?: IConfigAvaliacao } | undefined>(texto(registro, METADADO.colunasJson), undefined) || {}).avaliacao
-            : undefined,
-          // tipo 'componente': configuração (nativo/HTML e fontes) na mesma coluna.
-          componente: texto(registro, METADADO.tipo) === 'componente'
-            ? (lerJsonSeguro<{ componente?: IConfigComponente } | undefined>(texto(registro, METADADO.colunasJson), undefined) || {}).componente
-            : undefined,
+          // dgt_colunasjson: lista de colunas (tabela) OU objeto
+          // { colunas?, avaliacao?, componente?, exibirQuando? }.
+          ...lerConfigColunasJson(texto(registro, METADADO.colunasJson)),
           ajuda: texto(registro, METADADO.ajuda) || undefined
         }
       })
@@ -141,11 +173,7 @@ export class MetadadosRepositorioDataverse
         [METADADO.tipo]: metadado.tipo,
         [METADADO.ordem]: indice + 1,
         [METADADO.opcoesJson]: metadado.opcoes ? JSON.stringify(metadado.opcoes) : '',
-        [METADADO.colunasJson]: metadado.tipo === 'avaliacao'
-          ? (metadado.avaliacao ? JSON.stringify({ avaliacao: metadado.avaliacao }) : '')
-          : metadado.tipo === 'componente'
-          ? (metadado.componente ? JSON.stringify({ componente: metadado.componente }) : '')
-          : metadado.colunas ? JSON.stringify(metadado.colunas) : '',
+        [METADADO.colunasJson]: gravarConfigColunasJson(metadado),
         [METADADO.ajuda]: (metadado.ajuda || '').slice(0, 500),
         [METADADO.ativo]: true
       };

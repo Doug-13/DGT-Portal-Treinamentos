@@ -1,4 +1,8 @@
 import {
+  aplicarRegraExibicao
+} from '../fluxo/regraExibicao';
+
+import {
   IFluxoCampo,
   IFluxoDefinicao,
   IFluxoMetadado
@@ -122,7 +126,7 @@ export const aplicarMetadadosNaDefinicao = (
                 metadados.find(item => item.chave === campo.chave);
 
               return metadado
-                ? {
+                ? aplicarRegraExibicao({
                   ...campo,
                   rotulo: metadado.rotulo,
                   tipo: metadado.tipo,
@@ -131,7 +135,7 @@ export const aplicarMetadadosNaDefinicao = (
                   avaliacao: metadado.avaliacao,
                   componente: metadado.componente,
                   ajuda: metadado.ajuda
-                }
+                }, metadado)
                 : campo;
             }
           )
