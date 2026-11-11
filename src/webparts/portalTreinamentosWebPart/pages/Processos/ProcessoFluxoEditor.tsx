@@ -1162,13 +1162,10 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
           id: 'campos',
           rotulo: 'Metadados',
           indicador: String(configSelecionado.campos.length),
-          conteudo: painel(
-            'campos',
-            <fieldset style={{ border: `1px solid ${COR_BORDA}`, borderRadius: '6px', padding: '10px 12px', margin: 0 }}>
-              <legend style={{ ...estiloRotulo, padding: '0 6px', marginBottom: 0 }}>Metadados do processo</legend>
-              {editorMetadados}
-            </fieldset>
-          )
+          // Só o vínculo e o modo de cada campo NESTA atividade. A definição
+          // dos campos (nome, tipo, opções, ajuda) fica nos metadados do
+          // processo (botão "Metadados do processo" e aba Metadados).
+          conteudo: painel('campos')
         },
         {
           id: 'caminhos',

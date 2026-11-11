@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Melhoria: aba Metadados do editor da atividade — no topo, "Metadados da atividade" só com os campos que a etapa exibe (modo por campo; "Não exibir" tira da lista); abaixo, "Campos nesta etapa" recolhido, com busca, para adicionar metadados do processo ainda não vinculados. A definição dos campos (nome, tipo, opções, ajuda) fica só nos metadados do processo.
 - Correção: nos ambientes, campos dos tipos Área, Documento e Documentos (e colunas desses tipos em tabelas) agora são editáveis nas etapas — antes só exibiam o valor.
 - Novo: anexos nos registros de ambiente (SharePoint) — ligados em Editar ambiente → Anexos; cada etapa do fluxo define se os anexos são só consulta, opcionais (incluir/substituir/remover) ou obrigatórios.
 - Melhoria: tela do registro de ambiente em duas colunas — dados do registro, Ver fluxo e documentos relacionados à esquerda; campos da etapa à direita (opção "Disposição" em Personalizar telas).
