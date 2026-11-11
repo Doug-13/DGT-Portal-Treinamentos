@@ -2608,3 +2608,14 @@ export const continuarAposAssinaturaNaInstancia = (
   return { erros, acoesSistema };
 };
 
+// Regra de exibição de um campo na etapa: com condição ("exibir só
+// quando"), o campo aparece apenas quando o outro campo tem o valor
+// indicado. Usada nos documentos e nos ambientes.
+export const campoVisivel = (
+  campo: Pick<IFluxoElemento['campos'][number], 'obrigatorioQuando' | 'mostrarQuando'>,
+  valores: Record<string, string>
+): boolean => {
+  const condicao = campo.obrigatorioQuando || campo.mostrarQuando;
+  return !condicao || (valores[condicao.campo] || '') === condicao.valor;
+};
+

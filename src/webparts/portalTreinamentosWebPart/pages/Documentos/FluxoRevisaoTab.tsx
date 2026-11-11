@@ -54,6 +54,9 @@ import CampoAreaFluxo from
   '../../components/fluxo/CampoAreaFluxo';
 
 import PainelAssinatura from '../../components/fluxo/PainelAssinatura';
+import {
+  campoVisivel
+} from '../../services/fluxo/FluxoEngine';
 import CampoComponenteFluxo from '../../components/fluxo/CampoComponenteFluxo';
 import CampoAvaliacaoFluxo from '../../components/fluxo/CampoAvaliacaoFluxo';
 import TabelaCampoFluxo from
@@ -732,14 +735,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
 
     // Campo condicional só aparece quando a condição é atendida
     // (obrigatório ou opcional com condição).
-    const condicao =
-      campo.obrigatorioQuando || campo.mostrarQuando;
-
-    if (
-      condicao &&
-      (valoresVisiveis[condicao.campo] || '') !==
-        condicao.valor
-    ) {
+    if (!campoVisivel(campo, valoresVisiveis)) {
       return undefined;
     }
 

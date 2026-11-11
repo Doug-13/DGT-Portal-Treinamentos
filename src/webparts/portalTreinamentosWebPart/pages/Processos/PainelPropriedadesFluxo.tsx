@@ -869,7 +869,14 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                 return (
                   <div key={metadado.chave} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 190px', gap: '8px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '13px' }}>{metadado.rotulo}</span>
+                      <span style={{ fontSize: '13px' }}>
+                        {metadado.rotulo}
+                        {condicao && (
+                          <span title="Regra de exibição: o campo só aparece quando a condição abaixo é atendida." style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '999px', background: '#EEF4FA', color: '#0F4C81', fontSize: '10.5px', fontWeight: 800 }}>
+                            condicional
+                          </span>
+                        )}
+                      </span>
                       <select
                         aria-label={`Uso do campo ${metadado.rotulo}`}
                         value={modo}
@@ -881,15 +888,15 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                         <option value="editavel">Opcional</option>
                         <option value="obrigatorio">Obrigatório</option>
                         <option value="leitura">Somente leitura</option>
-                        {metadados.length > 1 && <option value="condicional">Obrigatório quando…</option>}
-                        {metadados.length > 1 && <option value="opcionalCondicional">Opcional quando…</option>}
+                        {metadados.length > 1 && <option value="opcionalCondicional">Opcional — exibir só quando…</option>}
+                        {metadados.length > 1 && <option value="condicional">Obrigatório — exibir só quando…</option>}
                       </select>
                     </div>
 
                     {/* Regra: o campo só aparece quando outro campo tem o valor indicado. */}
                     {condicao && (
                       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', fontSize: '12px', background: '#F5F7FA', borderRadius: '6px', padding: '6px 8px' }}>
-                        <span>Mostrar quando</span>
+                        <span>Exibir só quando</span>
                         <select
                           aria-label={`Campo da condição de ${metadado.rotulo}`}
                           value={condicao.campo}
@@ -1484,6 +1491,10 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           Campos que esta etapa exibe, na ordem do processo. O modo vale <strong>só para esta atividade</strong>;
           “Não exibir” tira o campo daqui (ele volta para “Campos nesta etapa”, abaixo). Nome, tipo, opções e ajuda
           são editados nos metadados do processo.
+          <br />
+          <strong>Regra de exibição:</strong> para o campo aparecer só em certa situação, escolha no modo
+          “Opcional — exibir só quando…” ou “Obrigatório — exibir só quando…” e indique o campo e o valor
+          (ex.: “Justificativa” só quando “Exige retreinamento?” for Não).
         </div>
 
         {

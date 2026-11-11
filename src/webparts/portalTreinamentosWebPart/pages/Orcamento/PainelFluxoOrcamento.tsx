@@ -36,6 +36,9 @@ import {
   DataverseService
 } from '../../services/DataverseService';
 
+import {
+  campoVisivel
+} from '../../services/fluxo/FluxoEngine';
 import CampoAreaFluxo from '../../components/fluxo/CampoAreaFluxo';
 import CampoDocumentoFluxo from '../../components/fluxo/CampoDocumentoFluxo';
 import CampoComponenteFluxo from '../../components/fluxo/CampoComponenteFluxo';
@@ -336,10 +339,11 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
 
           {elemento.campos.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px', marginBottom: '10px' }}>
-              {elemento.campos.map(item => (
+              {/* Regra de exibição: campo condicional só com a condição atendida. */}
+              {elemento.campos.filter(item => campoVisivel(item, valoresConsolidados)).map(item => (
                 <label key={item.chave} style={{ display: 'block', gridColumn: item.tipo === 'tabela' || item.tipo === 'textoLongo' || item.tipo === 'avaliacao' || item.tipo === 'componente' ? '1 / -1' : undefined }}>
                   <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: COR.azul, marginBottom: '4px' }}>
-                    {item.rotulo}{item.obrigatorio ? ' *' : ''}
+                    {item.rotulo}{item.obrigatorio || item.obrigatorioQuando ? ' *' : ''}
                   </span>
                   {renderCampo(item)}
                   {item.ajuda && <span style={{ display: 'block', fontSize: '11.5px', color: COR.texto2, marginTop: '3px' }}>{item.ajuda}</span>}
