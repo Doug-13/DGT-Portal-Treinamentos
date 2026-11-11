@@ -262,6 +262,9 @@ import ArquiteturaPage from
 import KitsPage from
   '../pages/Kits/KitsPage';
 
+import FornecedoresPage from
+  '../pages/Fornecedores/FornecedoresPage';
+
 import HHPage from
   '../pages/HH/HHPage';
 
@@ -3490,6 +3493,21 @@ const PortalRouter:
           <KitsPage
             dataverseService={props.dataverseService}
             contexto={props.contextoAcesso}
+          />
+        );
+
+      // ========================================================
+      // FORNECEDORES (homologação e gestão — Suprimentos)
+      // ========================================================
+
+      case 'fornecedores':
+
+        return (
+          <FornecedoresPage
+            dataverseService={props.dataverseService}
+            contexto={props.contextoAcesso}
+            spHttpClient={props.spHttpClient}
+            siteUrl={props.siteUrl}
           />
         );
 

@@ -3994,6 +3994,24 @@ const gestaoAreas =
           true
       },
 
+      // Fornecedores — visível só com o módulo "fornecedores" liberado.
+      {
+        label:
+          'Fornecedores',
+
+        icon:
+          'briefcase' as IconeChave,
+
+        pagina:
+          'fornecedores',
+
+        modulo:
+          'outro',
+
+        novo:
+          true
+      },
+
       // Cálculo de HH — visível só com o módulo "hh" liberado.
       {
         label:

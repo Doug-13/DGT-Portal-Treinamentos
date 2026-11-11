@@ -167,6 +167,9 @@ const regras:
     // módulo (controlado na tela e nas Security Roles).
     { rota: 'kits', perfis: LICITACOES },
 
+    // Fornecedores: entrada controlada pelo módulo "fornecedores".
+    { rota: 'fornecedores', perfis: TODOS },
+
     // Cálculo de HH: entrada controlada pelo módulo "hh".
     { rota: 'calculoHH', perfis: LICITACOES },
     { rota: 'licitacoesTeste', perfis: LICITACOES },

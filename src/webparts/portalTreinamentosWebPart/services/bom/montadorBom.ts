@@ -620,6 +620,27 @@ export const packsDigifort = (
   ];
 };
 
+// Seleções gravadas antes das soluções por ponto: completa os campos.
+export const normalizarSelecao = (selecao: ISelecaoKit): ISelecaoKit => {
+  const sw = { ...softwaresPadrao(), ...(selecao.softwares || {}) };
+  return {
+    ...selecao,
+    softwares: sw,
+    pontos: (selecao.pontos || []).map(p => {
+      const base = novoPonto(p.tipo, 0);
+      const completo = { ...base, ...p };
+      const p2 = p as Partial<IPontoKit>;
+      return {
+        ...completo,
+        safeCity: p2.safeCity !== undefined ? p2.safeCity : true,
+        smartDetect: p2.smartDetect !== undefined ? p2.smartDetect : sw.smartDetect,
+        faceDetect: p2.faceDetect !== undefined ? p2.faceDetect : sw.faceDetect,
+        safeWay: p2.safeWay !== undefined ? p2.safeWay : (p.camerasOcr || 0) > 0
+      };
+    })
+  };
+};
+
 // ------------------------------------------------------------
 // Servidor da central: câmeras dos pontos e avaliação do seletor
 // ------------------------------------------------------------
@@ -678,27 +699,6 @@ export const avaliarServidorDoProjeto = (
 // Licença do Digifort pelo código do fabricante (DGFEN…).
 const chaveLicencaDgfen = (codigo: string): string | undefined =>
   Object.keys(ITENS).filter(chave => chave.indexOf('digifort') === 0 && ITENS[chave].descricao.indexOf(codigo) >= 0)[0];
-
-// Seleções gravadas antes das soluções por ponto: completa os campos.
-export const normalizarSelecao = (selecao: ISelecaoKit): ISelecaoKit => {
-  const sw = { ...softwaresPadrao(), ...(selecao.softwares || {}) };
-  return {
-    ...selecao,
-    softwares: sw,
-    pontos: (selecao.pontos || []).map(p => {
-      const base = novoPonto(p.tipo, 0);
-      const completo = { ...base, ...p };
-      const p2 = p as Partial<IPontoKit>;
-      return {
-        ...completo,
-        safeCity: p2.safeCity !== undefined ? p2.safeCity : true,
-        smartDetect: p2.smartDetect !== undefined ? p2.smartDetect : sw.smartDetect,
-        faceDetect: p2.faceDetect !== undefined ? p2.faceDetect : sw.faceDetect,
-        safeWay: p2.safeWay !== undefined ? p2.safeWay : (p.camerasOcr || 0) > 0
-      };
-    })
-  };
-};
 
 // Nome do kit cadastrado (base) + adicionais, para exibição.
 export const kitsAplicados = (ponto: IPontoKit): string[] => {
