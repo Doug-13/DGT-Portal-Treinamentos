@@ -36,6 +36,8 @@ import {
   DataverseService
 } from '../../services/DataverseService';
 
+import CampoAreaFluxo from '../../components/fluxo/CampoAreaFluxo';
+import CampoDocumentoFluxo from '../../components/fluxo/CampoDocumentoFluxo';
 import CampoComponenteFluxo from '../../components/fluxo/CampoComponenteFluxo';
 import CampoAvaliacaoFluxo from '../../components/fluxo/CampoAvaliacaoFluxo';
 import TabelaCampoFluxo from '../../components/fluxo/TabelaCampoFluxo';
@@ -193,6 +195,7 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
           somenteLeitura={somenteLeitura}
           desabilitado={props.processando}
           usuarios={usuariosBusca}
+          dataverseService={props.dataverseService}
           onAlterar={alterar}
         />
       );
@@ -216,13 +219,37 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
       );
     }
 
-    // Documento referenciado e Área: aqui só exibe o valor.
-    if (item.tipo === 'documento' || item.tipo === 'documentos' || item.tipo === 'area') {
-      return (
-        <div style={{ fontSize: '13.5px', color: COR.azul }}>
-          {formatarValorCampo(item.tipo, valor) || '—'}
-        </div>
-      );
+    // Área e documento(s) referenciado(s): os mesmos campos da aba
+    // Fluxo dos documentos (busca no Dataverse). Sem conexão (ex.:
+    // orçamento sem Dataverse), só exibe o valor.
+    if (item.tipo === 'area') {
+      return props.dataverseService
+        ? (
+          <CampoAreaFluxo
+            id={`orcamento-campo-${item.chave}`}
+            valor={valor}
+            desabilitado={props.processando}
+            dataverseService={props.dataverseService}
+            onAlterar={alterar}
+          />
+        )
+        : <div style={{ fontSize: '13.5px', color: COR.azul }}>{formatarValorCampo(item.tipo, valor) || '—'}</div>;
+    }
+
+    if (item.tipo === 'documento' || item.tipo === 'documentos') {
+      return props.dataverseService
+        ? (
+          <CampoDocumentoFluxo
+            id={`orcamento-campo-${item.chave}`}
+            valor={valor}
+            multiplo={item.tipo === 'documentos'}
+            desabilitado={props.processando}
+            dataverseService={props.dataverseService}
+            tiposPermitidos={item.opcoes}
+            onAlterar={alterar}
+          />
+        )
+        : <div style={{ fontSize: '13.5px', color: COR.azul }}>{formatarValorCampo(item.tipo, valor) || '—'}</div>;
     }
 
     if (item.tipo === 'usuario') {

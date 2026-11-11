@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Correção: nos ambientes, campos dos tipos Área, Documento e Documentos (e colunas desses tipos em tabelas) agora são editáveis nas etapas — antes só exibiam o valor.
 - Novo: anexos nos registros de ambiente (SharePoint) — ligados em Editar ambiente → Anexos; cada etapa do fluxo define se os anexos são só consulta, opcionais (incluir/substituir/remover) ou obrigatórios.
 - Melhoria: tela do registro de ambiente em duas colunas — dados do registro, Ver fluxo e documentos relacionados à esquerda; campos da etapa à direita (opção "Disposição" em Personalizar telas).
 - Novo: tarefa "Script" no fluxo (caixa com engrenagem) — roda isolado, consulta o Dataverse (fontes liberadas) ou APIs (endereços liberados, ex.: CEP) e preenche campos antes de o fluxo seguir; pode bloquear a ação com uma mensagem. Teste do script no editor. Guia em docs/scripts.md.
