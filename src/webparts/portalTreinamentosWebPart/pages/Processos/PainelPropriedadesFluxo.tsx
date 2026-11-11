@@ -34,6 +34,8 @@ import {
 
 import EditorScript from './EditorScript';
 
+import EditorAssinatura from './EditorAssinatura';
+
 import {
   DataverseService
 } from '../../services/DataverseService';
@@ -218,7 +220,8 @@ const ACOES_SISTEMA: Array<{ valor: '' | AcaoSistemaFluxo; rotulo: string }> = [
   { valor: '', rotulo: 'Nenhuma (apenas segue o fluxo)' },
   { valor: 'publicarComRetreinamento', rotulo: 'Publicar a revisão e gerar retreinamento' },
   { valor: 'publicarSemRetreinamento', rotulo: 'Publicar a revisão sem retreinamento' },
-  { valor: 'executarScript', rotulo: 'Executar script (consultar banco ou API e preencher campos)' }
+  { valor: 'executarScript', rotulo: 'Executar script (consultar banco ou API e preencher campos)' },
+  { valor: 'assinaturaDigital', rotulo: 'Assinatura digital (Clicksign, via Power Automate)' }
 ];
 
 // condicional          = obrigatório e visível só quando a condição é atendida
@@ -545,11 +548,23 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
             }
           </select>
           <div style={{ fontSize: '12px', marginTop: '4px' }}>
-            {config.acaoSistema === 'executarScript'
+            {config.acaoSistema === 'assinaturaDigital'
+              ? 'O fluxo para aqui até o documento ser assinado (ou recusado/expirado, se houver campo da situação).'
+              : config.acaoSistema === 'executarScript'
               ? 'O fluxo para aqui, roda o script e só então segue — decisões logo depois já enxergam os campos que ele preencheu.'
               : 'No modo de teste a ação é apenas simulada e registrada no histórico.'}
           </div>
         </div>
+        {config.acaoSistema === 'assinaturaDigital' && (
+          <EditorAssinatura
+            config={config.assinatura}
+            editavel={editavel}
+            nomeTarefa={nome || 'Assinatura digital'}
+            metadados={metadados}
+            usuarios={usuarios}
+            onAlterar={assinatura => alterar({ assinatura })}
+          />
+        )}
         {config.acaoSistema === 'executarScript' && (
           <EditorScript
             config={config.script}

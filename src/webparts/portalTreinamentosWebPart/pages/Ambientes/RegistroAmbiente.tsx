@@ -39,6 +39,10 @@ import {
 import PainelFluxoOrcamento from
   '../Orcamento/PainelFluxoOrcamento';
 
+import PainelAssinatura, {
+  IPainelAssinaturaProps
+} from '../../components/fluxo/PainelAssinatura';
+
 import AnexosRegistro from './AnexosRegistro';
 
 import {
@@ -108,6 +112,8 @@ export interface IRegistroAmbienteProps {
   onExecutar: (acaoChave: string, comentario: string, valores: Record<string, string>) => Promise<string[]>;
   // Campos do tipo Componente (dados do Dataverse).
   dataverseService?: DataverseService;
+  // Fluxo parado em "Assinatura digital": acompanhamento.
+  assinatura?: IPainelAssinaturaProps;
   // Anexos do registro (ambiente com "Permitir anexar arquivos").
   anexos?: {
     servico: AnexosAmbienteService;
@@ -404,6 +410,7 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
               <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>
                 {instancia && instancia.status === 'concluido' ? 'Fluxo encerrado' : `Etapa: ${elementoAtual ? elementoAtual.nome : '—'}`}
               </strong>
+              {props.assinatura && <div style={{ marginBottom: '10px' }}><PainelAssinatura {...props.assinatura} /></div>}
               <PainelFluxoOrcamento
                 estado={estado}
                 dadosResponsaveis={props.dadosResponsaveis}
@@ -444,6 +451,10 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
             </div>
           )}
         </>
+      )}
+
+      {!props.carregando && estado && mostrarPainel && !duasColunas && props.assinatura && (
+        <PainelAssinatura {...props.assinatura} />
       )}
 
       {!props.carregando && estado && mostrarPainel && !duasColunas && (

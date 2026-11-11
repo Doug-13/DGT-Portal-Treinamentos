@@ -456,7 +456,7 @@ export const etapaDeAprovacao = (
           }
 
           // Script não publica: segue a busca adiante dele.
-          if (destino.tipo === 'tarefaSistema' && destino.acaoSistema === 'executarScript') {
+          if (destino.tipo === 'tarefaSistema' && (destino.acaoSistema === 'executarScript' || destino.acaoSistema === 'assinaturaDigital')) {
             return levaAPublicacao(destino.id, visitados.concat(id));
           }
 

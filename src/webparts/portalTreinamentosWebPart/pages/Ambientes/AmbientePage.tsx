@@ -44,6 +44,19 @@ import VisaoGeralAmbiente from './VisaoGeralAmbiente';
 import RegistroAmbiente from './RegistroAmbiente';
 
 import {
+  AssinaturaService
+} from '../../services/assinatura/AssinaturaService';
+
+import {
+  IResultadoConferencia,
+  conferirAssinatura
+} from '../../services/assinatura/controleAssinatura';
+
+import {
+  assinaturaPendente
+} from '../../services/fluxo/FluxoEngine';
+
+import {
   AnexosAmbienteService,
   IRegraAnexos,
   bibliotecaPadrao,
@@ -248,6 +261,14 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
       ? registros.filter(item => item.id === visao.registroId)[0]
       : undefined;
 
+  // ---------- Assinatura digital ----------
+  const [assinatura, setAssinatura] = React.useState<IResultadoConferencia & { processando: boolean }>({ liberado: false, erros: [], processando: false });
+  const servicoAssinatura = React.useMemo(() => (dataverseService ? new AssinaturaService(dataverseService) : undefined), [dataverseService]);
+  const usuariosComEmail = React.useRef<Array<{ id: string; nome: string; email: string }> | undefined>(undefined);
+  const guardarUsuariosComEmail = (lista: Array<{ id: string; nome: string; email: string }>): void => {
+    usuariosComEmail.current = lista;
+  };
+
   const abrirRegistro = React.useCallback(async (registro: IAmbienteRegistro): Promise<void> => {
     if (!fluxo || !contexto) {
       return;
@@ -265,6 +286,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
       setVinculos(listaVinculos);
       setUsuarios(listaUsuarios);
       setEstado(estadoLido);
+      setAssinatura({ liberado: false, erros: [], processando: false });
       setPodeAgir(estadoLido ? await fluxo.podeAgir(estadoLido, registro, contexto) : false);
     } catch (falha) {
       setErro(`Não foi possível abrir o registro: ${mensagem(falha)}`);
@@ -654,6 +676,72 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
     </div>
   );
 
+  // Garante o pedido e, com situação final, libera o fluxo.
+  const conferirAssinaturaDoRegistro = async (registro: IAmbienteRegistro): Promise<void> => {
+    if (!fluxo || !contexto || !servicoAssinatura || !dataverseService || !estado) {
+      return;
+    }
+    setAssinatura(atual => ({ ...atual, processando: true, erros: [] }));
+    try {
+      const resultado = await conferirAssinatura({
+        definicao: estado.definicao,
+        instancia: estado.instancia,
+        repositorio: servicoAssinatura,
+        usuarios: async () => {
+          const guardados = usuariosComEmail.current;
+          if (guardados) {
+            return guardados;
+          }
+          const lista = (await new AreaAdminService(dataverseService).listarUsuarios())
+            .map(item => ({ id: item.id, nome: item.nome, email: item.email }));
+          guardarUsuariosComEmail(lista);
+          return lista;
+        },
+        alvo: {
+          origem: 'ambiente',
+          alvoId: registro.id,
+          codigo: registro.codigo,
+          titulo: registro.titulo,
+          solicitante: contexto.nome,
+          arquivos: async config => {
+            if (config.documento !== 'anexosRegistro') {
+              return { arquivos: [], erro: 'Em ambientes, a assinatura usa os anexos do registro: no fluxo, escolha "O que é assinado" = Anexos do registro.' };
+            }
+            if (!servicoAnexos || !props.siteUrl || !ambiente.permiteAnexos) {
+              return { arquivos: [], erro: 'Ligue "Permitir anexar arquivos" no ambiente e anexe o PDF a assinar.' };
+            }
+            const origem = (/^https?:\/\/[^/]+/i.exec(props.siteUrl) || [''])[0];
+            const anexos = await servicoAnexos.listar(pastaDoRegistro(ambiente.bibliotecaAnexos || bibliotecaPadrao(props.siteUrl), ambiente.chave, registro.codigo));
+            const pdfs = anexos.filter(item => /\.pdf$/i.test(item.nome));
+            return pdfs.length > 0
+              ? { arquivos: pdfs.map(item => ({ nome: item.nome, url: `${origem}${encodeURI(item.caminho)}` })) }
+              : { arquivos: [], erro: 'Anexe ao registro o PDF a assinar (quadro Anexos) e clique em "Conferir agora".' };
+          }
+        },
+        concluir: (chave, situacao, valores) =>
+          fluxo.concluirAssinatura(ambiente, registro, contexto, chave, { situacao, valores })
+      });
+      setAssinatura({ ...resultado, processando: false });
+      if (resultado.liberado) {
+        setSucesso('Assinatura concluída: o fluxo seguiu para a próxima etapa.');
+        await carregar();
+        await abrirRegistro(registro);
+      }
+    } catch (falha) {
+      setAssinatura(atual => ({ ...atual, processando: false, erros: [mensagem(falha)] }));
+    }
+  };
+
+  // Abriu um registro parado na assinatura: confere uma vez.
+  const pendenteAssinatura = estado ? assinaturaPendente(estado.definicao, estado.instancia) : undefined;
+  const chaveConferida = React.useRef('');
+  React.useEffect(() => {
+    if (pendenteAssinatura && registroAberto && chaveConferida.current !== pendenteAssinatura.chave) {
+      chaveConferida.current = pendenteAssinatura.chave;
+      conferirAssinaturaDoRegistro(registroAberto).catch(() => undefined);
+    }
+  }, [pendenteAssinatura ? pendenteAssinatura.chave : '', registroAberto ? registroAberto.id : '']);
+
   const renderRegistro = (registro: IAmbienteRegistro): React.ReactNode => (
     <RegistroAmbiente
       ambiente={ambiente}
@@ -684,6 +772,49 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
       onIniciarFluxo={() => { iniciarFluxo(registro).catch(() => undefined); }}
       onExecutar={(acaoChave, comentario, valores) => executar(registro, acaoChave, comentario, valores)}
       dataverseService={dataverseService}
+      assinatura={
+        pendenteAssinatura
+          ? {
+            nomeEtapa: pendenteAssinatura.elemento.nome,
+            pedido: assinatura.pedido,
+            config: assinatura.config,
+            erros: assinatura.erros,
+            processando: assinatura.processando,
+            podeAdministrar: administra,
+            onConferir: () => { conferirAssinaturaDoRegistro(registro).catch(() => undefined); },
+            onReenviar: assinatura.pedido && servicoAssinatura
+              ? () => {
+                const pedido = assinatura.pedido;
+                if (pedido) {
+                  servicoAssinatura.reenviar(pedido.id)
+                    .then(() => conferirAssinaturaDoRegistro(registro))
+                    .catch(falha => setAssinatura(atual => ({ ...atual, erros: [mensagem(falha)] })));
+                }
+              }
+              : undefined,
+            onLiberar: motivo => {
+              if (!fluxo || !contexto) {
+                return;
+              }
+              setAssinatura(atual => ({ ...atual, processando: true }));
+              fluxo.concluirAssinatura(ambiente, registro, contexto, pendenteAssinatura.chave, {
+                situacao: 'cancelado',
+                valores: assinatura.config && assinatura.config.campoSituacao ? { [assinatura.config.campoSituacao]: 'cancelado' } : {},
+                comentario: motivo,
+                manual: true
+              })
+                .then(async erros => {
+                  setAssinatura(atual => ({ ...atual, processando: false, erros }));
+                  if (erros.length === 0) {
+                    await carregar();
+                    await abrirRegistro(registro);
+                  }
+                })
+                .catch(falha => setAssinatura(atual => ({ ...atual, processando: false, erros: [mensagem(falha)] })));
+            }
+          }
+          : undefined
+      }
     />
   );
 

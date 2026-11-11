@@ -518,6 +518,38 @@ export class AmbienteFluxoService {
     return { ok: true, erros: [], avisos };
   }
 
+  // Libera o fluxo parado em "Assinatura digital" (situação final do
+  // pedido ou liberação manual do Administrador).
+  public async concluirAssinatura(
+    ambiente: IAmbiente,
+    registro: IAmbienteRegistro,
+    contexto: IContextoAcesso,
+    chave: string,
+    saida: { situacao: string; valores: Record<string, string>; comentario?: string; manual?: boolean }
+  ): Promise<string[]> {
+    const antes = await this.carregar(registro);
+    const ator = antes && saida.manual ? await this.ator(antes.definicao, registro, contexto, antes.instancia) : undefined;
+    let resultado;
+    try {
+      resultado = await this.fluxo.concluirAssinatura(
+        registro.id,
+        chave,
+        { situacao: saida.situacao, valores: saida.valores, comentario: saida.comentario, ator },
+        this.contextoExecucao(ambiente, registro, { id: guid(contexto.usuarioId), nome: contexto.nome })
+      );
+    } catch (erro) {
+      return [mensagem(erro)];
+    }
+    if (!resultado.ok) {
+      return resultado.erros;
+    }
+    const depois = await this.carregar(registro);
+    if (depois) {
+      await this.sincronizar(registro, depois);
+    }
+    return [];
+  }
+
   // Cancela o registro (Administrador global ou do ambiente).
   // Motivo obrigatório. O histórico do fluxo é preservado.
   public async cancelar(

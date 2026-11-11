@@ -24,6 +24,12 @@ import {
 } from '../../components/common/Icones';
 
 import {
+  IConfigAssinatura,
+  PapelSignatario,
+  configAssinaturaPadrao
+} from '../fluxo/assinaturaFluxo';
+
+import {
   IConfigScript
 } from '../fluxo/scriptFluxo';
 
@@ -127,6 +133,11 @@ export interface IPacoteElemento {
   acaoSistema?: string;
   // tarefaSistema com acaoSistema "executarScript".
   script?: IConfigScript;
+  // tarefaSistema com acaoSistema "assinaturaDigital". Signatário fixo
+  // pelo e-mail: { "origem": "usuario", "email": "...", "papel": "assinar" }.
+  assinatura?: Omit<IConfigAssinatura, 'signatarios'> & {
+    signatarios: Array<{ origem: 'campo' | 'usuario'; campo?: string; email?: string; papel?: string }>;
+  };
   tipoRevisao?: string;
   removerArquivo?: boolean;
   // subprocesso: "fluxo" = CÓDIGO do processo cujo fluxo os filhos seguem
@@ -243,7 +254,7 @@ const TIPOS_COLUNA: TipoColunaTabela[] = ['texto', 'textoLongo', 'numero', 'data
 const TIPOS_ELEMENTO: TipoElementoFluxo[] = ['inicio', 'fim', 'tarefaHumana', 'tarefaSistema', 'gateway', 'eventoRevisao', 'subprocesso'];
 const TIPOS_RESPONSAVEL = ['autorRevisao', 'gestorArea', 'area', 'cargoArea', 'nivelHierarquico', 'usuario', 'campoUsuario'];
 const STATUS_DOCUMENTO: StatusDocumentoEtapa[] = ['Elaboração', 'Revisão', 'Aprovação', 'Vigente'];
-const ACOES_SISTEMA: AcaoSistemaFluxo[] = ['executarScript', 'publicarComRetreinamento', 'publicarSemRetreinamento', 'novaRevisao', 'novaSubRevisao', 'proximaRevisao', 'removerArquivoRevisao'];
+const ACOES_SISTEMA: AcaoSistemaFluxo[] = ['assinaturaDigital', 'executarScript', 'publicarComRetreinamento', 'publicarSemRetreinamento', 'novaRevisao', 'novaSubRevisao', 'proximaRevisao', 'removerArquivoRevisao'];
 const ANEXO: AnexoArquivoEtapa[] = ['nao', 'opcional', 'obrigatorio'];
 const ICONES: string[] = ['workflow', 'gavel', 'fileText', 'folder', 'building', 'package', 'wallet', 'users', 'checkCircle', 'barChart', 'grid', 'layers', 'settings', 'search', 'megaphone', 'activity', 'bell', 'clock', 'alertTriangle'];
 
@@ -691,6 +702,24 @@ export const interpretarPacote = (
         erros.push(`${onde} (${idOriginal}): acaoSistema deve ser ${ACOES_SISTEMA.join(', ')}.`);
       } else {
         elemento.acaoSistema = item.acaoSistema as AcaoSistemaFluxo;
+        if (item.acaoSistema === 'assinaturaDigital') {
+          const assinatura = item.assinatura || ({ signatarios: [] } as unknown as NonNullable<IPacoteElemento['assinatura']>);
+          elemento.assinatura = {
+            ...configAssinaturaPadrao(),
+            ...assinatura,
+            signatarios: (assinatura.signatarios || []).map((sig, n) => {
+              const papel = (['assinar', 'aprovar', 'testemunha'].indexOf(texto(sig.papel)) >= 0 ? sig.papel : 'assinar') as PapelSignatario;
+              if (sig.origem === 'usuario') {
+                const usuario = referencias.usuarios.find(u => texto(u.email).toLowerCase() === texto(sig.email).toLowerCase());
+                if (!usuario) {
+                  erros.push(`${onde} (${idOriginal}): signatário ${n + 1} — usuário "${sig.email || ''}" não encontrado (use o e-mail cadastrado no portal).`);
+                }
+                return { origem: 'usuario' as const, usuarioId: usuario ? usuario.id : '', usuarioNome: usuario ? usuario.nome : '', papel };
+              }
+              return { origem: 'campo' as const, campo: texto(sig.campo), papel };
+            })
+          };
+        }
         if (item.acaoSistema === 'executarScript') {
           const script = item.script || ({} as IConfigScript);
           elemento.script = {
@@ -1009,6 +1038,15 @@ export const exportarPacote = (
       }
       if (el.tipo === 'tarefaSistema' && el.acaoSistema) { saida.acaoSistema = el.acaoSistema; }
       if (el.tipo === 'tarefaSistema' && el.script) { saida.script = el.script; }
+      if (el.tipo === 'tarefaSistema' && el.assinatura) {
+        saida.assinatura = {
+          ...el.assinatura,
+          signatarios: el.assinatura.signatarios.map(sig =>
+            sig.origem === 'usuario'
+              ? { origem: 'usuario' as const, email: emailUsuario(sig.usuarioId), papel: sig.papel }
+              : { origem: 'campo' as const, campo: sig.campo, papel: sig.papel })
+        };
+      }
       if (el.tipo === 'eventoRevisao') {
         saida.tipoRevisao = el.tipoRevisao;
         if (el.removerArquivo) { saida.removerArquivo = true; }

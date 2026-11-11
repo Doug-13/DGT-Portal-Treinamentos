@@ -1,4 +1,8 @@
 import {
+  validarConfigAssinatura
+} from './assinaturaFluxo';
+
+import {
   validarConfigScript
 } from './scriptFluxo';
 
@@ -156,7 +160,7 @@ const levaAoFimOuPublicacao = (
 
       if (
         destino.tipo === 'fim' ||
-        (destino.tipo === 'tarefaSistema' && !!destino.acaoSistema && destino.acaoSistema !== 'executarScript')
+        (destino.tipo === 'tarefaSistema' && !!destino.acaoSistema && destino.acaoSistema !== 'executarScript' && destino.acaoSistema !== 'assinaturaDigital')
       ) {
         return true;
       }
@@ -574,6 +578,13 @@ export const validarDefinicao = (
             'Deixe o status "Vigente" somente na última etapa (ex.: "Documento Vigente").'
           );
         }
+      }
+
+      if (item.tipo === 'tarefaSistema' && item.acaoSistema === 'assinaturaDigital') {
+        if (saidas.length !== 1) {
+          erros.push(`A assinatura "${item.nome}" deve ter exatamente uma ligação de saída. Para tratar recusa/expiração, ponha uma decisão depois dela, pelo "campo da situação".`);
+        }
+        validarConfigAssinatura(item.nome, item.assinatura, metadados).forEach(erro => erros.push(erro));
       }
 
       if (item.tipo === 'tarefaSistema' && item.acaoSistema === 'executarScript') {

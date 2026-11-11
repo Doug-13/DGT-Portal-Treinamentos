@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: tarefa "Assinatura digital" no fluxo (Clicksign, via Power Automate) — o fluxo para até o documento ser assinado; o portal cria o pedido em dgt_assinatura, acompanha os signatários e libera o fluxo com a situação final (recusa/expiração podem seguir para uma decisão). Script criar-tabelas-assinatura.ps1 e guia em docs/assinatura-digital.md.
 - Melhoria: aba Metadados do editor da atividade — no topo, "Metadados da atividade" só com os campos que a etapa exibe (modo por campo; "Não exibir" tira da lista); abaixo, "Campos nesta etapa" recolhido, com busca, para adicionar metadados do processo ainda não vinculados. A definição dos campos (nome, tipo, opções, ajuda) fica só nos metadados do processo.
 - Correção: nos ambientes, campos dos tipos Área, Documento e Documentos (e colunas desses tipos em tabelas) agora são editáveis nas etapas — antes só exibiam o valor.
 - Novo: anexos nos registros de ambiente (SharePoint) — ligados em Editar ambiente → Anexos; cada etapa do fluxo define se os anexos são só consulta, opcionais (incluir/substituir/remover) ou obrigatórios.

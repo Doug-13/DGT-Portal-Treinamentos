@@ -27,6 +27,8 @@ import {
 } from '../processos/MetadadosProcessoService';
 
 import {
+  assinaturaPendente,
+  continuarAposAssinaturaNaInstancia,
   continuarAposScriptNaInstancia,
   scriptPendente,
   liberarSubprocesso,
@@ -552,6 +554,58 @@ export class FluxoService {
     }
 
     return resultado;
+  }
+
+  // Libera um fluxo parado em "Assinatura digital" com a situação final
+  // do pedido (assinado/recusado/expirado/cancelado). "ator" = liberação
+  // manual (Administrador), com comentário obrigatório.
+  public async concluirAssinatura(
+    revisaoId: string,
+    chave: string,
+    saida: { situacao: string; valores: Record<string, string>; comentario?: string; ator?: IFluxoAtor },
+    contexto?: IContextoExecucaoFluxo
+  ): Promise<IResultadoExecucao> {
+
+    const instancia = await this.repositorio.obter(revisaoId);
+    if (!instancia) {
+      return { ok: false, erros: ['Fluxo não encontrado.'], acoesSistema: [] };
+    }
+    const definicao = await this.definicaoDaInstancia(instancia);
+    const pendente = assinaturaPendente(definicao, instancia);
+    // Outra pessoa/aba já liberou (ou é outra parada): nada a fazer.
+    if (!definicao || !pendente || pendente.chave !== chave) {
+      return { ok: false, erros: [], acoesSistema: [] };
+    }
+
+    const continuacao = continuarAposAssinaturaNaInstancia(definicao, instancia, saida);
+    if (continuacao.erros.length > 0) {
+      return { ok: false, erros: continuacao.erros, acoesSistema: [] };
+    }
+
+    const acoes = continuacao.acoesSistema.slice();
+    const errosScript = await this.rodarScripts(definicao, instancia, acoes, contexto);
+    if (errosScript.length > 0) {
+      return { ok: false, erros: errosScript, acoesSistema: [] };
+    }
+
+    if (acoes.length > 0 && contexto && contexto.executarAcoesSistema) {
+      try {
+        await contexto.executarAcoesSistema(acoes, instancia);
+        if (this.repositorio.renovarVersao) {
+          await this.repositorio.renovarVersao(revisaoId);
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          erros: [`O fluxo não foi liberado porque a tarefa automática falhou: ${error instanceof Error ? error.message : String(error)}`],
+          acoesSistema: []
+        };
+      }
+    }
+
+    this.preencherResponsaveis(instancia, contexto);
+    const avisos = await this.repositorio.salvar(instancia, this.contextoGravacao(definicao, instancia, contexto));
+    return { ok: true, erros: [], acoesSistema: acoes, instancia, avisos };
   }
 
   // Enquanto o fluxo estiver parado num script: roda, aplica os campos

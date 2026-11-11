@@ -20,6 +20,14 @@ export const avisosFluxoAmbiente = (
   definicao.elementos.forEach(elemento => {
 
     // Script funciona em ambientes (não é ação de documento).
+    // Assinatura: no ambiente, só com "Anexos do registro".
+    if (elemento.tipo === 'tarefaSistema' && elemento.acaoSistema === 'assinaturaDigital') {
+      if (!elemento.assinatura || elemento.assinatura.documento !== 'anexosRegistro') {
+        avisos.push(`"${elemento.nome}": assinatura do arquivo da revisão — no ambiente, escolha "Anexos do registro" (e ligue os anexos no ambiente).`);
+      }
+      return;
+    }
+
     if (elemento.tipo === 'tarefaSistema' && elemento.acaoSistema && elemento.acaoSistema !== 'executarScript') {
       avisos.push(`"${elemento.nome}": publicação de documento — no ambiente apenas segue adiante.`);
     }

@@ -10,6 +10,11 @@ import {
   IConfigScript
 } from '../services/fluxo/scriptFluxo';
 
+import {
+  IAssinaturaNaInstancia,
+  IConfigAssinatura
+} from '../services/fluxo/assinaturaFluxo';
+
 // ============================================================
 // MODELO DO FLUXO CONFIGURÁVEL DE DOCUMENTOS
 //
@@ -172,7 +177,10 @@ export type AcaoSistemaFluxo =
   | 'criarSubprocessos'
   // Script (caixa com engrenagem): o motor para, o script roda isolado e
   // preenche campos; só então o fluxo segue (ver scriptFluxo.ts).
-  | 'executarScript';
+  | 'executarScript'
+  // Assinatura digital (Clicksign via Power Automate): o motor para até
+  // o pedido ficar assinado (ver assinaturaFluxo.ts).
+  | 'assinaturaDigital';
 
 // Arquivo da revisão numa etapa com responsável:
 //   'nao'         a etapa não mostra o anexo (padrão)
@@ -526,6 +534,9 @@ export interface IFluxoElemento {
   // tarefaSistema com acaoSistema 'executarScript'.
   script?: IConfigScript;
 
+  // tarefaSistema com acaoSistema 'assinaturaDigital'.
+  assinatura?: IConfigAssinatura;
+
   // tarefaHumana com status 'Vigente': retreinamento na publicação.
   //   'nao' (padrão) · 'sim' · 'etapa:<id>' = sim, se o fluxo passou
   //   por aquela etapa neste ciclo (ex.: "Revisar Treinamento").
@@ -725,6 +736,10 @@ export interface IFluxoInstancia {
 
   // Documento criado por um subprocesso: o documento pai.
   origemSubprocesso?: IOrigemSubprocesso;
+
+  // Fluxo parado numa "Assinatura digital": chave do pedido em
+  // dgt_assinatura (uma por parada).
+  assinatura?: IAssinaturaNaInstancia;
 }
 
 // Quem está executando a ação.

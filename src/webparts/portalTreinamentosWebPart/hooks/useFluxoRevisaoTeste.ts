@@ -3,6 +3,20 @@ import {
 } from '../services/referencias/ReferenciasDocumentoService';
 
 import {
+  AssinaturaService
+} from '../services/assinatura/AssinaturaService';
+
+import {
+  IPedidoAssinatura,
+  IResultadoConferencia,
+  conferirAssinatura
+} from '../services/assinatura/controleAssinatura';
+
+import {
+  IConfigAssinatura
+} from '../services/fluxo/assinaturaFluxo';
+
+import {
   executarScriptIsolado
 } from '../components/fluxo/executarScriptIsolado';
 
@@ -60,6 +74,7 @@ import {
   IResultadoRetorno,
   publicacaoPendente,
   subprocessoAguardando,
+  assinaturaPendente,
   retornarUmPasso as simularRetornoUmPasso
 } from '../services/fluxo/FluxoEngine';
 
@@ -202,6 +217,18 @@ export interface IUseFluxoRevisaoTeste {
   verificarSubprocesso: () => Promise<boolean>;
   podeLiberarSubprocesso: boolean;
   liberarSubprocesso: (motivo: string) => Promise<boolean>;
+
+  // Fluxo parado em "Assinatura digital" (pedido no Power Automate).
+  assinatura?: {
+    nomeEtapa: string;
+    pedido?: IPedidoAssinatura;
+    config?: IConfigAssinatura;
+    erros: string[];
+    processando: boolean;
+  };
+  conferirAssinatura: () => Promise<void>;
+  reenviarAssinatura: () => Promise<void>;
+  liberarAssinatura: (motivo: string) => Promise<void>;
 
   situacao: SituacaoFluxoRevisao;
   processando: boolean;
@@ -1110,6 +1137,111 @@ export const useFluxoRevisaoTeste = (
     [pedidoAguardando ? pedidoAguardando.id : '', revisaoAlvo?.id, !!atorSelecionado]
   );
 
+  // ---------- Assinatura digital ----------
+  const [estadoAssinatura, setEstadoAssinatura] =
+    React.useState<IResultadoConferencia & { processando: boolean }>({ liberado: false, erros: [], processando: false });
+  const assinaturaConferida = React.useRef('');
+  const pendenteAssinatura = local ? undefined : assinaturaPendente(definicao, instancia);
+
+  const conferirAssinaturaDoc =
+    async (): Promise<void> => {
+      if (!revisaoAlvo || !dataverseService || !pendenteAssinatura) {
+        return;
+      }
+      setEstadoAssinatura(atual => ({ ...atual, processando: true, erros: [] }));
+      try {
+        const resultado = await conferirAssinatura({
+          definicao,
+          instancia,
+          repositorio: new AssinaturaService(dataverseService),
+          usuarios: async () =>
+            (await new AreaAdminService(dataverseService).listarUsuarios())
+              .map(item => ({ id: item.id, nome: item.nome, email: item.email })),
+          alvo: {
+            origem: 'documento',
+            alvoId: revisaoAlvo.id,
+            codigo: documento ? `${documento.codigo} ${revisaoAlvo.revisao}` : revisaoAlvo.revisao,
+            titulo: documento ? documento.titulo : '',
+            solicitante: contexto ? contexto.nome : '',
+            arquivos: async config => {
+              if (config.documento !== 'arquivoRevisao') {
+                return { arquivos: [], erro: 'Em documentos, a assinatura usa o arquivo da revisão: no fluxo, escolha "O que é assinado" = Arquivo da revisão.' };
+              }
+              const arquivoUrl = revisaoEmAndamento ? revisaoEmAndamento.arquivoUrl : undefined;
+              if (!arquivoUrl) {
+                return { arquivos: [], erro: 'A revisão não tem arquivo anexado para assinar.' };
+              }
+              const nome = decodeURIComponent((arquivoUrl.split('?')[0].split('/').pop() || 'documento.pdf'));
+              return { arquivos: [{ nome, url: arquivoUrl }] };
+            }
+          },
+          concluir: async (chave, situacao, valores) => {
+            const r = await servico.concluirAssinatura(revisaoAlvo.id, chave, { situacao, valores }, contextoExecucao(definicao));
+            if (r.ok && r.instancia) {
+              await aplicarRetomada(r.instancia, r.avisos || []);
+              return [];
+            }
+            return r.erros;
+          }
+        });
+        setEstadoAssinatura({ ...resultado, processando: false });
+      } catch (error) {
+        setEstadoAssinatura(atual => ({ ...atual, processando: false, erros: [error instanceof Error ? error.message : String(error)] }));
+      }
+    };
+
+  React.useEffect(
+    () => {
+      const chave = pendenteAssinatura ? pendenteAssinatura.chave : '';
+      if (!chave || assinaturaConferida.current === chave) {
+        return;
+      }
+      assinaturaConferida.current = chave;
+      conferirAssinaturaDoc().catch(error => console.error('Assinatura: falha ao conferir:', error));
+    },
+    [pendenteAssinatura ? pendenteAssinatura.chave : '', revisaoAlvo?.id]
+  );
+
+  const reenviarAssinatura =
+    async (): Promise<void> => {
+      const pedido = estadoAssinatura.pedido;
+      if (!pedido || !dataverseService) {
+        return;
+      }
+      try {
+        await new AssinaturaService(dataverseService).reenviar(pedido.id);
+        await conferirAssinaturaDoc();
+      } catch (error) {
+        setEstadoAssinatura(atual => ({ ...atual, erros: [error instanceof Error ? error.message : String(error)] }));
+      }
+    };
+
+  const liberarAssinatura =
+    async (motivo: string): Promise<void> => {
+      if (!revisaoAlvo || !atorSelecionado || !pendenteAssinatura) {
+        return;
+      }
+      const config = pendenteAssinatura.elemento.assinatura;
+      setEstadoAssinatura(atual => ({ ...atual, processando: true }));
+      const r = await servico.concluirAssinatura(
+        revisaoAlvo.id,
+        pendenteAssinatura.chave,
+        {
+          situacao: 'cancelado',
+          valores: config && config.campoSituacao ? { [config.campoSituacao]: 'cancelado' } : {},
+          comentario: motivo,
+          ator: atorSelecionado.ator
+        },
+        contextoExecucao(definicao)
+      );
+      if (r.ok && r.instancia) {
+        await aplicarRetomada(r.instancia, r.avisos || []);
+        setEstadoAssinatura({ liberado: true, erros: [], processando: false });
+      } else {
+        setEstadoAssinatura(atual => ({ ...atual, processando: false, erros: r.erros }));
+      }
+    };
+
   const verificarSubprocesso =
     async (): Promise<boolean> => {
       setProcessando(true);
@@ -1783,6 +1915,18 @@ export const useFluxoRevisaoTeste = (
     subprocessoAguardando: subprocessoAguardandoInfo,
     verificarSubprocesso,
     podeLiberarSubprocesso: !local && ehAdministrador(contexto, moduloDoFluxo),
+    assinatura: pendenteAssinatura
+      ? {
+        nomeEtapa: pendenteAssinatura.elemento.nome,
+        pedido: estadoAssinatura.pedido,
+        config: estadoAssinatura.config || pendenteAssinatura.elemento.assinatura,
+        erros: estadoAssinatura.erros,
+        processando: estadoAssinatura.processando
+      }
+      : undefined,
+    conferirAssinatura: conferirAssinaturaDoc,
+    reenviarAssinatura,
+    liberarAssinatura,
     liberarSubprocesso: liberarSubprocessoAdmin,
     responsaveisEtapaAtual,
     selecionarAtor: (chave: string) => {

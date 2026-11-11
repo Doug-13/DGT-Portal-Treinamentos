@@ -53,6 +53,7 @@ import CampoDocumentoFluxo from
 import CampoAreaFluxo from
   '../../components/fluxo/CampoAreaFluxo';
 
+import PainelAssinatura from '../../components/fluxo/PainelAssinatura';
 import CampoComponenteFluxo from '../../components/fluxo/CampoComponenteFluxo';
 import CampoAvaliacaoFluxo from '../../components/fluxo/CampoAvaliacaoFluxo';
 import TabelaCampoFluxo from
@@ -1401,6 +1402,22 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
                       <div style={{ background: '#EDF0F5', borderRadius: '6px', padding: '10px 12px', fontSize: '13.5px' }}>
                         <strong>Instruções:</strong> {elementoAtual.instrucoes}
                       </div>
+                    )
+                  }
+
+                  {
+                    fluxo.assinatura && (
+                      <PainelAssinatura
+                        nomeEtapa={fluxo.assinatura.nomeEtapa}
+                        pedido={fluxo.assinatura.pedido}
+                        config={fluxo.assinatura.config}
+                        erros={fluxo.assinatura.erros}
+                        processando={fluxo.assinatura.processando}
+                        podeAdministrar={fluxo.podeLiberarSubprocesso}
+                        onConferir={() => { fluxo.conferirAssinatura().catch(() => undefined); }}
+                        onReenviar={() => { fluxo.reenviarAssinatura().catch(() => undefined); }}
+                        onLiberar={motivo => { fluxo.liberarAssinatura(motivo).catch(() => undefined); }}
+                      />
                     )
                   }
 

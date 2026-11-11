@@ -776,7 +776,9 @@ const DESCRICAO_ACAO_SISTEMA: Record<AcaoSistemaFluxo, string> = {
   criarSubprocessos:
     'Subprocesso: criação dos documentos solicitada',
   executarScript:
-    'Script executado'
+    'Script executado',
+  assinaturaDigital:
+    'Assinatura digital'
 };
 
 // Avança automaticamente por gateways e tarefas de sistema até
@@ -945,6 +947,25 @@ const avancar = (
 
       resultadoAtual =
         'concluido';
+    }
+
+    // Assinatura digital: o fluxo PARA aqui até o pedido ficar com
+    // situação final (o portal libera: continuarAposAssinaturaNaInstancia).
+    if (
+      destino.tipo === 'tarefaSistema' &&
+      destino.acaoSistema === 'assinaturaDigital'
+    ) {
+      instancia.assinatura = {
+        elementoId: destino.id,
+        chave: gerarId('ass'),
+        solicitadaEm: agora
+      };
+      limparTransicoesOrfas(
+        definicao,
+        instancia
+      );
+
+      return [];
     }
 
     // Script: o fluxo PARA aqui. Quem roda o script e continua é o
@@ -2525,3 +2546,65 @@ export const continuarAposScriptNaInstancia = (
 
   return { erros, acoesSistema };
 };
+
+// ============================================================
+// ASSINATURA DIGITAL (tarefa de sistema "assinaturaDigital")
+// ============================================================
+
+export const assinaturaPendente = (
+  definicao: IFluxoDefinicao | undefined,
+  instancia: IFluxoInstancia | undefined
+): { elemento: IFluxoElemento; chave: string; solicitadaEm: string } | undefined => {
+  if (!definicao || !instancia || instancia.status !== 'emAndamento' || !instancia.assinatura) {
+    return undefined;
+  }
+  const atual = obterElemento(definicao, instancia.elementoAtualId);
+  return atual && atual.tipo === 'tarefaSistema' && atual.acaoSistema === 'assinaturaDigital' && atual.id === instancia.assinatura.elementoId
+    ? { elemento: atual, chave: instancia.assinatura.chave, solicitadaEm: instancia.assinatura.solicitadaEm }
+    : undefined;
+};
+
+// Libera o fluxo com a situação final do pedido. ALTERA a instância.
+export const continuarAposAssinaturaNaInstancia = (
+  definicao: IFluxoDefinicao,
+  instancia: IFluxoInstancia,
+  saida: { situacao: string; valores: Record<string, string>; comentario?: string; ator?: IFluxoAtor }
+): { erros: string[]; acoesSistema: AcaoSistemaFluxo[] } => {
+
+  const pendente = assinaturaPendente(definicao, instancia);
+
+  if (!pendente) {
+    return { erros: ['O fluxo não está aguardando assinatura.'], acoesSistema: [] };
+  }
+
+  const agora = agoraIso();
+  Object.keys(saida.valores || {}).forEach(chave => {
+    instancia.valores[chave] = saida.valores[chave];
+  });
+
+  const nomes: Record<string, string> = {
+    assinado: 'Documento assinado', recusado: 'Assinatura recusada', expirado: 'Prazo de assinatura expirado', cancelado: 'Assinatura cancelada'
+  };
+
+  instancia.historico.unshift({
+    revisao: instancia.revisao,
+    id: gerarId('hist'),
+    data: agora,
+    elementoId: pendente.elemento.id,
+    elementoNome: pendente.elemento.nome,
+    acaoChave: 'assinaturaDigital',
+    acaoRotulo: saida.ator ? `Liberado sem assinatura (${nomes[saida.situacao] || saida.situacao})` : (nomes[saida.situacao] || `Assinatura: ${saida.situacao}`),
+    resultado: 'concluido',
+    comentario: saida.comentario,
+    executadoPorId: saida.ator ? saida.ator.id : 'sistema',
+    executadoPorNome: saida.ator ? saida.ator.nome : 'Sistema',
+    sistema: !saida.ator
+  });
+
+  instancia.assinatura = undefined;
+
+  const acoesSistema: AcaoSistemaFluxo[] = [];
+  const erros = avancar(definicao, instancia, pendente.elemento.id, 'concluido', agora, acoesSistema);
+  return { erros, acoesSistema };
+};
+

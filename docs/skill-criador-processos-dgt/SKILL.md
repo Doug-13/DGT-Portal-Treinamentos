@@ -79,6 +79,14 @@ Se o usuário já deu as informações, não pergunte de novo: assuma o razoáve
 - Declare em `camposSaida` cada campo que o script preenche; para decidir pelo resultado, ponha uma
   decisão depois do script por um desses campos (ex.: `cepEncontrado`). O script tem uma só saída.
 
+### Assinatura digital (Clicksign)
+
+- `{ "tipo": "tarefaSistema", "acaoSistema": "assinaturaDigital", "assinatura": {...} }` — contrato em
+  `references/assinatura-digital.md`. Só usuários da DGT como signatários (campo `usuario` do processo
+  ou e-mail cadastrado). `documento`: `arquivoRevisao` (documentos) ou `anexosRegistro` (ambientes).
+- Uma única saída. Para tratar recusa/expiração, declare um metadado `lista` com as opções
+  `assinado; recusado; expirado; cancelado`, use-o em `campoSituacao` e ponha uma decisão depois.
+
 ## 3. Conferir antes de entregar
 
 - [ ] Um `inicio`, ao menos um `fim`, todo elemento alcançável e com saída (menos `fim`).

@@ -1,4 +1,8 @@
 import {
+  configAssinaturaPadrao
+} from '../assinaturaFluxo';
+
+import {
   NOME_PADRAO_EVENTO_REVISAO
 } from '../../../utils/numeracaoRevisao';
 
@@ -55,7 +59,7 @@ export interface IBpmnSnapshot {
 // Configuração de negócio de uma etapa (o que não está no desenho).
 export type IConfigElemento = Pick<
   IFluxoElemento,
-  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo' | 'permiteEditarDocumento' | 'subprocesso' | 'script'
+  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo' | 'permiteEditarDocumento' | 'subprocesso' | 'script' | 'assinatura'
 >;
 
 // Configuração de negócio de uma ligação.
@@ -250,7 +254,9 @@ export const configInicialElemento = (
 ): IConfigElemento =>
   tipo === 'tarefaSistema' && /^script/i.test((nome || '').trim())
     ? { ...configPadraoElemento('tarefaSistema'), acaoSistema: 'executarScript', script: { codigo: '', camposSaida: [] } }
-    : configPadraoElemento(tipo);
+    : tipo === 'tarefaSistema' && /^assinatura/i.test((nome || '').trim())
+      ? { ...configPadraoElemento('tarefaSistema'), acaoSistema: 'assinaturaDigital', assinatura: configAssinaturaPadrao() }
+      : configPadraoElemento(tipo);
 
 
 export const configPadraoTransicao = (): IConfigTransicao => ({
@@ -276,7 +282,8 @@ export const configDoElemento = (
   anexoArquivo: elemento.anexoArquivo,
   permiteEditarDocumento: elemento.permiteEditarDocumento,
   subprocesso: elemento.subprocesso,
-  script: elemento.script
+  script: elemento.script,
+  assinatura: elemento.assinatura
 });
 
 export const configDaTransicao = (
@@ -621,6 +628,9 @@ export const montarDefinicao = (
           subprocesso: tipo === 'subprocesso' ? (config.subprocesso || configPadraoElemento('subprocesso').subprocesso) : undefined,
           script: tipo === 'tarefaSistema' && config.acaoSistema === 'executarScript'
             ? (config.script || { codigo: '', camposSaida: [] })
+            : undefined,
+          assinatura: tipo === 'tarefaSistema' && config.acaoSistema === 'assinaturaDigital'
+            ? (config.assinatura || configAssinaturaPadrao())
             : undefined,
           anexoArquivo: humana && config.anexoArquivo && config.anexoArquivo !== 'nao' ? config.anexoArquivo : undefined,
           permiteEditarDocumento: humana && typeof config.permiteEditarDocumento === 'boolean' ? config.permiteEditarDocumento : undefined,

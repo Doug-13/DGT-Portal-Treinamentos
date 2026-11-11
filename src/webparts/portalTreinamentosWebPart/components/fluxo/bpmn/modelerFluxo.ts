@@ -188,6 +188,13 @@ const ICONE_SUBPROCESSO =
   '<path d="M13 15.5v3M11.5 17h3" stroke="currentColor" stroke-width="1.5" />' +
   '</svg>';
 
+// Caneta (Assinatura digital).
+const ICONE_ASSINATURA =
+  '<svg width="30" height="30" viewBox="0 0 26 26" aria-hidden="true">' +
+  '<path d="M5 19l2.5-.6L18.8 7.1a1.6 1.6 0 0 0 0-2.3l-.6-.6a1.6 1.6 0 0 0-2.3 0L4.6 15.5 4 18z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />' +
+  '<path d="M3 22.5c2.5-1.6 4.5-1.6 6 0s3.5 1.6 6 0 4-1.2 6-.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />' +
+  '</svg>';
+
 // Caixa com engrenagem (Script).
 const ICONE_SCRIPT =
   '<svg width="30" height="30" viewBox="0 0 26 26" aria-hidden="true">' +
@@ -208,6 +215,12 @@ FiltroPaleta.prototype.getPaletteEntries = function (this: any): (entradas: Reco
 
   const create = this._create;
   const elementFactory = this._elementFactory;
+
+  const criarAssinatura = (evento: any): void => {
+    const forma = elementFactory.createShape({ type: 'bpmn:ServiceTask' });
+    forma.businessObject.name = 'Assinatura digital';
+    create.start(evento, forma);
+  };
 
   const criarScript = (evento: any): void => {
     const forma = elementFactory.createShape({ type: 'bpmn:ServiceTask' });
@@ -239,6 +252,17 @@ FiltroPaleta.prototype.getPaletteEntries = function (this: any): (entradas: Reco
         }
       }
     );
+
+    // Assinatura digital (tarefa de sistema "assinaturaDigital").
+    filtradas['create.assinatura'] = {
+      group: 'activity',
+      title: 'Assinatura digital (Clicksign)',
+      html: `<div class="entry" draggable="true" style="display:flex;align-items:center;justify-content:center;color:#202A44">${ICONE_ASSINATURA}</div>`,
+      action: {
+        dragstart: criarAssinatura,
+        click: criarAssinatura
+      }
+    };
 
     // Script: caixa com engrenagem (tarefa de sistema "Executar script").
     filtradas['create.script'] = {
