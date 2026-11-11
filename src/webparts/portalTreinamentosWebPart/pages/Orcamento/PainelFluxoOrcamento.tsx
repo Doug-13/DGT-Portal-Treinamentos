@@ -82,6 +82,9 @@ export interface IPainelFluxoOrcamentoProps {
   textoConcluido?: string;
   // Ambientes: esconder o histórico (telas configuráveis).
   ocultarHistorico?: boolean;
+  // Ambientes em duas colunas: só instruções, campos, comentário e
+  // botões (sem cabeçalho, desenho nem histórico).
+  modoCompacto?: boolean;
   // Campos do tipo Componente (dados do Dataverse).
   dataverseService?: DataverseService;
 }
@@ -258,9 +261,10 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
   const historico = instancia.historico;
 
   return (
-    <div style={{ ...cartao, fontFamily: FONTE }}>
+    <div style={props.modoCompacto ? { fontFamily: FONTE } : { ...cartao, fontFamily: FONTE }}>
 
       {/* Cabeçalho */}
+      {!props.modoCompacto && (
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
         <div style={{ flex: 1, minWidth: '240px' }}>
           <div style={{ fontSize: '11.5px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px' }}>
@@ -285,8 +289,9 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
           {verDiagrama ? 'Ocultar desenho' : 'Ver desenho do fluxo'}
         </button>
       </div>
+      )}
 
-      {verDiagrama && (
+      {verDiagrama && !props.modoCompacto && (
         <div style={{ overflowX: 'auto', maxWidth: '100%', marginTop: '12px', border: `1px solid ${COR.borda}`, borderRadius: '8px', background: '#FFFFFF' }}>
           <FluxoDiagrama definicao={definicao} instancia={instancia} />
         </div>
@@ -294,7 +299,7 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
 
       {/* Ações da etapa */}
       {!concluido && elemento && elemento.tipo === 'tarefaHumana' && (
-        <div style={{ marginTop: '14px', borderTop: `1px solid ${COR.borda}`, paddingTop: '12px' }}>
+        <div style={props.modoCompacto ? undefined : { marginTop: '14px', borderTop: `1px solid ${COR.borda}`, paddingTop: '12px' }}>
 
           {elemento.instrucoes && (
             <div style={{ fontSize: '13px', color: COR.azul, background: '#F8FAFC', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', whiteSpace: 'pre-line' }}>
@@ -365,7 +370,11 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
       )}
 
       {/* Histórico do fluxo */}
-      {!props.ocultarHistorico && (
+      {props.modoCompacto && concluido && (
+        <div style={{ fontSize: '14px', fontWeight: 700, color: COR.azul }}>{props.textoConcluido || '✓ Fluxo concluído'}</div>
+      )}
+
+      {!props.ocultarHistorico && !props.modoCompacto && (
       <div style={{ marginTop: '14px', borderTop: `1px solid ${COR.borda}`, paddingTop: '10px' }}>
         <button
           type="button"

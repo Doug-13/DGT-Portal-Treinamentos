@@ -370,13 +370,23 @@ const AmbienteLayoutEditor: React.FC<IAmbienteLayoutEditorProps> = (props) => {
           {/* REGISTRO */}
           <fieldset style={secao}>
             <legend style={legenda}>Tela do registro</legend>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px', marginBottom: '8px' }}>
+              <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input type="radio" name="disposicao-registro" checked={layout.registro.disposicao !== 'umaColuna'} onChange={() => setLayout(atual => ({ ...atual, registro: { ...atual.registro, disposicao: 'duasColunas' } }))} />
+                <span><strong>Duas colunas</strong> — dados do registro à esquerda (código, nome, etapa, prazo, responsável, Ver fluxo, documentos relacionados); campos da etapa à direita</span>
+              </label>
+              <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input type="radio" name="disposicao-registro" checked={layout.registro.disposicao === 'umaColuna'} onChange={() => setLayout(atual => ({ ...atual, registro: { ...atual.registro, disposicao: 'umaColuna' } }))} />
+                <span><strong>Uma coluna</strong> — cabeçalho do fluxo, desenho e campos em sequência</span>
+              </label>
+            </div>
             {([
-              ['mostrarDados', 'Mostrar o quadro “Dados do registro” (todos os campos preenchidos)'],
-              ['mostrarDiagrama', 'Abrir o diagrama do fluxo por padrão na etapa atual'],
+              ['mostrarDados', 'Mostrar o quadro “Campos preenchidos” no fim da tela'],
+              ['mostrarDiagrama', 'Abrir o desenho do fluxo já ao entrar no registro'],
               ['mostrarHistorico', 'Mostrar o histórico do fluxo']
-            ] as Array<[keyof IAmbienteLayout['registro'], string]>).map(([chave, texto]) => (
+            ] as Array<['mostrarDados' | 'mostrarDiagrama' | 'mostrarHistorico', string]>).map(([chave, texto]) => (
               <label key={chave} style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px', marginBottom: '6px' }}>
-                <input type="checkbox" checked={layout.registro[chave]} onChange={() => setLayout(atual => ({ ...atual, registro: { ...atual.registro, [chave]: !atual.registro[chave] } }))} />
+                <input type="checkbox" checked={!!layout.registro[chave]} onChange={() => setLayout(atual => ({ ...atual, registro: { ...atual.registro, [chave]: !atual.registro[chave] } }))} />
                 {texto}
               </label>
             ))}

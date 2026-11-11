@@ -70,6 +70,9 @@ export interface IAmbienteLayout {
     mostrarDados: boolean;
     mostrarHistorico: boolean;
     mostrarDiagrama: boolean;
+    // 'duasColunas' (padrão): dados do registro à esquerda, campos da
+    // etapa à direita; 'umaColuna': tudo em sequência.
+    disposicao?: 'duasColunas' | 'umaColuna';
   };
   lista: {
     // false (padrão) = quem não administra o ambiente vê só os
@@ -184,7 +187,7 @@ export const layoutPadrao = (
     visoes,
     colunas: COLUNAS_PADRAO.slice(),
     etapas: etapas.map(item => ({ elementoId: item.id, rotulo: '', visivel: true })),
-    registro: { mostrarDados: true, mostrarHistorico: true, mostrarDiagrama: true },
+    registro: { mostrarDados: true, mostrarHistorico: true, mostrarDiagrama: false, disposicao: 'duasColunas' },
     lista: { todosVeemTodos: false }
   };
 };
@@ -247,7 +250,7 @@ export const normalizarLayout = (
     visoes,
     colunas: colunas.length > 0 ? colunas : COLUNAS_PADRAO.slice(),
     etapas,
-    registro: { ...{ mostrarDados: true, mostrarHistorico: true, mostrarDiagrama: true }, ...(salvo.registro || {}) },
+    registro: { ...{ mostrarDados: true, mostrarHistorico: true, mostrarDiagrama: false, disposicao: 'duasColunas' as const }, ...(salvo.registro || {}) },
     lista: { ...{ todosVeemTodos: false }, ...(salvo.lista || {}) }
   };
 };

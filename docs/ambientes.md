@@ -155,7 +155,7 @@ Cada ambiente monta as telas a partir do fluxo, sem código novo:
 | Tela | O que mostra | Configurável em *Personalizar telas* |
 |---|---|---|
 | **Visão geral** | Cards de resumo (contagem) que filtram a lista; lista de registros | **Visões**: nome, ícone, cor e filtro (aguardando você, meus, etapa(s), situação, prazo vencido, campo Lista/Sim-Não). **Colunas**: básicas e campos do fluxo, na ordem escolhida. Quem vê todos os registros. |
-| **Registro** | Cabeçalho + **barra de etapas** (✓ concluída, atual, a fazer). Clicar numa etapa mostra o que foi preenchido (por quem e quando) ou o que será pedido | **Etapas**: quais aparecem, ordem e nome curto. Quadro “Dados do registro”, diagrama aberto e histórico. |
+| **Registro** | Cabeçalho + **barra de etapas** (✓ concluída, atual, a fazer). Em **duas colunas** (padrão): à esquerda os dados do registro (nome, código, etapa, prazo, responsável, situação), **Ver fluxo** (desenho + histórico) e **Documentos relacionados**; à direita só os campos da etapa, o comentário e os botões. Clicar numa etapa mostra o que foi preenchido ou o que será pedido | **Disposição** (duas colunas / uma coluna), **Etapas**: quais aparecem, ordem e nome curto. Quadro “Campos preenchidos”, desenho aberto ao entrar e histórico. |
 
 - Sem personalização, tudo é gerado do fluxo publicado: uma visão por etapa
   (até 4) + “Aguardando você” + “Concluídos”, colunas básicas e todas as etapas.

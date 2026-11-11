@@ -39,11 +39,32 @@ import {
 import PainelFluxoOrcamento from
   '../Orcamento/PainelFluxoOrcamento';
 
+import FluxoDiagrama from '../../components/fluxo/FluxoDiagrama';
+
+import {
+  obterElementoAtual,
+  tarefaPendente
+} from '../../services/fluxo/FluxoEngine';
+
+import {
+  descreverResolvido,
+  resolverResponsaveis
+} from '../../services/fluxo/ResolvedorResponsaveis';
+
+import {
+  lerValorDocumentos
+} from '../../services/fluxo/valorDocumento';
+
+import {
+  situacaoPrazo
+} from '../../services/orcamento/diasUteis';
+
 import {
   COR,
   CaixaMensagem,
   FONTE,
   Selo,
+  SeloPrazo,
   botao,
   cartao,
   formatarDataHora
@@ -135,6 +156,30 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
   const mostrarPainel = !etapaSelecionada || selecionada === atualId;
 
   const situacao = CORES_SITUACAO[registro.situacao] || CORES_SITUACAO.emAndamento;
+
+  // Duas colunas (padrão): dados à esquerda, campos da etapa à direita.
+  const duasColunas = layout.registro.disposicao !== 'umaColuna';
+  const [verFluxo, setVerFluxo] = React.useState(!!layout.registro.mostrarDiagrama);
+
+  const elementoAtual = definicao && instancia ? obterElementoAtual(definicao, instancia) : undefined;
+  const tarefaAtual = instancia ? tarefaPendente(instancia) : undefined;
+  const responsaveisAtuais =
+    tarefaAtual
+      ? resolverResponsaveis(tarefaAtual.responsaveis, props.dadosResponsaveis)
+        .map(item => descreverResolvido(item, props.vinculos, props.usuarios))
+        .filter((texto, indice, lista) => !!texto && lista.indexOf(texto) === indice)
+      : [];
+  const indiceEtapa = elementoAtual ? etapas.findIndex(item => item.elemento.id === elementoAtual.id) : -1;
+  const posicaoEtapa = indiceEtapa >= 0 ? `etapa ${indiceEtapa + 1} de ${etapas.length}` : '';
+
+  // Campos do tipo documento preenchidos (referências do registro).
+  const documentosRelacionados =
+    definicao && instancia
+      ? (definicao.metadados || [])
+        .filter(meta => (meta.tipo === 'documento' || meta.tipo === 'documentos') && !!instancia.valores[meta.chave])
+        .map(meta => ({ rotulo: meta.rotulo, documentos: lerValorDocumentos(instancia.valores[meta.chave]) }))
+        .filter(grupo => grupo.documentos.length > 0)
+      : [];
 
   const concluidaPor = (elementoId: string): { nome: string; data: string } | undefined => {
     if (!instancia) {
@@ -285,7 +330,105 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
         </div>
       )}
 
-      {!props.carregando && estado && mostrarPainel && (
+      {!props.carregando && estado && mostrarPainel && duasColunas && (
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-start' }}>
+
+            {/* ESQUERDA: dados do registro */}
+            <div style={{ flex: '0 1 340px', minWidth: '260px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ ...cartao, marginBottom: 0 }}>
+                <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>Dados do registro</strong>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+                  <div><div style={rotuloInfo}>{ambiente.rotuloRegistro}</div><div style={{ ...valorInfo, fontWeight: 700 }}>{registro.titulo}</div></div>
+                  <div><div style={rotuloInfo}>Código</div><div style={valorInfo}>{registro.codigo}</div></div>
+                  <div>
+                    <div style={rotuloInfo}>Etapa atual</div>
+                    <div style={valorInfo}>
+                      {instancia && instancia.status === 'concluido' ? 'Concluído' : (elementoAtual ? elementoAtual.nome : '—')}
+                      {posicaoEtapa && <span style={{ color: COR.texto2 }}> · {posicaoEtapa}</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={rotuloInfo}>Prazo da etapa</div>
+                    <div style={valorInfo}>{tarefaAtual && tarefaAtual.prazo ? <SeloPrazo prazo={tarefaAtual.prazo} situacao={situacaoPrazo(tarefaAtual.prazo, tarefaAtual.criadaEm)} /> : '—'}</div>
+                  </div>
+                  <div><div style={rotuloInfo}>Responsável da etapa</div><div style={valorInfo}>{responsaveisAtuais.length > 0 ? responsaveisAtuais.join(' · ') : '—'}</div></div>
+                  <div><div style={rotuloInfo}>Situação</div><div style={valorInfo}><Selo texto={situacao.texto} cor={situacao.cor} fundo={situacao.fundo} /></div></div>
+                  <div><div style={rotuloInfo}>Aberto por</div><div style={valorInfo}>{registro.solicitanteNome || '—'} · {formatarDataHora(registro.criadoEm)}</div></div>
+                  {registro.areaNome && <div><div style={rotuloInfo}>Área</div><div style={valorInfo}>{registro.areaNome}</div></div>}
+                  {registro.descricao && <div><div style={rotuloInfo}>Descrição</div><div style={valorInfo}>{registro.descricao}</div></div>}
+                </div>
+                <div style={{ borderTop: `1px solid ${COR.borda}`, marginTop: '12px', paddingTop: '10px' }}>
+                  <button type="button" onClick={() => setVerFluxo(!verFluxo)} style={botao('secundario')}>
+                    {verFluxo ? 'Ocultar fluxo' : 'Ver fluxo'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Documentos relacionados */}
+              {documentosRelacionados.length > 0 && (
+                <div style={{ ...cartao, marginBottom: 0 }}>
+                  <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '8px' }}>Documentos relacionados</strong>
+                  {documentosRelacionados.map(grupo => (
+                    <div key={grupo.rotulo} style={{ marginBottom: '8px' }}>
+                      <div style={rotuloInfo}>{grupo.rotulo}</div>
+                      {grupo.documentos.map(doc => (
+                        <div key={doc.id} style={valorInfo}><strong>{doc.codigo}</strong>{doc.titulo ? ` — ${doc.titulo}` : ''}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* DIREITA: campos da etapa */}
+            <div style={{ ...cartao, marginBottom: 0, flex: '1 1 460px', minWidth: 0 }}>
+              <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>
+                {instancia && instancia.status === 'concluido' ? 'Fluxo encerrado' : `Etapa: ${elementoAtual ? elementoAtual.nome : '—'}`}
+              </strong>
+              <PainelFluxoOrcamento
+                estado={estado}
+                dadosResponsaveis={props.dadosResponsaveis}
+                vinculos={props.vinculos}
+                usuarios={props.usuarios}
+                podeAgir={props.podeAgir}
+                processando={props.processando}
+                onExecutar={props.onExecutar}
+                textoConcluido={registro.situacao === 'cancelado' ? 'Registro cancelado' : `✓ ${ambiente.rotuloRegistro} concluído(a) — fluxo encerrado`}
+                modoCompacto={true}
+                ocultarHistorico={true}
+                dataverseService={props.dataverseService}
+              />
+            </div>
+          </div>
+
+          {/* Ver fluxo: desenho + histórico em largura total */}
+          {verFluxo && instancia && definicao && (
+            <div style={{ ...cartao, marginBottom: 0 }}>
+              <div style={{ fontSize: '11.5px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: '8px' }}>
+                Fluxo de {ambiente.nome} · {instancia.processoNome || definicao.nome} · v{definicao.versao}
+              </div>
+              <div style={{ overflowX: 'auto', maxWidth: '100%', border: `1px solid ${COR.borda}`, borderRadius: '8px', background: '#FFFFFF' }}>
+                <FluxoDiagrama definicao={definicao} instancia={instancia} />
+              </div>
+              {layout.registro.mostrarHistorico && (
+                <div style={{ marginTop: '12px' }}>
+                  <strong style={{ display: 'block', fontSize: '13.5px', color: COR.azul, marginBottom: '6px' }}>Histórico do fluxo ({instancia.historico.length})</strong>
+                  {instancia.historico.map(passo => (
+                    <div key={passo.id} style={{ fontSize: '12.5px', color: COR.azul, padding: '6px 0', borderTop: `1px solid ${COR.borda}` }}>
+                      <strong>{passo.elementoNome}</strong> — {passo.acaoRotulo}
+                      <span style={{ color: COR.texto2 }}> · {passo.executadoPorNome} · {formatarDataHora(passo.data)}</span>
+                      {passo.comentario && <div style={{ color: COR.texto2, whiteSpace: 'pre-line' }}>{passo.comentario}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {!props.carregando && estado && mostrarPainel && !duasColunas && (
         <PainelFluxoOrcamento
           estado={estado}
           dadosResponsaveis={props.dadosResponsaveis}
@@ -302,19 +445,22 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
         />
       )}
 
-      {/* Dados do registro */}
+      {/* Dados do registro / campos preenchidos */}
       {layout.registro.mostrarDados && (
         <div style={{ ...cartao, marginBottom: 0 }}>
-          <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>Dados do registro</strong>
+          <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>{duasColunas ? 'Campos preenchidos' : 'Dados do registro'}</strong>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-            <div><div style={rotuloInfo}>Aberto por</div><div style={valorInfo}>{registro.solicitanteNome || '—'}</div></div>
-            <div><div style={rotuloInfo}>Aberto em</div><div style={valorInfo}>{formatarDataHora(registro.criadoEm)}</div></div>
-            <div><div style={rotuloInfo}>Área</div><div style={valorInfo}>{registro.areaNome || '—'}</div></div>
+            {!duasColunas && <div><div style={rotuloInfo}>Aberto por</div><div style={valorInfo}>{registro.solicitanteNome || '—'}</div></div>}
+            {!duasColunas && <div><div style={rotuloInfo}>Aberto em</div><div style={valorInfo}>{formatarDataHora(registro.criadoEm)}</div></div>}
+            {!duasColunas && <div><div style={rotuloInfo}>Área</div><div style={valorInfo}>{registro.areaNome || '—'}</div></div>}
             {registro.concluidoEm && (
               <div><div style={rotuloInfo}>{registro.situacao === 'cancelado' ? 'Cancelado em' : 'Concluído em'}</div><div style={valorInfo}>{formatarDataHora(registro.concluidoEm)}</div></div>
             )}
-            {registro.descricao && (
+            {!duasColunas && registro.descricao && (
               <div style={{ gridColumn: '1 / -1' }}><div style={rotuloInfo}>Descrição</div><div style={valorInfo}>{registro.descricao}</div></div>
+            )}
+            {duasColunas && definicao && instancia && !(definicao.metadados || []).some(meta => !!instancia.valores[meta.chave]) && (
+              <div style={{ color: COR.texto2, fontSize: '13px' }}>Nenhum campo preenchido ainda.</div>
             )}
             {definicao && instancia && (definicao.metadados || [])
               .filter(meta => !!instancia.valores[meta.chave])
