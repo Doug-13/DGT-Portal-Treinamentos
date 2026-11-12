@@ -20,8 +20,6 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Novo: tarefa "Script" no fluxo (caixa com engrenagem) — roda isolado, consulta o Dataverse (fontes liberadas) ou APIs (endereços liberados, ex.: CEP) e preenche campos antes de o fluxo seguir; pode bloquear a ação com uma mensagem. Teste do script no editor. Guia em docs/scripts.md.
 - Correção: ligação etapa → decisão com botão (que impedia os outros botões, ex.: Devolver, de chegarem à decisão) — mensagem aponta a ligação exata, botão "Corrigir automaticamente" no editor, aviso na aba Caminhos e correção automática na importação JSON.
 - Novo: estrutura para dashboards no próprio portal, com visualização e componentes de gráficos, acompanhada de documentação em docs/dashboards/.
-- Novo: cadastro de servidores no módulo de Kits, com serviço de dados e script scripts/dataverse/criar-tabelas-servidores.ps1.
-- Novo: painel de servidor central na Arquitetura de Soluções.
 - Novo: telas de Plano de Contas e Responsáveis no Planejamento Orçamentário.
 - Melhoria: gestão de dashboards e integração com a página de Indicadores e os serviços de dados.
 - Melhoria: catálogo e lógica dos kits, montagem do B.O.M. e seleção de kits na Arquitetura de Soluções.
@@ -29,7 +27,20 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Melhoria: regras e serviços de cálculo do orçamento, fórmulas, DRE e estrutura do plano de contas.
 - Melhoria: etapas, painel e serviços do fluxo orçamentário, com ajustes na resolução e configuração de responsáveis dos processos.
 - Melhoria: scripts de criação de tabelas de dashboards e orçamento e de limpeza dos dados orçamentários.
-- Melhoria: inclusão de arquivos de testes para servidores, fórmulas orçamentárias, importação do executado por CSV, plano de ajustes e configuração de responsáveis.
+- Melhoria: inclusão de arquivos de testes para fórmulas orçamentárias, importação do executado por CSV, plano de ajustes e configuração de responsáveis.
+- Novo: módulo "Implantações" — painel de gestão de implantações (carteira, cronogramas, físico x financeiro, Controladoria, PMO, equipes de campo, roteirização e assistente IA) dentro do portal, com acesso pelo módulo em Usuários e acessos e permissões pelo perfil do portal; dados no Dataverse (dgt_implregistro) e importação da base antiga. Guia em docs/implantacoes.md.
+- Novo: Controladoria avisa quando há faturamento atrasado no período, mesmo com diferença positiva.
+- Novo: e-mails do painel (relatório semanal, resumo gerencial e cronograma para o cliente) com recorrência, prévia, teste e "Enviar agora", enviados pela fila dgt_implemail e pelo fluxo do Power Automate.
+- Novo: agendamento de campo por período distribui os pontos por proximidade (uma região por dia).
+- Novo: tela cheia no módulo Implantações.
+- Melhoria: stakeholders com e-mail e telefone em campos separados.
+- Melhoria: exportações em PDF e Excel e mapa da roteirização com bibliotecas do pacote do portal (jsPDF, ExcelJS, Leaflet); importação de vistoria aceita .xlsx e .csv.
+- Novo: seleção de servidor na Seleção de kit (Arquitetura) — bloco "Servidores da central" escolhe o servidor de gravação (Digifort, Milestone) e o de analítico (IPX) pelo memorial de cálculo: premissas, compressão, câmeras com reserva, faixa recomendada, distribuição, GPU, processador e SO; o servidor, os discos, o SO e as licenças de VMS só entram no B.O.M. depois de "Adicionar à central".
+- Melhoria: as licenças do Digifort passam a ser geradas pelo seletor de servidor (base por servidor + packs pela necessidade); o campo "Servidores" saiu do bloco Projeto. Seleções antigas com Digifort pedem a seleção do servidor para concluir.
+- Novo: Milestone como VMS do projeto (licença por câmera e discos de vigilância vêm do seletor de servidor).
+- Novo: aba "Servidores" em Kits — as 43 linhas dos memoriais (Digifort, Milestone, IPX), fichas com premissas e alertas editáveis, "Baixar modelo CSV" e "Importar planilha"; linhas com memorial incompleto ficam fora do seletor.
+- Novo: aba "Wiki" em Kits — como as soluções, estruturas, controle de acesso, VMS de terceiros e servidores funcionam, sem modelos nem códigos, com links para as abas que definem os kits.
+- Melhoria: resolução (MP) no cadastro de câmeras, conferida contra a premissa dos memoriais de servidor.
 
 ## [1.4.22] - 2026-11-09
 

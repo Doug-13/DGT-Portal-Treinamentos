@@ -161,7 +161,8 @@ const montarGrupos = (
       modulos: [
         { titulo: 'Planejamento orçamentário', descricao: 'Planilhas e aprovação do orçamento', icone: 'wallet', pagina: 'planejamentoOrcamentario' },
         { titulo: 'Indicadores', descricao: 'Resultados e conformidade', icone: 'barChart', pagina: 'indicadores' },
-        { titulo: 'RH e Pessoas', descricao: 'Certificados e informações dos colaboradores', icone: 'users', pagina: 'rhPessoas' }
+        { titulo: 'RH e Pessoas', descricao: 'Certificados e informações dos colaboradores', icone: 'users', pagina: 'rhPessoas' },
+        { titulo: 'Fornecedores', descricao: 'Cadastro, documentos e sanções dos fornecedores', icone: 'briefcase', pagina: 'fornecedores' }
       ]
     }
   ];

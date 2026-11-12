@@ -166,7 +166,7 @@ export const gerarPrefixoAmbiente = (
 // palavras reservadas do portal).
 const CHAVES_RESERVADAS: string[] = [
   'inicio', 'treinamentos', 'documentos', 'processos', 'licitacoes',
-  'arquitetura', 'indicadores', 'orcamento', 'rh', 'kits', 'hh',
+  'arquitetura', 'indicadores', 'orcamento', 'rh', 'kits', 'hh', 'fornecedores',
   'admin', 'ambiente', 'ambientes', 'outro'
 ];
 

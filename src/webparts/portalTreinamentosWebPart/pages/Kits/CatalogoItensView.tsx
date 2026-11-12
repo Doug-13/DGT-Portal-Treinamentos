@@ -11,6 +11,7 @@ import {
 } from '../../services/bom/KitsService';
 
 import {
+  ehTipoServidor,
   SITUACOES_ITEM,
   SituacaoItemKit,
   TIPOS_ITEM,
@@ -62,6 +63,7 @@ export const resumoAtributos = (item: IItemKit): string => {
   if (item.tipo === 'cameraVideo' || item.tipo === 'cameraOcr') {
     if (a.formato) { partes.push(a.formato); }
     if (a.zoomOptico) { partes.push('zoom óptico'); }
+    if (a.resolucaoMp) { partes.push(`${String(a.resolucaoMp).replace('.', ',')} MP`); }
     if (a.consumoW) { partes.push(`${String(a.consumoW).replace('.', ',')} W`); }
   }
   if (item.tipo === 'switch') {
@@ -216,9 +218,13 @@ const EditorItem: React.FC<IEditorProps> = ({ item, catalogo, podeEditar, aoFech
             <label style={rotulo}>Consumo (W)</label>
             <Numero valor={Number(dados.atributos.consumoW) || 0} passo={0.1} maximo={200} desabilitado={bloqueado} rotuloAcessivel="Consumo em watts" aoMudar={n => mudarAtributo({ consumoW: n })} />
           </div>
+          <div>
+            <label style={rotulo}>Resolução (MP)</label>
+            <Numero valor={Number(dados.atributos.resolucaoMp) || 0} passo={0.1} maximo={50} desabilitado={bloqueado} rotuloAcessivel="Resolução em megapixels" aoMudar={n => mudarAtributo({ resolucaoMp: n || undefined })} />
+          </div>
           <Interruptor marcado={!!dados.atributos.zoomOptico} desabilitado={bloqueado} texto="Zoom óptico" aoMudar={v => mudarAtributo({ zoomOptico: v })} />
           <Interruptor marcado={!!dados.atributos.padrao} desabilitado={bloqueado} texto="Modelo padrão" aoMudar={v => mudarAtributo({ padrao: v })} />
-          <div style={{ ...ajuda, gridColumn: '1 / -1', marginTop: 0 }}>O consumo entra no cálculo do orçamento PoE do switch (com margem). Face Detect em ponto alto pede zoom óptico.</div>
+          <div style={{ ...ajuda, gridColumn: '1 / -1', marginTop: 0 }}>O consumo entra no cálculo do orçamento PoE do switch (com margem). Face Detect em ponto alto pede zoom óptico. A resolução é conferida contra a premissa dos memoriais de servidor.</div>
         </div>
       )}
 
@@ -273,14 +279,25 @@ export interface ICatalogoItensViewProps {
   catalogo: ICatalogoKitsCarregado;
   podeEditar: boolean;
   chaveInicial?: string;
+  // Filtro inicial (links da Wiki: "Câmeras de vídeo", ...).
+  tipoInicial?: TipoItemKit;
   aoSalvarItem: (item: IItemKit, anterior: IItemKit | undefined, motivo: string) => Promise<void>;
 }
 
 type FiltroTipo = 'todos' | TipoItemKit;
 
-const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEditar, chaveInicial, aoSalvarItem }) => {
+const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEditar, chaveInicial, tipoInicial, aoSalvarItem }) => {
 
-  const [tipo, setTipo] = React.useState<FiltroTipo>('todos');
+  const [tipo, setTipo] = React.useState<FiltroTipo>(tipoInicial || 'todos');
+
+  React.useEffect(() => {
+    if (tipoInicial) {
+      setTipo(tipoInicial);
+    }
+  }, [tipoInicial]);
+
+  // Servidores têm aba própria.
+  const itensCatalogo = catalogo.itens.filter(i => !ehTipoServidor(i.tipo));
   const [categoria, setCategoria] = React.useState<string>('');
   const [busca, setBusca] = React.useState('');
   const [inativos, setInativos] = React.useState(false);
@@ -300,7 +317,7 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
 
   const termo = busca.trim().toLowerCase();
 
-  const visiveis = catalogo.itens
+  const visiveis = itensCatalogo
     .filter(i => tipo === 'todos' || i.tipo === tipo)
     .filter(i => !categoria || i.categoria === categoria)
     .filter(i => inativos || i.ativo)
@@ -312,7 +329,7 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
       a.descricao.localeCompare(b.descricao));
 
   const contagem = (t: FiltroTipo): number =>
-    catalogo.itens.filter(i => (t === 'todos' || i.tipo === t) && (inativos || i.ativo)).length;
+    itensCatalogo.filter(i => (t === 'todos' || i.tipo === t) && (inativos || i.ativo)).length;
 
   const chip = (ativo: boolean): React.CSSProperties => ({
     padding: '6px 12px',
