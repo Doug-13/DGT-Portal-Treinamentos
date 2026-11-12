@@ -10,7 +10,11 @@ import {
 } from '../../services/AutorizacaoService';
 
 import {
+  EXECUTIVOS_RO,
   FABRICANTES,
+  IPrazosRo,
+  PRAZOS_PADRAO,
+  sugerirValidade,
   IAlteracaoRo,
   IRegistroOportunidade,
   IRoEdicao,
@@ -52,7 +56,7 @@ const DIAS_SEM_ATUALIZACAO = 30;
 // Antecedência para avisar o vencimento do RO
 const DIAS_VENCIMENTO = 30;
 
-type FiltroRapido = 'ativas' | 'vencendo' | 'desatualizadas' | 'ganhos' | 'perdidas' | 'todas';
+type FiltroRapido = 'ativas' | 'vencendo' | 'desatualizadas' | 'ganhos' | 'perdidas' | 'concluidas' | 'todas';
 
 type Ordem = { coluna: keyof IRegistroOportunidade; direcao: 1 | -1 };
 
@@ -71,6 +75,7 @@ const COR_FABRICANTE: { [fab: string]: string } = {
 const ESTILO_STATUS: { [s: string]: { texto: string; cor: string; fundo: string } } = {
   Ativo: { texto: 'Ativa', cor: '#0B6E8A', fundo: '#E3F5FA' },
   'Avaliação de RO': { texto: 'Em avaliação', cor: '#B45309', fundo: '#FEF3E2' },
+  'Concluída': { texto: 'Concluída', cor: '#0E7C56', fundo: '#E6F6EF' },
   Perdido: { texto: 'Perdida', cor: '#B42318', fundo: '#FDECEC' }
 };
 
@@ -125,7 +130,7 @@ const normalizar = (s: string): string =>
   (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 const ativa = (r: IRegistroOportunidade): boolean =>
-  r.ativo && r.statusRo !== 'Perdido';
+  r.ativo && r.statusRo !== 'Perdido' && r.statusRo !== 'Concluída';
 
 const desatualizada = (r: IRegistroOportunidade): boolean => {
   const dias = diasDesde(r.dataAtualizacao);
@@ -140,12 +145,12 @@ const vencendo = (r: IRegistroOportunidade): boolean => {
 const vazio = (): IRoEdicao => ({
   numero: '',
   fabricante: 'Intelbras',
-  numeroProjeto: '',
+  oportunidadeCrm: '',
   dataCriacao: hojeIso(),
   projeto: '',
   valor: undefined,
   modalidade: '',
-  situacao: 'Em andamento',
+  situacao: SITUACOES[0],
   observacao: '',
   executivo: '',
   editalPregao: '',
@@ -205,10 +210,11 @@ const PainelRo: React.FC<{
   dados: IRoEdicao;
   registro?: IRegistroOportunidade;
   executivos: string[];
+  prazos?: IPrazosRo;
   podeDesativar: boolean;
   onFechar: () => void;
   onSalvo: (texto: string) => Promise<void>;
-}> = ({ servico, dados, registro, executivos, podeDesativar, onFechar, onSalvo }) => {
+}> = ({ servico, dados, registro, executivos, prazos, podeDesativar, onFechar, onSalvo }) => {
 
   const [form, setForm] = React.useState<IRoEdicao>(dados);
   const [valorTexto, setValorTexto] = React.useState<string>(
@@ -221,6 +227,10 @@ const PainelRo: React.FC<{
   const [erroHistorico, setErroHistorico] = React.useState('');
 
   const novo = !form.id;
+  const [validadeManual, setValidadeManual] = React.useState(!!dados.validade);
+  const validade = validadeManual || !prazos
+    ? form.validade
+    : sugerirValidade(form.dataCriacao, form.fabricante, prazos);
 
   const alterar = <K extends keyof IRoEdicao>(c: K, v: IRoEdicao[K]): void => setForm(f => ({ ...f, [c]: v }));
 
@@ -252,7 +262,7 @@ const PainelRo: React.FC<{
   };
 
   const salvar = (): void => {
-    executar(() => servico.salvar({ ...form, valor: lerValor(valorTexto) }), novo ? 'RO cadastrado.' : 'RO atualizado.').catch(() => undefined);
+    executar(() => servico.salvar({ ...form, validade, valor: lerValor(valorTexto) }), novo ? 'RO cadastrado.' : 'RO atualizado.').catch(() => undefined);
   };
 
   const g2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' };
@@ -301,13 +311,14 @@ const PainelRo: React.FC<{
                   <label><span style={rotulo}>Nº do RO *</span><input style={campo} value={form.numero} onChange={e => alterar('numero', e.target.value)} placeholder="Ex.: OP-0690583" /></label>
                   <label><span style={rotulo}>Fabricante *</span>
                     <select style={campo} value={form.fabricante} onChange={e => alterar('fabricante', e.target.value)}>
+                      {FABRICANTES.indexOf(form.fabricante) < 0 && <option value={form.fabricante}>{form.fabricante}</option>}
                       {FABRICANTES.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
                   </label>
                 </div>
                 <label><span style={rotulo}>Cliente / projeto</span><input style={campo} value={form.projeto} onChange={e => alterar('projeto', e.target.value)} placeholder="Ex.: PROCERGS - Escolas" /></label>
                 <div style={g2}>
-                  <label><span style={rotulo}>Nº do projeto no fabricante</span><input style={campo} value={form.numeroProjeto} onChange={e => alterar('numeroProjeto', e.target.value)} placeholder="Opcional (ex.: Hikvision EP-PRJ…)" /></label>
+                  <label><span style={rotulo}>Número da oportunidade no CRM</span><input style={campo} value={form.oportunidadeCrm} onChange={e => alterar('oportunidadeCrm', e.target.value)} maxLength={100} /></label>
                   <label><span style={rotulo}>Executivo</span>
                     <input style={campo} list="ro-executivos" value={form.executivo} onChange={e => alterar('executivo', e.target.value)} />
                     <datalist id="ro-executivos">{executivos.map(x => <option key={x} value={x} />)}</datalist>
@@ -340,13 +351,14 @@ const PainelRo: React.FC<{
                   </label>
                   <label><span style={rotulo}>Situação do projeto</span>
                     <select style={campo} value={form.situacao} onChange={e => alterar('situacao', e.target.value)}>
+                      {SITUACOES.indexOf(form.situacao) < 0 && <option value={form.situacao}>{form.situacao} (legado)</option>}
                       {SITUACOES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </label>
                 </div>
                 <div style={{ ...g2, gridTemplateColumns: '1fr 1fr 1fr' }}>
                   <label><span style={rotulo}>Criação do RO</span><input type="date" style={campo} value={form.dataCriacao} onChange={e => alterar('dataCriacao', e.target.value)} /></label>
-                  <label><span style={rotulo}>Validade</span><input type="date" style={campo} value={form.validade} onChange={e => alterar('validade', e.target.value)} /></label>
+                  <label><span style={rotulo}>Validade</span><input type="date" style={campo} value={validade} onChange={e => { setValidadeManual(true); alterar('validade', e.target.value); }} /></label>
                   <label><span style={rotulo}>Últ. atualização</span><input type="date" style={campo} value={form.dataAtualizacao} onChange={e => alterar('dataAtualizacao', e.target.value)} /></label>
                 </div>
                 <label><span style={rotulo}>Observações</span><textarea rows={3} style={{ ...campo, resize: 'vertical' }} value={form.observacao} onChange={e => alterar('observacao', e.target.value)} /></label>
@@ -440,6 +452,33 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
   const [agrupar, setAgrupar] = React.useState(false);
   const [ordem, setOrdem] = React.useState<Ordem>({ coluna: 'dataAtualizacao', direcao: -1 });
 
+  const [prazos, setPrazos] = React.useState<IPrazosRo>(PRAZOS_PADRAO);
+  const [etagPrazos, setEtagPrazos] = React.useState('');
+  const [rascunhoPrazos, setRascunhoPrazos] = React.useState<Record<string, string> | undefined>(undefined);
+  const [erroPrazos, setErroPrazos] = React.useState('');
+  const [carregandoPrazos, setCarregandoPrazos] = React.useState(true);
+  const [salvandoPrazos, setSalvandoPrazos] = React.useState(false);
+
+  const carregarPrazos = React.useCallback(async (): Promise<void> => {
+    if (!servico) return;
+    setCarregandoPrazos(true);
+    setErroPrazos('');
+    try {
+      const config = await servico.listarPrazos();
+      setPrazos(config.prazos);
+      setEtagPrazos(config.etag);
+    } catch (e) {
+      setEtagPrazos('');
+      setErroPrazos(`Não foi possível carregar as regras de validade. ${(e as Error).message}`);
+    } finally {
+      setCarregandoPrazos(false);
+    }
+  }, [servico]);
+
+  React.useEffect(() => {
+    carregarPrazos().catch(() => undefined);
+  }, [carregarPrazos]);
+
   const [edicao, setEdicao] = React.useState<IRoEdicao | undefined>(undefined);
 
   const carregar = React.useCallback(async (): Promise<void> => {
@@ -453,7 +492,7 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
     try {
       setRegistros(await servico.listar());
     } catch (e) {
-      setErro(`Não foi possível carregar os ROs: ${(e as Error).message}. Confira se a tabela dgt_bom_ro foi criada (criar-tabela-ros.ps1) e se o seu perfil pode lê-la.`);
+      setErro(`Não foi possível carregar os ROs: ${(e as Error).message}. Confira a tabela dgt_bom_ro, a atualização do esquema e a permissão de leitura.`);
     } finally {
       setCarregando(false);
     }
@@ -481,12 +520,14 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
   const qtdAvaliacao = visiveisBase.filter(r => r.statusRo === 'Avaliação de RO').length;
 
   const executivos = React.useMemo(
-    () => registros.map(r => r.executivo).filter((v, i, l) => !!v && l.indexOf(v) === i).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    () => EXECUTIVOS_RO.concat(registros.map(r => r.executivo)).filter((v, i, l) => !!v && l.indexOf(v) === i).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [registros]
   );
 
   const contagemFabricante = (fab: string): number =>
-    visiveisBase.filter(r => r.fabricante === fab && (filtro === 'todas' || filtro === 'perdidas' || ativa(r))).length;
+    visiveisBase.filter(r => r.fabricante === fab && (filtro === 'concluidas'
+      ? r.statusRo === 'Concluída'
+      : filtro === 'todas' || filtro === 'perdidas' || ativa(r))).length;
 
   // ---------------- Filtragem e ordenação ----------------
 
@@ -500,6 +541,7 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
         case 'desatualizadas': return desatualizada(r);
         case 'ganhos': return r.situacao === 'Ganho';
         case 'perdidas': return r.statusRo === 'Perdido';
+        case 'concluidas': return r.statusRo === 'Concluída';
         default: return true;
       }
     })
@@ -508,7 +550,7 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
     .filter(r => !executivo || r.executivo === executivo)
     .filter(r =>
       !termo ||
-      normalizar([r.numero, r.numeroProjeto, r.projeto, r.editalPregao, r.executivo, r.observacao, r.vinculo].join(' ')).indexOf(termo) >= 0
+      normalizar([r.numero, r.oportunidadeCrm, r.projeto, r.editalPregao, r.executivo, r.observacao, r.vinculo].join(' ')).indexOf(termo) >= 0
     )
     .sort((a, b) => {
       const va = a[ordem.coluna];
@@ -550,10 +592,10 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
   // ---------------- Exportar CSV ----------------
 
   const exportar = (): void => {
-    const cab = ['Nº RO', 'Fabricante', 'Nº projeto', 'Criação', 'Cliente / projeto', 'Valor', 'Modalidade', 'Edital / pregão', 'Executivo', 'Status RO', 'Situação', 'Validade', 'Última atualização', 'Substituição', 'Observações'];
+    const cab = ['Nº RO', 'Fabricante', 'Número da oportunidade no CRM', 'Criação', 'Cliente / projeto', 'Valor', 'Modalidade', 'Edital / pregão', 'Executivo', 'Status RO', 'Situação', 'Validade', 'Última atualização', 'Substituição', 'Observações'];
     const esc = (v: string): string => `"${(v || '').replace(/"/g, '""')}"`;
     const linhas = filtrados.map(r => [
-      r.numero, r.fabricante, r.numeroProjeto, dataBr(r.dataCriacao), r.projeto,
+      r.numero, r.fabricante, r.oportunidadeCrm, dataBr(r.dataCriacao), r.projeto,
       r.valor === undefined ? '' : r.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
       r.modalidade, r.editalPregao, r.executivo, r.statusRo, r.situacao,
       r.validade ? dataBr(r.validade) : '', r.dataAtualizacao ? dataBr(r.dataAtualizacao) : '', r.vinculo, r.observacao
@@ -619,7 +661,7 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
         <td style={td}>
           <strong style={{ fontSize: '12.5px' }}>{r.numero}</strong>
           {!r.ativo && <span style={{ marginLeft: '6px', fontSize: '10.5px', fontWeight: 800, color: '#B42318' }}>REMOVIDO</span>}
-          {r.numeroProjeto && <div style={{ fontSize: '11px', color: COR.texto2 }}>{r.numeroProjeto}</div>}
+          {r.oportunidadeCrm && <div style={{ fontSize: '11px', color: COR.texto2 }}>CRM {r.oportunidadeCrm}</div>}
         </td>
         <td style={td}><Fabricante nome={r.fabricante} /></td>
         <td style={{ ...td, maxWidth: '240px' }}>
@@ -650,8 +692,35 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
     { id: 'desatualizadas', texto: `Sem atualização há +${DIAS_SEM_ATUALIZACAO} dias` },
     { id: 'ganhos', texto: 'Ganhos' },
     { id: 'perdidas', texto: 'Perdidas / declinadas' },
+    { id: 'concluidas', texto: 'Concluídas' },
     { id: 'todas', texto: 'Todas' }
   ];
+
+  const fabricantesPrazo = ['', ...FABRICANTES, ...Array.from(new Set(registros.map(r => r.fabricante)
+    .concat(Object.keys(prazos)).filter(f => !!f && FABRICANTES.indexOf(f) < 0)))];
+  const salvarPrazos = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    if (!servico || !rascunhoPrazos || !etagPrazos || salvandoPrazos) return;
+    const novosPrazos: IPrazosRo = {};
+    fabricantesPrazo.forEach(f => {
+      if (rascunhoPrazos[f]) novosPrazos[f] = Number(rascunhoPrazos[f]);
+    });
+    setSalvandoPrazos(true);
+    setErroPrazos('');
+    try {
+      await servico.salvarPrazos(novosPrazos, etagPrazos);
+      setRascunhoPrazos(undefined);
+      await carregarPrazos();
+      avisar('Regras de validade salvas.');
+    } catch (e) {
+      const falha = e as Error & { codigo?: string };
+      setErroPrazos(falha.codigo === 'CONFLITO'
+        ? 'Outra pessoa alterou os prazos. Feche o formulário e recarregue as regras antes de editar.'
+        : falha.message);
+    } finally {
+      setSalvandoPrazos(false);
+    }
+  };
 
   return (
     <section style={{ fontFamily: FONTE }}>
@@ -666,10 +735,36 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button type="button" style={botao('secundario', filtrados.length === 0)} disabled={filtrados.length === 0} onClick={exportar}>⭳ Exportar CSV</button>
-          <button type="button" style={botao('principal', !servico)} disabled={!servico} onClick={() => setEdicao(vazio())}>+ Novo RO</button>
+          {podeDesativar && <button type="button" style={botao('secundario', !etagPrazos || !!rascunhoPrazos)} disabled={!etagPrazos || !!rascunhoPrazos} onClick={() => {
+            const valores: Record<string, string> = {};
+            fabricantesPrazo.forEach(f => { valores[f] = String(prazos[f] ?? ''); });
+            setErroPrazos('');
+            setRascunhoPrazos(valores);
+          }}>Gerenciar validade</button>}
+          <button type="button" style={botao('principal', !servico || carregandoPrazos || !etagPrazos)} disabled={!servico || carregandoPrazos || !etagPrazos} onClick={() => {
+            setEdicao(vazio());
+          }}>+ Novo RO</button>
         </div>
       </div>
 
+      {erroPrazos && <div role="alert" style={{ marginBottom: 12, color: '#B42318' }}>{erroPrazos}{' '}
+        {!rascunhoPrazos && <button type="button" style={botao('secundario', carregandoPrazos)} disabled={carregandoPrazos} onClick={carregarPrazos}>Recarregar regras</button>}
+      </div>}
+      {rascunhoPrazos && <form onSubmit={salvarPrazos} style={{ marginBottom: 16, padding: 16, border: `1px solid ${COR.borda}`, borderRadius: 10 }}>
+        <h3 style={{ marginTop: 0 }}>Validade por fabricante</h3>
+        <p>Informe o prazo em dias corridos após a criação do RO. Campos opcionais vazios usam o prazo padrão.</p>
+        <fieldset disabled={salvandoPrazos} style={{ border: 0, margin: 0, padding: 0, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))' }}>
+          {fabricantesPrazo.map(f => <label key={f}>
+            <span style={rotulo}>{f || 'Demais fabricantes'}</span>
+            <input type="number" min={1} max={36500} step={1} required={f === '' || f === 'Intelbras' || f === 'NHS'}
+              style={campo} value={rascunhoPrazos[f] ?? ''} onChange={e => setRascunhoPrazos({ ...rascunhoPrazos, [f]: e.target.value })} />
+          </label>)}
+        </fieldset>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button type="submit" style={botao('principal', salvandoPrazos)} disabled={salvandoPrazos}>Salvar prazos</button>
+          <button type="button" style={botao('secundario', salvandoPrazos)} disabled={salvandoPrazos} onClick={() => { setRascunhoPrazos(undefined); carregarPrazos().catch(() => undefined); }}>Cancelar</button>
+        </div>
+      </form>}
       {aviso && <div role="status" style={{ marginBottom: '12px', padding: '10px 14px', borderRadius: '10px', background: '#E6F6EF', color: '#0E7C56', fontWeight: 700, fontSize: '13px' }}>✓ {aviso}</div>}
       {erro && <div role="alert" style={{ marginBottom: '12px', padding: '10px 14px', borderRadius: '10px', background: '#FDECEC', color: '#B42318', fontSize: '13px' }}>{erro}</div>}
 
@@ -695,7 +790,7 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
         </div>
 
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input aria-label="Buscar" placeholder="Buscar nº do RO, cliente, edital, executivo…" value={busca} onChange={e => setBusca(e.target.value)} style={{ ...campo, flex: '1 1 260px', maxWidth: '360px' }} />
+          <input aria-label="Buscar" placeholder="Buscar RO, oportunidade CRM, cliente, edital, executivo…" value={busca} onChange={e => setBusca(e.target.value)} style={{ ...campo, flex: '1 1 260px', maxWidth: '360px' }} />
           <select aria-label="Modalidade" value={modalidade} onChange={e => setModalidade(e.target.value)} style={{ ...campo, width: 'auto', minWidth: '170px' }}>
             <option value="">Todas as modalidades</option>
             {MODALIDADES.map(m => <option key={m} value={m}>{m}</option>)}
@@ -790,6 +885,7 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
           dados={edicao}
           registro={edicao.id ? registros.find(r => r.id === edicao.id) : undefined}
           executivos={executivos}
+          prazos={etagPrazos ? prazos : undefined}
           podeDesativar={podeDesativar}
           onFechar={() => setEdicao(undefined)}
           onSalvo={async texto => {

@@ -6,8 +6,7 @@ import {
 // ============================================================
 // REGISTROS DE OPORTUNIDADE (RO) — Arquitetura de Soluções
 //
-// Tabela dgt_bom_ro, criada por scripts/dataverse/criar-tabela-ros.ps1
-// (os nomes abaixo DEVEM continuar iguais aos do script).
+// Tabela existente dgt_bom_ro, ampliada por scripts/dataverse/atualizar-registros-oportunidade.ps1.
 // Uma linha por RO, de todos os fabricantes (antes: uma aba por
 // fabricante na planilha de controle de Pré-vendas).
 // ============================================================
@@ -18,7 +17,7 @@ const C = {
   id: 'dgt_bom_roid',
   numero: 'dgt_name',
   fabricante: 'dgt_bom_fabricante',
-  numeroProjeto: 'dgt_bom_numeroprojeto',
+  oportunidadeCrm: 'dgt_bom_oportunidadecrm',
   dataCriacao: 'dgt_bom_datacriacaoro',
   projeto: 'dgt_bom_projeto',
   valor: 'dgt_bom_valor',
@@ -38,7 +37,8 @@ const C = {
 export const ROTULO_CAMPO: { [campo: string]: string } = {
   [C.numero]: 'Nº do RO',
   [C.fabricante]: 'Fabricante',
-  [C.numeroProjeto]: 'Nº do projeto',
+  dgt_bom_numeroprojeto: 'Nº do projeto no fabricante',
+  [C.oportunidadeCrm]: 'Número da oportunidade no CRM',
   [C.dataCriacao]: 'Criação do RO',
   [C.projeto]: 'Cliente / projeto',
   [C.valor]: 'Valor',
@@ -66,9 +66,33 @@ export const FABRICANTES = [
   'Axxon'
 ];
 
-export const STATUS_RO = ['Ativo', 'Avaliação de RO', 'Perdido'];
+export const STATUS_RO = ['Ativo', 'Avaliação de RO', 'Perdido', 'Concluída'];
 
-export const SITUACOES = ['Em andamento', 'Ganho', 'Perdido', 'Em recurso', 'Suspenso', 'Anulado'];
+export const SITUACOES = ['Em negociação', 'Em implantação', 'Suspenso', 'Em faturamento', 'Em construção', 'Anulado'];
+
+export const EXECUTIVOS_RO = [
+  'Eder Zimmer', 'Daniel Neque', 'Lucas Muller', 'Waleska Silva', 'Mateus Moura',
+  'Marcelo Silva', 'Karine Schuster', 'Daiana Hoffmeister', 'Aderson Heinen',
+  'Richard Souza', 'Valdoir Damazio'
+];
+
+const TABELA_VALIDADE = 'dgt_bom_rovalidade';
+const ID_VALIDADE = '01fcdb80-5523-4a0e-95de-49376c9e3868';
+const CAMPO_PRAZOS = 'dgt_bom_prazos';
+
+export type IPrazosRo = Record<string, number>;
+
+export const PRAZOS_PADRAO: IPrazosRo = { '': 30, Intelbras: 26, NHS: 180 };
+
+const prazoValido = (dias: number): boolean => Number.isInteger(dias) && dias > 0 && dias <= 36500;
+
+export const sugerirValidade = (criacao: string, fabricante: string, prazos: IPrazosRo): string => {
+  const data = new Date(`${criacao}T00:00:00Z`);
+  if (isNaN(data.getTime())) return '';
+  data.setUTCDate(data.getUTCDate() + (prazos[fabricante] ?? prazos[''] ?? PRAZOS_PADRAO['']));
+  const resultado = data.toISOString().slice(0, 10);
+  return resultado.length === 10 && resultado.charAt(0) !== '+' ? resultado : '';
+};
 
 export const MODALIDADES = [
   'Edital',
@@ -83,7 +107,7 @@ export interface IRegistroOportunidade {
   id: string;
   numero: string;
   fabricante: string;
-  numeroProjeto: string;
+  oportunidadeCrm: string;
   dataCriacao: string;      // yyyy-mm-dd
   projeto: string;
   valor?: number;
@@ -139,13 +163,32 @@ export class RoService {
     this.dataverse = dataverse;
   }
 
+  public async listarPrazos(): Promise<{ prazos: IPrazosRo; etag: string }> {
+    const configuracao = await this.dataverse.obterRegistro(TABELA_VALIDADE, ID_VALIDADE, [CAMPO_PRAZOS]);
+    if (!configuracao) throw new Error('O registro de configuração de validade precisa ser provisionado.');
+    const prazos = { ...PRAZOS_PADRAO, ...JSON.parse(texto(configuracao.registro, CAMPO_PRAZOS) || '{}') } as IPrazosRo;
+    if (!Object.keys(prazos).every(fabricante => prazoValido(prazos[fabricante]))) {
+      throw new Error('A configuração contém um prazo inválido.');
+    }
+    return { prazos, etag: configuracao.etag };
+  }
+
+  public async salvarPrazos(prazos: IPrazosRo, etag: string): Promise<void> {
+    if (!Object.keys(prazos).every(fabricante => prazoValido(prazos[fabricante]))) {
+      throw new Error('Informe prazos inteiros entre 1 e 36.500 dias.');
+    }
+    await this.dataverse.atualizarRegistro(TABELA_VALIDADE, ID_VALIDADE, {
+      [CAMPO_PRAZOS]: JSON.stringify(prazos)
+    }, etag);
+  }
+
   public async listar(): Promise<IRegistroOportunidade[]> {
 
     const registros =
       await this.dataverse.listarRegistros(
         TABELA_RO,
         '$select=' +
-        [C.id, C.numero, C.fabricante, C.numeroProjeto, C.dataCriacao, C.projeto, C.valor,
+        [C.id, C.numero, C.fabricante, C.oportunidadeCrm, C.dataCriacao, C.projeto, C.valor,
           C.modalidade, C.situacao, C.observacao, C.executivo, C.editalPregao, C.statusRo,
           C.dataAtualizacao, C.validade, C.vinculo, C.ativo,
           'createdon', 'modifiedon', '_createdby_value', '_modifiedby_value'].join(',')
@@ -157,12 +200,12 @@ export class RoService {
         id: texto(r, C.id),
         numero: texto(r, C.numero),
         fabricante: texto(r, C.fabricante),
-        numeroProjeto: texto(r, C.numeroProjeto),
+        oportunidadeCrm: texto(r, C.oportunidadeCrm),
         dataCriacao: soData(texto(r, C.dataCriacao)),
         projeto: texto(r, C.projeto),
         valor: valor === null || valor === undefined || valor === '' ? undefined : Number(valor),
         modalidade: texto(r, C.modalidade),
-        situacao: texto(r, C.situacao) || 'Em andamento',
+        situacao: texto(r, C.situacao) || SITUACOES[0],
         observacao: texto(r, C.observacao),
         executivo: texto(r, C.executivo),
         editalPregao: texto(r, C.editalPregao),
@@ -194,7 +237,7 @@ export class RoService {
     const registro: Record<string, unknown> = {
       [C.numero]: numero.substring(0, 200),
       [C.fabricante]: dados.fabricante,
-      [C.numeroProjeto]: dados.numeroProjeto.trim(),
+      [C.oportunidadeCrm]: dados.oportunidadeCrm.trim().substring(0, 100),
       [C.dataCriacao]: dados.dataCriacao || null,
       [C.projeto]: dados.projeto.trim(),
       [C.valor]: dados.valor === undefined || isNaN(dados.valor) ? null : Math.round(dados.valor * 100) / 100,
