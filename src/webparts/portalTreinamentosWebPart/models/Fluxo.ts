@@ -360,6 +360,8 @@ export interface IMapeamentoSubprocesso {
   origem: string;
   // Chave do metadado do processo do filho.
   destino: string;
+  // O valor herdado não pode ser alterado no filho.
+  somenteLeitura?: boolean;
 }
 
 export interface IFiltroLinhasSubprocesso {
@@ -746,6 +748,12 @@ export interface IFluxoInstancia {
   // Fluxo parado numa "Assinatura digital": chave do pedido em
   // dgt_assinatura (uma por parada).
   assinatura?: IAssinaturaNaInstancia;
+
+  // Documento criado por subprocesso: campos com valor herdado do pai
+  // (não são apagados pela limpeza de devoluções) e os que não podem
+  // ser alterados no filho.
+  camposHerdados?: string[];
+  camposSomenteLeitura?: string[];
 }
 
 // Quem está executando a ação.

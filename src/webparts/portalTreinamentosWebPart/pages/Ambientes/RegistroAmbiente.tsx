@@ -108,6 +108,10 @@ export interface IRegistroAmbienteProps {
   usuarios: Array<{ id: string; nome: string }>;
   onVoltar: () => void;
   onCancelar: () => void;
+  // Menu ⋮ (Administrador do Sistema): Cancelar registro e Editar como
+  // administrador. Sem isso, o menu não aparece.
+  podeAdministrarSistema?: boolean;
+  onEditarComoAdministrador?: (valores: Record<string, string>, comentario: string) => Promise<string[]>;
   onIniciarFluxo: () => void;
   onExecutar: (acaoChave: string, comentario: string, valores: Record<string, string>) => Promise<string[]>;
   // Campos do tipo Componente (dados do Dataverse).
@@ -142,6 +146,41 @@ const ESCURO = {
 
 const rotuloInfo: React.CSSProperties = { fontSize: '11.5px', color: COR.texto2, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' };
 const valorInfo: React.CSSProperties = { fontSize: '13.5px', color: COR.azul, whiteSpace: 'pre-line', wordBreak: 'break-word' };
+
+// ------------------------------------------------------------
+// Menu ⋮ do Administrador do Sistema
+// ------------------------------------------------------------
+const MenuAdministrador: React.FC<{ desabilitado: boolean; onCancelar: () => void; onEditar: () => void }> = ({ desabilitado, onCancelar, onEditar }) => {
+  const [aberto, setAberto] = React.useState(false);
+  const item: React.CSSProperties = {
+    display: 'block', width: '100%', textAlign: 'left', border: 0, background: '#FFFFFF', padding: '9px 14px',
+    fontSize: '13px', fontWeight: 600, color: COR.azul, cursor: 'pointer', fontFamily: FONTE, whiteSpace: 'nowrap'
+  };
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        aria-label="Ações do administrador"
+        aria-haspopup="menu"
+        aria-expanded={aberto}
+        disabled={desabilitado}
+        onClick={() => setAberto(!aberto)}
+        style={{ ...botao('secundario', desabilitado), minWidth: '36px', fontSize: '18px', lineHeight: '18px', padding: '0 10px' }}
+      >
+        ⋮
+      </button>
+      {aberto && (
+        <div
+          role="menu"
+          style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 20, background: '#FFFFFF', border: `1px solid ${COR.borda}`, borderRadius: '8px', boxShadow: '0 8px 24px rgba(15,23,42,.14)', overflow: 'hidden', minWidth: '210px' }}
+        >
+          <button type="button" role="menuitem" style={item} onClick={() => { setAberto(false); onEditar(); }}>Editar como administrador</button>
+          <button type="button" role="menuitem" style={{ ...item, color: '#B42318', borderTop: `1px solid ${COR.borda}` }} onClick={() => { setAberto(false); onCancelar(); }}>Cancelar registro</button>
+        </div>
+      )}
+    </span>
+  );
+};
 
 const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
 
@@ -186,13 +225,32 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
   // (se o ambiente a mostra). Ao abrir outro registro, volta ao início.
   const [verFluxo, setVerFluxo] = React.useState(false);
   const [sequenciaVisivel, setSequenciaVisivel] = React.useState(true);
+  // "Editar como administrador" (menu ⋮).
+  const [modoAdmin, setModoAdmin] = React.useState(false);
   // Configuração do ambiente (ambiente antigo sem a opção = mostra).
   const mostrarSequencia =
     props.mostrarSequencia !== undefined ? props.mostrarSequencia : ambiente.mostrarSequencia !== false;
   React.useEffect(() => {
     setVerFluxo(false);
     setSequenciaVisivel(true);
+    setModoAdmin(false);
   }, [registro.id]);
+
+  const edicaoAdmin = modoAdmin && !!props.podeAdministrarSistema && !!props.onEditarComoAdministrador && registro.situacao === 'emAndamento';
+  const propsEdicaoAdmin = {
+    modoEdicaoAdmin: edicaoAdmin,
+    onSalvarAdmin: async (valores: Record<string, string>, comentario: string): Promise<string[]> => {
+      if (!props.onEditarComoAdministrador) {
+        return ['Edição administrativa indisponível.'];
+      }
+      const erros = await props.onEditarComoAdministrador(valores, comentario);
+      if (erros.length === 0) {
+        setModoAdmin(false);
+      }
+      return erros;
+    },
+    onCancelarEdicaoAdmin: () => setModoAdmin(false)
+  };
 
   const elementoAtual = definicao && instancia ? obterElementoAtual(definicao, instancia) : undefined;
   const tarefaAtual = instancia ? tarefaPendente(instancia) : undefined;
@@ -261,10 +319,12 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
               {sequenciaVisivel ? 'Ocultar sequência' : 'Mostrar sequência'}
             </button>
           )}
-          {props.podeCancelar && registro.situacao === 'emAndamento' && (
-            <button type="button" disabled={props.processando} onClick={props.onCancelar} style={botao('perigo', props.processando)}>
-              Cancelar registro
-            </button>
+          {props.podeAdministrarSistema && registro.situacao === 'emAndamento' && (
+            <MenuAdministrador
+              desabilitado={props.processando}
+              onCancelar={props.onCancelar}
+              onEditar={() => { setModoAdmin(true); setVerFluxo(false); }}
+            />
           )}
         </div>
 
@@ -482,6 +542,7 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
               </strong>
               {props.assinatura && <div style={{ marginBottom: '10px' }}><PainelAssinatura {...props.assinatura} /></div>}
               <PainelFluxoOrcamento
+                {...propsEdicaoAdmin}
                 estado={estado}
                 dadosResponsaveis={props.dadosResponsaveis}
                 vinculos={props.vinculos}
@@ -517,6 +578,7 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
 
       {!props.carregando && estado && mostrarPainel && !duasColunas && (
         <PainelFluxoOrcamento
+                {...propsEdicaoAdmin}
           estado={estado}
           dadosResponsaveis={props.dadosResponsaveis}
           vinculos={props.vinculos}
@@ -536,34 +598,8 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
         <AnexosRegistro servico={props.anexos.servico} pasta={props.anexos.pasta} regra={props.anexos.regra} onQuantidade={props.anexos.onQuantidade} />
       )}
 
-      {/* Dados do registro / campos preenchidos */}
-      {layout.registro.mostrarDados && (
-        <div style={{ ...cartao, marginBottom: 0 }}>
-          <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>{duasColunas ? 'Campos preenchidos' : 'Dados do registro'}</strong>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-            {!duasColunas && <div><div style={rotuloInfo}>Aberto por</div><div style={valorInfo}>{registro.solicitanteNome || '—'}</div></div>}
-            {!duasColunas && <div><div style={rotuloInfo}>Aberto em</div><div style={valorInfo}>{formatarDataHora(registro.criadoEm)}</div></div>}
-            {!duasColunas && <div><div style={rotuloInfo}>Área</div><div style={valorInfo}>{registro.areaNome || '—'}</div></div>}
-            {registro.concluidoEm && (
-              <div><div style={rotuloInfo}>{registro.situacao === 'cancelado' ? 'Cancelado em' : 'Concluído em'}</div><div style={valorInfo}>{formatarDataHora(registro.concluidoEm)}</div></div>
-            )}
-            {!duasColunas && registro.descricao && (
-              <div style={{ gridColumn: '1 / -1' }}><div style={rotuloInfo}>Descrição</div><div style={valorInfo}>{registro.descricao}</div></div>
-            )}
-            {duasColunas && definicao && instancia && !(definicao.metadados || []).some(meta => !!instancia.valores[meta.chave]) && (
-              <div style={{ color: COR.texto2, fontSize: '13px' }}>Nenhum campo preenchido ainda.</div>
-            )}
-            {definicao && instancia && (definicao.metadados || [])
-              .filter(meta => !!instancia.valores[meta.chave])
-              .map(meta => (
-                <div key={meta.chave} style={meta.tipo === 'tabela' || meta.tipo === 'textoLongo' ? { gridColumn: '1 / -1' } : undefined}>
-                  <div style={rotuloInfo}>{meta.rotulo}</div>
-                  <div style={valorInfo}>{formatarValorCampo(meta.tipo, instancia.valores[meta.chave]) || '—'}</div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
+      {/* O quadro "Campos preenchidos" saiu: a etapa mostra só os campos
+          configurados nela (os valores continuam gravados). */}
     </div>
   );
 };

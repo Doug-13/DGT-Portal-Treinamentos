@@ -173,3 +173,28 @@ e o tipo escolhido precisa existir na coluna *Tipo* de `dgt_documento`.
   os documentos de novo. Raro; confira os documentos antes de repetir.
 - **Modo de teste local** (`FLUXO_PERSISTENCIA = 'local'`): a passagem pelo
   subprocesso só é registrada no histórico; nenhum documento é criado.
+
+
+---
+
+## Valores levados para o novo documento (mapeamento pai → filho)
+
+Os fluxos têm metadados próprios; cada par **origem → campo do filho** faz a ponte (campo do pai,
+coluna da linha, referência/código/título do pai). Na configuração do subprocesso:
+
+- **Compatibilidade** em cada par: ✓ ok · ⚠ aviso (ex.: opções de lista que não existem no filho) ·
+  ✕ incompatível (bloqueia a publicação no editor).
+- **Somente leitura no filho** (por par): o valor herdado não pode ser alterado no filho.
+- **Mapear automaticamente**: sugere pares por **mesma chave** ou **mesmo nome**, com tipo compatível.
+- **Criar no filho**: campos deste processo que o fluxo filho não tem são criados lá com a **mesma
+  chave** e definição (tipo, opções, regra de exibição) e já entram mapeados. (Mesma chave = caminho
+  aberto para, no futuro, compartilhar metadados entre processos.)
+
+Na criação do filho, cada valor é **ajustado ao tipo** do campo de destino (Usuário/Área/Documento →
+Texto vira o nome/código; lista aceita a opção sem diferenciar maiúsculas; data dd/mm/aaaa vira
+aaaa-mm-dd). O que não puder ser aproveitado fica em branco e é registrado no histórico do filho
+(*"Valores do documento de origem não aproveitados"*). É uma **cópia do momento da criação**: mudanças
+posteriores no pai não alteram o filho.
+
+Os valores herdados ficam **protegidos** da limpeza que roda nas devoluções do fluxo filho (antes, um
+campo herdado que aparecia editável numa etapa ainda não percorrida podia ser apagado numa devolução).

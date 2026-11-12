@@ -1,4 +1,8 @@
 import {
+  adaptarValoresIniciais
+} from './subprocesso/mapeamentoSubprocesso';
+
+import {
   IResultadoScript
 } from './scriptFluxo';
 
@@ -27,6 +31,7 @@ import {
 } from '../processos/MetadadosProcessoService';
 
 import {
+  editarCamposAdministrador,
   assinaturaPendente,
   continuarAposAssinaturaNaInstancia,
   continuarAposScriptNaInstancia,
@@ -287,16 +292,41 @@ export class FluxoService {
     const definicao =
       aplicarMetadadosNaDefinicao(publicada, await this.metadados.listar(processo.id));
 
+    // Valores herdados (subprocesso): ajustados ao tipo de cada campo do
+    // filho; o que não serve é descartado e registrado no histórico.
+    const adaptacao =
+      dados.valoresIniciais
+        ? adaptarValoresIniciais(dados.valoresIniciais, definicao.metadados || [])
+        : { valores: undefined as Record<string, string> | undefined, descartados: [] as string[] };
+
     const resultado =
       iniciarInstancia(
         definicao,
-        { ...dados, simulado: this.repositorio.local }
+        { ...dados, valoresIniciais: adaptacao.valores, simulado: this.repositorio.local }
       );
 
     if (resultado.ok && resultado.instancia) {
 
       resultado.instancia.processoId = processo.id;
       resultado.instancia.processoNome = processo.nome;
+
+      if (adaptacao.descartados.length > 0) {
+        const inicio = definicao.elementos.find(item => item.tipo === 'inicio');
+        resultado.instancia.historico.unshift({
+          revisao: resultado.instancia.revisao,
+          id: `hist-${new Date().getTime().toString(36)}-herdados`,
+          data: new Date().toISOString(),
+          elementoId: inicio ? inicio.id : '',
+          elementoNome: 'Início',
+          acaoChave: 'valoresHerdados',
+          acaoRotulo: 'Valores do documento de origem não aproveitados',
+          resultado: 'concluido',
+          comentario: `Tipo incompatível ou campo inexistente no fluxo: ${adaptacao.descartados.join(', ')}.`,
+          executadoPorId: 'sistema',
+          executadoPorNome: 'Sistema',
+          sistema: true
+        });
+      }
 
       // Script logo depois do Início: roda antes de gravar.
       const errosScriptInicio = await this.rodarScripts(definicao, resultado.instancia, resultado.acoesSistema, contexto);
@@ -554,6 +584,30 @@ export class FluxoService {
     }
 
     return resultado;
+  }
+
+  // Edição administrativa dos campos da etapa atual (sem mudar a etapa).
+  // A permissão (Administrador do Sistema) é conferida por quem chama e,
+  // no servidor, pelo plugin ValidarAcaoAdministrativaRegistroPlugin.
+  public async editarCamposAdministrador(
+    revisaoId: string,
+    dados: { valores: Record<string, string>; comentario: string; ator: IFluxoAtor },
+    contexto?: IContextoExecucaoFluxo
+  ): Promise<IResultadoExecucao> {
+    const instancia = await this.repositorio.obter(revisaoId);
+    if (!instancia) {
+      return { ok: false, erros: ['Fluxo não encontrado.'], acoesSistema: [] };
+    }
+    const definicao = await this.definicaoDaInstancia(instancia);
+    if (!definicao) {
+      return { ok: false, erros: ['Versão do fluxo não encontrada.'], acoesSistema: [] };
+    }
+    const resultado = editarCamposAdministrador(definicao, instancia, dados);
+    if (!resultado.ok || !resultado.instancia) {
+      return resultado;
+    }
+    const avisos = await this.repositorio.salvar(resultado.instancia, this.contextoGravacao(definicao, resultado.instancia, contexto));
+    return { ...resultado, avisos };
   }
 
   // Libera um fluxo parado em "Assinatura digital" com a situação final

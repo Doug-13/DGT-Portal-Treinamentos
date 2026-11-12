@@ -761,7 +761,29 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
           : undefined
       }
       processando={processando}
-      podeCancelar={administra}
+      podeCancelar={adminGlobal}
+      podeAdministrarSistema={adminGlobal}
+      onEditarComoAdministrador={async (valores, comentario) => {
+        if (!fluxo || !contexto) {
+          return ['Sem conexão com o Dataverse.'];
+        }
+        setProcessando(true);
+        setSucesso('');
+        try {
+          const resultado = await fluxo.editarComoAdministrador(ambiente, registro, contexto, valores, comentario);
+          if (!resultado.ok) {
+            return resultado.erros;
+          }
+          setSucesso(`Edição administrativa salva. ${ambiente.rotuloRegistro} continua na mesma etapa.`);
+          await carregar();
+          await abrirRegistro(registro);
+          return [];
+        } catch (falha) {
+          return [mensagem(falha)];
+        } finally {
+          setProcessando(false);
+        }
+      }}
       podeIniciar={podeCriar}
       motivoNaoIniciar={disponibilidade ? disponibilidade.motivo : undefined}
       dadosResponsaveis={fluxo && estado ? fluxo.dadosResponsaveis(registro, estado.instancia) : {}}

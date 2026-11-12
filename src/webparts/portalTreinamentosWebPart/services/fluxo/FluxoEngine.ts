@@ -76,6 +76,8 @@ export interface IDadosInicioFluxo {
   valoresIniciais?: Record<string, string>;
   // Documento criado por um subprocesso: de onde ele veio.
   origemSubprocesso?: IOrigemSubprocesso;
+  // Campos herdados do pai que não podem ser alterados no filho.
+  camposSomenteLeitura?: string[];
 }
 
 export interface IExecucaoAcao {
@@ -719,6 +721,10 @@ const limparValoresForaDoCaminho = (
 
   const chavesDoCaminho: string[] = [];
 
+  // Valores herdados do documento pai (subprocesso): nunca são limpos,
+  // mesmo que o campo apareça editável numa etapa ainda não percorrida.
+  (instancia.camposHerdados || []).forEach(chave => chavesDoCaminho.push(chave));
+
   // Campo onde um subprocesso grava os documentos filhos: nunca é
   // limpo (os filhos já existem; a referência é a ligação com eles).
   definicao.elementos
@@ -1194,6 +1200,10 @@ export const iniciarInstancia = (
     elementoAtualId: inicio.id,
     status: 'emAndamento',
     valores: { ...(dados.valoresIniciais || {}) },
+    camposHerdados: dados.origemSubprocesso && dados.valoresIniciais ? Object.keys(dados.valoresIniciais) : undefined,
+    camposSomenteLeitura: dados.origemSubprocesso && dados.camposSomenteLeitura && dados.valoresIniciais
+      ? dados.camposSomenteLeitura.filter(chave => !!(dados.valoresIniciais as Record<string, string>)[chave])
+      : undefined,
     percorridos: [inicio.id],
     transicoesPercorridas: [],
     tarefas: [],
@@ -1335,7 +1345,9 @@ export const executarAcao = (
 
       if (
         valor !== undefined &&
-        !campo.somenteLeitura
+        !campo.somenteLeitura &&
+        // Herdado do pai como somente leitura: não muda no filho.
+        (instanciaOriginal.camposSomenteLeitura || []).indexOf(campo.chave) < 0
       ) {
         valoresEtapa[campo.chave] =
           valor;
@@ -2617,5 +2629,112 @@ export const campoVisivel = (
 ): boolean => {
   const condicao = campo.obrigatorioQuando || campo.mostrarQuando;
   return !condicao || (valores[condicao.campo] || '') === condicao.valor;
+};
+
+// ============================================================
+// EDIÇÃO ADMINISTRATIVA (Administrador do Sistema)
+//
+// Altera os campos da ETAPA ATUAL sem executar ação: a etapa, as
+// tarefas e a situação não mudam. Mesmas validações de formato das
+// ações; um campo obrigatório não pode ser apagado. Fica no histórico
+// (acaoChave 'edicaoAdministrativa') com os campos alterados.
+// ============================================================
+
+export const ACAO_EDICAO_ADMINISTRATIVA = 'edicaoAdministrativa';
+
+export const editarCamposAdministrador = (
+  definicao: IFluxoDefinicao,
+  instanciaOriginal: IFluxoInstancia,
+  dados: { valores: Record<string, string>; comentario: string; ator: IFluxoAtor }
+): IResultadoExecucao => {
+
+  if (instanciaOriginal.status !== 'emAndamento') {
+    return { ok: false, erros: ['O fluxo não está em andamento.'], acoesSistema: [] };
+  }
+
+  const elemento = obterElemento(definicao, instanciaOriginal.elementoAtualId);
+
+  if (!elemento || elemento.tipo !== 'tarefaHumana') {
+    return { ok: false, erros: ['A etapa atual não tem campos para editar.'], acoesSistema: [] };
+  }
+
+  const bloqueados = instanciaOriginal.camposSomenteLeitura || [];
+  const valoresEtapa: Record<string, string> = {};
+
+  elemento.campos.forEach(campo => {
+    const valor = dados.valores[campo.chave];
+    if (valor !== undefined && !campo.somenteLeitura && bloqueados.indexOf(campo.chave) < 0) {
+      valoresEtapa[campo.chave] = valor;
+    }
+  });
+
+  const alterados = Object.keys(valoresEtapa)
+    .filter(chave => (valoresEtapa[chave] || '') !== (instanciaOriginal.valores[chave] || ''));
+
+  if (alterados.length === 0) {
+    return { ok: false, erros: ['Nenhum campo foi alterado.'], acoesSistema: [] };
+  }
+
+  const valoresConsolidados: Record<string, string> = { ...instanciaOriginal.valores, ...valoresEtapa };
+
+  // Formatos (tabela, avaliação, componente...) como nas ações.
+  const erros = validarAcao(
+    elemento,
+    { chave: ACAO_EDICAO_ADMINISTRATIVA, rotulo: 'Edição administrativa', resultado: ACAO_EDICAO_ADMINISTRATIVA, principal: false, exigeComentario: false, dispensaCampos: true },
+    '',
+    valoresConsolidados
+  );
+
+  // Obrigatório (para a ação principal da etapa) não pode ficar vazio.
+  const principal = elemento.acoes.find(acao => acao.principal) || elemento.acoes[0];
+  alterados.forEach(chave => {
+    const campo = elemento.campos.find(item => item.chave === chave);
+    if (
+      campo &&
+      !(valoresConsolidados[chave] || '').trim() &&
+      campoObrigatorioAgora(elemento, chave, valoresConsolidados, principal ? principal.resultado : 'concluido')
+    ) {
+      erros.push(`"${campo.rotulo}" é obrigatório nesta etapa e não pode ficar vazio.`);
+    }
+  });
+
+  if (erros.length > 0) {
+    return { ok: false, erros, acoesSistema: [] };
+  }
+
+  const instancia = copiarInstancia(instanciaOriginal);
+  instancia.valores = valoresConsolidados;
+
+  const partes: string[] = [];
+  if ((dados.comentario || '').trim()) {
+    partes.push(dados.comentario.trim());
+  }
+  alterados.forEach(chave => {
+    const campo = elemento.campos.find(item => item.chave === chave);
+    if (campo) {
+      partes.push(
+        (valoresConsolidados[chave] || '').trim()
+          ? `${campo.rotulo} ${formatarValorCampo(campo.tipo, valoresConsolidados[chave])}`
+          : `${campo.rotulo} (apagado)`
+      );
+    }
+  });
+
+  instancia.historico.unshift({
+    id: gerarId('hist'),
+    data: agoraIso(),
+    elementoId: elemento.id,
+    elementoNome: elemento.nome,
+    acaoChave: ACAO_EDICAO_ADMINISTRATIVA,
+    acaoRotulo: 'Edição administrativa',
+    resultado: ACAO_EDICAO_ADMINISTRATIVA,
+    comentario: partes.join(' · '),
+    executadoPorId: dados.ator.id,
+    executadoPorNome: dados.ator.nome,
+    sistema: false,
+    revisao: instancia.revisao
+  });
+
+  return { ok: true, erros: [], acoesSistema: [], instancia };
 };
 

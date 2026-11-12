@@ -381,10 +381,9 @@ const AmbienteLayoutEditor: React.FC<IAmbienteLayoutEditorProps> = (props) => {
               </label>
             </div>
             {([
-              ['mostrarDados', 'Mostrar o quadro “Campos preenchidos” no fim da tela'],
               ['mostrarDiagrama', 'Abrir o desenho do fluxo já ao entrar (só no modo uma coluna; em duas colunas, “Ver fluxo” começa recolhido)'],
               ['mostrarHistorico', 'Mostrar o histórico do fluxo']
-            ] as Array<['mostrarDados' | 'mostrarDiagrama' | 'mostrarHistorico', string]>).map(([chave, texto]) => (
+            ] as Array<['mostrarDiagrama' | 'mostrarHistorico', string]>).map(([chave, texto]) => (
               <label key={chave} style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px', marginBottom: '6px' }}>
                 <input type="checkbox" checked={!!layout.registro[chave]} onChange={() => setLayout(atual => ({ ...atual, registro: { ...atual.registro, [chave]: !atual.registro[chave] } }))} />
                 {texto}
