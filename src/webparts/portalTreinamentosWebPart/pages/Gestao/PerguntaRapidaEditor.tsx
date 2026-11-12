@@ -27,9 +27,32 @@ export interface IPerguntaRapidaEditorProps {
 
   onCancelar:
     () => void;
+
+  // EDIÇÃO: pergunta já cadastrada (sem ela, o editor cadastra uma
+  // pergunta nova).
+  perguntaExistente?:
+    IPerguntaRapidaExistente;
+}
+
+export interface IPerguntaRapidaExistente {
+  id: string;
+  enunciado: string;
+  tipo: TipoPerguntaRapida;
+  mostrarFeedback: boolean;
+  feedbackAcerto: string;
+  feedbackErro: string;
+  alternativas: Array<{
+    id: string;
+    texto: string;
+    correta: boolean;
+  }>;
 }
 
 interface IAlternativaLocal {
+  // Alternativa já cadastrada (edição). Sem id = nova.
+  id?:
+    string;
+
   texto:
     string;
 
@@ -104,8 +127,12 @@ const PerguntaRapidaEditor:
     conteudoModuloId,
     exigirAcertoPadrao,
     onSalvo,
-    onCancelar
+    onCancelar,
+    perguntaExistente
   }) => {
+
+    const editando =
+      !!perguntaExistente;
 
     const service =
       React.useMemo(
@@ -125,14 +152,20 @@ const PerguntaRapidaEditor:
       React.useState<
         TipoPerguntaRapida
       >(
-        'EscolhaUnica'
+        perguntaExistente
+          ? perguntaExistente.tipo
+          : 'EscolhaUnica'
       );
 
     const [
       enunciado,
       setEnunciado
     ] =
-      React.useState('');
+      React.useState(
+        perguntaExistente
+          ? perguntaExistente.enunciado
+          : ''
+      );
 
     // Definido pelo módulo; não é editado aqui.
     const exigirAcerto =
@@ -144,7 +177,9 @@ const PerguntaRapidaEditor:
       setMostrarFeedback
     ] =
       React.useState(
-        true
+        perguntaExistente
+          ? perguntaExistente.mostrarFeedback
+          : true
       );
 
     const [
@@ -152,7 +187,9 @@ const PerguntaRapidaEditor:
       setFeedbackAcerto
     ] =
       React.useState(
-        'Correto. Você pode continuar.'
+        perguntaExistente
+          ? perguntaExistente.feedbackAcerto
+          : 'Correto. Você pode continuar.'
       );
 
     const [
@@ -160,7 +197,9 @@ const PerguntaRapidaEditor:
       setFeedbackErro
     ] =
       React.useState(
-        'Revise o conteúdo anterior e tente novamente.'
+        perguntaExistente
+          ? perguntaExistente.feedbackErro
+          : 'Revise o conteúdo anterior e tente novamente.'
       );
 
     const [
@@ -169,20 +208,29 @@ const PerguntaRapidaEditor:
     ] =
       React.useState<
         IAlternativaLocal[]
-      >([
-        {
-          texto:
-            '',
-          correta:
-            true
-        },
-        {
-          texto:
-            '',
-          correta:
-            false
-        }
-      ]);
+      >(
+        perguntaExistente &&
+        perguntaExistente.alternativas.length > 0
+          ? perguntaExistente.alternativas.map(item => ({
+            id: item.id,
+            texto: item.texto,
+            correta: item.correta
+          }))
+          : [
+            {
+              texto:
+                '',
+              correta:
+                true
+            },
+            {
+              texto:
+                '',
+              correta:
+                false
+            }
+          ]
+      );
 
     const [
       salvando,
@@ -339,9 +387,16 @@ const PerguntaRapidaEditor:
             alternativas
           };
 
-          await service.criar(
-            dados
-          );
+          if (perguntaExistente) {
+            await service.atualizar(
+              perguntaExistente.id,
+              dados
+            );
+          } else {
+            await service.criar(
+              dados
+            );
+          }
 
           onSalvo();
 
@@ -530,7 +585,7 @@ const PerguntaRapidaEditor:
                     'grid',
 
                   gridTemplateColumns:
-                    '40px 1fr',
+                    '40px 1fr auto',
 
                   gap:
                     '8px',
@@ -593,6 +648,40 @@ const PerguntaRapidaEditor:
                     input
                   }
                 />
+
+                {
+                  (
+                    tipo ===
+                      'EscolhaUnica' ||
+                    tipo ===
+                      'MultiplaEscolha'
+                  ) &&
+                  alternativas.length > 2 &&
+                  (
+                    <button
+                      type="button"
+                      title="Remover alternativa"
+                      aria-label={`Remover alternativa ${indice + 1}`}
+                      onClick={() =>
+                        setAlternativas(
+                          lista =>
+                            lista.filter(
+                              (_item, i) =>
+                                i !== indice
+                            )
+                        )
+                      }
+                      style={{
+                        ...btn,
+                        padding: '8px 11px',
+                        borderColor: '#D8E2EC',
+                        color: '#A4262C'
+                      }}
+                    >
+                      ×
+                    </button>
+                  )
+                }
               </div>
             )
           )
@@ -805,7 +894,9 @@ const PerguntaRapidaEditor:
             {
               salvando
                 ? 'Salvando...'
-                : 'Salvar pergunta'
+                : editando
+                  ? 'Salvar alterações'
+                  : 'Salvar pergunta'
             }
           </button>
         </div>

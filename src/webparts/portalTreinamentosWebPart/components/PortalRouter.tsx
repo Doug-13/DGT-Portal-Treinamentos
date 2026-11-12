@@ -60,6 +60,10 @@ import AvaliacaoPage from
 import InicioIntranetPage from
   '../pages/Intranet/Inicio/InicioIntranetPage';
 
+import {
+  carregarRevisaoTentativa
+} from '../services/RevisaoAvaliacaoService';
+
 import VisaoGeralTreinamentosPage from
   '../pages/Treinamentos/VisaoGeralTreinamentosPage';
 
@@ -2729,6 +2733,12 @@ const PortalRouter:
 
             onEnviar={
               props.enviarAvaliacao
+            }
+
+            onCarregarRevisao={
+              props.dataverseService
+                ? tentativaId => carregarRevisaoTentativa(props.dataverseService as DataverseService, tentativaId)
+                : undefined
             }
           />
         );

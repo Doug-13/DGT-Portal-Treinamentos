@@ -8,11 +8,18 @@ import {
 import PerguntaRapidaEditor from
   './PerguntaRapidaEditor';
 
+import {
+  TipoPerguntaRapida,
+  tipoPerguntaDoValor
+} from '../../services/ModuloPerguntaAdminService';
+
 // ============================================================
 // CONFIGURAR PERGUNTA RÁPIDA (Gestão > Módulos > Conteúdos)
 //
 // Mostra a pergunta e as alternativas (com a correta marcada) e
 // permite ajustar o feedback (mostrar e textos de acerto/erro).
+// "Editar pergunta" abre o editor completo: enunciado, tipo,
+// alternativas (incluir, alterar, remover) e resposta correta.
 //
 // "Exigir acerto" é uma regra do MÓDULO (Editar módulo > Exigir
 // acerto nas perguntas rápidas) e não é editado aqui.
@@ -27,6 +34,9 @@ export interface IPerguntaRapidaConfigModalProps {
   conteudoModuloId: string;
   titulo: string;
   onFechar: () => void;
+
+  // Abre direto no editor da pergunta (quando ela já existe).
+  iniciarEditando?: boolean;
 }
 
 interface IAlternativaView {
@@ -96,6 +106,8 @@ const PerguntaRapidaConfigModal: React.FC<IPerguntaRapidaConfigModalProps> = pro
 
   const [perguntaId, setPerguntaId] = React.useState('');
   const [enunciado, setEnunciado] = React.useState('');
+  const [tipo, setTipo] = React.useState<TipoPerguntaRapida>('EscolhaUnica');
+  const [editando, setEditando] = React.useState(!!props.iniciarEditando);
   const [alternativas, setAlternativas] = React.useState<IAlternativaView[]>([]);
 
   // Regra do módulo, usada só ao cadastrar uma pergunta nova.
@@ -182,6 +194,7 @@ const PerguntaRapidaConfigModal: React.FC<IPerguntaRapidaConfigModalProps> = pro
 
         setPerguntaId(id);
         setEnunciado(texto(registro, 'dgt_enunciado', texto(registro, 'dgt_name')));
+        setTipo(tipoPerguntaDoValor(registro.dgt_tipopergunta));
         setMostrarFeedback(booleano(registro, 'dgt_mostrarfeedback', true));
         setFeedbackAcerto(texto(registro, 'dgt_feedbackacerto'));
         setFeedbackErro(texto(registro, 'dgt_feedbackerro'));
@@ -324,8 +337,43 @@ const PerguntaRapidaConfigModal: React.FC<IPerguntaRapidaConfigModalProps> = pro
           </div>
         )}
 
-        {!carregando && perguntaId && (
+        {/* Edição completa da pergunta */}
+        {!carregando && perguntaId && editando && (
+          <div style={{ marginTop: '16px' }}>
+            <PerguntaRapidaEditor
+              dataverse={props.dataverse}
+              conteudoModuloId={props.conteudoModuloId}
+              exigirAcertoPadrao={exigirAcertoModulo}
+              perguntaExistente={{
+                id: perguntaId,
+                enunciado,
+                tipo,
+                mostrarFeedback,
+                feedbackAcerto,
+                feedbackErro,
+                alternativas
+              }}
+              onSalvo={() => {
+                setEditando(false);
+                setSucesso('Pergunta atualizada.');
+                carregar().catch((e: unknown) => console.error(e));
+              }}
+              onCancelar={() => setEditando(false)}
+            />
+          </div>
+        )}
+
+        {!carregando && perguntaId && !editando && (
           <>
+            <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                style={botao}
+                onClick={() => { setSucesso(''); setErro(''); setEditando(true); }}
+              >
+                Editar pergunta
+              </button>
+            </div>
             <div style={{ marginTop: '16px', padding: '14px', background: '#F5F9FF', border: '1px solid #D6E6F7', borderRadius: '10px' }}>
               <strong style={{ display: 'block', color: '#0B2D4D', marginBottom: '10px' }}>
                 {enunciado}

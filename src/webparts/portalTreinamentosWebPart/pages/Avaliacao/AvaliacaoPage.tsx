@@ -7,6 +7,8 @@ import {
 } from '../../models/Avaliacao';
 import Loading from '../../components/common/Loading';
 import ErrorMessage from '../../components/common/ErrorMessage';
+import RevisaoRespostas from './RevisaoRespostas';
+import { IRevisaoQuestao } from '../../services/RevisaoAvaliacaoService';
 
 export interface IAvaliacaoPageProps {
   avaliacao?: IAvaliacao;
@@ -23,6 +25,10 @@ export interface IAvaliacaoPageProps {
   // "Próximo" (abre o próximo treinamento liberado).
   onSair?: () => void;
   onProximo?: (nomeProximo: string) => void;
+
+  // Aprovado: carrega as respostas da tentativa (questões, o que a
+  // pessoa marcou e a resposta correta) para revisão.
+  onCarregarRevisao?: (tentativaId: string) => Promise<IRevisaoQuestao[]>;
 }
 
 const doisDigitos = (valor: number): string =>
@@ -45,7 +51,8 @@ const AvaliacaoPage: React.FC<IAvaliacaoPageProps> = ({
   onVoltar,
   onEnviar,
   onSair,
-  onProximo
+  onProximo,
+  onCarregarRevisao
 }) => {
   const [respostas, setRespostas] =
     React.useState<Record<string, string[]>>({});
@@ -170,6 +177,14 @@ const AvaliacaoPage: React.FC<IAvaliacaoPageProps> = ({
             <div><small>Erros</small><strong style={{ display: 'block' }}>{resultado.erros}</strong></div>
             <div><small>Tentativas restantes</small><strong style={{ display: 'block' }}>{resultado.tentativasRestantes}</strong></div>
           </div>
+
+          {/* Aprovado: pode rever todas as respostas */}
+          {resultado.aprovado && !!resultado.tentativaId && onCarregarRevisao && (
+            <RevisaoRespostas
+              tentativaId={resultado.tentativaId}
+              onCarregar={onCarregarRevisao}
+            />
+          )}
 
           {resultado.treinamentoConcluido && (
             <p style={{ marginTop: 22 }}>

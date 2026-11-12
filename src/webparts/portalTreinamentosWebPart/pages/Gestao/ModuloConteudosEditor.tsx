@@ -1602,9 +1602,9 @@ const ModuloConteudosEditor:
                               style={
                                 secondary
                               }
-                              title="Pergunta, alternativas, Exigir acerto e feedback"
+                              title="Editar o enunciado, as alternativas, a resposta correta e o feedback"
                             >
-                              Configurar pergunta
+                              Editar pergunta
                             </button>
                           )
                         }
@@ -1681,6 +1681,9 @@ const ModuloConteudosEditor:
               }
               titulo={
                 perguntaConfig.titulo
+              }
+              iniciarEditando={
+                true
               }
               onFechar={() =>
                 setPerguntaConfig(
