@@ -6,6 +6,171 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Melhoria: registro de ambiente — saiu o quadro "Campos preenchidos" do rodapé (a etapa mostra só os campos configurados); "Cancelar registro" virou o menu ⋮ do Administrador do Sistema, com "Editar como administrador" (salva os campos da etapa atual sem mudar etapa nem situação, com validações e registro no histórico). Cancelamento restrito ao Administrador do Sistema. Plugin ValidarAcaoAdministrativaRegistroPlugin valida as duas ações no servidor.
+- Melhoria: mapeamento pai → filho do subprocesso — compatibilidade por par (bloqueia publicação se incompatível), "somente leitura no filho", "Mapear automaticamente" e "Criar no filho" (mesma chave). Valores ajustados ao tipo do campo do filho na criação, com registro do que não foi aproveitado.
+- Correção: valores herdados do documento pai não são mais apagados quando o fluxo filho tem uma devolução e o campo aparece editável numa etapa ainda não percorrida.
+- Melhoria: tela de execução da atividade — painel esquerdo com "Dados do documento", "Histórico" (eventos do registro) e "Ver fluxo" (sempre recolhido ao abrir); sequência de atividades compacta, com cores por situação, destaque da etapa atual e rolagem horizontal; nova opção do ambiente "Mostrar sequência de atividades no topo" (com Ocultar/Mostrar na tela; ambientes antigos continuam mostrando).
+- Melhoria: regra de exibição ("exibir só quando") passa a ser definida no campo, em Metadados do processo, e vale em todas as atividades que exibem o campo (inclusive versões publicadas). A atividade fica só com o modo (Não exibir/Opcional/Obrigatório/Somente leitura); regras antigas criadas na atividade continuam funcionando e aparecem como "regra antiga desta etapa".
+- Correção: regras de exibição dos campos ("exibir só quando") agora valem também nas etapas dos ambientes — antes o campo condicional aparecia sempre. No editor da atividade, as opções passaram a se chamar "Opcional/Obrigatório — exibir só quando…", o campo condicional ganha a etiqueta "condicional" e há uma explicação no topo do bloco.
+- Novo: tarefa "Assinatura digital" no fluxo (Clicksign, via Power Automate) — o fluxo para até o documento ser assinado; o portal cria o pedido em dgt_assinatura, acompanha os signatários e libera o fluxo com a situação final (recusa/expiração podem seguir para uma decisão). Script criar-tabelas-assinatura.ps1 e guia em docs/assinatura-digital.md.
+- Melhoria: aba Metadados do editor da atividade — no topo, "Metadados da atividade" só com os campos que a etapa exibe (modo por campo; "Não exibir" tira da lista); abaixo, "Campos nesta etapa" recolhido, com busca, para adicionar metadados do processo ainda não vinculados. A definição dos campos (nome, tipo, opções, ajuda) fica só nos metadados do processo.
+- Correção: nos ambientes, campos dos tipos Área, Documento e Documentos (e colunas desses tipos em tabelas) agora são editáveis nas etapas — antes só exibiam o valor.
+- Novo: anexos nos registros de ambiente (SharePoint) — ligados em Editar ambiente → Anexos; cada etapa do fluxo define se os anexos são só consulta, opcionais (incluir/substituir/remover) ou obrigatórios.
+- Melhoria: tela do registro de ambiente em duas colunas — dados do registro, Ver fluxo e documentos relacionados à esquerda; campos da etapa à direita (opção "Disposição" em Personalizar telas).
+- Novo: tarefa "Script" no fluxo (caixa com engrenagem) — roda isolado, consulta o Dataverse (fontes liberadas) ou APIs (endereços liberados, ex.: CEP) e preenche campos antes de o fluxo seguir; pode bloquear a ação com uma mensagem. Teste do script no editor. Guia em docs/scripts.md.
+- Correção: ligação etapa → decisão com botão (que impedia os outros botões, ex.: Devolver, de chegarem à decisão) — mensagem aponta a ligação exata, botão "Corrigir automaticamente" no editor, aviso na aba Caminhos e correção automática na importação JSON.
+- Novo: estrutura para dashboards no próprio portal, com visualização e componentes de gráficos, acompanhada de documentação em docs/dashboards/.
+- Novo: telas de Plano de Contas e Responsáveis no Planejamento Orçamentário.
+- Melhoria: gestão de dashboards e integração com a página de Indicadores e os serviços de dados.
+- Melhoria: catálogo e lógica dos kits, montagem do B.O.M. e seleção de kits na Arquitetura de Soluções.
+- Melhoria: telas do Planejamento Orçamentário, incluindo planilhas individuais e consolidadas, contas por área, inclusão de linhas e tabela de orçamento.
+- Melhoria: regras e serviços de cálculo do orçamento, fórmulas, DRE e estrutura do plano de contas.
+- Melhoria: etapas, painel e serviços do fluxo orçamentário, com ajustes na resolução e configuração de responsáveis dos processos.
+- Melhoria: scripts de criação de tabelas de dashboards e orçamento e de limpeza dos dados orçamentários.
+- Melhoria: inclusão de arquivos de testes para fórmulas orçamentárias, importação do executado por CSV, plano de ajustes e configuração de responsáveis.
+- Novo: módulo "Implantações" — painel de gestão de implantações (carteira, cronogramas, físico x financeiro, Controladoria, PMO, equipes de campo, roteirização e assistente IA) dentro do portal, com acesso pelo módulo em Usuários e acessos e permissões pelo perfil do portal; dados no Dataverse (dgt_implregistro) e importação da base antiga. Guia em docs/implantacoes.md.
+- Novo: Controladoria avisa quando há faturamento atrasado no período, mesmo com diferença positiva.
+- Novo: e-mails do painel (relatório semanal, resumo gerencial e cronograma para o cliente) com recorrência, prévia, teste e "Enviar agora", enviados pela fila dgt_implemail e pelo fluxo do Power Automate.
+- Novo: agendamento de campo por período distribui os pontos por proximidade (uma região por dia).
+- Novo: tela cheia no módulo Implantações.
+- Melhoria: stakeholders com e-mail e telefone em campos separados.
+- Melhoria: exportações em PDF e Excel e mapa da roteirização com bibliotecas do pacote do portal (jsPDF, ExcelJS, Leaflet); importação de vistoria aceita .xlsx e .csv.
+- Novo: seleção de servidor na Seleção de kit (Arquitetura) — bloco "Servidores da central" escolhe o servidor de gravação (Digifort, Milestone) e o de analítico (IPX) pelo memorial de cálculo: premissas, compressão, câmeras com reserva, faixa recomendada, distribuição, GPU, processador e SO; o servidor, os discos, o SO e as licenças de VMS só entram no B.O.M. depois de "Adicionar à central".
+- Melhoria: as licenças do Digifort passam a ser geradas pelo seletor de servidor (base por servidor + packs pela necessidade); o campo "Servidores" saiu do bloco Projeto. Seleções antigas com Digifort pedem a seleção do servidor para concluir.
+- Novo: Milestone como VMS do projeto (licença por câmera e discos de vigilância vêm do seletor de servidor).
+- Novo: aba "Servidores" em Kits — as 43 linhas dos memoriais (Digifort, Milestone, IPX), fichas com premissas e alertas editáveis, "Baixar modelo CSV" e "Importar planilha"; linhas com memorial incompleto ficam fora do seletor.
+- Novo: aba "Wiki" em Kits — como as soluções, estruturas, controle de acesso, VMS de terceiros e servidores funcionam, sem modelos nem códigos, com links para as abas que definem os kits.
+- Melhoria: resolução (MP) no cadastro de câmeras, conferida contra a premissa dos memoriais de servidor.
+
+## [1.4.22] - 2026-11-09
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.21] - 2026-11-09
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.20] - 2026-11-08
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.19] - 2026-11-06
+
+- Novo: excluir ou desativar ambientes (Configuração do ambiente), com opção de excluir junto o processo/fluxo; reativar/excluir ambientes desativados no "+ Adicionar ambiente"; botão Remover no processo aberto. A remoção de fluxo agora é bloqueada enquanto um ambiente usa o fluxo.
+- Novo: componente nativo "Cálculo de HH" — a tela da Arquitetura ligada à Seleção de kit do registro; grava o resultado e a versão de HH aplicada. Exemplo da Arquitetura inteira como ambiente configurável (docs/exemplos/pacote-arquitetura-bom.json).
+- Novo: tipo de campo "Componente" — telas personalizadas em etapas de fluxo: nativas (Montador de B.O.M. da Arquitetura, a mesma tela de Seleção de kit) ou HTML isolado (iframe sandbox) com ponte de dados somente leitura para tabelas e colunas liberadas; o "válido" da tela libera o Concluir da etapa. Guia em docs/componentes.md.
+- Novo: "Importar JSON" e "Exportar JSON" no editor do fluxo — atualiza o processo aberto com um pacote JSON (novo rascunho do fluxo, campos novos e, se marcado, atualização dos campos existentes).
+- Novo: tipo de campo "Avaliação" (modelo Matriz Go/No-Go) — critérios com nota colorida (vermelho → verde), peso, justificativa, pontuação ponderada (0–100) ou por soma, faixas com sinaleira e "Onde perde pontos"; a faixa decide caminhos do fluxo e filtra visões dos ambientes. Configurado em Processos → Metadados (com modelo Go/No-Go pronto).
+- Melhoria: pacote JSON sem fluxo — o ambiente usa um fluxo existente ("ambiente.fluxo" ou escolha na importação); botão "Abrir o ambiente" ao final da importação e lista das siglas de área quando uma não é encontrada.
+- Novo: importar e exportar processos em JSON ("pacote de processo") — um arquivo cria o processo, os campos, o fluxo (rascunho ou publicado) e o ambiente com as telas; ideal para gerar fluxos por IA. Botões em Processos → Fluxos, no "+ Adicionar ambiente" e na Configuração do ambiente. Formato em docs/pacote-processo.md.
+- Novo: telas configuráveis nos ambientes (modelo Arquitetura de Soluções) — visão geral com cards de resumo (visões com filtro) e colunas escolhidas, tela do registro com barra de etapas do processo; tudo editável em "Personalizar telas" e gerado do fluxo quando não configurado.
+
+## [1.4.18] - 2026-11-04
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.17] - 2026-11-04
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.16] - 2026-11-04
+
+- Novo: subprocesso com condição por linha — cria documentos só para as linhas em que uma coluna Lista ou Sim/Não tem os valores escolhidos (ex.: só as não conformidades).
+- Novo: subprocesso com a opção "Aguardar todos serem concluídos" — o documento pai (ex.: auditoria) fica parado até o fluxo de todos os documentos criados (ex.: ações das não conformidades) chegar ao fim; a aba Fluxo mostra a situação de cada um, e o Administrador pode liberar sem esperar, com motivo.
+- Novo: ao criar um ambiente é possível usar um fluxo já existente de Processos → Fluxos (além de criar um novo); o fluxo do ambiente pode ser trocado em Configuração → Trocar fluxo, e a tela avisa quando o fluxo tem etapas próprias de documentos.
+- Novo: "+ Adicionar ambiente" no menu lateral (Administrador) — cria ambientes como Processo, Licitações ou Compras sem código novo; cada ambiente ganha um processo com fluxo próprio, desenhado em Processos → Fluxos.
+- Novo: ambientes liberados em Usuários e acessos exatamente como os módulos atuais (módulo liberado, liberação padrão por perfil e Administrador do módulo).
+- Novo: registros de ambiente com código automático (PREFIXO-ANO-0001) que seguem o fluxo publicado: etapas, responsáveis, campos, prazos e histórico; abas Aguardando você, Meus registros, Todos e Configuração.
+- Novo: script scripts/dataverse/criar-tabelas-ambientes.ps1 e guia docs/ambientes.md.
+- Novo: Subprocesso nos fluxos (paleta do editor) — ao passar por ele, o documento cria documentos que seguem outro fluxo, um por linha de uma tabela (ex.: ações de uma auditoria) ou um único, já com o fluxo iniciado, e os referencia num campo "Documentos referenciados" (ligação visível na aba Referências dos dois documentos).
+- Novo: coluna do tipo Usuário nas tabelas dos metadados (ex.: Responsável de cada ação, usado como autor do documento criado pelo subprocesso).
+- Novo: módulo de HH para cadastro, consulta e utilização de horas na composição de soluções e B.O.M.
+- Novo: etapa de HH no fluxo de Arquitetura de Soluções, permitindo complementar o B.O.M. com esforço estimado.
+- Novo: cadastro e gestão de fabricantes e terceiros no módulo de RH.
+- Novo: estrutura de dados no Dataverse para fabricantes, terceiros e informações de HH.
+- Novo: opção para remover fluxos de processos, com validações para evitar exclusões indevidas.
+- Melhoria: módulo de Kits ampliado com ajustes no catálogo de itens, composição de kits, visão geral e integração com a montagem do B.O.M.
+- Melhoria: seleção de kits na Arquitetura de Soluções aprimorada para utilizar a estrutura atualizada de itens e composição.
+- Melhoria: acompanhamento de licitações aprimorado, incluindo ajustes nos pareceres, análise por IA e informações da oportunidade.
+- Melhoria: integração das licitações com pastas e documentos no SharePoint.
+- Melhoria: pré-visualização de editais e relatório de licitações atualizados para apresentar as informações de forma mais completa.
+- Melhoria: serviços de consulta ao PNCP e acompanhamento de licitações revisados para melhorar o tratamento dos dados retornados.
+- Melhoria: gestão de certificados e informações de RH atualizada para suportar os novos cadastros relacionados a fabricantes e terceiros.
+- Melhoria: permissões e rotas do Portal DGT atualizadas para contemplar os novos módulos e funcionalidades.
+- Novo: menu ⋮ nos cartões de Fluxos (Administrador) com "Remover fluxo": com documentos vinculados, oferece a transferência para outro fluxo; sem documentos, remove o fluxo e todos os dados ligados a ele (versões, metadados, pendências, histórico do fluxo e exceções); se revisões já passaram pelo fluxo, ele é arquivado para preservar o histórico.
+
+## [1.4.15] - 2026-10-28
+
+- Novo: metadado do tipo Usuário nos processos — o campo busca os usuários ativos da plataforma por nome ou e-mail e grava nome e e-mail junto, para o histórico continuar legível.
+- Novo: responsável de etapa "Usuário de um metadado" — a etapa vai para a pessoa escolhida num campo do tipo Usuário (ex.: "Responsável pelo processo"); se o campo estiver vazio, vai para o autor da revisão.
+- Novo: metadados "Documento referenciado" (um) e "Documentos referenciados (vários)", com filtro por área e por processo, busca por código ou título e link para abrir o documento.
+- Novo: aba Referências no documento, com o que ele referencia, quem o referencia (ex.: o filho mostra o pai) e os treinamentos vinculados.
+- Novo: referências entre um documento e um treinamento criam automaticamente o vínculo treinamento × documento, usado no retreinamento por revisão documental (nada é apagado ao remover a referência).
+- Novo: "Documentos de referência" no cadastro do treinamento, para vincular POPs, ITs e políticas ao curso sem depender de metadados do fluxo.
+- Novo: lista de Documentos agrupada por Área › Processo (padrão ligado), com grupos recolhíveis, "Expandir tudo" e opção para desligar o agrupamento (a escolha fica guardada no navegador).
+- Novo: "Minhas pendências" na Visão geral de Treinamentos, reunindo etapas do fluxo de treinamentos, documentos aguardando o usuário e treinamentos para realizar.
+- Novo: resultado da avaliação com os botões "Sair" e "Ir para o próximo" (abre o próximo treinamento liberado); se reprovado, "Revisar módulos".
+- Novo: "Concluir e ir para o próximo" no módulo, que grava a conclusão e abre o módulo seguinte; na revisão de módulo concluído, "Próximo módulo".
+- Melhoria: status dos documentos com cores e ícones (✓ Vigente, ✎ Elaboração, ⟳ Revisão, ⏳ Aprovação, ⊘ Cancelada, ✕ Obsoleta); a etapa que aguarda o usuário ganha destaque "SUA VEZ".
+- Melhoria: Visão geral de Treinamentos mais limpa — "Continuar treinamento", "Meus treinamentos", "Próximos treinamentos" e "Trilhas em andamento" só aparecem quando têm conteúdo; sem pendências, uma linha "Tudo em dia".
+- Correção: documento publicado ou revisão com fluxo concluído/cancelado não aparece mais como pendência do responsável (antes voltava para a 1ª etapa do fluxo); avisos de etapas em revisões encerradas não são mais exibidos.
+- Novo: Arquitetura de Soluções — cadastro de Kits (B.O.M.). Requer scripts/dataverse/criar-tabelas-kits.ps1.
+
+## [1.4.14] - 2026-10-26
+
+- Novo: "⟳ Atualizar todos os módulos por JSON" na etapa de edição dos módulos — um JSON com todos os módulos atualiza cada módulo existente correspondente (sugestão pelo título e, depois, pela posição, ajustável na prévia em "Atualiza") e cria os que não têm correspondência; módulos fora do JSON ficam como estão.
+
+- Correção: revisão que ficou parada numa etapa de publicação (status "Vigente") depois de troca de processo ou de versão do fluxo agora mostra "Publicação pendente" com o botão "Concluir publicação", que publica a revisão (documento vigente, anterior obsoleta, retreinamento conforme o fluxo). A troca de fluxo também avisa quando a revisão cai numa etapa de publicação.
+
+- Novo: na etapa de edição dos módulos (assistente do treinamento), "Atualizar por JSON" no menu do módulo substitui título, descrição, duração, obrigatoriedade e conteúdos pelos do JSON (com prévia e imagens), mantendo ordem, situação e vínculos do módulo. Conteúdos com respostas de colaboradores são desativados, não apagados.
+- Melhoria: "Excluir módulo" passa a aparecer só na etapa de edição dos módulos, para quem está editando o treinamento (não só o Administrador); continua bloqueado para módulos já iniciados ou com respostas.
+
+- Novo: conteúdos do módulo podem ser reposicionados arrastando e soltando (linha ciano indica onde o conteúdo vai cair); os botões ↑ ↓ continuam.
+- Correção: reposicionar conteúdos funciona mesmo com ordens repetidas ou com buracos — a ordem é renumerada (1, 2, 3…) a cada movimento, e o número exibido (#) é a posição real.
+
+- Novo: Arquitetura de Soluções — Modalidade com Dispensa de Licitação, Inexigibilidade e MIP; "Proposta direta" passa a "Proposta Técnica". A modalidade depende do canal: Público com as modalidades de proposta, Privado só com Proposta Comercial (preenchida automaticamente). Requer scripts/dataverse/atualizar-opcoes-bom.ps1.
+- Novo: Tipo de projeto com "Locação 48 meses".
+- Novo: anexos na Matriz Go/No-Go (SharePoint, biblioteca "Arquitetura de Soluções", pasta Go-No-Go/<B.O.M.>).
+- Melhoria: removidos os campos "Tipo de entrega" e "Pontos estimados" dos Dados da demanda (os valores já gravados são mantidos); a Modalidade passa a ser obrigatória para concluir a etapa.
+
+- Novo: regra de exibição dos campos no editor de fluxo — "Obrigatório quando…" e "Opcional quando…", com "Mostrar quando [campo] for [valor]" editável (ex.: a justificativa da dispensa só aparece quando "Esta revisão exige treinamento?" = Não).
+
+- Novo: em Documentos recentes, a coluna "Etapa atual" mostra em que atividade do fluxo cada documento está (destacada quando aguarda você, com o prazo ao passar o mouse).
+- Correção: a coluna Responsável passa a mostrar o responsável pela etapa atual do fluxo (como na tela do documento); o responsável do cadastro aparece ao passar o mouse. A coluna Revisão mostra a revisão em andamento (ex.: Rev.00 após a renumeração).
+- Melhoria: removida a coluna lateral da tela de Documentos ("Meus documentos favoritos" e "Links úteis"); a lista passa a ocupar a largura toda.
+
+- Novo: o Catálogo de treinamentos passa a aparecer para o Gestor, mostrando só os treinamentos das áreas dele (áreas de gestão; sem elas, as áreas em que está vinculado). O topo indica as áreas exibidas. O Gestor também pode usar "Testar como colaborador".
+
+## [1.4.13] - 2026-10-23
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.12] - 2026-10-22
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.11] - 2026-10-21
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.10] - 2026-10-21
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.9] - 2026-10-21
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.8] - 2026-10-21
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.7] - 2026-10-19
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.6] - 2026-10-19
+
 - Novo: Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir.
 - Novo: visão "Todas as planilhas" para o Administrador, com consolidado por grupo, consulta de cada planilha, reabertura e exportação CSV no layout da planilha de orçamento.
 - Novo: aprovação das planilhas do Planejamento orçamentário pelo fluxo CONT-001, com a tela Aprovações e o painel do fluxo na planilha.
