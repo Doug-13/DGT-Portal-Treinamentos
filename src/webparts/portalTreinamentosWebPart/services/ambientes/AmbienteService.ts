@@ -227,6 +227,13 @@ export const ambienteLiberado = (
   moduloLiberado(contexto.perfil, contexto.modulosPermitidos, chaveModuloAmbiente(ambiente.chave));
 
 // Administrador global ou "Administrador do módulo" deste ambiente.
+// Administrador do Sistema (perfil Administrador do portal): único que
+// cancela registros e edita como administrador.
+export const ehAdministradorSistema = (
+  contexto?: IContextoAcesso
+): boolean =>
+  !!contexto && contexto.perfil === 'Administrador';
+
 export const administraAmbiente = (
   contexto: IContextoAcesso | undefined,
   ambiente: IAmbiente

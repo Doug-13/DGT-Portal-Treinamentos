@@ -31,6 +31,7 @@ import {
 } from '../processos/MetadadosProcessoService';
 
 import {
+  editarCamposAdministrador,
   assinaturaPendente,
   continuarAposAssinaturaNaInstancia,
   continuarAposScriptNaInstancia,
@@ -583,6 +584,30 @@ export class FluxoService {
     }
 
     return resultado;
+  }
+
+  // Edição administrativa dos campos da etapa atual (sem mudar a etapa).
+  // A permissão (Administrador do Sistema) é conferida por quem chama e,
+  // no servidor, pelo plugin ValidarAcaoAdministrativaRegistroPlugin.
+  public async editarCamposAdministrador(
+    revisaoId: string,
+    dados: { valores: Record<string, string>; comentario: string; ator: IFluxoAtor },
+    contexto?: IContextoExecucaoFluxo
+  ): Promise<IResultadoExecucao> {
+    const instancia = await this.repositorio.obter(revisaoId);
+    if (!instancia) {
+      return { ok: false, erros: ['Fluxo não encontrado.'], acoesSistema: [] };
+    }
+    const definicao = await this.definicaoDaInstancia(instancia);
+    if (!definicao) {
+      return { ok: false, erros: ['Versão do fluxo não encontrada.'], acoesSistema: [] };
+    }
+    const resultado = editarCamposAdministrador(definicao, instancia, dados);
+    if (!resultado.ok || !resultado.instancia) {
+      return resultado;
+    }
+    const avisos = await this.repositorio.salvar(resultado.instancia, this.contextoGravacao(definicao, resultado.instancia, contexto));
+    return { ...resultado, avisos };
   }
 
   // Libera um fluxo parado em "Assinatura digital" com a situação final

@@ -60,7 +60,7 @@ import {
 } from '../fluxo/ResolvedorResponsaveis';
 
 import {
-  administraAmbiente
+  ehAdministradorSistema
 } from './AmbienteService';
 
 import {
@@ -518,6 +518,42 @@ export class AmbienteFluxoService {
     return { ok: true, erros: [], avisos };
   }
 
+  // Edição administrativa: salva os campos da etapa atual sem mudar a
+  // etapa nem a situação. Só o Administrador do Sistema (conferido
+  // também no servidor, pelo plugin).
+  public async editarComoAdministrador(
+    ambiente: IAmbiente,
+    registro: IAmbienteRegistro,
+    contexto: IContextoAcesso,
+    valores: Record<string, string>,
+    comentario: string
+  ): Promise<IResultadoAcaoAmbiente> {
+    if (!ehAdministradorSistema(contexto)) {
+      return { ok: false, erros: ['Somente o Administrador do Sistema pode editar como administrador.'], avisos: [] };
+    }
+    if (registro.situacao !== 'emAndamento') {
+      return { ok: false, erros: ['Somente registros em andamento podem ser editados.'], avisos: [] };
+    }
+    let resultado;
+    try {
+      resultado = await this.fluxo.editarCamposAdministrador(
+        registro.id,
+        { valores, comentario, ator: { id: guid(contexto.usuarioId), nome: contexto.nome, papeisTeste: [] } },
+        this.contextoExecucao(ambiente, registro, { id: guid(contexto.usuarioId), nome: contexto.nome })
+      );
+    } catch (erro) {
+      return { ok: false, erros: [mensagem(erro)], avisos: [] };
+    }
+    if (!resultado.ok) {
+      return { ok: false, erros: resultado.erros, avisos: [] };
+    }
+    const depois = await this.carregar(registro);
+    if (depois) {
+      await this.sincronizar(registro, depois);
+    }
+    return { ok: true, erros: [], avisos: resultado.avisos || [] };
+  }
+
   // Libera o fluxo parado em "Assinatura digital" (situação final do
   // pedido ou liberação manual do Administrador).
   public async concluirAssinatura(
@@ -559,8 +595,9 @@ export class AmbienteFluxoService {
     contexto: IContextoAcesso
   ): Promise<IResultadoAcaoAmbiente> {
 
-    if (!administraAmbiente(contexto, ambiente)) {
-      return { ok: false, erros: ['Somente o Administrador (ou o administrador deste ambiente) pode cancelar registros.'], avisos: [] };
+    // Só o Administrador do Sistema (conferido também no servidor).
+    if (!ehAdministradorSistema(contexto)) {
+      return { ok: false, erros: ['Somente o Administrador do Sistema pode cancelar registros.'], avisos: [] };
     }
 
     if (!(motivo || '').trim()) {

@@ -252,3 +252,37 @@ do SharePoint; vazio = **Documentos** do site do portal). Os arquivos ficam em
   (o *Ver fluxo* continua no painel). Ambientes antigos, sem a opção salva, continuam mostrando.
   Coluna nova: `dgt_ambiente.dgt_mostrarsequencia` (rodar `criar-tabelas-ambientes.ps1`).
 
+---
+
+## Menu ⋮ do Administrador do Sistema
+
+No canto superior direito do registro, **só para o Administrador do Sistema** (perfil *Administrador*
+em `dgt_usuario.dgt_perfilacesso`):
+
+- **Editar como administrador** — abre os campos da **etapa atual** para edição, mesmo sem ser o
+  responsável. *Salvar campos* grava sem concluir a etapa: o registro **continua na mesma etapa e
+  situação**. Valem as validações de formato; campo obrigatório não pode ser apagado; *Somente
+  leitura* (e herdados bloqueados) continuam bloqueados. Fica no histórico como *Edição
+  administrativa*, com o motivo e os campos alterados.
+- **Cancelar registro** — o mesmo cancelamento de antes (motivo obrigatório).
+
+O quadro **Campos preenchidos** saiu do rodapé: a etapa mostra só os campos configurados nela
+(*Não exibir*, *Somente leitura*, *Obrigatório*). Os valores continuam gravados.
+
+### Validação no servidor (plugin)
+
+`server/DGT.Treinamentos.Plugins/ValidarAcaoAdministrativaRegistroPlugin.cs` recusa, no Dataverse,
+o cancelamento e a edição administrativa feitos por quem não é Administrador do Sistema (mesma regra
+do portal). Registro no **Plugin Registration Tool**:
+
+| Campo | Valor |
+|---|---|
+| Mensagem | Update |
+| Entidade | dgt_ambienteregistro |
+| Estágio | PreOperation (20), síncrono |
+| Atributos de filtragem | dgt_situacao, dgt_fluxoestado |
+| Pre Image | nome **PreImage**, atributos dgt_situacao e dgt_fluxoestado |
+
+Depois de compilar o projeto (`dotnet build -c Release` em `server/DGT.Treinamentos.Plugins`), atualize
+o assembly no Plugin Registration Tool e registre o passo acima.
+

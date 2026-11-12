@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Melhoria: registro de ambiente — saiu o quadro "Campos preenchidos" do rodapé (a etapa mostra só os campos configurados); "Cancelar registro" virou o menu ⋮ do Administrador do Sistema, com "Editar como administrador" (salva os campos da etapa atual sem mudar etapa nem situação, com validações e registro no histórico). Cancelamento restrito ao Administrador do Sistema. Plugin ValidarAcaoAdministrativaRegistroPlugin valida as duas ações no servidor.
 - Melhoria: mapeamento pai → filho do subprocesso — compatibilidade por par (bloqueia publicação se incompatível), "somente leitura no filho", "Mapear automaticamente" e "Criar no filho" (mesma chave). Valores ajustados ao tipo do campo do filho na criação, com registro do que não foi aproveitado.
 - Correção: valores herdados do documento pai não são mais apagados quando o fluxo filho tem uma devolução e o campo aparece editável numa etapa ainda não percorrida.
 - Melhoria: tela de execução da atividade — painel esquerdo com "Dados do documento", "Histórico" (eventos do registro) e "Ver fluxo" (sempre recolhido ao abrir); sequência de atividades compacta, com cores por situação, destaque da etapa atual e rolagem horizontal; nova opção do ambiente "Mostrar sequência de atividades no topo" (com Ocultar/Mostrar na tela; ambientes antigos continuam mostrando).

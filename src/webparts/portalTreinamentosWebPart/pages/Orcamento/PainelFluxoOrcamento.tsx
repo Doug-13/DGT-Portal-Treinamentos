@@ -90,6 +90,12 @@ export interface IPainelFluxoOrcamentoProps {
   // Ambientes em duas colunas: só instruções, campos, comentário e
   // botões (sem cabeçalho, desenho nem histórico).
   modoCompacto?: boolean;
+  // Edição administrativa (Administrador do Sistema): campos da etapa
+  // editáveis mesmo sem ser o responsável; "Salvar campos" no lugar das
+  // ações (a etapa não muda).
+  modoEdicaoAdmin?: boolean;
+  onSalvarAdmin?: (valores: Record<string, string>, comentario: string) => Promise<string[]>;
+  onCancelarEdicaoAdmin?: () => void;
   // Campos do tipo Componente (dados do Dataverse).
   dataverseService?: DataverseService;
 }
@@ -159,7 +165,9 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
     const valor = valoresConsolidados[item.chave] || '';
     // Herdado do documento pai como somente leitura (subprocesso).
     const somenteLeitura =
-      item.somenteLeitura || !props.podeAgir || (instancia.camposSomenteLeitura || []).indexOf(item.chave) >= 0;
+      item.somenteLeitura ||
+      (!props.podeAgir && !props.modoEdicaoAdmin) ||
+      (instancia.camposSomenteLeitura || []).indexOf(item.chave) >= 0;
     const alterar = (novo: string): void => setValores(atual => ({ ...atual, [item.chave]: novo }));
 
     if (item.tipo === 'componente') {
@@ -354,7 +362,52 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
             </div>
           )}
 
-          {props.podeAgir && props.onExecutar ? (
+          {props.modoEdicaoAdmin && props.onSalvarAdmin ? (
+            <div data-edicao-admin="sim">
+              <div style={{ fontSize: '12.5px', background: '#FFFAEB', color: '#B54708', borderRadius: '6px', padding: '8px 10px', marginBottom: '10px' }}>
+                <strong>Edição administrativa.</strong> Os campos desta etapa são salvos sem concluir a etapa: o registro
+                continua em “{elemento.nome}”. A edição fica no histórico.
+              </div>
+              <label style={{ display: 'block', marginBottom: '10px' }}>
+                <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: COR.azul, marginBottom: '4px' }}>Motivo da edição (opcional)</span>
+                <textarea
+                  rows={2}
+                  value={comentario}
+                  maxLength={4000}
+                  onChange={evento => setComentario(evento.target.value)}
+                  placeholder="Ex.: correção do auditor informado"
+                  style={{ ...campo, resize: 'vertical' }}
+                />
+              </label>
+              {erros.length > 0 && <CaixaMensagem tipo="erro" texto={erros.join('\n')} />}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                <button
+                  type="button"
+                  disabled={props.processando}
+                  onClick={() => {
+                    if (!props.onSalvarAdmin) {
+                      return;
+                    }
+                    setErros([]);
+                    props.onSalvarAdmin(valores, comentario.trim())
+                      .then(resultado => {
+                        setErros(resultado);
+                        if (resultado.length === 0) {
+                          setComentario('');
+                        }
+                      })
+                      .catch(falha => setErros([falha instanceof Error ? falha.message : String(falha)]));
+                  }}
+                  style={botao('principal', props.processando)}
+                >
+                  {props.processando ? 'Salvando...' : 'Salvar campos'}
+                </button>
+                <button type="button" disabled={props.processando} onClick={props.onCancelarEdicaoAdmin} style={botao('secundario', props.processando)}>
+                  Cancelar edição
+                </button>
+              </div>
+            </div>
+          ) : props.podeAgir && props.onExecutar ? (
             <>
               <label style={{ display: 'block', marginBottom: '10px' }}>
                 <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: COR.azul, marginBottom: '4px' }}>
