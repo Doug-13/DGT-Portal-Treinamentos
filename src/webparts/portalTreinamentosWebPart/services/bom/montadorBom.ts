@@ -1,10 +1,4 @@
 import {
-  IAnaliseServidor,
-  IServidorSelecao,
-  analisarServidor
-} from './servidores';
-
-import {
   CAMERAS_BASE_DIGIFORT,
   CAMERAS_OCR,
   CAMERAS_VIDEO,
@@ -33,6 +27,19 @@ import {
   idSwitch
 } from './catalogoKits';
 
+import {
+  FinalidadeServidor
+} from './catalogoServidores';
+
+import {
+  FINALIDADES,
+  IAvaliacaoServidor,
+  IContagemCameras,
+  ISelecaoServidor,
+  TITULO_FINALIDADE,
+  avaliarServidor
+} from './seletorServidor';
+
 // ============================================================
 // MONTADOR DE B.O.M. — REGRAS
 //
@@ -55,9 +62,6 @@ import {
 // kit antes de gravar. Sem isto, vale COMPOSICAO_KITS.
 export interface IOpcoesMontagem {
   composicoes?: Record<string, IComponenteKit[]>;
-  // Meses do contrato (tipo de projeto "Locação N meses"): define o
-  // Care Plus do Milestone.
-  prazoContratoMeses?: number;
 }
 
 export type TipoPonto =
@@ -129,14 +133,16 @@ export interface IPontoKit {
   catracasPne: number;
 }
 
-// Safe City = nuvem (sem servidor). Digifort e Milestone = VMS
-// on-premise, com servidor escolhido no memorial (servidores.ts).
+// Safe City = nuvem (sem servidor). Digifort e Milestone = on-premise:
+// servidor e licenças vêm do seletor de servidor.
 export type VmsBom = 'safeCity' | 'digifort' | 'milestone';
 
 export interface ISoftwaresKit {
   vms: VmsBom;
   smartDetect: boolean;
   faceDetect: boolean;
+  // Obsoleto: o número de servidores agora sai do seletor de servidor.
+  // Mantido para ler seleções antigas.
   digifortServidores: number;
   ipx: boolean;
   ipxPacotes: number;
@@ -149,8 +155,9 @@ export interface ISelecaoKit {
   versao: 1;
   pontos: IPontoKit[];
   softwares: ISoftwaresKit;
-  // Servidor da central (item do projeto inteiro).
-  servidor?: IServidorSelecao;
+  // Seleção de servidor da central (gravação e analítico), com as
+  // respostas para reabrir o rascunho onde parou.
+  servidores?: Partial<Record<FinalidadeServidor, ISelecaoServidor>>;
   atualizadoEm?: string;
   atualizadoPor?: string;
 }
@@ -166,8 +173,7 @@ export interface IItemBom {
 }
 
 export interface IAlertaBom {
-  // info = informação (azul), não impede nada.
-  nivel: 'erro' | 'aviso' | 'info';
+  nivel: 'erro' | 'aviso';
   origem: string;
   mensagem: string;
 }
@@ -181,9 +187,7 @@ export interface IResultadoBom {
     camerasVideo: number;
     camerasOcr: number;
     leitoras: number;
-    porteiros: number;
   };
-  servidor: IAnaliseServidor;
 }
 
 // ------------------------------------------------------------
@@ -637,6 +641,65 @@ export const normalizarSelecao = (selecao: ISelecaoKit): ISelecaoKit => {
   };
 };
 
+// ------------------------------------------------------------
+// Servidor da central: câmeras dos pontos e avaliação do seletor
+// ------------------------------------------------------------
+
+// V = câmeras de vídeo × pontos iguais; L = câmeras LPR × pontos
+// iguais; porteiros = itens do porteiro (comunicação bidirecional)
+// que os kits colocam nos pontos.
+export const contarCamerasServidor = (selecaoEntrada: ISelecaoKit): IContagemCameras => {
+  const selecao = normalizarSelecao(selecaoEntrada);
+  const modelos: Record<string, { modelo: string; mp?: number; quantidade: number }> = {};
+  let video = 0;
+  let lpr = 0;
+  let porteiros = 0;
+
+  selecao.pontos.filter(p => ehBridgefy(p.tipo)).forEach(p => {
+    const qtd = inteiro(p.quantidade, 1);
+    const nV = inteiro(p.camerasVideo);
+    const nO = (parametrosDoPonto(p) || ESTRUTURAS[p.tipo as EstruturaBridgefy]).aceitaOcr ? inteiro(p.camerasOcr) : 0;
+    video += nV * qtd;
+    lpr += nO * qtd;
+    if (nV > 0) {
+      const cam = cameraVideo(p.modeloVideo);
+      const atual = modelos[cam.modelo] || { modelo: cam.modelo, mp: cam.resolucaoMp, quantidade: 0 };
+      atual.quantidade += nV * qtd;
+      modelos[cam.modelo] = atual;
+    }
+    const contexto: IContextoComposicao = {
+      camerasVideo: nV,
+      camerasOcr: nO,
+      comunicacaoBidirecional: p.comunicacaoBidirecional,
+      portaVidro: p.portaVidro,
+      usaWAccess: p.usaWAccess
+    };
+    composicaoDoKit(chaveKitDoPonto(p), undefined, p.tipo)
+      .filter(c => c.chaveItem === 'porteiroHikvision' && condicaoAtendida(c, contexto))
+      .forEach(c => { porteiros += (Number(c.quantidade) || 0) * fatorRegra(c, contexto) * qtd; });
+  });
+
+  return { video, lpr, porteiros, modelosVideo: Object.keys(modelos).map(k => modelos[k]) };
+};
+
+export const avaliarServidorDoProjeto = (
+  selecaoEntrada: ISelecaoKit,
+  finalidade: FinalidadeServidor
+): IAvaliacaoServidor => {
+  const selecao = normalizarSelecao(selecaoEntrada);
+  return avaliarServidor({
+    finalidade,
+    vms: selecao.softwares.vms,
+    ipx: selecao.softwares.ipx,
+    estado: selecao.servidores ? selecao.servidores[finalidade] : undefined,
+    contagem: contarCamerasServidor(selecao)
+  });
+};
+
+// Licença do Digifort pelo código do fabricante (DGFEN…).
+const chaveLicencaDgfen = (codigo: string): string | undefined =>
+  Object.keys(ITENS).filter(chave => chave.indexOf('digifort') === 0 && ITENS[chave].descricao.indexOf(codigo) >= 0)[0];
+
 // Nome do kit cadastrado (base) + adicionais, para exibição.
 export const kitsAplicados = (ponto: IPontoKit): string[] => {
   if (!ehBridgefy(ponto.tipo)) {
@@ -728,61 +791,52 @@ export const montarBom = (
     }
   });
 
-  // ---- porteiros (consomem canal de VMS como uma câmera)
-  const codigoPorteiro = (ITENS.porteiroHikvision || { codigo: '5500010274' }).codigo;
-  const porteiros = porPonto.reduce((soma, grupo) =>
-    soma + grupo.itens.filter(i => i.codigo === codigoPorteiro).reduce((t, i) => t + i.quantidade, 0), 0);
-
-  // ---- servidor da central (servidores.ts)
-  const usaWAccess = selecao.pontos.some(p => !ehBridgefy(p.tipo) && p.usaWAccess);
-  const servidor = analisarServidor(selecao.servidor, {
-    vms: softwares.vms,
-    ipx: softwares.ipx,
-    usaWAccess,
-    v: camerasVideo,
-    p: porteiros,
-    l: camerasOcr,
-    prazoContratoMeses: opcoes && opcoes.prazoContratoMeses
-  });
-
-  servidor.alertas.forEach(x => alertas.push({
-    nivel: x.nivel === 'bloqueio' ? 'erro' : x.nivel === 'aviso' ? 'aviso' : 'info',
-    origem: 'Servidor da central',
-    mensagem: x.texto
-  }));
-
-  if (servidor.local === 'onPremise' && servidor.baseGravacao > 0 && !servidor.definido && !(selecao.servidor && selecao.servidor.orcamentoManual)) {
-    alertas.push({ nivel: 'aviso', origem: 'Servidor da central', mensagem: 'Servidor ainda não definido: escolha a faixa no painel "Servidor da central" (ou use o orçamento manual).' });
-  }
-
   // ---- softwares do projeto
   const projeto = new Lista('Softwares do projeto');
-  const central = new Lista('Servidor da central');
 
-  servidor.itens.forEach(item => {
-    if (item.chave) {
-      projeto.adicionar(item.chave, item.quantidade);
-    } else {
-      central.livre(item.codigo, item.descricao, /^Servidor/.test(item.descricao) ? 'Equipamento' : /Care Plus/.test(item.descricao) ? 'Licença' : 'Infraestrutura', item.quantidade);
+  // ---- servidores da central (gravação e analítico): seletor de
+  // servidor. As licenças de VMS (Digifort, Milestone) vêm daqui —
+  // não há mais cálculo pela contagem de câmeras (evita licença em dobro).
+  const central = new Lista('Servidores da central');
+  FINALIDADES.forEach(finalidade => {
+    const av = avaliarServidorDoProjeto(selecao, finalidade);
+    const origem = TITULO_FINALIDADE[finalidade];
+    if (av.status === 'naoSeAplica' || av.status === 'nuvem' || av.status === 'semCameras') {
+      return;
     }
+    if (av.status === 'concluido' || av.status === 'revisar') {
+      av.itens.forEach(item => {
+        if (item.chaveItem && item.chaveItem.indexOf('dgfen:') === 0) {
+          const chave = chaveLicencaDgfen(item.descricao);
+          if (chave) {
+            central.adicionar(chave, item.quantidade);
+          } else {
+            central.livre('', `Digifort Enterprise — ${item.descricao} (código a levantar)`, 'Licença', item.quantidade);
+          }
+        } else if (item.chaveItem) {
+          central.adicionar(item.chaveItem, item.quantidade);
+        } else {
+          central.livre(item.codigo, item.descricao, item.categoria, item.quantidade);
+        }
+      });
+      av.alertas
+        .filter(a => a.nivel !== 'info')
+        .forEach(a => alertas.push({ nivel: a.nivel === 'bloqueio' ? 'erro' : 'aviso', origem, mensagem: a.texto }));
+      if (av.status === 'revisar') {
+        alertas.push({ nivel: 'aviso', origem, mensagem: av.mensagem });
+      }
+      return;
+    }
+    alertas.push({
+      nivel: 'erro',
+      origem,
+      mensagem: av.status === 'pendente'
+        ? `Seleção pendente: ${(av.alertas.filter(a => a.nivel === 'bloqueio')[0] || { texto: av.mensagem }).texto}`
+        : finalidade === 'gravacao'
+          ? 'Conclua a seleção do servidor: é ela que gera o servidor e as licenças do VMS.'
+          : 'Conclua a seleção do servidor de analítico.'
+    });
   });
-
-  // Digifort: 1 licença base por servidor de gravação (do seletor) e
-  // packs pela necessidade real (câmeras de vídeo + porteiros).
-  const canaisDigifort = camerasVideo + porteiros;
-  if (softwares.vms === 'digifort' && canaisDigifort > 0) {
-    const doSeletor = servidor.conjuntos
-      .filter(c => c.papel !== 'analitico' && c.linha && !c.pendente)
-      .reduce((t, c) => t + (c.linha ? c.linha.qtdServidores : 0), 0);
-    const servidoresDigifort =
-      selecao.servidor && selecao.servidor.orcamentoManual ? servidor.servidoresTotal
-        : doSeletor > 0 ? doSeletor
-          : inteiro(softwares.digifortServidores);
-    if (!(servidoresDigifort > 0)) {
-      alertas.push({ nivel: 'erro', origem: 'Digifort', mensagem: 'Informe o número de servidores: cada servidor exige a própria base de 8 câmeras.' });
-    }
-    packsDigifort(canaisDigifort, servidoresDigifort).forEach(p => projeto.adicionar(p.chave, p.quantidade));
-  }
 
   if (softwares.ipx) {
     if (softwares.vms !== 'digifort') {
@@ -822,7 +876,7 @@ export const montarBom = (
   }
 
   if (central.itens.length > 0) {
-    porPonto.push({ ponto: { ...novoPonto('torre', 0), id: 'servidor', nome: 'Servidor da central', quantidade: 1 }, itens: central.itens });
+    porPonto.push({ ponto: { ...novoPonto('torre', 0), id: 'servidores', nome: 'Servidores da central', quantidade: 1 }, itens: central.itens });
   }
 
   // ---- consolidação (mesmo código + descrição)
@@ -855,8 +909,7 @@ export const montarBom = (
     itens: consolidado,
     porPonto,
     alertas,
-    totais: { pontos, camerasVideo, camerasOcr, leitoras, porteiros },
-    servidor
+    totais: { pontos, camerasVideo, camerasOcr, leitoras }
   };
 };
 

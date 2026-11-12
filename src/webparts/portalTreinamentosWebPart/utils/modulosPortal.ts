@@ -47,6 +47,8 @@ export type ChaveModuloPortal =
   | 'rh'
   | 'kits'
   | 'hh'
+  | 'fornecedores'
+  | 'implantacoes'
   | 'crm';
 
 export interface IModuloPortal {
@@ -71,6 +73,8 @@ export const MODULOS_PORTAL: IModuloPortal[] = [
   { chave: 'orcamento', nome: 'Planejamento orçamentário', descricao: 'Planilha de orçamento anual. Cada um vê só a sua; o Administrador vê todas. Padrão para Gestor; demais só com liberação.', padrao: false, padraoPerfis: ['Gestor', 'Administrador'] },
   { chave: 'kits', nome: 'Kits (catálogo do B.O.M.)', descricao: 'Equipamentos homologados, composição dos kits e regras do montador de B.O.M. Liberar para Arquitetura (consulta). Alterar: Administrador do módulo.', padrao: false, padraoPerfis: ['Administrador'] },
   { chave: 'hh', nome: 'Cálculo de HH', descricao: 'Homem-hora por área (Implantação, Suporte...) com as fórmulas das planilhas de HH. A versão vigente alimenta o B.O.M. Alterar: Administrador do módulo.', padrao: false, padraoPerfis: ['Administrador'] },
+  { chave: 'fornecedores', nome: 'Fornecedores', descricao: 'Cadastro, documentos com validade e consultas (Receita, CEIS, CNEP) dos fornecedores. Liberar para Suprimentos. Tipos de documento e homologação: Administrador do módulo.', padrao: false, padraoPerfis: ['Administrador'] },
+  { chave: 'implantacoes', nome: 'Implantações', descricao: 'Painel de gestão de implantações: carteira, cronogramas, físico x financeiro, PMO, equipes de campo e assistente IA. O perfil no portal define o que cada um faz (Colaborador: consulta; Editor e Gestor: operam). Relatórios por e-mail e importação: Administrador do módulo.', padrao: false, padraoPerfis: ['Administrador'] },
   { chave: 'rh', nome: 'RH e Pessoas', descricao: 'Certificados e validades de todos os colaboradores. Liberar só para o RH.', padrao: false, padraoPerfis: ['Administrador'] },
   { chave: 'crm', nome: 'CRM', descricao: 'Contas, contatos, leads e oportunidades do Dynamics 365 (ambiente DGT - CRM - POC). Os registros visíveis dependem da Security Role da pessoa no ambiente do CRM.', padrao: false, padraoPerfis: ['Administrador'] }
 ];
@@ -99,6 +103,14 @@ export const moduloDaPagina = (
 
   if (pagina === 'calculoHH') {
     return 'hh';
+  }
+
+  if (pagina === 'fornecedores') {
+    return 'fornecedores';
+  }
+
+  if (pagina === 'implantacoes') {
+    return 'implantacoes';
   }
 
   if (pagina === 'crm') {

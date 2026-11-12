@@ -21,6 +21,10 @@
     "@microsoft/sp-property-pane": "1.22.2",
     "@microsoft/sp-webpart-base": "1.22.2",
     "bpmn-js": "18.13.1",
+    "exceljs": "4.4.0",
+    "jspdf": "4.2.1",
+    "jspdf-autotable": "5.0.9",
+    "leaflet": "1.9.4",
     "react": "17.0.1",
     "react-dom": "17.0.1",
     "tslib": "2.3.1"
@@ -33,6 +37,7 @@
     "@rushstack/eslint-config": "4.6.4",
     "@rushstack/heft": "^1.2.7",
     "@types/heft-jest": "^1.0.6",
+    "@types/leaflet": "1.9.12",
     "@types/react": "17.0.45",
     "@types/react-dom": "17.0.17",
     "@types/webpack-env": "~1.15.2",
