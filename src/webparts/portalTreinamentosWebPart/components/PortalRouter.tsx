@@ -265,6 +265,9 @@ import KitsPage from
 import FornecedoresPage from
   '../pages/Fornecedores/FornecedoresPage';
 
+import ImplantacoesPage from
+  '../pages/Implantacoes/ImplantacoesPage';
+
 import HHPage from
   '../pages/HH/HHPage';
 
@@ -3508,6 +3511,19 @@ const PortalRouter:
             contexto={props.contextoAcesso}
             spHttpClient={props.spHttpClient}
             siteUrl={props.siteUrl}
+          />
+        );
+
+      // ========================================================
+      // IMPLANTAÇÕES (painel de gestão de implantações)
+      // ========================================================
+
+      case 'implantacoes':
+
+        return (
+          <ImplantacoesPage
+            dataverseService={props.dataverseService}
+            contexto={props.contextoAcesso}
           />
         );
 

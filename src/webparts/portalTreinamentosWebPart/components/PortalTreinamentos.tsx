@@ -4012,6 +4012,24 @@ const gestaoAreas =
           true
       },
 
+      // Implantações — visível só com o módulo "implantacoes" liberado.
+      {
+        label:
+          'Implantações',
+
+        icon:
+          'building' as IconeChave,
+
+        pagina:
+          'implantacoes',
+
+        modulo:
+          'outro',
+
+        novo:
+          true
+      },
+
       // Cálculo de HH — visível só com o módulo "hh" liberado.
       {
         label:

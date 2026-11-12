@@ -43,6 +43,9 @@ export type Pagina =
   | 'calculoHH'
   // Fornecedores: homologação e gestão (Suprimentos)
   | 'fornecedores'
+  // Implantações: painel de gestão de implantações (carteira,
+  // cronogramas, físico x financeiro, PMO e equipes de campo)
+  | 'implantacoes'
   // RH e Pessoas (por enquanto: certificados dos colaboradores)
   | 'rhPessoas'
   // Planejamento orçamentário (Gestor e Administrador)
@@ -91,6 +94,7 @@ export const ROTAS = {
   KITS: 'kits',
   CALCULO_HH: 'calculoHH',
   FORNECEDORES: 'fornecedores',
+  IMPLANTACOES: 'implantacoes',
   RH_PESSOAS: 'rhPessoas',
   PLANEJAMENTO_ORCAMENTARIO: 'planejamentoOrcamentario',
   AMBIENTE: 'ambiente',
