@@ -6,6 +6,15 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.19] - 2026-11-12
+
+- Novo: módulo "Implantações" — painel de gestão de implantações (carteira, cronogramas, físico x financeiro, Controladoria, PMO, equipes de campo, roteirização e assistente IA) dentro do portal, com acesso pelo módulo em Usuários e acessos e permissões pelo perfil do portal; dados no Dataverse (dgt_implregistro) e importação da base antiga. Guia em docs/implantacoes.md.
+- Novo: Controladoria avisa quando há faturamento atrasado no período, mesmo com diferença positiva.
+- Novo: e-mails do painel (relatório semanal, resumo gerencial e cronograma para o cliente) com recorrência, prévia, teste e "Enviar agora", enviados pela fila dgt_implemail e pelo fluxo do Power Automate.
+- Novo: agendamento de campo por período distribui os pontos por proximidade (uma região por dia).
+- Novo: tela cheia no módulo Implantações.
+- Melhoria: stakeholders com e-mail e telefone em campos separados.
+- Melhoria: exportações em PDF e Excel e mapa da roteirização com bibliotecas do pacote do portal (jsPDF, ExcelJS, Leaflet); importação de vistoria aceita .xlsx e .csv.
 - Novo: seleção de servidor na Seleção de kit (Arquitetura) — bloco "Servidores da central" escolhe o servidor de gravação (Digifort, Milestone) e o de analítico (IPX) pelo memorial de cálculo: premissas, compressão, câmeras com reserva, faixa recomendada, distribuição, GPU, processador e SO; o servidor, os discos, o SO e as licenças de VMS só entram no B.O.M. depois de "Adicionar à central".
 - Melhoria: as licenças do Digifort passam a ser geradas pelo seletor de servidor (base por servidor + packs pela necessidade); o campo "Servidores" saiu do bloco Projeto. Seleções antigas com Digifort pedem a seleção do servidor para concluir.
 - Novo: Milestone como VMS do projeto (licença por câmera e discos de vigilância vêm do seletor de servidor).
