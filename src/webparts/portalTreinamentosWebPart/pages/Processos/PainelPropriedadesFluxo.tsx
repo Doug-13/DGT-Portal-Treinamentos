@@ -112,6 +112,8 @@ export interface IPainelPropriedadesFluxoProps {
   processoAtualId?: string;
   // Script: "Testar script" usa o Dataverse (fontes liberadas).
   dataverseService?: DataverseService;
+  // Subprocesso: "Criar no filho" (campos no processo filho).
+  onCriarMetadadosFilho?: (processoId: string, metadados: IFluxoMetadado[]) => Promise<string[]>;
 }
 
 const COR_AZUL = '#202A44';
@@ -289,7 +291,8 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   usuarios = [],
   processosSubprocesso = [],
   processoAtualId,
-  dataverseService
+  dataverseService,
+  onCriarMetadadosFilho
 }) => {
 
   const ver = (
@@ -512,6 +515,7 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           processoAtualId={processoAtualId}
           areas={areas}
           onAlterar={subprocesso => alterar({ subprocesso })}
+          onCriarMetadadosFilho={onCriarMetadadosFilho}
         />
       </div>
     );

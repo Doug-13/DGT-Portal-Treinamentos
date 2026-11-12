@@ -76,6 +76,14 @@ import {
   ligacoesQueBarramBotoes
 } from '../../services/fluxo/correcoesFluxo';
 
+import {
+  obterPersistenciaFluxo
+} from '../../services/fluxo/persistenciaFluxo';
+
+import {
+  metadadosParaCopiar
+} from '../../services/fluxo/copiaFluxo';
+
 import ImportarPacoteModal from './ImportarPacoteModal';
 
 import {
@@ -546,7 +554,13 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     }
 
     const erros =
-      validarDefinicao(definicao);
+      validarDefinicao(definicao, {
+        // Mapeamentos do subprocesso conferidos com os campos do filho.
+        metadadosDoProcesso: id => {
+          const fonte = (fontesCopia || []).find(item => item.processo.id === id);
+          return fonte ? fonte.metadados : undefined;
+        }
+      });
 
     setLigacoesCorrigiveis(ligacoesQueBarramBotoes(definicao).map(item => item.transicaoId));
 
@@ -609,7 +623,13 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     }
 
     const erros =
-      validarDefinicao(definicao);
+      validarDefinicao(definicao, {
+        // Mapeamentos do subprocesso conferidos com os campos do filho.
+        metadadosDoProcesso: id => {
+          const fonte = (fontesCopia || []).find(item => item.processo.id === id);
+          return fonte ? fonte.metadados : undefined;
+        }
+      });
 
     setLigacoesCorrigiveis(ligacoesQueBarramBotoes(definicao).map(item => item.transicaoId));
 
@@ -1036,6 +1056,31 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         secao={secao}
         processoAtualId={processo.id}
         dataverseService={dataverseService}
+        onCriarMetadadosFilho={
+          dataverseService && !catalogo.local
+            ? async (processoFilhoId, novos) => {
+              try {
+                const persistencia = obterPersistenciaFluxo(dataverseService);
+                const atuais = await persistencia.metadados.listar(processoFilhoId);
+                // Mesma chave e definição do pai; os campos do filho ficam.
+                const copiados = metadadosParaCopiar(novos, atuais);
+                const chavesFinais = atuais.concat(copiados).map(item => item.chave);
+                // Regra de exibição que depende de campo inexistente no filho: fica de fora.
+                const acrescentar = copiados.map(item =>
+                  item.exibirQuando && chavesFinais.indexOf(item.exibirQuando.campo) < 0
+                    ? { ...item, exibirQuando: undefined }
+                    : item);
+                if (acrescentar.length > 0) {
+                  await persistencia.metadados.salvar(processoFilhoId, atuais.concat(acrescentar));
+                }
+                await onAlterado();
+                return [];
+              } catch (erro) {
+                return [`Não foi possível criar os campos no processo filho: ${erro instanceof Error ? erro.message : String(erro)}`];
+              }
+            }
+            : undefined
+        }
         processosSubprocesso={
           (fontesCopia || []).map(item => ({
             id: item.processo.id,

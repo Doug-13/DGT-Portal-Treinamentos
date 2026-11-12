@@ -41,7 +41,17 @@ export interface IPainelSubprocessoProps {
   processoAtualId?: string;
   areas: Array<{ id: string; nome: string; sigla?: string }>;
   onAlterar: (config: IConfigSubprocesso) => void;
+  // "Criar no filho": grava campos (mesma chave do pai) no processo
+  // filho e recarrega a lista. Devolve erros.
+  onCriarMetadadosFilho?: (processoId: string, metadados: IFluxoMetadado[]) => Promise<string[]>;
 }
+
+import {
+  camposAusentesNoFilho,
+  compatibilidade,
+  sugerirMapeamentos,
+  tipoDaOrigem
+} from '../../services/fluxo/subprocesso/mapeamentoSubprocesso';
 
 const COR_AZUL = '#202A44';
 const COR_BORDA = '#D9D9D6';
@@ -118,7 +128,8 @@ const PainelSubprocesso: React.FC<IPainelSubprocessoProps> = ({
   processos,
   processoAtualId,
   areas,
-  onAlterar
+  onAlterar,
+  onCriarMetadadosFilho
 }) => {
 
   const alterar = (parcial: Partial<IConfigSubprocesso>): void =>
@@ -147,6 +158,10 @@ const PainelSubprocesso: React.FC<IPainelSubprocessoProps> = ({
         ? [{ valor: 'sim', rotulo: 'Sim' }, { valor: 'nao', rotulo: 'Não' }]
         : (colunaFiltro.opcoes || []).map(opcao => ({ valor: opcao, rotulo: opcao }));
   const metadadosFilho = fluxoEscolhido ? fluxoEscolhido.metadados : [];
+  const ausentes = fluxoEscolhido ? camposAusentesNoFilho(metadados, metadadosFilho) : [];
+  const [avisoMapeamento, setAvisoMapeamento] = React.useState('');
+  const [paraCriar, setParaCriar] = React.useState<string[]>([]);
+  const [criando, setCriando] = React.useState(false);
 
   // Origens possíveis de um valor copiado para o filho.
   const origens: Array<{ valor: string; rotulo: string }> = [
@@ -426,21 +441,118 @@ const PainelSubprocesso: React.FC<IPainelSubprocessoProps> = ({
           <div style={ajuda}>O fluxo escolhido não tem metadados. Crie-os no processo dele para receber valores daqui.</div>
         )}
 
-        {fluxoEscolhido && mapeamentos.map((item, indice) => (
-          <div key={`map-${indice}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: '6px', alignItems: 'center' }}>
-            <select aria-label="Origem do valor" value={item.origem} disabled={!editavel} onChange={evento => alterarMapeamento(indice, { origem: evento.target.value })} style={entrada}>
-              {origens.map(opcao => <option key={opcao.valor} value={opcao.valor}>{opcao.rotulo}</option>)}
-            </select>
-            <span aria-hidden="true">→</span>
-            <select aria-label="Campo do novo documento" value={item.destino} disabled={!editavel} onChange={evento => alterarMapeamento(indice, { destino: evento.target.value })} style={entrada}>
-              <option value="">Campo do novo documento...</option>
-              {metadadosFilho.map(meta => <option key={meta.chave} value={meta.chave}>{meta.rotulo}</option>)}
-            </select>
-            <button type="button" disabled={!editavel} onClick={() => alterar({ mapeamentos: mapeamentos.filter((_m, posicao) => posicao !== indice) })} style={botaoPequeno(true)} aria-label="Remover">
-              ✕
+        {fluxoEscolhido && mapeamentos.map((item, indice) => {
+          const destino = metadadosFilho.find(meta => meta.chave === item.destino);
+          const origem = tipoDaOrigem(item.origem, config, metadados);
+          const compat = destino && origem ? compatibilidade(origem, destino) : undefined;
+          const corCompat = !compat ? '#64748B' : compat.nivel === 'ok' ? '#107C10' : compat.nivel === 'aviso' ? '#B45309' : '#B42318';
+          return (
+            <div key={`map-${indice}`} data-mapeamento={indice} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: '6px', alignItems: 'center' }}>
+                <select aria-label="Origem do valor" value={item.origem} disabled={!editavel} onChange={evento => alterarMapeamento(indice, { origem: evento.target.value })} style={entrada}>
+                  {origens.map(opcao => <option key={opcao.valor} value={opcao.valor}>{opcao.rotulo}</option>)}
+                </select>
+                <span aria-hidden="true">→</span>
+                <select aria-label="Campo do novo documento" value={item.destino} disabled={!editavel} onChange={evento => alterarMapeamento(indice, { destino: evento.target.value })} style={entrada}>
+                  <option value="">Campo do novo documento...</option>
+                  {metadadosFilho.map(meta => <option key={meta.chave} value={meta.chave}>{meta.rotulo}</option>)}
+                </select>
+                <button type="button" disabled={!editavel} onClick={() => alterar({ mapeamentos: mapeamentos.filter((_m, posicao) => posicao !== indice) })} style={botaoPequeno(true)} aria-label="Remover">
+                  ✕
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', fontSize: '11.5px' }}>
+                {compat && (
+                  <span data-compatibilidade={compat.nivel} style={{ color: corCompat, fontWeight: 700 }}>
+                    {compat.nivel === 'ok' ? '✓' : compat.nivel === 'aviso' ? '⚠' : '✕'} {compat.mensagem}
+                  </span>
+                )}
+                {item.destino && (
+                  <label style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <input type="checkbox" checked={!!item.somenteLeitura} disabled={!editavel} onChange={() => alterarMapeamento(indice, { somenteLeitura: !item.somenteLeitura })} />
+                    somente leitura no filho
+                  </label>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {fluxoEscolhido && editavel && metadadosFilho.length > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                const sugestoes = sugerirMapeamentos(config, metadados, metadadosFilho);
+                setAvisoMapeamento(sugestoes.length > 0
+                  ? `${sugestoes.length} par(es) sugerido(s) por chave ou nome iguais — revise antes de publicar.`
+                  : 'Nenhum campo equivalente (mesma chave ou nome, tipo compatível) encontrado.');
+                if (sugestoes.length > 0) {
+                  alterar({ mapeamentos: mapeamentos.concat(sugestoes) });
+                }
+              }}
+              style={botaoPequeno()}
+            >
+              Mapear automaticamente
+            </button>
+            {avisoMapeamento && <span style={{ ...ajuda, marginLeft: '8px' }}>{avisoMapeamento}</span>}
+          </div>
+        )}
+
+        {/* Campos do pai que o filho não tem: criar no processo filho (mesma chave). */}
+        {fluxoEscolhido && editavel && onCriarMetadadosFilho && ausentes.length > 0 && (
+          <div style={{ border: `1px dashed ${COR_BORDA}`, borderRadius: '6px', padding: '8px 10px' }}>
+            <div style={{ ...ajuda, marginTop: 0, marginBottom: '6px' }}>
+              Campos deste processo que o fluxo “{fluxoEscolhido.nome}” não tem. Marque e crie-os lá com a <strong>mesma chave</strong> e
+              definição (tipo, opções, regra); eles já entram mapeados.
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: '12.5px' }}>
+              {ausentes.map(meta => (
+                <label key={meta.chave} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Criar ${meta.rotulo} no filho`}
+                    checked={paraCriar.indexOf(meta.chave) >= 0}
+                    onChange={() => setParaCriar(atual => (atual.indexOf(meta.chave) >= 0 ? atual.filter(c => c !== meta.chave) : atual.concat(meta.chave)))}
+                  />
+                  {meta.rotulo}
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              disabled={paraCriar.length === 0 || criando}
+              onClick={() => {
+                if (!onCriarMetadadosFilho || !fluxoEscolhido) {
+                  return;
+                }
+                const selecionados = ausentes.filter(meta => paraCriar.indexOf(meta.chave) >= 0);
+                setCriando(true);
+                onCriarMetadadosFilho(fluxoEscolhido.id, selecionados)
+                  .then(erros => {
+                    setCriando(false);
+                    if (erros.length > 0) {
+                      setAvisoMapeamento(erros.join(' '));
+                      return;
+                    }
+                    setParaCriar([]);
+                    setAvisoMapeamento(`${selecionados.length} campo(s) criado(s) no fluxo filho e mapeado(s).`);
+                    alterar({
+                      mapeamentos: mapeamentos.concat(
+                        selecionados
+                          .filter(meta => !mapeamentos.some(item => item.destino === meta.chave))
+                          .map(meta => ({ origem: `campo:${meta.chave}`, destino: meta.chave }))
+                      )
+                    });
+                  })
+                  .catch(() => setCriando(false));
+              }}
+              style={{ ...botaoPequeno(), marginTop: '6px' }}
+            >
+              {criando ? 'Criando...' : `Criar no filho (${paraCriar.length})`}
             </button>
           </div>
-        ))}
+        )}
 
         {fluxoEscolhido && metadadosFilho.length > 0 && editavel && origens.length > 0 && (
           <div>

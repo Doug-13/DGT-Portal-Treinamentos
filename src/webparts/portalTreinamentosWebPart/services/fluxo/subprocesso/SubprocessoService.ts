@@ -473,6 +473,7 @@ export class SubprocessoService {
                 ator: { id: executorId, nome: pedido.executorNome || contexto.usuarioNome, papeisTeste: [] },
                 simulado: false,
                 valoresIniciais: valoresIniciaisDoFilho(config, contexto.documento, item.linha, instancia.valores),
+                camposSomenteLeitura: (config.mapeamentos || []).filter(m => m.somenteLeitura && !!m.destino).map(m => m.destino),
                 origemSubprocesso: {
                   documentoId: contexto.documento.id,
                   codigo: contexto.documento.codigo,

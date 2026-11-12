@@ -76,6 +76,8 @@ export interface IDadosInicioFluxo {
   valoresIniciais?: Record<string, string>;
   // Documento criado por um subprocesso: de onde ele veio.
   origemSubprocesso?: IOrigemSubprocesso;
+  // Campos herdados do pai que não podem ser alterados no filho.
+  camposSomenteLeitura?: string[];
 }
 
 export interface IExecucaoAcao {
@@ -719,6 +721,10 @@ const limparValoresForaDoCaminho = (
 
   const chavesDoCaminho: string[] = [];
 
+  // Valores herdados do documento pai (subprocesso): nunca são limpos,
+  // mesmo que o campo apareça editável numa etapa ainda não percorrida.
+  (instancia.camposHerdados || []).forEach(chave => chavesDoCaminho.push(chave));
+
   // Campo onde um subprocesso grava os documentos filhos: nunca é
   // limpo (os filhos já existem; a referência é a ligação com eles).
   definicao.elementos
@@ -1194,6 +1200,10 @@ export const iniciarInstancia = (
     elementoAtualId: inicio.id,
     status: 'emAndamento',
     valores: { ...(dados.valoresIniciais || {}) },
+    camposHerdados: dados.origemSubprocesso && dados.valoresIniciais ? Object.keys(dados.valoresIniciais) : undefined,
+    camposSomenteLeitura: dados.origemSubprocesso && dados.camposSomenteLeitura && dados.valoresIniciais
+      ? dados.camposSomenteLeitura.filter(chave => !!(dados.valoresIniciais as Record<string, string>)[chave])
+      : undefined,
     percorridos: [inicio.id],
     transicoesPercorridas: [],
     tarefas: [],
@@ -1335,7 +1345,9 @@ export const executarAcao = (
 
       if (
         valor !== undefined &&
-        !campo.somenteLeitura
+        !campo.somenteLeitura &&
+        // Herdado do pai como somente leitura: não muda no filho.
+        (instanciaOriginal.camposSomenteLeitura || []).indexOf(campo.chave) < 0
       ) {
         valoresEtapa[campo.chave] =
           valor;

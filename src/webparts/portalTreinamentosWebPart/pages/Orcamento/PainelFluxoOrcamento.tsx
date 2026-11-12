@@ -157,7 +157,9 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
 
   const renderCampo = (item: IFluxoCampo): React.ReactNode => {
     const valor = valoresConsolidados[item.chave] || '';
-    const somenteLeitura = item.somenteLeitura || !props.podeAgir;
+    // Herdado do documento pai como somente leitura (subprocesso).
+    const somenteLeitura =
+      item.somenteLeitura || !props.podeAgir || (instancia.camposSomenteLeitura || []).indexOf(item.chave) >= 0;
     const alterar = (novo: string): void => setValores(atual => ({ ...atual, [item.chave]: novo }));
 
     if (item.tipo === 'componente') {

@@ -1,4 +1,8 @@
 import {
+  validarMapeamentos
+} from './subprocesso/mapeamentoSubprocesso';
+
+import {
   validarConfigAssinatura
 } from './assinaturaFluxo';
 
@@ -35,7 +39,8 @@ import {
 import {
   IFluxoDefinicao,
   IFluxoElemento,
-  IFluxoTransicao
+  IFluxoTransicao,
+  IFluxoMetadado
 } from '../../models/Fluxo';
 
 import {
@@ -292,8 +297,15 @@ const anterioresDe = (
   return anteriores;
 };
 
+export interface IOpcoesValidacao {
+  // Metadados de outro processo (editor): confere os mapeamentos do
+  // subprocesso com os campos do fluxo filho.
+  metadadosDoProcesso?: (processoId: string) => IFluxoMetadado[] | undefined;
+}
+
 export const validarDefinicao = (
-  definicao: IFluxoDefinicao
+  definicao: IFluxoDefinicao,
+  opcoes?: IOpcoesValidacao
 ): string[] => {
 
   const erros: string[] =
@@ -608,6 +620,11 @@ export const validarDefinicao = (
         }
 
         validarConfigSubprocesso(item, metadados, definicao.processoId)
+          .concat(
+            item.subprocesso && opcoes && opcoes.metadadosDoProcesso && opcoes.metadadosDoProcesso(item.subprocesso.fluxoId)
+              ? validarMapeamentos(item.nome, item.subprocesso, metadados, opcoes.metadadosDoProcesso(item.subprocesso.fluxoId) || [])
+              : []
+          )
           .forEach(erro => erros.push(erro));
       }
 

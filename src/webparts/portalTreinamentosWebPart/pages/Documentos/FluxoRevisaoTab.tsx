@@ -724,6 +724,16 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
     campo: IFluxoCampo
   ): React.ReactElement | undefined => {
 
+    // Herdado do documento pai como somente leitura: não se altera aqui.
+    if (
+      fluxo.instancia &&
+      (fluxo.instancia.camposSomenteLeitura || []).indexOf(campo.chave) >= 0 &&
+      !campo.somenteLeitura
+    ) {
+      campo = { ...campo, somenteLeitura: true };
+    }
+
+
     if (!elementoAtual) {
       return undefined;
     }
