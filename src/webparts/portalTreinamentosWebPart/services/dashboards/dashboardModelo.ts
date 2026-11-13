@@ -28,6 +28,14 @@
 // agregacao: soma | media | contagem | contagemDistinta | minimo | maximo
 // formato: moeda | numero | percentual | inteiro
 // ordenar: "valor desc" | "valor asc" | "dimensao asc" | "<campo> desc"
+//
+// ASSISTENTE DE IA (opcional) — caixa de perguntas no fim do painel:
+//  "assistente": { ativo, escopo, fontes?, perguntasSugeridas?,
+//                  camposOcultos?, modelo? }
+//  A IA responde SOMENTE com os dados que o painel carregou para quem
+//  está vendo (filtros de ano e área já aplicados). O escopo é lido
+//  pelo plugin direto do registro do dashboard no Dataverse: o
+//  navegador não consegue trocá-lo.
 // ============================================================
 
 export const FORMATO_DASHBOARD = 'dgt-portal/dashboard@1';
@@ -114,19 +122,48 @@ export interface ISecaoDashboard {
   itens: ItemDashboard[];
 }
 
+export interface IAssistenteDashboard {
+  ativo: boolean;
+  // Assunto do painel e limites das respostas (vai nas instruções da IA).
+  escopo: string;
+  // Fontes que a IA pode usar (padrão: as fontes usadas no painel).
+  fontes?: string[];
+  // Até 6 atalhos exibidos acima da caixa de perguntas.
+  perguntasSugeridas?: string[];
+  // Campos que nunca vão para a IA (além dos pessoais, sempre ocultos).
+  camposOcultos?: string[];
+  // Modelo de IA (precisa estar liberado no passo do plugin).
+  modelo?: string;
+}
+
 export interface IDefinicaoDashboard {
   formato: string;
   titulo: string;
   descricao?: string;
   filtros?: { ano?: boolean; area?: boolean };
   secoes: ISecaoDashboard[];
+  assistente?: IAssistenteDashboard;
 }
+
+export const LIMITE_ESCOPO_ASSISTENTE = 2000;
+export const LIMITE_PERGUNTAS_SUGERIDAS = 6;
 
 export type Linha = { [campo: string]: string | number | boolean | undefined };
 
 const AGREGACOES: Agregacao[] = ['soma', 'media', 'contagem', 'contagemDistinta', 'minimo', 'maximo'];
 const FORMATOS: FormatoValor[] = ['moeda', 'numero', 'percentual', 'inteiro'];
 const GRAFICOS: TipoGrafico[] = ['barras', 'barrasEmpilhadas', 'linhas', 'rosca'];
+
+// Fontes usadas por uma definição (para carregar só o necessário).
+export const fontesUsadas = (definicao: IDefinicaoDashboard): string[] => {
+  const lista: string[] = [];
+  definicao.secoes.forEach(secao => secao.itens.forEach(item => {
+    if (lista.indexOf(item.fonte) < 0) {
+      lista.push(item.fonte);
+    }
+  }));
+  return lista;
+};
 
 // ------------------------------------------------------------
 // Validação (contra o catálogo de fontes)
@@ -260,6 +297,50 @@ export const validarDashboard = (
     });
   });
 
+  if (bruto.assistente !== undefined && bruto.assistente !== null) {
+    const assistente = bruto.assistente as IAssistenteDashboard;
+    if (typeof assistente !== 'object' || Array.isArray(assistente)) {
+      erros.push('"assistente" deve ser um objeto.');
+    } else {
+      if (typeof assistente.ativo !== 'boolean') {
+        erros.push('assistente: informe "ativo" (true ou false).');
+      }
+      const escopo = typeof assistente.escopo === 'string' ? assistente.escopo.trim() : '';
+      if (!escopo) {
+        erros.push('assistente: informe o "escopo" (o assunto que a IA pode responder).');
+      } else if (escopo.length > LIMITE_ESCOPO_ASSISTENTE) {
+        erros.push(`assistente: o "escopo" deve ter no máximo ${LIMITE_ESCOPO_ASSISTENTE} caracteres.`);
+      }
+      const usadas = fontesUsadas(bruto);
+      if (assistente.fontes !== undefined) {
+        if (!Array.isArray(assistente.fontes) || assistente.fontes.length === 0) {
+          erros.push('assistente: "fontes" deve ser uma lista com pelo menos uma fonte (ou ser omitido).');
+        } else {
+          assistente.fontes.forEach(id => {
+            if (!fonteDe(id)) {
+              erros.push(`assistente.fontes: fonte "${id}" não existe. Fontes: ${catalogo.map(f => f.id).join(', ')}.`);
+            } else if (usadas.indexOf(id) < 0) {
+              erros.push(`assistente.fontes: "${id}" não é usada por nenhum item do painel (a IA só recebe dados que o painel carrega).`);
+            }
+          });
+        }
+      }
+      if (assistente.perguntasSugeridas !== undefined) {
+        if (!Array.isArray(assistente.perguntasSugeridas) || assistente.perguntasSugeridas.some(p => typeof p !== 'string' || !p.trim())) {
+          erros.push('assistente: "perguntasSugeridas" deve ser uma lista de textos.');
+        } else if (assistente.perguntasSugeridas.length > LIMITE_PERGUNTAS_SUGERIDAS) {
+          avisos.push(`assistente: só as ${LIMITE_PERGUNTAS_SUGERIDAS} primeiras perguntas sugeridas serão exibidas.`);
+        }
+      }
+      if (assistente.camposOcultos !== undefined && (!Array.isArray(assistente.camposOcultos) || assistente.camposOcultos.some(c => typeof c !== 'string'))) {
+        erros.push('assistente: "camposOcultos" deve ser uma lista de nomes de campo.');
+      }
+      if (assistente.modelo !== undefined && (typeof assistente.modelo !== 'string' || !assistente.modelo.trim())) {
+        erros.push('assistente: "modelo" deve ser um texto (ex.: "claude-sonnet-5-5") ou ser omitido.');
+      }
+    }
+  }
+
   return { definicao: erros.length === 0 ? bruto : undefined, erros, avisos };
 };
 
@@ -376,15 +457,4 @@ export const ordenarGrupos = <T extends { rotulo: string; valor: number; ordem?:
     const vb = b.ordem !== undefined ? b.ordem : b.rotulo;
     return (typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'pt-BR')) * fator;
   });
-};
-
-// Fontes usadas por uma definição (para carregar só o necessário).
-export const fontesUsadas = (definicao: IDefinicaoDashboard): string[] => {
-  const lista: string[] = [];
-  definicao.secoes.forEach(secao => secao.itens.forEach(item => {
-    if (lista.indexOf(item.fonte) < 0) {
-      lista.push(item.fonte);
-    }
-  }));
-  return lista;
 };

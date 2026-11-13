@@ -309,6 +309,7 @@ const IndicadoresPage:
             ? (
               <DashboardPortalView
                 key={dashboardAtivo.id}
+                dashboardId={dashboardAtivo.id}
                 definicao={validacao.definicao}
                 dataverseService={props.dataverseService}
                 areasPermitidas={veTodasAsAreas ? undefined : areasDoUsuario}

@@ -306,12 +306,72 @@ const fonteRevisoes: IFonte = {
   }
 };
 
+// ------------------------------------------------------------
+// Consumo de IA (dgt_iaconsumo — gravado pelos plugins de IA)
+// ------------------------------------------------------------
+// Uma linha por chamada à IA. Não há conteúdo (pergunta/resposta):
+// só quem, área, funcionalidade, modelo, tokens e custo. A área segue a
+// regra (a) uso / (b) área principal; "Sem área" só aparece para quem
+// vê todas as áreas.
+
+const fonteConsumoIa: IFonte = {
+  id: 'ia.consumo',
+  nome: 'IA — consumo por chamada',
+  descricao: 'Uma linha por chamada à IA no ano: usuário, área, funcionalidade, modelo, tokens e custo (US$ e R$).',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'origemArea', rotulo: 'Origem da área (Uso, Principal, Única área, Sem área)', tipo: 'texto', valores: ['Uso', 'Principal', 'Única área', 'Sem área'] },
+    { chave: 'usuario', rotulo: 'Usuário', tipo: 'texto' },
+    { chave: 'funcionalidade', rotulo: 'Funcionalidade', tipo: 'texto' },
+    { chave: 'detalhe', rotulo: 'Detalhe (dashboard ou análise)', tipo: 'texto' },
+    { chave: 'modelo', rotulo: 'Modelo de IA', tipo: 'texto' },
+    { chave: 'mes', rotulo: 'Mês', tipo: 'mes' },
+    { chave: 'data', rotulo: 'Data', tipo: 'data' },
+    { chave: 'tokensEntrada', rotulo: 'Tokens de entrada', tipo: 'numero' },
+    { chave: 'tokensSaida', rotulo: 'Tokens de saída', tipo: 'numero' },
+    { chave: 'custoUsd', rotulo: 'Custo (US$)', tipo: 'numero' },
+    { chave: 'custoBrl', rotulo: 'Custo (R$)', tipo: 'numero' },
+    { chave: 'chamadas', rotulo: 'Quantidade (1 por chamada)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    const inicio = new Date(Date.UTC(contexto.ano, 0, 1)).toISOString();
+    const fim = new Date(Date.UTC(contexto.ano + 1, 0, 1)).toISOString();
+    const registros = await contexto.dataverse.listarRegistros(
+      'dgt_iaconsumo',
+      '$select=createdon,dgt_areaid,dgt_areanome,dgt_origemarea,dgt_usuarionome,dgt_funcionalidade,dgt_detalhe,dgt_modeloia,dgt_tokensentrada,dgt_tokenssaida,dgt_custousd,dgt_custobrl' +
+      `&$filter=createdon ge ${inicio} and createdon lt ${fim}`
+    );
+    return registros
+      .filter(registro => naArea(contexto, String(registro.dgt_areaid || '')))
+      .map(registro => {
+        const criado = new Date(String(registro.createdon || ''));
+        const valido = !isNaN(criado.getTime());
+        return {
+          area: String(registro.dgt_areanome || 'Sem área'),
+          origemArea: String(registro.dgt_origemarea || 'Sem área'),
+          usuario: String(registro.dgt_usuarionome || ''),
+          funcionalidade: String(registro.dgt_funcionalidade || ''),
+          detalhe: String(registro.dgt_detalhe || ''),
+          modelo: String(registro.dgt_modeloia || ''),
+          mes: valido ? criado.getMonth() + 1 : undefined,
+          data: valido ? criado.toISOString().substring(0, 10) : undefined,
+          tokensEntrada: Number(registro.dgt_tokensentrada) || 0,
+          tokensSaida: Number(registro.dgt_tokenssaida) || 0,
+          custoUsd: Number(registro.dgt_custousd) || 0,
+          custoBrl: Number(registro.dgt_custobrl) || 0,
+          chamadas: 1
+        };
+      });
+  }
+};
+
 export const FONTES_DASHBOARD: IFonte[] = [
   fonteOrcamentoLinhas,
   fonteOrcamentoDre,
   fonteOrcamentoPlanilhas,
   fonteDocumentos,
-  fonteRevisoes
+  fonteRevisoes,
+  fonteConsumoIa
 ];
 
 // Catálogo sem as funções (para validar e para a skill).

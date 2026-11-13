@@ -5,7 +5,7 @@ import * as React from 'react';
 //
 // Cabeçalho com foto/inicial, nome, e-mail e perfil; os papéis por
 // área em etiquetas coloridas; e os atalhos (Meu perfil, Usuários e
-// acessos, Áreas e acessos) com ícone e descrição.
+// acessos, Áreas e acessos, Administrar IA) com ícone e descrição.
 // Cores da identidade DGT: azul 202A44, ciano 05C3DD.
 // ============================================================
 
@@ -13,7 +13,7 @@ export interface IItemMenuUsuario {
   chave: string;
   rotulo: string;
   descricao: string;
-  icone: 'perfil' | 'usuarios' | 'areas';
+  icone: 'perfil' | 'usuarios' | 'areas' | 'ia';
   onClick: () => void;
 }
 
@@ -74,6 +74,14 @@ const Icone: React.FC<{ tipo: IItemMenuUsuario['icone'] }> = ({ tipo }) => {
         <circle cx="9" cy="7" r="4" />
         <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    );
+  }
+  if (tipo === 'ia') {
+    return (
+      <svg {...base}>
+        <path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z" />
+        <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" />
       </svg>
     );
   }

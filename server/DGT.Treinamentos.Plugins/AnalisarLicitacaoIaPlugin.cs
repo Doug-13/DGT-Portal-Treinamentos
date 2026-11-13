@@ -26,7 +26,12 @@ namespace DGT.Treinamentos.Plugins
     //   Message ........ dgt_AnalisarLicitacaoIa
     //   Primary Entity . none
     //   Stage .......... PostOperation   ·   Mode: Synchronous
-    //   Secure Configuration (SOMENTE AQUI fica a chave):
+    // CHAVE: a salva no portal (Indicadores › Administrar IA); sem ela,
+    // a Configuração segura deste passo.
+    // CONSUMO: uma linha em dgt_iaconsumo por análise (sem conteúdo),
+    // na área configurada para Licitações (padrão: sigla LIC) — IaComum.cs.
+    //
+    //   Secure Configuration (opcional depois da tela Administrar IA):
     //       { "apiKey": "<chave da Anthropic>" }
     //     ou apenas a chave, sem JSON.
     //   Unsecure Configuration (opcional):
@@ -57,13 +62,13 @@ namespace DGT.Treinamentos.Plugins
         private static readonly Regex Cpf =
             new Regex(@"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b", RegexOptions.Compiled);
 
-        private readonly string _apiKey;
+        private readonly string _chaveDoPasso;
         private readonly string[] _modelos;
         private readonly int _maxTokens;
 
         public AnalisarLicitacaoIaPlugin(string unsecureConfig, string secureConfig)
         {
-            _apiKey = LerChave(secureConfig);
+            _chaveDoPasso = secureConfig;
 
             _modelos = new[] { "claude-sonnet-5-5", "claude-haiku-5-5" };
             _maxTokens = 4000;
@@ -107,11 +112,28 @@ namespace DGT.Treinamentos.Plugins
                 (ITracingService)serviceProvider.GetService(
                     typeof(ITracingService));
 
-            if (string.IsNullOrWhiteSpace(_apiKey))
+            var fabrica =
+                (IOrganizationServiceFactory)serviceProvider.GetService(
+                    typeof(IOrganizationServiceFactory));
+
+            // Chave, consumo e área: com o SYSTEM (ver IaComum).
+            var servicoSistema = fabrica.CreateOrganizationService(null);
+            var configIa = IaComum.LerConfiguracao(servicoSistema, tracing);
+            var apiKey = IaComum.ObterChave(configIa, _chaveDoPasso);
+
+            if (string.IsNullOrWhiteSpace(apiKey))
             {
                 throw new InvalidPluginExecutionException(
-                    "Chave da IA não configurada: informe-a na Configuração segura do passo do plugin AnalisarLicitacaoIaPlugin.");
+                    "Chave da IA não configurada: salve-a em Indicadores › Administrar IA.");
             }
+
+            // (a) área de Licitações; (b) reserva: área principal do usuário.
+            var areaConsumo = IaComum.ResolverArea(
+                servicoSistema,
+                context.InitiatingUserId,
+                IaComum.AreaDaFuncionalidade(servicoSistema, configIa, "licitacoes", "LIC", tracing),
+                tracing);
+            IaComum.VerificarLimite(servicoSistema, configIa, areaConsumo, tracing);
 
             var payloadJson =
                 context.InputParameters.Contains("PayloadJson")
@@ -173,7 +195,7 @@ namespace DGT.Treinamentos.Plugins
 
             using (var requisicao = new HttpRequestMessage(HttpMethod.Post, UrlClaude))
             {
-                requisicao.Headers.Add("x-api-key", _apiKey);
+                requisicao.Headers.Add("x-api-key", apiKey);
                 requisicao.Headers.Add("anthropic-version", VersaoApi);
                 requisicao.Content = new StringContent(
                     corpo.ToString(Formatting.None), Encoding.UTF8, "application/json");
@@ -243,6 +265,10 @@ namespace DGT.Treinamentos.Plugins
 
                 tracing.Trace("Análise ok · modelo {0} · tokens {1}/{2} · parada {3}", modelo, entrada, saida, parada);
 
+                IaComum.RegistrarConsumo(
+                    servicoSistema, configIa, context.InitiatingUserId, areaConsumo,
+                    "Licitações", "Análise de edital", modelo, entrada, saida, tracing);
+
                 context.OutputParameters["ResultadoJson"] =
                     JsonConvert.SerializeObject(new
                     {
@@ -253,26 +279,6 @@ namespace DGT.Treinamentos.Plugins
                         parada
                     });
             }
-        }
-
-        // Aceita { "apiKey": "..." } ou apenas a chave.
-        private static string LerChave(string secureConfig)
-        {
-            var valor = (secureConfig ?? string.Empty).Trim();
-
-            if (valor.StartsWith("{"))
-            {
-                try
-                {
-                    return ((string)JObject.Parse(valor)["apiKey"] ?? string.Empty).Trim();
-                }
-                catch (JsonException)
-                {
-                    return string.Empty;
-                }
-            }
-
-            return valor;
         }
 
         private static string Mascarar(string texto) =>

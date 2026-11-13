@@ -337,5 +337,165 @@ export const EXEMPLOS_DASHBOARD: { [nome: string]: IDefinicaoDashboard } = {
         ]
       }
     ]
+  },
+  "consumo-ia": {
+    "formato": "dgt-portal/dashboard@1",
+    "titulo": "Consumo de IA",
+    "descricao": "Uso da IA do portal por área, usuário e funcionalidade: chamadas, tokens e custo",
+    "filtros": {
+      "ano": true,
+      "area": true
+    },
+    "secoes": [
+      {
+        "titulo": "Resumo do ano",
+        "itens": [
+          {
+            "tipo": "cartao",
+            "titulo": "Custo no ano (US$)",
+            "fonte": "ia.consumo",
+            "medida": "custoUsd",
+            "agregacao": "soma",
+            "formato": "numero"
+          },
+          {
+            "tipo": "cartao",
+            "titulo": "Custo no ano (R$)",
+            "fonte": "ia.consumo",
+            "medida": "custoBrl",
+            "agregacao": "soma",
+            "formato": "moeda"
+          },
+          {
+            "tipo": "cartao",
+            "titulo": "Chamadas à IA",
+            "fonte": "ia.consumo",
+            "medida": "chamadas",
+            "agregacao": "soma",
+            "formato": "inteiro"
+          },
+          {
+            "tipo": "cartao",
+            "titulo": "Usuários que usaram",
+            "fonte": "ia.consumo",
+            "medida": "usuario",
+            "agregacao": "contagemDistinta",
+            "formato": "inteiro"
+          },
+          {
+            "tipo": "cartao",
+            "titulo": "Chamadas sem área definida",
+            "fonte": "ia.consumo",
+            "medida": "chamadas",
+            "agregacao": "soma",
+            "filtro": {
+              "origemArea": "Sem área"
+            },
+            "formato": "inteiro"
+          }
+        ]
+      },
+      {
+        "titulo": "Por área",
+        "itens": [
+          {
+            "tipo": "grafico",
+            "grafico": "barras",
+            "titulo": "Custo por área (US$)",
+            "fonte": "ia.consumo",
+            "dimensao": "area",
+            "series": [
+              {
+                "medida": "custoUsd",
+                "rotulo": "US$"
+              }
+            ],
+            "ordenar": "valor desc",
+            "formato": "numero"
+          },
+          {
+            "tipo": "grafico",
+            "grafico": "barrasEmpilhadas",
+            "titulo": "Custo mês a mês por área (US$)",
+            "fonte": "ia.consumo",
+            "dimensao": "mes",
+            "serieDimensao": "area",
+            "series": [
+              {
+                "medida": "custoUsd",
+                "rotulo": "US$"
+              }
+            ],
+            "formato": "numero",
+            "largura": 2
+          }
+        ]
+      },
+      {
+        "titulo": "Por usuário e funcionalidade",
+        "itens": [
+          {
+            "tipo": "grafico",
+            "grafico": "rosca",
+            "titulo": "Custo por funcionalidade (US$)",
+            "fonte": "ia.consumo",
+            "dimensao": "funcionalidade",
+            "series": [
+              {
+                "medida": "custoUsd",
+                "rotulo": "US$"
+              }
+            ],
+            "formato": "numero"
+          },
+          {
+            "tipo": "grafico",
+            "grafico": "barras",
+            "titulo": "Custo por modelo (US$)",
+            "fonte": "ia.consumo",
+            "dimensao": "modelo",
+            "series": [
+              {
+                "medida": "custoUsd",
+                "rotulo": "US$"
+              }
+            ],
+            "ordenar": "valor desc",
+            "formato": "numero"
+          },
+          {
+            "tipo": "tabela",
+            "titulo": "Maiores consumidores",
+            "fonte": "ia.consumo",
+            "dimensoes": [
+              "usuario",
+              "area"
+            ],
+            "medidas": [
+              {
+                "medida": "custoUsd",
+                "rotulo": "Custo (US$)"
+              },
+              {
+                "medida": "chamadas",
+                "rotulo": "Chamadas"
+              },
+              {
+                "medida": "tokensEntrada",
+                "rotulo": "Tokens de entrada"
+              },
+              {
+                "medida": "tokensSaida",
+                "rotulo": "Tokens de saída"
+              }
+            ],
+            "ordenar": "valor desc",
+            "limite": 20,
+            "formato": "numero",
+            "largura": 2
+          }
+        ]
+      }
+    ]
   }
 };

@@ -33,6 +33,12 @@ import {
   GraficoRosca
 } from './graficosDashboard';
 
+import AssistenteDashboard from './AssistenteDashboard';
+
+import {
+  assistenteAtivo
+} from '../../services/dashboards/assistenteDashboard';
+
 // ============================================================
 // DASHBOARD DO PORTAL (definição JSON da skill "dashboard-dgt")
 //
@@ -42,6 +48,8 @@ import {
 // ============================================================
 
 export interface IDashboardPortalViewProps {
+  // Id do registro dgt_dashboard (usado pela IA; vazio na pré-visualização).
+  dashboardId?: string;
   definicao: IDefinicaoDashboard;
   dataverseService: DataverseService;
   // Áreas que a pessoa pode ver (undefined = todas).
@@ -379,6 +387,18 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
           </section>
         );
       })}
+
+      {!carregando && !erro && assistenteAtivo(definicao) && (
+        <AssistenteDashboard
+          dashboardId={props.dashboardId}
+          definicao={definicao}
+          dados={dados}
+          dataverseService={props.dataverseService}
+          ano={filtros.ano !== false ? ano : undefined}
+          areaNome={area ? (props.areas.filter(item => item.id === area)[0] || { nome: area }).nome : undefined}
+          areaId={area || undefined}
+        />
+      )}
     </div>
   );
 };

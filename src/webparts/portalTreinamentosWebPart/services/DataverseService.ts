@@ -2735,6 +2735,85 @@ export class DataverseService {
     };
   }
 
+  // ------------------------------------------------------------
+  // IA dos dashboards (Custom API dgt_PerguntarDashboardIa)
+  // O plugin PerguntarDashboardIaPlugin lê o escopo no registro do
+  // dashboard, chama o Claude e registra a pergunta para auditoria.
+  // ------------------------------------------------------------
+  public async perguntarDashboardIa(
+    requisicao:
+      Record<string, unknown>
+  ): Promise<{
+    texto: string;
+    modelo?: string;
+    tokensEntrada?: number;
+    tokensSaida?: number;
+    parada?: string;
+  }> {
+
+    const resposta =
+      await this.postObject(
+        'dgt_PerguntarDashboardIa',
+        {
+          PayloadJson:
+            JSON.stringify(
+              requisicao
+            )
+        }
+      );
+
+    const resultadoJson =
+      String(
+        resposta.ResultadoJson ||
+        ''
+      );
+
+    if (!resultadoJson) {
+      throw new Error(
+        'A IA não retornou resposta.'
+      );
+    }
+
+    return JSON.parse(
+      resultadoJson
+    ) as {
+      texto: string;
+      modelo?: string;
+      tokensEntrada?: number;
+      tokensSaida?: number;
+      parada?: string;
+    };
+  }
+
+  // Custom API genérica que recebe PayloadJson e devolve ResultadoJson
+  // (padrão das APIs de IA do portal, ex.: dgt_GerenciarIa).
+  public async executarCustomApiJson(
+    nome: string,
+    payload: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+
+    const resposta =
+      await this.postObject(
+        nome,
+        {
+          PayloadJson:
+            JSON.stringify(
+              payload
+            )
+        }
+      );
+
+    const resultadoJson =
+      String(
+        resposta.ResultadoJson ||
+        ''
+      );
+
+    return resultadoJson
+      ? JSON.parse(resultadoJson) as Record<string, unknown>
+      : {};
+  }
+
   public async processarAtribuicao(
     payload:
       Record<string, unknown>
