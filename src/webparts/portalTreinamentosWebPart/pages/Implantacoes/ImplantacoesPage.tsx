@@ -12,14 +12,25 @@ import {
   BaseImplantacoes,
   IArquivoImportacao,
   IProgressoImportacao,
+  lerAcessos,
   tabelaImplantacoesAusente
 } from '../../services/implantacoes/BaseImplantacoes';
 
 import {
-  ehAdministradorImplantacoes,
-  podeNoPainel,
-  sessaoImplantacoes
+  ISessaoPainel,
+  SituacaoAcesso,
+  completarAcessos,
+  montarSessao,
+  podeNoPainel
 } from '../../services/implantacoes/permissoesImplantacoes';
+
+import {
+  HistoricoImplantacoes
+} from '../../services/implantacoes/HistoricoImplantacoes';
+
+import {
+  AdminImplantacoes
+} from '../../services/implantacoes/AdminImplantacoes';
 
 import {
   criarPonteApi
@@ -64,8 +75,11 @@ import {
 //      (window.LOCAL_HOST / SESSAO / PODE) e a ponte das rotas api/*;
 //   4. chama o código do painel (legado/painelApp.js).
 //
-// Login, usuários, setores e perfis do painel antigo não existem
-// mais: valem o módulo "implantacoes" e o perfil no portal.
+// Acessos: como no app original, pelo cadastro do próprio painel
+// (Configurações › Gestão de usuários, Setores, Perfis). No portal, só o
+// Administrador do módulo "implantacoes" é marcado; ele entra sempre e
+// cadastra os demais pelo e-mail corporativo. Não há senha: a pessoa é
+// identificada pelo login do portal. Tecla F = tela cheia.
 // ============================================================
 
 export interface IImplantacoesPageProps {
@@ -73,7 +87,7 @@ export interface IImplantacoesPageProps {
   contexto?: IContextoAcesso;
 }
 
-type Situacao = 'carregando' | 'pronto' | 'erro' | 'semTabela';
+type Situacao = 'carregando' | 'pronto' | 'erro' | 'semTabela' | 'semAcesso';
 
 interface IJanelaPainel {
   __carregarBiblioteca?: (endereco: string) => Promise<void>;
@@ -135,6 +149,7 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
 
   const hospedeiro = React.useRef<HTMLDivElement>(null);
   const base = React.useRef<BaseImplantacoes>();
+  const sessaoAtual = React.useRef<ISessaoPainel>();
 
   const [situacao, setSituacao] = React.useState<Situacao>('carregando');
   const [mensagem, setMensagem] = React.useState<string>('');
@@ -143,8 +158,8 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
   const [importando, setImportando] = React.useState<boolean>(false);
   // Muda a cada (re)carga: recria o painel do zero.
   const [versao, setVersao] = React.useState<number>(0);
-
-  const administra = ehAdministradorImplantacoes(contexto);
+  const [acesso, setAcesso] = React.useState<{ situacao: SituacaoAcesso; administradores: string[] }>();
+  const [administra, setAdministra] = React.useState<boolean>(false);
 
   // ----------------------------------------------------------
   // 1. Base de dados
@@ -159,19 +174,41 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
     }
 
     let cancelado = false;
-
-    const nova = new BaseImplantacoes(dataverseService, sessaoImplantacoes(contexto));
+    let nova: BaseImplantacoes | undefined;
 
     setSituacao('carregando');
 
-    nova.carregar()
-      .then(() => {
+    // 1º os cadastros de acesso (quem é a pessoa no painel), depois a base.
+    lerAcessos(dataverseService)
+      .then(acessos => {
+
         if (cancelado) {
-          return;
+          return undefined;
         }
-        base.current = nova;
-        setVazia(nova.vazia);
-        setSituacao('pronto');
+
+        const resultado = montarSessao(contexto, completarAcessos(acessos));
+
+        setAcesso({ situacao: resultado.situacao, administradores: resultado.administradores });
+
+        if (resultado.situacao !== 'ok') {
+          setSituacao('semAcesso');
+          return undefined;
+        }
+
+        sessaoAtual.current = resultado.sessao;
+        setAdministra(podeNoPainel(resultado.sessao.perms, 'importacao', 'administrar'));
+
+        const criada = new BaseImplantacoes(dataverseService, resultado.sessao);
+        nova = criada;
+
+        return criada.carregar().then(() => {
+          if (cancelado) {
+            return;
+          }
+          base.current = criada;
+          setVazia(criada.vazia);
+          setSituacao('pronto');
+        });
       })
       .catch((erro: unknown) => {
         if (cancelado) {
@@ -187,7 +224,9 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
 
     return () => {
       cancelado = true;
-      nova.pararSincronia();
+      if (nova) {
+        nova.pararSincronia();
+      }
     };
   }, [dataverseService, contexto, versao]);
 
@@ -199,14 +238,13 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
 
     const dados = base.current;
     const elemento = hospedeiro.current;
+    const sessao = sessaoAtual.current;
 
     // Base vazia: o painel só abre depois da importação (aberto vazio,
     // ele criaria um "projeto principal" padrão por cima dos dados antigos).
-    if (situacao !== 'pronto' || vazia || !dados || !elemento || !dataverseService || !contexto) {
+    if (situacao !== 'pronto' || vazia || !dados || !elemento || !sessao || !dataverseService || !contexto) {
       return;
     }
-
-    const sessao = sessaoImplantacoes(contexto);
 
     // Estrutura e estilos na shadow root, sem nenhum script (o código
     // vem do pacote do portal). documento/janela: fachadas do ambiente.
@@ -233,7 +271,7 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
     const atualizarBotaoTela = (): void => {
       const cheia = document.fullscreenElement === elemento;
       botaoTela.innerHTML = cheia ? ICONE_SAIR_TELA_CHEIA : ICONE_TELA_CHEIA;
-      botaoTela.title = cheia ? 'Sair da tela cheia (Esc)' : 'Tela cheia';
+      botaoTela.title = cheia ? 'Sair da tela cheia (Esc ou F)' : 'Tela cheia (F)';
       botaoTela.setAttribute('aria-label', botaoTela.title);
       botaoTela.setAttribute('aria-pressed', cheia ? 'true' : 'false');
     };
@@ -294,20 +332,30 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
 
     janela.__sync = { txt: 'Compartilhado · ao vivo', erro: false };
 
-    // E-mails: nos links, o endereço desta página do portal.
+    // Histórico de atividades: gravações de dados (agrupadas) e eventos.
+    const historico = new HistoricoImplantacoes(dataverseService, dados, sessao);
+    dados.aoGravarDados = historico.registrarDados;
+
+    // Configurações: usuários, setores, perfis e histórico.
+    const admin = new AdminImplantacoes(dataverseService, dados, sessao, historico);
+
+    // E-mails: nos links, o endereço desta página do portal (sem o
+    // ?debugManifestsFile... de quando o portal roda em teste). O
+    // endereço definitivo é o de Configurações › E-mails e relatórios.
     const relatorio =
       new RelatorioImplantacoes(
         dataverseService,
         dados,
         sessao,
-        window.location.href.split('#')[0]
+        window.location.origin + window.location.pathname,
+        historico
       );
 
     try {
       iniciarPainelLegado(
         janela,
         documento,
-        criarPonteApi(janela, dataverseService, dados, sessao, [relatorio.rota])
+        criarPonteApi(janela, dataverseService, dados, sessao, [relatorio.rota, admin.rota])
       );
     } catch (erro) {
       document.removeEventListener('fullscreenchange', atualizarBotaoTela);
@@ -318,6 +366,41 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
     }
 
     dados.iniciarSincronia();
+
+    // Primeira configuração (setores e perfis iniciais, só pelo
+    // Administrador) e registro do acesso.
+    admin.semear()
+      .then(() => admin.registrarEntrada())
+      .catch(() => undefined);
+
+    // Tecla F: tela cheia (fora de campos de texto; Esc sai).
+    const aoTeclar = (evento: KeyboardEvent): void => {
+
+      if (evento.key !== 'f' && evento.key !== 'F') {
+        return;
+      }
+
+      if (evento.ctrlKey || evento.altKey || evento.metaKey || evento.repeat) {
+        return;
+      }
+
+      const origem = (evento.composedPath()[0] || evento.target) as HTMLElement;
+      const editavel =
+        !!origem &&
+        (/^(INPUT|TEXTAREA|SELECT)$/.test(origem.tagName || '') || origem.isContentEditable);
+
+      // Só quando o foco está no painel ou na página (não em outro campo do portal).
+      const noPainel = evento.composedPath().indexOf(elemento) >= 0 || origem === document.body;
+
+      if (editavel || !noPainel || (documento.querySelector('dialog[open]') && document.fullscreenElement !== elemento)) {
+        return;
+      }
+
+      evento.preventDefault();
+      botaoTela.click();
+    };
+
+    document.addEventListener('keydown', aoTeclar);
 
     // Envios agendados de e-mail: confere ao abrir e a cada 5 minutos.
     const conferir = (): void => {
@@ -338,6 +421,9 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
 
     return () => {
       document.removeEventListener('visibilitychange', aoVoltar);
+      document.removeEventListener('keydown', aoTeclar);
+      historico.descarregar();
+      dados.aoGravarDados = undefined;
       window.clearTimeout(primeiraConferencia);
       window.clearInterval(conferencias);
       dados.pararSincronia();
@@ -403,6 +489,24 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
   // ----------------------------------------------------------
   // Tela
   // ----------------------------------------------------------
+
+  if (situacao === 'semAcesso') {
+    const nomes = acesso ? acesso.administradores : [];
+    return (
+      <div style={caixa}>
+        <strong>
+          {acesso && acesso.situacao === 'inativo'
+            ? 'Seu acesso ao painel de implantações está desativado.'
+            : 'Você ainda não tem acesso ao painel de implantações.'}
+        </strong>
+        <div style={{ marginTop: '6px', color: COR.texto2 }}>
+          Os acessos são liberados pelo administrador do painel
+          {nomes.length > 0 ? ` (${nomes.join(', ')})` : ''}, em Configurações › Gestão de usuários,
+          com o seu e-mail corporativo{contexto && contexto.email ? ` (${contexto.email})` : ''}.
+        </div>
+      </div>
+    );
+  }
 
   if (situacao === 'semTabela') {
     return (

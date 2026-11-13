@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -127,14 +128,6 @@ namespace DGT.Treinamentos.Plugins
                     "Chave da IA não configurada: salve-a em Indicadores › Administrar IA.");
             }
 
-            // (a) área de Licitações; (b) reserva: área principal do usuário.
-            var areaConsumo = IaComum.ResolverArea(
-                servicoSistema,
-                context.InitiatingUserId,
-                IaComum.AreaDaFuncionalidade(servicoSistema, configIa, "licitacoes", "LIC", tracing),
-                tracing);
-            IaComum.VerificarLimite(servicoSistema, configIa, areaConsumo, tracing);
-
             var payloadJson =
                 context.InputParameters.Contains("PayloadJson")
                     ? context.InputParameters["PayloadJson"] as string
@@ -154,6 +147,21 @@ namespace DGT.Treinamentos.Plugins
             {
                 throw new InvalidPluginExecutionException("PayloadJson inválido.");
             }
+
+            // Funcionalidade que pediu (para o consumo e a área): este mesmo
+            // caminho atende Licitações e o assistente do módulo Implantações.
+            // Valor desconhecido ou ausente = Licitações (como antes).
+            var uso = Funcionalidades.ContainsKey((string)payload["funcionalidade"] ?? string.Empty)
+                ? Funcionalidades[(string)payload["funcionalidade"]]
+                : Funcionalidades["licitacoes"];
+
+            // (a) área da funcionalidade; (b) reserva: área principal do usuário.
+            var areaConsumo = IaComum.ResolverArea(
+                servicoSistema,
+                context.InitiatingUserId,
+                IaComum.AreaDaFuncionalidade(servicoSistema, configIa, uso.Chave, uso.SiglaPadrao, tracing),
+                tracing);
+            IaComum.VerificarLimite(servicoSistema, configIa, areaConsumo, tracing);
 
             var mensagem = Mascarar((string)payload["mensagem"] ?? string.Empty);
             var sistema = Mascarar((string)payload["sistema"] ?? string.Empty);
@@ -267,7 +275,7 @@ namespace DGT.Treinamentos.Plugins
 
                 IaComum.RegistrarConsumo(
                     servicoSistema, configIa, context.InitiatingUserId, areaConsumo,
-                    "Licitações", "Análise de edital", modelo, entrada, saida, tracing);
+                    uso.Nome, uso.Detalhe, modelo, entrada, saida, tracing);
 
                 context.OutputParameters["ResultadoJson"] =
                     JsonConvert.SerializeObject(new
@@ -280,6 +288,24 @@ namespace DGT.Treinamentos.Plugins
                     });
             }
         }
+
+        // Funcionalidades atendidas por este plugin: chave (payload
+        // "funcionalidade" e Administrar IA › Áreas), sigla da área padrão e
+        // como aparecem no consumo (dgt_iaconsumo).
+        private sealed class Uso
+        {
+            internal string Chave;
+            internal string SiglaPadrao;
+            internal string Nome;
+            internal string Detalhe;
+        }
+
+        private static readonly Dictionary<string, Uso> Funcionalidades =
+            new Dictionary<string, Uso>
+            {
+                { "licitacoes", new Uso { Chave = "licitacoes", SiglaPadrao = "LIC", Nome = "Licitações", Detalhe = "Análise de edital" } },
+                { "implantacoes", new Uso { Chave = "implantacoes", SiglaPadrao = "IMP", Nome = "Implantações", Detalhe = "Assistente do painel" } }
+            };
 
         private static string Mascarar(string texto) =>
             Cpf.Replace(Cnpj.Replace(texto, "[dado removido]"), "[dado removido]");

@@ -8,7 +8,7 @@ login e base em arquivos JSON). No portal:
 
 | Antes (aplicativo) | Agora (portal) |
 |---|---|
-| `login.html`, usuários, setores, perfis e histórico próprios | Módulo **Implantações** em Usuários e acessos + perfil no portal |
+| `login.html`, usuários, setores, perfis e histórico próprios | Os mesmos cadastros, dentro do painel (sem senha: identificação pelo login do portal) |
 | `tools/servidor.py` + pasta `dados/` | Tabela `dgt_implregistro` no Dataverse |
 | Assistente com `ANTHROPIC_API_KEY` no servidor | Custom API `dgt_AnalisarLicitacaoIa` (mesma chave da IA de Licitações) |
 | Relatório semanal por SMTP (`tools/relatorio.py`) | Fila `dgt_implemail` + fluxo do Power Automate |
@@ -28,12 +28,14 @@ Ordem de implantação: **1. tabelas → 2. permissões → 3. pacote → 4. imp
 | Estilos e estrutura do painel | `pages/Implantacoes/legado/painelCss.ts`, `painelHtml.ts` |
 | Conteúdo dos e-mails | `pages/Implantacoes/legado/painelEmails.js` |
 | Base de dados (API de documentos → Dataverse) | `services/implantacoes/BaseImplantacoes.ts` |
-| Sessão e permissões | `services/implantacoes/permissoesImplantacoes.ts` |
 | Rotas `api/*` do painel | `services/implantacoes/PonteApiImplantacoes.ts` |
 | Assistente IA | `services/implantacoes/AssistenteImplantacoes.ts` |
 | E-mails (configuração, fila, recorrência) | `services/implantacoes/RelatorioImplantacoes.ts` |
 | Nomes das tabelas | `services/implantacoes/esquemaImplantacoes.ts` |
 | Bibliotecas de PDF, Excel e mapa (npm, sob demanda) | `services/implantacoes/BibliotecasPainel.ts` |
+| Usuários, setores, perfis (regras) | `services/implantacoes/permissoesImplantacoes.ts` |
+| Configurações › usuários, setores, perfis e histórico (rotas api/admin/*) | `services/implantacoes/AdminImplantacoes.ts` |
+| Histórico de atividades | `services/implantacoes/HistoricoImplantacoes.ts` |
 | Tabelas | `scripts/dataverse/criar-tabelas-implantacoes.ps1` |
 
 O painel é desenhado **no fluxo normal da página do portal** (uma só barra de
@@ -66,25 +68,45 @@ para ES5 e quebraria `Set`, `Map` e `...` desse código); eles são copiados par
 |---|---|
 | `dgt_implregistro` | Um documento do painel por linha: `dgt_balde` (projeto, `_root` = dados gerais), `dgt_colecao`, `dgt_chave`, `dgt_chaveunica` (chave alternativa), `dgt_dados` (JSON), `dgt_excluido` |
 | `dgt_implemail` | Fila de e-mails: assunto (`dgt_name`), `dgt_para`, `dgt_corpo` (HTML), `dgt_tipo`, `dgt_motivo`, `dgt_status` (Pendente / Enviado / Falha), `dgt_erro` |
+| `dgt_impllog` | Histórico de atividades: ação (`dgt_name`), usuário, setor, categoria, alvo (JSON), detalhe; data = Criado em |
 
 A chave alternativa é ativada em segundo plano: confira o status **Ativo** antes
 de usar. Nada é apagado pela tela (exclusão = `dgt_excluido`).
 
-## 2. Permissões
+## 2. Acessos (como no app original)
 
-- Perfis de segurança: **Criar, Ler, Gravar** (Organização) em `dgt_implregistro`
-  e **Criar** em `dgt_implemail` para quem usa o módulo, sem Excluir. O fluxo de
-  e-mail (conta de serviço) precisa **Ler e Gravar** em `dgt_implemail`.
-- Usuários e acessos: liberar o módulo **Implantações**. Padrão: só Administrador.
+**No portal**, em Usuários e acessos, marque só quem é o **Administrador do
+módulo Implantações**. O menu Implantações aparece para todos; quem entra é
+decidido dentro do painel.
 
-| Perfil no portal | No painel |
+**No painel**, em Configurações (engrenagem):
+
+| Aba | O que faz |
 |---|---|
-| Colaborador (Funcionário) | Consulta: carteira, projetos e físico x financeiro (sem PMO, campo e assistente) |
-| Editor / Gestor | Opera tudo: projetos, faturamento, PMO, equipes de campo, assistente |
-| Administrador ou **Administrador do módulo** | Tudo, mais **E-mails e relatórios** e a importação |
+| Gestão de usuários | Cadastra cada pessoa pelo **e-mail corporativo** (o do login Microsoft 365; a lista sugere os usuários do portal), com setor e perfil; ativa, desativa, exclui; permissões individuais |
+| Setores | Projetos, Implantação, Engenharia, Suporte… (usados em "Minhas atividades" e nos e-mails) |
+| Perfis e permissões | Administrador, Diretoria / Head, Gestão, Analistas / Assistentes / Estagiários e Consulta, editáveis (funcionalidade × ação) |
+| Histórico de atividades | Quem fez o quê e quando: acessos, cadastros, alterações de dados (agrupadas por projeto a cada poucos segundos), e-mails |
+| E-mails e relatórios | Seção 5 |
+
+- O Administrador do módulo no portal **entra sempre** como Administrador do
+  painel, mesmo sem cadastro. Na primeira vez que ele abre, o painel cria os
+  setores e perfis iniciais.
+- Quem não está cadastrado (ou está desativado) vê uma mensagem com o nome dos
+  administradores do painel.
+- Não há senha. Mudanças de perfil valem quando a pessoa abrir o painel de novo.
+- Para **receber e-mails por perfil**, a pessoa precisa estar cadastrada
+  (inclusive o próprio administrador).
+
+Cadastros em `dgt_implregistro` (projeto `_root`): `acessoUsuarios`,
+`acessoSetores`, `acessoPerfis`. Histórico em `dgt_impllog`.
+
+**Perfis de segurança do Dataverse:** Criar, Ler, Gravar (Organização) em
+`dgt_implregistro`; Criar em `dgt_implemail` e em `dgt_impllog`; Ler em
+`dgt_impllog` para quem consulta o histórico. Sem Excluir.
 
 Como no restante do portal, a tela organiza o acesso; a proteção dos dados é a
-Security Role. A regra fica em `permissoesImplantacoes.ts`.
+Security Role.
 
 ## 3. Pacote
 
@@ -130,7 +152,10 @@ Envios (Configurações › **E-mails e relatórios**, Administrador do módulo)
 | Resumo gerencial | Pendências por pessoa, projetos com mais atrasos, ações vencidas |
 | Cronograma para cliente e equipe | Situação do cronograma de cada projeto; o cliente recebe só o do próprio projeto, sem link |
 
-Cada envio tem **recorrência** (diária, semanal, quinzenal ou mensal + hora),
+Cada envio tem **recorrência**: diária (segunda a sexta, uma hora), semanal ou
+quinzenal (cada dia marcado com a **sua hora**, ex.: segunda 09:00 e sexta
+17:00) ou mensal (**um ou mais dias do mês**, cada um com a sua hora; dia 29 a
+31 em mês mais curto = último dia),
 destinatários (perfis do portal, pessoas e e-mails avulsos), **Prévia**,
 **Enviar teste para mim** e **Enviar agora**.
 
@@ -143,14 +168,20 @@ agendado do Power Automate (pendência registrada).
 
 ## 6. Assistente IA
 
-Usa a Custom API da IA de Licitações (`docs/ia-licitacoes.md`) — a mesma chave,
-na Configuração segura do passo `AnalisarLicitacaoIaPlugin`. Quem usa precisa
-de **Criar** em *Análise de IA de licitação*. Modelo: `claude-sonnet-5-5`.
+Usa a **chave central do portal** (Indicadores › Administrar IA,
+`docs/ia-administracao.md`) pela Custom API `dgt_AnalisarLicitacaoIa`. O pedido
+vai com `funcionalidade: "implantacoes"`, e o plugin registra o consumo como
+**Implantações / Assistente do painel**, na área escolhida em Administrar IA ›
+Áreas (padrão: área de sigla **IMP**; sem ela, a área principal do usuário) e
+dentro do limite mensal dessa área. Quem usa precisa de **Criar** em *Análise
+de IA de licitação* (privilégio de execução da Custom API). Modelo:
+`claude-sonnet-5-5`.
 
 Como esse plugin recebe texto e devolve texto, as consultas do assistente
 (panorama, detalhe de projeto, busca de atividades) rodam no navegador: a IA pede
-`CONSULTAR: {...}`, o portal executa e devolve o resultado (até 4 rodadas).
-Contatos (e-mail/telefone) de stakeholders **não** vão para a IA.
+`CONSULTAR: {...}`, o portal executa e devolve o resultado (até 4 rodadas, cada
+uma conta no consumo). Contatos (e-mail/telefone) de stakeholders **não** vão
+para a IA.
 
 ## 7. Agenda de campo — período
 
@@ -185,6 +216,16 @@ desenvolvimento, `@types/leaflet` 1.9.12).
 
 ## 10. Tela cheia
 
-Botão com duas setas no canto do cabeçalho do painel (ao lado do assistente):
-o painel ocupa a tela inteira, com o cabeçalho preso no topo ao rolar. Esc ou o
-mesmo botão saem. Não guarda preferência.
+Botão com duas setas no canto do cabeçalho do painel (ao lado do assistente) ou
+a **tecla F** (fora de campos de texto): o painel ocupa a tela inteira, com o
+cabeçalho preso no topo ao rolar. Esc, F ou o mesmo botão saem. Não guarda
+preferência.
+
+## 11. Endereço do portal nos e-mails
+
+Os e-mails internos levam o botão "Abrir no Portal DGT". Defina o endereço em
+Configurações › E-mails e relatórios › **Endereço do portal nos links dos
+e-mails** com a página publicada do portal (ex.:
+`https://dgtnh.sharepoint.com/sites/<site>/SitePages/<pagina>.aspx`). Sem ele,
+vale o endereço da página onde o painel foi aberto (sem parâmetros de teste).
+Os e-mails para clientes não levam link.

@@ -12,6 +12,8 @@ import {
 } from './esquemaImplantacoes';
 
 import {
+  COLECOES_ACESSO,
+  IAcessos,
   ISessaoPainel,
   colecoesOcultas,
   podeNoPainel,
@@ -98,6 +100,47 @@ const escaparOData = (valor: string): string =>
 const mensagemDe = (erro: unknown): string =>
   erro instanceof Error ? erro.message : String(erro);
 
+// Ação de uma gravação, como no histórico do app original (dados.criar / editar / excluir).
+export type AcaoDados = 'criar' | 'editar' | 'excluir';
+
+// Lê só os cadastros de acesso (usuários, setores, perfis), antes de
+// carregar a base: é com eles que se monta a sessão de quem entrou.
+export const lerAcessos = async (
+  dataverse: DataverseService
+): Promise<IAcessos> => {
+
+  const filtro = COLECOES_ACESSO.map(c => `${IMPL.colecao} eq '${c}'`).join(' or ');
+
+  const registros =
+    await dataverse.listarRegistros(
+      TABELA_IMPL_REGISTRO,
+      `$select=${[IMPL.colecao, IMPL.chave, IMPL.dados].join(',')}` +
+      `&$filter=${IMPL.balde} eq '${BALDE_RAIZ}' and ${IMPL.excluido} ne true and (${filtro})`
+    );
+
+  const acessos: IAcessos = { usuarios: {}, setores: {}, perfis: {} };
+  const destino: Record<string, Record<string, unknown>> = {
+    acessoUsuarios: acessos.usuarios as unknown as Record<string, unknown>,
+    acessoSetores: acessos.setores as unknown as Record<string, unknown>,
+    acessoPerfis: acessos.perfis as unknown as Record<string, unknown>
+  };
+
+  registros.forEach(registro => {
+    const mapa = destino[String(registro[IMPL.colecao] || '')];
+    const chave = String(registro[IMPL.chave] || '');
+    if (!mapa || !chave) {
+      return;
+    }
+    try {
+      mapa[chave] = JSON.parse(String(registro[IMPL.dados] || '{}'));
+    } catch {
+      // registro ilegível: ignorado
+    }
+  });
+
+  return acessos;
+};
+
 export const tabelaImplantacoesAusente = (erro: unknown): boolean =>
   /0x80060888|Resource not found for the segment|Could not find a property|dgt_implregistro.*(not found|does not exist)|\b404\b/i
     .test(mensagemDe(erro));
@@ -128,12 +171,13 @@ export class BaseImplantacoes {
   private temporizador: number | undefined;
   private sincronizando: boolean = false;
   private falhas: number = 0;
-  private totalLinhas: number = 0;
 
   // Avisos para a tela (selo "Compartilhado · ao vivo" / erro de conexão
   // e alteração recusada por falta de permissão).
   public aoMudarEstado: ((estado: IEstadoBase) => void) | undefined;
   public aoRecusar: ((mensagem: string) => void) | undefined;
+  // Toda gravação de dados feita pelo painel (para o histórico de atividades).
+  public aoGravarDados: ((balde: string, colecao: string, id: string, acao: AcaoDados) => void) | undefined;
 
   public constructor(
     dataverse: DataverseService,
@@ -148,8 +192,9 @@ export class BaseImplantacoes {
   // Carga e sincronização
   // ----------------------------------------------------------
 
+  // Sem projetos importados (os cadastros de acesso não contam).
   public get vazia(): boolean {
-    return this.totalLinhas === 0;
+    return Object.keys((this.cache[BALDE_RAIZ] || {}).projetos || {}).length === 0;
   }
 
   public async carregar(): Promise<void> {
@@ -162,8 +207,6 @@ export class BaseImplantacoes {
       );
 
     Object.keys(this.cache).forEach(balde => { delete this.cache[balde]; });
-
-    this.totalLinhas = registros.length;
 
     registros.forEach(registro => this.aplicarRegistro(registro, false));
 
@@ -338,7 +381,6 @@ export class BaseImplantacoes {
       return false;
     }
 
-    this.totalLinhas++;
     this.colecao(BALDE_RAIZ, colecao, true)[id] = documento;
     this.textos[chave] = String(novo[IMPL.dados]);
     this.emitirDocumento(BALDE_RAIZ, colecao, id);
@@ -584,7 +626,6 @@ export class BaseImplantacoes {
           try {
             this.linhas[chave] =
               await this.dataverse.criarRegistro(TABELA_IMPL_REGISTRO, novo);
-            this.totalLinhas++;
           } catch (erroCriar) {
 
             // Outra pessoa criou o mesmo documento ao mesmo tempo
@@ -701,9 +742,42 @@ export class BaseImplantacoes {
 
     this.aplicar(balde, colecao, id, op, clonar(dados));
     this.emitirDocumento(balde, colecao, id);
+    this.avisarGravacao(balde, colecao, id, op, existe);
 
     this.enfileirar(balde, colecao, id)
       .catch(erro => this.falhou(erro));
+  }
+
+  private avisarGravacao(
+    balde: string,
+    colecao: string,
+    id: string,
+    op: Operacao,
+    existia: boolean
+  ): void {
+    if (this.aoGravarDados) {
+      this.aoGravarDados(balde, colecao, id, op === 'delete' ? 'excluir' : existia ? 'editar' : 'criar');
+    }
+  }
+
+  // Gravação feita pelo PORTAL (cadastros de acesso, último acesso,
+  // sementes): não passa pela permissão da tela, porque a regra já foi
+  // conferida por quem chama (services/implantacoes/AdminImplantacoes.ts).
+  public async gravarSistema(
+    colecao: string,
+    id: string,
+    dados: DocumentoPainel | undefined
+  ): Promise<void> {
+
+    if (dados === undefined) {
+      this.aplicar(BALDE_RAIZ, colecao, id, 'delete');
+    } else {
+      this.aplicar(BALDE_RAIZ, colecao, id, 'set', clonar(dados));
+    }
+
+    this.emitirDocumento(BALDE_RAIZ, colecao, id);
+
+    await this.enfileirar(BALDE_RAIZ, colecao, id);
   }
 
   // ----------------------------------------------------------
@@ -824,6 +898,7 @@ export class BaseImplantacoes {
         itens.forEach(item => {
           this.aplicar(item.balde, item.colecao, item.id, item.op, item.data);
           this.emitirDocumento(item.balde, item.colecao, item.id);
+          this.avisarGravacao(item.balde, item.colecao, item.id, item.op, item.antes !== undefined);
         });
 
         try {

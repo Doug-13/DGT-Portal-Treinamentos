@@ -24,7 +24,8 @@ const TABELA_CONSUMO = 'dgt_iaconsumo';
 
 // Funcionalidades que usam a IA e precisam de uma área de uso.
 export const FUNCIONALIDADES_IA: Array<{ chave: string; rotulo: string; siglaPadrao: string }> = [
-  { chave: 'licitacoes', rotulo: 'Licitações — análise de editais', siglaPadrao: 'LIC' }
+  { chave: 'licitacoes', rotulo: 'Licitações — análise de editais', siglaPadrao: 'LIC' },
+  { chave: 'implantacoes', rotulo: 'Implantações — assistente do painel', siglaPadrao: 'IMP' }
 ];
 
 export interface IPrecoModelo {

@@ -19,7 +19,7 @@ Dashboard "Consumo de IA" (fonte ia.consumo) ──► por área, usuário, func
 |---|---|
 | Núcleo compartilhado dos plugins | `server/DGT.Treinamentos.Plugins/IaComum.cs` |
 | Salvar / testar / remover a chave | `server/DGT.Treinamentos.Plugins/GerenciarIaPlugin.cs` |
-| Plugins de IA (usam o núcleo) | `AnalisarLicitacaoIaPlugin.cs`, `PerguntarDashboardIaPlugin.cs` |
+| Plugins de IA (usam o núcleo) | `AnalisarLicitacaoIaPlugin.cs` (Licitações e assistente do Implantações), `PerguntarDashboardIaPlugin.cs` |
 | Tabelas, coluna e Custom API | `scripts/dataverse/criar-ia-administracao.ps1` |
 | Serviço do portal | `services/ia/IaAdminService.ts` |
 | Tela | `pages/Indicadores/AdministrarIaModal.tsx` (botão em `IndicadoresPage.tsx`) |
@@ -39,7 +39,7 @@ Dashboard "Consumo de IA" (fonte ia.consumo) ──► por área, usuário, func
 
 | Ordem | Regra | Onde |
 |---|---|---|
-| (a) | Área de onde partiu o uso | Dashboards: área filtrada; sem filtro, a única área do dashboard. Licitações: área escolhida em Administrar IA › Áreas (padrão: sigla **LIC**) |
+| (a) | Área de onde partiu o uso | Dashboards: área filtrada; sem filtro, a única área do dashboard. Licitações e Implantações: área escolhida em Administrar IA › Áreas (padrão: sigla **LIC** e **IMP**) |
 | (b) | Área principal do usuário | `dgt_usuarioarea.dgt_principal`, definida em Administrar IA › Áreas |
 | — | Única área ativa do usuário | quando ele só participa de uma |
 | — | "Sem área" | nenhuma das anteriores (aparece no consumo para o Administrador corrigir) |

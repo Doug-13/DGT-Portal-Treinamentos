@@ -3,11 +3,6 @@ import {
 } from '../DataverseService';
 
 import {
-  lerModulosAcesso,
-  moduloLiberado
-} from '../../utils/modulosPortal';
-
-import {
   BaseImplantacoes,
   DocumentoPainel
 } from './BaseImplantacoes';
@@ -20,9 +15,18 @@ import {
 } from './esquemaImplantacoes';
 
 import {
+  COLECAO_PERFIS,
+  COLECAO_SETORES,
+  COLECAO_USUARIOS,
+  IAcessos,
   ISessaoPainel,
+  completarAcessos,
   podeNoPainel
 } from './permissoesImplantacoes';
+
+import {
+  HistoricoImplantacoes
+} from './HistoricoImplantacoes';
 
 import {
   RotaPainel
@@ -62,31 +66,38 @@ import {
 
 type Registro = Record<string, unknown>;
 
-interface IRecorrencia {
-  freq: string;
-  dias: number[];
-  diaMes: number;
+// Recorrência de cada envio:
+//   diaria     segunda a sexta, na hora "hora"
+//   semanal    nos dias marcados, cada um com a sua hora (ex.: seg 09:00, sex 17:00)
+//   quinzenal  igual à semanal, semana sim, semana não (a partir de "ancora")
+//   mensal     em um ou mais dias do mês, cada um com a sua hora (dia 31 = último dia)
+export interface IHorarioDia {
+  dia: number;
   hora: string;
+}
+
+export interface IRecorrencia {
+  freq: string;
+  hora: string;
+  semana: IHorarioDia[];
+  mes: IHorarioDia[];
   ancora?: string;
 }
 
-const PERFIS_PORTAL = [
-  { id: 'Administrador', nome: 'Administrador' },
-  { id: 'Gestor', nome: 'Gestor' },
-  { id: 'Editor', nome: 'Editor' },
-  { id: 'Funcionario', nome: 'Colaborador' }
-];
+const HORA_OK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-const RECORRENCIA_PADRAO: IRecorrencia = {
-  freq: 'semanal',
-  dias: [0],
-  diaMes: 1,
-  hora: '07:00'
+const PERFIS_LEGADOS: Record<string, string> = {
+  // Configuração salva antes da gestão de acessos do próprio painel
+  // (perfis do portal) → perfis do painel.
+  Administrador: 'administrador',
+  Gestor: 'gestor',
+  Editor: 'colaborador',
+  Funcionario: 'consulta'
 };
 
 const TIPO_PADRAO: Record<string, Registro> = {
   pendencias: { ativo: false, perfis: [], usuarios: [], extras: [] },
-  gerencial: { ativo: false, perfis: ['Administrador', 'Gestor'], usuarios: [], extras: [] },
+  gerencial: { ativo: false, perfis: ['administrador', 'gestor'], usuarios: [], extras: [] },
   cronogramas: {
     ativo: false,
     perfis: [],
@@ -114,93 +125,95 @@ const indiceDaSemana = (d: Date): number => {
   return Math.floor(dias / 7);
 };
 
-const semAcento = (valor: unknown): string =>
-  String(valor || '')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
+const hora = (valor: unknown, padrao: string): string =>
+  HORA_OK.test(String(valor || '')) ? String(valor) : padrao;
 
-const perfilDoRotulo = (rotulo: unknown): string => {
-  const r = semAcento(rotulo);
-  if (r.indexOf('admin') === 0) { return 'Administrador'; }
-  if (r.indexOf('gestor') === 0) { return 'Gestor'; }
-  if (r.indexOf('editor') === 0) { return 'Editor'; }
-  return 'Funcionario';
+const horarios = (lista: unknown, min: number, max: number): IHorarioDia[] => {
+  const saida: IHorarioDia[] = [];
+  (Array.isArray(lista) ? lista as Registro[] : []).forEach(h => {
+    const dia = Math.round(Number(h && h.dia));
+    if (dia >= min && dia <= max && !saida.some(x => x.dia === dia)) {
+      saida.push({ dia, hora: hora(h.hora, '07:00') });
+    }
+  });
+  return saida.sort((a, b) => a.dia - b.dia);
 };
 
-const normalizarRecorrencia = (tipo: Registro): IRecorrencia => {
+export const normalizarRecorrencia = (tipo: Registro): IRecorrencia => {
 
-  const atual = tipo.recorrencia as Partial<IRecorrencia> | undefined;
+  const atual = (tipo.recorrencia || {}) as Registro;
 
-  if (atual && atual.freq) {
+  if (atual.freq) {
+
+    const horaGeral = hora(atual.hora, '07:00');
+    let semana = horarios(atual.semana, 0, 6);
+    let mes = horarios(atual.mes, 1, 31);
+
+    // Formato anterior: dias [n] + hora única; diaMes + hora única.
+    if (!semana.length && Array.isArray(atual.dias)) {
+      semana = horarios((atual.dias as unknown[]).map(dia => ({ dia, hora: horaGeral })), 0, 6);
+    }
+    if (!mes.length && atual.diaMes) {
+      mes = horarios([{ dia: atual.diaMes, hora: horaGeral }], 1, 31);
+    }
+
     return {
-      freq: String(atual.freq),
-      dias: Array.isArray(atual.dias) ? atual.dias.map(Number).filter(n => n >= 0 && n <= 6) : [0],
-      diaMes: Math.max(1, Math.min(31, Number(atual.diaMes) || 1)),
-      hora: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(atual.hora || '')) ? String(atual.hora) : '07:00',
+      freq: ['diaria', 'semanal', 'quinzenal', 'mensal'].indexOf(String(atual.freq)) >= 0 ? String(atual.freq) : 'semanal',
+      hora: horaGeral,
+      semana: semana.length ? semana : [{ dia: 0, hora: horaGeral }],
+      mes: mes.length ? mes : [{ dia: 1, hora: horaGeral }],
       ancora: atual.ancora ? String(atual.ancora) : undefined
     };
   }
 
-  // Programação antiga do painel: lista de { dia, hora }.
-  const horarios = Array.isArray(tipo.horarios) ? tipo.horarios as Registro[] : [];
+  // Programação do app original: lista de { dia, hora }.
+  const antigos = horarios(tipo.horarios, 0, 6);
 
-  if (horarios.length > 0) {
-    const dias: number[] = [];
-    horarios.forEach(h => {
-      const dia = Number(h.dia);
-      if (dia >= 0 && dia <= 6 && dias.indexOf(dia) < 0) {
-        dias.push(dia);
-      }
-    });
-    return { freq: 'semanal', dias, diaMes: 1, hora: String(horarios[0].hora || '07:00') };
-  }
-
-  return { ...RECORRENCIA_PADRAO, dias: RECORRENCIA_PADRAO.dias.slice() };
+  return {
+    freq: 'semanal',
+    hora: antigos.length ? antigos[0].hora : '07:00',
+    semana: antigos.length ? antigos : [{ dia: 0, hora: '07:00' }],
+    mes: [{ dia: 1, hora: '07:00' }]
+  };
 };
 
-// O envio deste tipo vence hoje? Devolve a hora marcada (Date) ou undefined.
-export const horarioDeHoje = (
+// Horários em que o envio vence HOJE (zero, um ou mais).
+export const horariosDeHoje = (
   recorrencia: IRecorrencia,
   agora: Date
-): Date | undefined => {
+): string[] => {
 
   const dia = diaDaSemana(agora);
-  let vale = false;
 
   if (recorrencia.freq === 'diaria') {
-    vale = dia <= 4;
-  } else if (recorrencia.freq === 'semanal') {
-    vale = recorrencia.dias.indexOf(dia) >= 0;
-  } else if (recorrencia.freq === 'quinzenal') {
-    const ancora = recorrencia.ancora ? new Date(`${recorrencia.ancora}T00:00:00`) : agora;
-    vale = recorrencia.dias.indexOf(dia) >= 0 &&
-      Math.abs(indiceDaSemana(agora) - indiceDaSemana(ancora)) % 2 === 0;
-  } else if (recorrencia.freq === 'mensal') {
+    return dia <= 4 ? [recorrencia.hora] : [];
+  }
+
+  if (recorrencia.freq === 'semanal' || recorrencia.freq === 'quinzenal') {
+    if (recorrencia.freq === 'quinzenal') {
+      const ancora = recorrencia.ancora ? new Date(`${recorrencia.ancora}T00:00:00`) : agora;
+      if (Math.abs(indiceDaSemana(agora) - indiceDaSemana(ancora)) % 2 !== 0) {
+        return [];
+      }
+    }
+    return recorrencia.semana.filter(h => h.dia === dia).map(h => h.hora);
+  }
+
+  if (recorrencia.freq === 'mensal') {
+    // Dia maior que o mês (ex.: 31 em novembro) = último dia do mês.
     const ultimo = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
-    vale = agora.getDate() === Math.min(recorrencia.diaMes, ultimo);
+    return recorrencia.mes.filter(h => Math.min(h.dia, ultimo) === agora.getDate()).map(h => h.hora);
   }
 
-  if (!vale) {
-    return undefined;
-  }
-
-  const partes = recorrencia.hora.split(':');
-
-  return new Date(
-    agora.getFullYear(), agora.getMonth(), agora.getDate(),
-    Number(partes[0]) || 0, Number(partes[1]) || 0, 0, 0
-  );
+  return [];
 };
 
-const descreverRecorrencia = (r: IRecorrencia): string => {
-  const nomes = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
-  const dias = r.dias.slice().sort().map(d => nomes[d]).join(', ');
-  if (r.freq === 'diaria') { return `diário ${r.hora}`; }
-  if (r.freq === 'quinzenal') { return `quinzenal ${dias} ${r.hora}`; }
-  if (r.freq === 'mensal') { return `mensal dia ${r.diaMes} ${r.hora}`; }
-  return `semanal ${dias} ${r.hora}`;
+const NOMES_DIAS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+
+export const descreverRecorrencia = (r: IRecorrencia): string => {
+  if (r.freq === 'diaria') { return `diário (seg a sex) ${r.hora}`; }
+  if (r.freq === 'mensal') { return `mensal ${r.mes.map(h => `dia ${h.dia} ${h.hora}`).join(', ')}`; }
+  return `${r.freq} ${r.semana.map(h => `${NOMES_DIAS[h.dia]} ${h.hora}`).join(', ')}`;
 };
 
 export class RelatorioImplantacoes {
@@ -209,20 +222,22 @@ export class RelatorioImplantacoes {
   private readonly base: BaseImplantacoes;
   private readonly sessao: ISessaoPainel;
   private readonly linkPadrao: string;
+  private readonly historico: HistoricoImplantacoes | undefined;
 
-  private usuarios: IUsuarioEmail[] | undefined;
   private conferindo: boolean = false;
 
   public constructor(
     dataverse: DataverseService,
     base: BaseImplantacoes,
     sessao: ISessaoPainel,
-    linkPadrao: string
+    linkPadrao: string,
+    historico?: HistoricoImplantacoes
   ) {
     this.dataverse = dataverse;
     this.base = base;
     this.sessao = sessao;
     this.linkPadrao = linkPadrao;
+    this.historico = historico;
   }
 
   // ----------------------------------------------------------
@@ -249,6 +264,7 @@ export class RelatorioImplantacoes {
       if (!Array.isArray(tipo.perfis)) {
         tipo.perfis = [];
       }
+      tipo.perfis = (tipo.perfis as string[]).map(p => PERFIS_LEGADOS[p] || p);
       delete tipo.horarios;
       tipos[chave] = tipo;
     });
@@ -271,37 +287,27 @@ export class RelatorioImplantacoes {
       .slice(0, 30);
   }
 
-  // Usuários ativos do portal com o módulo Implantações liberado.
+  // Usuários ativos do PAINEL (Configurações › Gestão de usuários) com e-mail.
+  private acessos(): IAcessos {
+    const raiz = this.base.balde(BALDE_RAIZ);
+    return completarAcessos({
+      usuarios: (raiz[COLECAO_USUARIOS] || {}) as unknown as IAcessos['usuarios'],
+      setores: (raiz[COLECAO_SETORES] || {}) as unknown as IAcessos['setores'],
+      perfis: (raiz[COLECAO_PERFIS] || {}) as unknown as IAcessos['perfis']
+    });
+  }
+
   private async carregarUsuarios(): Promise<IUsuarioEmail[]> {
-
-    if (this.usuarios) {
-      return this.usuarios;
-    }
-
-    const registros =
-      await this.dataverse.listarRegistros(
-        'dgt_usuario',
-        '$select=dgt_usuarioid,dgt_name,dgt_email,dgt_perfilacesso,dgt_modulosacesso&$filter=dgt_ativo eq true&$orderby=dgt_name asc'
-      );
-
-    this.usuarios =
-      registros
-        .map(registro => {
-          const perfil = perfilDoRotulo(
-            registro['dgt_perfilacesso@OData.Community.Display.V1.FormattedValue']
-          );
-          return {
-            id: String(registro.dgt_usuarioid || ''),
-            nome: String(registro.dgt_name || ''),
-            email: String(registro.dgt_email || '').trim(),
-            perfil,
-            liberado: moduloLiberado(perfil, lerModulosAcesso(registro.dgt_modulosacesso), 'implantacoes')
-          };
-        })
-        .filter(usuario => usuario.liberado && !!usuario.email)
-        .map(usuario => ({ id: usuario.id, nome: usuario.nome, email: usuario.email, perfil: usuario.perfil }));
-
-    return this.usuarios;
+    const acessos = this.acessos();
+    return Object.keys(acessos.usuarios)
+      .filter(k => acessos.usuarios[k].ativo && !!String(acessos.usuarios[k].email || '').trim())
+      .map(k => ({
+        id: k,
+        nome: acessos.usuarios[k].nome,
+        email: String(acessos.usuarios[k].email).trim(),
+        perfil: acessos.usuarios[k].perfil
+      }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
 
   // ----------------------------------------------------------
@@ -397,15 +403,17 @@ export class RelatorioImplantacoes {
         }
 
         const recorrencia = tipo.recorrencia as IRecorrencia;
-        const alvo = horarioDeHoje(recorrencia, agora);
+        const agoraHM = `${dois(agora.getHours())}:${dois(agora.getMinutes())}`;
 
-        if (alvo && alvo.getTime() <= agora.getTime()) {
-          devidos.push({
-            tipo: par[0],
-            id: `${par[0]}-${dataIso(agora)}-${recorrencia.hora.replace(':', '')}`,
-            motivo: `agendado · ${descreverRecorrencia(recorrencia)}`
+        horariosDeHoje(recorrencia, agora)
+          .filter(h => h <= agoraHM)
+          .forEach(h => {
+            devidos.push({
+              tipo: par[0],
+              id: `${par[0]}-${dataIso(agora)}-${h.replace(':', '')}`,
+              motivo: `agendado · ${h} · ${descreverRecorrencia(recorrencia)}`
+            });
           });
-        }
       });
 
       if (devidos.length === 0) {
@@ -466,7 +474,7 @@ export class RelatorioImplantacoes {
     }
 
     if (!podeNoPainel(this.sessao.perms, 'relatorio', 'administrar')) {
-      return { status: 403, corpo: { erro: 'Só o Administrador do módulo configura os e-mails.' } };
+      return { status: 403, corpo: { erro: 'Só quem administra usuários configura os e-mails.' } };
     }
 
     const tipos = this.tipos();
@@ -518,6 +526,14 @@ export class RelatorioImplantacoes {
         link: String(corpo.link || '').trim()
       });
 
+      if (this.historico) {
+        this.historico.registrar(
+          'relatorio.configurar',
+          { tipo: 'relatorio', nome: 'E-mails e relatórios' },
+          TIPOS_EMAIL.map(par => `${par[1]}: ${novos[par[0]].ativo ? descreverRecorrencia(novos[par[0]].recorrencia as IRecorrencia) : 'desativado'}`).join(' | ')
+        ).catch(() => undefined);
+      }
+
       return { status: 200, corpo: { ok: true } };
     }
 
@@ -530,7 +546,7 @@ export class RelatorioImplantacoes {
       const teste = acao === 'teste';
 
       if (teste && !this.sessao.usuario.email) {
-        return { status: 400, corpo: { erro: 'Seu cadastro no portal não tem e-mail.' } };
+        return { status: 400, corpo: { erro: 'Seu cadastro não tem e-mail.' } };
       }
 
       const registro =
@@ -541,6 +557,14 @@ export class RelatorioImplantacoes {
         );
 
       await this.registrar(this.idAvulso(tipo), registro);
+
+      if (this.historico) {
+        this.historico.registrar(
+          teste ? 'relatorio.teste' : 'relatorio.enviar',
+          { tipo: 'relatorio', id: tipo, nome: (TIPOS_EMAIL.filter(par => par[0] === tipo)[0] || [tipo, tipo])[1] },
+          `${registro.enviados} e-mail(s) na fila`
+        ).catch(() => undefined);
+      }
 
       const falhas = registro.falhas as string[];
 
@@ -563,7 +587,7 @@ export class RelatorioImplantacoes {
       corpo: {
         cfg: { tipos, enviados: this.enviados() },
         usuarios: usuarios.map(usuario => ({ ...usuario, ativo: true })),
-        perfis: PERFIS_PORTAL,
+        perfis: Object.keys(this.acessos().perfis).map(k => ({ id: k, nome: this.acessos().perfis[k].nome })),
         projetos: dados.projetos,
         tiposNomes: TIPOS_EMAIL,
         destinatarios: dados.destinatarios,
