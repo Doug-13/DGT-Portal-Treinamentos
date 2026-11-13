@@ -670,6 +670,10 @@ export interface IFluxoHistorico {
   // Número da revisão no momento do passo (ex.: Rev.00A). Registros
   // antigos não têm este campo.
   revisao?: string;
+
+  // Ação executada pelo Administrador do Sistema no lugar do
+  // responsável da etapa ("Executar ação como administrador").
+  comoAdministrador?: boolean;
 }
 
 export interface IFluxoTarefa {

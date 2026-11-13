@@ -6,6 +6,10 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Melhoria: botão Tela cheia no cabeçalho do portal e banner dos ambientes exibido somente na visão geral.
+
+- Melhoria: Conformidade de treinamentos exibe as áreas dos usuários e permite filtrar a tabela e os indicadores por área.
+
 - Melhoria: registro de ambiente — saiu o quadro "Campos preenchidos" do rodapé (a etapa mostra só os campos configurados); "Cancelar registro" virou o menu ⋮ do Administrador do Sistema, com "Editar como administrador" (salva os campos da etapa atual sem mudar etapa nem situação, com validações e registro no histórico). Cancelamento restrito ao Administrador do Sistema. Plugin ValidarAcaoAdministrativaRegistroPlugin valida as duas ações no servidor.
 - Melhoria: mapeamento pai → filho do subprocesso — compatibilidade por par (bloqueia publicação se incompatível), "somente leitura no filho", "Mapear automaticamente" e "Criar no filho" (mesma chave). Valores ajustados ao tipo do campo do filho na criação, com registro do que não foi aproveitado.
 - Correção: valores herdados do documento pai não são mais apagados quando o fluxo filho tem uma devolução e o campo aparece editável numa etapa ainda não percorrida.

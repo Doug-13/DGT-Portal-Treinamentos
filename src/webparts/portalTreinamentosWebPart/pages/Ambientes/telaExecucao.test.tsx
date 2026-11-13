@@ -115,39 +115,55 @@ const clicar = (texto: string | RegExp): void => {
 const desenhoAberto = (): boolean => /Fluxo de Auditoria · .+ · v3/.test(raiz.textContent || '');
 const itensSequencia = (): HTMLElement[] => Array.prototype.slice.call(raiz.querySelectorAll('[role="list"][aria-label="Sequência de atividades"] [role="listitem"]'));
 
+// Menu "Seções do registro" (painel esquerdo): cada botão tem ícone,
+// rótulo e, no Histórico, o contador de eventos.
+const itensMenu = (): HTMLButtonElement[] =>
+  Array.prototype.slice.call(raiz.querySelectorAll('nav[aria-label="Seções do registro"] button'));
+const rotuloMenu = (botao: HTMLButtonElement): string =>
+  ((botao.querySelectorAll('span')[1] as HTMLElement).textContent || '').trim();
+const contadorMenu = (botao: HTMLButtonElement): string | undefined => {
+  const contador = botao.querySelectorAll('span')[2] as HTMLElement | undefined;
+  return contador ? (contador.textContent || '').trim() : undefined;
+};
+const clicarMenu = (rotulo: string): void => {
+  const botao = itensMenu().filter(item => rotuloMenu(item) === rotulo)[0];
+  expect(botao).toBeDefined();
+  act(() => { botao.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+};
+
 describe('Tela de execução da atividade', () => {
 
-  it('painel esquerdo: Dados do documento → Histórico → Ver fluxo, separados por linhas', () => {
-    renderizar(ambiente(), registro('0001'), instanciaNaSegunda('0001'));
-    const texto = raiz.textContent || '';
-    const a = texto.indexOf('Dados do documento');
-    const b = texto.indexOf('Histórico (');
-    const c = texto.indexOf('▶ Ver fluxo');
-    expect(a).toBeGreaterThanOrEqual(0);
-    expect(b).toBeGreaterThan(a);
-    expect(c).toBeGreaterThan(b);
-    expect(raiz.querySelectorAll('hr')).toHaveLength(2);
-  });
-
-  it('"Ver fluxo" abre recolhido, expande, recolhe e volta recolhido ao abrir outro registro', () => {
-    renderizar(ambiente(), registro('0001'), instanciaNaSegunda('0001'));
-    expect(desenhoAberto()).toBe(false);
-    clicar('▶ Ver fluxo');
-    expect(desenhoAberto()).toBe(true);
-    clicar('▼ Ver fluxo');
-    expect(desenhoAberto()).toBe(false);
-    clicar('▶ Ver fluxo');
-    renderizar(ambiente(), registro('0002'), instanciaNaSegunda('0002'));
-    expect(desenhoAberto()).toBe(false);
-  });
-
-  it('histórico é o do registro aberto (mesmos eventos gravados)', () => {
+  it('menu do painel esquerdo: Dados do documento → Histórico (com contador) → Ver fluxo; começa em Dados', () => {
     const instancia = instanciaNaSegunda('0001');
     renderizar(ambiente(), registro('0001'), instancia);
+    const menu = itensMenu();
+    expect(menu.map(rotuloMenu)).toEqual(['Dados do documento', 'Histórico', 'Ver fluxo']);
+    expect(contadorMenu(menu[1])).toBe(String(instancia.historico.length));
+    expect(menu.map(botao => botao.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+  });
+
+  it('"Ver fluxo" abre o fluxo à direita, "Dados do documento" volta e outro registro reabre em Dados', () => {
+    renderizar(ambiente(), registro('0001'), instanciaNaSegunda('0001'));
+    expect(desenhoAberto()).toBe(false);
+    clicarMenu('Ver fluxo');
+    expect(desenhoAberto()).toBe(true);
+    clicarMenu('Dados do documento');
+    expect(desenhoAberto()).toBe(false);
+    clicarMenu('Ver fluxo');
+    renderizar(ambiente(), registro('0002'), instanciaNaSegunda('0002'));
+    expect(desenhoAberto()).toBe(false);
+    expect(itensMenu().map(botao => botao.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+  });
+
+  it('histórico é o do registro aberto (mesmos eventos gravados, do mais recente para o mais antigo)', () => {
+    const instancia = instanciaNaSegunda('0001');
+    renderizar(ambiente(), registro('0001'), instancia);
+    expect(raiz.querySelectorAll('[data-historico]')).toHaveLength(0);
+    clicarMenu('Histórico');
     const ids = Array.prototype.slice.call(raiz.querySelectorAll('[data-historico]')).map((e: HTMLElement) => e.getAttribute('data-historico'));
-    expect(ids).toEqual(instancia.historico.map(passo => passo.id));
+    const esperado = instancia.historico.slice().sort((a, b) => (b.data || '').localeCompare(a.data || '')).map(passo => passo.id);
+    expect(ids).toEqual(esperado);
     expect(raiz.textContent).toMatch(/Programada \(0001\)/);
-    expect((raiz.textContent || '').indexOf(`Histórico (${instancia.historico.length})`)).toBeGreaterThanOrEqual(0);
   });
 
   it('sequência: concluída, atual e a fazer; "Ocultar/Mostrar sequência"', () => {
@@ -167,7 +183,7 @@ describe('Tela de execução da atividade', () => {
     renderizar(ambiente(false), registro('0001'), instanciaNaSegunda('0001'));
     expect(itensSequencia()).toHaveLength(0);
     expect(raiz.textContent).not.toMatch(/Ocultar sequência|Mostrar sequência/);
-    clicar('▶ Ver fluxo');
+    clicarMenu('Ver fluxo');
     expect(desenhoAberto()).toBe(true);
   });
 

@@ -225,15 +225,29 @@ interface IFormulario {
   scoreMinimo: string;
 }
 
+// Junta os termos das listas da DGT, sem repetição
+// ("cftv" e "camera" aparecem nos dois grupos de relacionadas).
+const termosDosGrupos = (
+  grupos: { termos: string[] }[]
+): string => {
+  const vistos: string[] = [];
+  grupos.forEach(grupo => grupo.termos.forEach(termo => {
+    if (vistos.indexOf(termo) < 0) vistos.push(termo);
+  }));
+  return vistos.join(', ');
+};
+
+// Filtros padrão: já vêm preenchidos com as listas da DGT.
+// "Restaurar filtros padrão" volta para estes valores.
 const FORMULARIO_INICIAL: IFormulario = {
-  assunto: '',
+  assunto: termosDosGrupos(SUGESTOES_ASSUNTO),
   uf: '',
   diasBusca: '30',
   modalidades: [6, 4, 8, 9],
   modoBusca: '3',
   obrigatorias: '',
-  relacionadas: '',
-  negativas: '',
+  relacionadas: termosDosGrupos(SUGESTOES_RELACIONADAS),
+  negativas: termosDosGrupos(SUGESTOES_EXCLUIR),
   valorMinimo: '',
   valorMaximo: '',
   scoreMinimo: '10'
@@ -460,6 +474,7 @@ const CartaoLicitacao: React.FC<{
         {acompanhamento && acompanhamento.pastaUrl && (
           <a
             href={acompanhamento.pastaUrl}
+            data-interception="off"
             target="_blank"
             rel="noopener noreferrer"
             title="Pasta do edital no SharePoint"
@@ -624,7 +639,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
 
   const [form, setForm] = React.useState<IFormulario>(FORMULARIO_INICIAL);
   const [erroForm, setErroForm] = React.useState<string>('');
-  const [mostrarRefinar, setMostrarRefinar] = React.useState<boolean>(false);
+  const [mostrarRefinar, setMostrarRefinar] = React.useState<boolean>(true);
   const [filtroLista, setFiltroLista] = React.useState<string>('');
   const [avisoPopup, setAvisoPopup] = React.useState<boolean>(false);
   const [previa, setPrevia] = React.useState<ILicitacaoResultado | undefined>(undefined);

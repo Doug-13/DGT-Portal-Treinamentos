@@ -4,6 +4,7 @@ import Icones, { IconeChave } from './common/Icones';
 import VersaoPortal from './common/VersaoPortal';
 import MenuUsuario from './common/MenuUsuario';
 import AvisosPortal from './common/AvisosPortal';
+import AdministrarIaModal from '../pages/Indicadores/AdministrarIaModal';
 
 import {
   IEventoTreinamento,
@@ -37,8 +38,8 @@ import { TrilhaService } from '../services/TrilhaService';
 import PortalRouter from './PortalRouter';
 import { Pagina } from '../constants/routes';
 import { descreverPerfil, podeAdministrarAcessos } from '../services/AutorizacaoService';
-import { calcularResumoConformidade } from '../services/ConformidadeService';
-import { areasCatalogo, montarEscopoPessoas, noEscopoDeConteudo, pessoaNoEscopo } from '../utils/regrasAcesso';
+import { calcularResumoConformidade, IItemConformidade } from '../services/ConformidadeService';
+import { areaNoEscopo, areasCatalogo, montarEscopoPessoas, noEscopoDeConteudo, pessoaNoEscopo } from '../utils/regrasAcesso';
 import { podeAcessarRota } from '../services/RoutePermissionService';
 import {
   obterModuloPagina,
@@ -813,12 +814,12 @@ const PortalTreinamentos:
         sharePointDocumentoService
       );
 
-    
+
     const documentoTreinamentos =
       useDocumentoTreinamentos(
         dataverseService
       );
-const gestaoAreas =
+    const gestaoAreas =
       useGestaoAreas(
         dataverseService
       );
@@ -864,35 +865,55 @@ const gestaoAreas =
       React.useMemo(
         () => {
 
-          if (!escopoPessoas) {
-            return {
-              itens: conformidade.itens,
-              resumo: conformidade.resumo
-            };
-          }
+          type AreasUsuario = NonNullable<IItemConformidade['areas']>;
+          const porUsuario = new Map<string, AreasUsuario>();
+          const porEmail = new Map<string, AreasUsuario>();
+          const escopoAreas = autorizacao.contexto?.escopoAreas;
 
-          const itens =
-            conformidade.itens.filter(
-              item =>
-                pessoaNoEscopo(
-                  escopoPessoas,
-                  {
-                    id: item.usuarioId,
-                    nome: item.usuario,
-                    email: item.usuario
-                  }
-                )
-            );
+          gestaoAreas.usuariosAreas.forEach(vinculo => {
+            if (!vinculo.ativo || !vinculo.areaId || !areaNoEscopo(escopoAreas, vinculo.areaId)) {
+              return;
+            }
+
+            const area = { id: vinculo.areaId.toLowerCase(), nome: vinculo.areaNome };
+            const usuarioId = vinculo.usuarioId.toLowerCase();
+            const email = vinculo.usuarioEmail.trim().toLowerCase();
+
+            const areasUsuario = porUsuario.get(usuarioId) || [];
+            areasUsuario.push(area);
+            porUsuario.set(usuarioId, areasUsuario);
+
+            if (email) {
+              const areasEmail = porEmail.get(email) || [];
+              areasEmail.push(area);
+              porEmail.set(email, areasEmail);
+            }
+          });
+
+          const itens = conformidade.itens
+            .filter(item => pessoaNoEscopo(escopoPessoas, {
+              id: item.usuarioId,
+              nome: item.usuario,
+              email: item.usuarioEmail || item.usuario
+            }))
+            .map(item => {
+              const email = (item.usuarioEmail || item.usuario).trim().toLowerCase();
+              const vinculos = item.usuarioId
+                ? porUsuario.get(item.usuarioId.toLowerCase())
+                : porEmail.get(email);
+              const areas = Array.from(new Map((vinculos || []).map(area => [area.id, area])).values());
+              areas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+              return { ...item, areas };
+            });
 
           return {
             itens,
-            resumo:
-              calcularResumoConformidade(
-                itens
-              )
+            resumo: escopoPessoas ? calcularResumoConformidade(itens) : conformidade.resumo
           };
         },
         [
+          autorizacao.contexto?.escopoAreas,
+          gestaoAreas.usuariosAreas,
           escopoPessoas,
           conformidade.itens,
           conformidade.resumo
@@ -910,7 +931,13 @@ const gestaoAreas =
         : 'Colaborador';
 
     // Menu do nome do usuário (Meu perfil, Usuários e acessos...).
+    const [telaCheia, setTelaCheia] = React.useState(true);
+
     const [menuUsuarioAberto, setMenuUsuarioAberto] =
+      React.useState<boolean>(false);
+
+    // Administrar IA (chave, preços, limites e áreas) — menu do usuário.
+    const [administrandoIa, setAdministrandoIa] =
       React.useState<boolean>(false);
 
     const menuUsuarioRef =
@@ -1661,14 +1688,14 @@ const gestaoAreas =
 
                   const real =
                     progressoPorAtribuicao[
-                      chave
+                    chave
                     ];
 
                   if (
                     t.status !==
-                      'Concluído' &&
+                    'Concluído' &&
                     real !==
-                      undefined
+                    undefined
                   ) {
                     t.progresso =
                       real;
@@ -1708,12 +1735,12 @@ const gestaoAreas =
 
                   const lista =
                     revisoesTreinamentos[
-                      t.id
-                        .replace(
-                          /[{}]/g,
-                          ''
-                        )
-                        .toLowerCase()
+                    t.id
+                      .replace(
+                        /[{}]/g,
+                        ''
+                      )
+                      .toLowerCase()
                     ] ||
                     [];
 
@@ -1724,7 +1751,7 @@ const gestaoAreas =
 
                   if (
                     t.status ===
-                      'Concluído' &&
+                    'Concluído' &&
                     !t.revisaoTreinada
                   ) {
                     t.revisaoTreinada =
@@ -1787,12 +1814,12 @@ const gestaoAreas =
 
                   const arquivo =
                     arquivos[
-                      c.id
-                        .replace(
-                          /[{}]/g,
-                          ''
-                        )
-                        .toLowerCase()
+                    c.id
+                      .replace(
+                        /[{}]/g,
+                        ''
+                      )
+                      .toLowerCase()
                     ];
 
                   c.situacaoArquivo =
@@ -1855,15 +1882,15 @@ const gestaoAreas =
 
                   const lista =
                     revisoes[
-                      (
-                        c.treinamentoId ||
+                    (
+                      c.treinamentoId ||
+                      ''
+                    )
+                      .replace(
+                        /[{}]/g,
                         ''
                       )
-                        .replace(
-                          /[{}]/g,
-                          ''
-                        )
-                        .toLowerCase()
+                      .toLowerCase()
                     ] ||
                     [];
 
@@ -2050,7 +2077,7 @@ const gestaoAreas =
       ): boolean =>
         controleDocumentalHabilitado() &&
         (documento.tipo || '').trim().toUpperCase() ===
-          CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO;
+        CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO;
 
     const documentosVisiveis =
       React.useMemo(
@@ -2085,7 +2112,7 @@ const gestaoAreas =
               !(
                 controleDocumentalHabilitado() &&
                 (documento.tipo || '').trim().toUpperCase() ===
-                  CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO
+                CONTROLE_DOCUMENTAL.TIPO_DOCUMENTO
               )
           ),
         [
@@ -2593,7 +2620,7 @@ const gestaoAreas =
 
           if (
             etapa ===
-              1
+            1
           ) {
 
             setPaginaAtual(
@@ -2610,7 +2637,7 @@ const gestaoAreas =
 
           if (
             etapa ===
-              2
+            2
           ) {
 
             void gestaoModulos
@@ -2762,7 +2789,7 @@ const gestaoAreas =
 
           if (
             gestaoAvaliacoes.avaliacoes.length ===
-              0
+            0
           ) {
             throw new Error(
               'Cadastre ou importe pelo menos uma avaliação antes de encerrar.'
@@ -3052,7 +3079,7 @@ const gestaoAreas =
     const modulosCarregados =
       !modulos.carregando &&
       modulos.modulos.length >
-        0;
+      0;
 
     React.useEffect(
       () => {
@@ -3076,11 +3103,11 @@ const gestaoAreas =
 
                   if (
                     t.usuarioTreinamentoId !==
-                      usuarioTreinamentoAbertoId ||
+                    usuarioTreinamentoAbertoId ||
                     t.status ===
-                      'Concluído' ||
+                    'Concluído' ||
                     t.progresso ===
-                      progressoModulosAberto
+                    progressoModulosAberto
                   ) {
                     return t;
                   }
@@ -3819,23 +3846,23 @@ const gestaoAreas =
     const menuIntranet:
       Array<{
         label:
-          string;
+        string;
 
         icon:
-          IconeChave;
+        IconeChave;
 
         pagina?:
-          Pagina;
+        Pagina;
 
         modulo:
-          'inicio' |
-          'treinamentos' |
-          'documentos' |
-          'processos' |
-          'licitacoes' |
-          'arquitetura' |
-          'outro';
-      
+        'inicio' |
+        'treinamentos' |
+        'documentos' |
+        'processos' |
+        'licitacoes' |
+        'arquitetura' |
+        'outro';
+
         // Destaque "NOVO" ao lado do nome no menu lateral
         novo?:
         boolean;
@@ -3843,301 +3870,301 @@ const gestaoAreas =
         // Item de um ambiente dinâmico (chave do ambiente).
         ambienteChave?:
         string;
-}> = [
+      }> = [
 
-      {
-        label:
-          'Início',
-
-        icon:
-          'home' as IconeChave,
-
-        pagina:
-          'inicio',
-
-        modulo:
-          'inicio'
-      },
-
-      {
-        label:
-          'Treinamentos',
-
-        icon:
-          'graduationCap' as IconeChave,
-
-        pagina:
-          'treinamentosVisaoGeral',
-
-        modulo:
-          'treinamentos'
-      },
-
-      {
-        label:
-          'Documentos',
-
-        icon:
-          'fileText' as IconeChave,
-
-        pagina:
-          'documentos',
-
-        modulo:
-          'documentos'
-      },
-
-      {
-        label:
-          'Processos',
-
-        icon:
-          'workflow' as IconeChave,
-
-        // Módulo em teste: só navega com a feature flag ligada.
-        pagina:
-          FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
-            ? 'processos'
-            : undefined,
-
-        modulo:
-          FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
-            ? 'processos'
-            : 'outro'
-      },
-
-      // Licitações (PNCP) — visível só para perfis autorizados
-      ...(
-        abasLicitacoes.length > 0
-          ? [
-            {
-              label:
-                'Licitações',
-
-              icon:
-                'gavel' as IconeChave,
-
-              pagina:
-                abasLicitacoes[0].pagina,
-
-              modulo:
-                'licitacoes' as const,
-
-              novo:
-                true
-            }
-          ]
-          : []
-      ),
-
-      // Arquitetura de Soluções — visível só com o módulo liberado
-      ...(
-        abasArquitetura.length > 0
-          ? [
-            {
-              label:
-                'Arquitetura de Soluções',
-
-              icon:
-                'building' as IconeChave,
-
-              pagina:
-                abasArquitetura[0].pagina,
-
-              modulo:
-                'arquitetura' as const,
-
-              novo:
-                true
-            }
-          ]
-          : []
-      ),
-
-      // Ambientes dinâmicos (+ Adicionar ambiente) — cada um visível
-      // só para quem tem o módulo "amb:<chave>" liberado.
-      ...ambientes
-        .filter(item => item.ativo)
-        .map(item => ({
+        {
           label:
-            item.nome,
+            'Início',
 
           icon:
-            (Icones[item.icone] ? item.icone : 'workflow') as IconeChave,
+            'home' as IconeChave,
 
           pagina:
-            'ambiente' as Pagina,
+            'inicio',
 
           modulo:
-            'outro' as const,
+            'inicio'
+        },
 
-          ambienteChave:
-            item.chave
-        })),
+        {
+          label:
+            'Treinamentos',
 
-      // Kits (catálogo do B.O.M.) — visível só com o módulo "kits"
-      // liberado (o filtro do menu usa podeAcessarRota).
-      {
-        label:
-          'Kits',
+          icon:
+            'graduationCap' as IconeChave,
 
-        icon:
-          'package' as IconeChave,
+          pagina:
+            'treinamentosVisaoGeral',
 
-        pagina:
-          'kits',
+          modulo:
+            'treinamentos'
+        },
 
-        modulo:
-          'outro',
+        {
+          label:
+            'Documentos',
 
-        novo:
-          true
-      },
+          icon:
+            'fileText' as IconeChave,
 
-      // Fornecedores — visível só com o módulo "fornecedores" liberado.
-      {
-        label:
-          'Fornecedores',
+          pagina:
+            'documentos',
 
-        icon:
-          'briefcase' as IconeChave,
+          modulo:
+            'documentos'
+        },
 
-        pagina:
-          'fornecedores',
+        {
+          label:
+            'Processos',
 
-        modulo:
-          'outro',
+          icon:
+            'workflow' as IconeChave,
 
-        novo:
-          true
-      },
+          // Módulo em teste: só navega com a feature flag ligada.
+          pagina:
+            FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
+              ? 'processos'
+              : undefined,
 
-      // Implantações — visível só com o módulo "implantacoes" liberado.
-      {
-        label:
-          'Implantações',
+          modulo:
+            FEATURE_FLAGS.FLUXO_CONFIGURAVEL_TESTE
+              ? 'processos'
+              : 'outro'
+        },
 
-        icon:
-          'building' as IconeChave,
+        // Licitações (PNCP) — visível só para perfis autorizados
+        ...(
+          abasLicitacoes.length > 0
+            ? [
+              {
+                label:
+                  'Licitações',
 
-        pagina:
-          'implantacoes',
+                icon:
+                  'gavel' as IconeChave,
 
-        modulo:
-          'outro',
+                pagina:
+                  abasLicitacoes[0].pagina,
 
-        novo:
-          true
-      },
+                modulo:
+                  'licitacoes' as const,
 
-      // Cálculo de HH — visível só com o módulo "hh" liberado.
-      {
-        label:
-          'Cálculo de HH',
+                novo:
+                  true
+              }
+            ]
+            : []
+        ),
 
-        icon:
-          'clock' as IconeChave,
+        // Arquitetura de Soluções — visível só com o módulo liberado
+        ...(
+          abasArquitetura.length > 0
+            ? [
+              {
+                label:
+                  'Arquitetura de Soluções',
 
-        pagina:
-          'calculoHH',
+                icon:
+                  'building' as IconeChave,
 
-        modulo:
-          'outro',
+                pagina:
+                  abasArquitetura[0].pagina,
 
-        novo:
-          true
-      },
+                modulo:
+                  'arquitetura' as const,
 
-      // Planejamento orçamentário — Gestor e Administrador (o item
-      // some do menu para quem não pode acessar a rota).
-      {
-        label:
-          'Planejamento orçamentário',
+                novo:
+                  true
+              }
+            ]
+            : []
+        ),
 
-        icon:
-          'wallet' as IconeChave,
+        // Ambientes dinâmicos (+ Adicionar ambiente) — cada um visível
+        // só para quem tem o módulo "amb:<chave>" liberado.
+        ...ambientes
+          .filter(item => item.ativo)
+          .map(item => ({
+            label:
+              item.nome,
 
-        pagina:
-          'planejamentoOrcamentario',
+            icon:
+              (Icones[item.icone] ? item.icone : 'workflow') as IconeChave,
 
-        modulo:
-          'outro',
+            pagina:
+              'ambiente' as Pagina,
 
-        novo:
-          true
-      },
+            modulo:
+              'outro' as const,
 
-      {
-        label:
-          'Indicadores',
+            ambienteChave:
+              item.chave
+          })),
 
-        icon:
-          'barChart' as IconeChave,
+        // Kits (catálogo do B.O.M.) — visível só com o módulo "kits"
+        // liberado (o filtro do menu usa podeAcessarRota).
+        {
+          label:
+            'Kits',
 
-        pagina:
-          'indicadores',
+          icon:
+            'package' as IconeChave,
 
-        modulo:
-          'outro',
+          pagina:
+            'kits',
 
-        novo:
-          true
-      },
+          modulo:
+            'outro',
 
-      {
-        label:
-          'RH e Pessoas',
+          novo:
+            true
+        },
 
-        icon:
-          'users' as IconeChave,
+        // Fornecedores — visível só com o módulo "fornecedores" liberado.
+        {
+          label:
+            'Fornecedores',
 
-        pagina:
-          'rhPessoas',
+          icon:
+            'briefcase' as IconeChave,
 
-        modulo:
-          'outro',
+          pagina:
+            'fornecedores',
 
-        novo:
-          true
-      },
+          modulo:
+            'outro',
 
-      {
-        label:
-          'Sistemas',
+          novo:
+            true
+        },
 
-        icon:
-          'grid' as IconeChave,
+        // Implantações — visível só com o módulo "implantacoes" liberado.
+        {
+          label:
+            'Implantações',
 
-        modulo:
-          'outro'
-      },
+          icon:
+            'building' as IconeChave,
 
-      {
-        label:
-          'Comunicados',
+          pagina:
+            'implantacoes',
 
-        icon:
-          'megaphone' as IconeChave,
+          modulo:
+            'outro',
 
-        modulo:
-          'outro'
-      },
+          novo:
+            true
+        },
 
-      {
-        label:
-          'Sobre a DGT',
+        // Cálculo de HH — visível só com o módulo "hh" liberado.
+        {
+          label:
+            'Cálculo de HH',
 
-        icon:
-          'info' as IconeChave,
+          icon:
+            'clock' as IconeChave,
 
-        pagina:
-          'suporte',
+          pagina:
+            'calculoHH',
 
-        modulo:
-          'outro'
-      }
-    ];
-// ==========================================================
+          modulo:
+            'outro',
+
+          novo:
+            true
+        },
+
+        // Planejamento orçamentário — Gestor e Administrador (o item
+        // some do menu para quem não pode acessar a rota).
+        {
+          label:
+            'Planejamento orçamentário',
+
+          icon:
+            'wallet' as IconeChave,
+
+          pagina:
+            'planejamentoOrcamentario',
+
+          modulo:
+            'outro',
+
+          novo:
+            true
+        },
+
+        {
+          label:
+            'Indicadores',
+
+          icon:
+            'barChart' as IconeChave,
+
+          pagina:
+            'indicadores',
+
+          modulo:
+            'outro',
+
+          novo:
+            true
+        },
+
+        {
+          label:
+            'RH e Pessoas',
+
+          icon:
+            'users' as IconeChave,
+
+          pagina:
+            'rhPessoas',
+
+          modulo:
+            'outro',
+
+          novo:
+            true
+        },
+
+        {
+          label:
+            'Sistemas',
+
+          icon:
+            'grid' as IconeChave,
+
+          modulo:
+            'outro'
+        },
+
+        {
+          label:
+            'Comunicados',
+
+          icon:
+            'megaphone' as IconeChave,
+
+          modulo:
+            'outro'
+        },
+
+        {
+          label:
+            'Sobre a DGT',
+
+          icon:
+            'info' as IconeChave,
+
+          pagina:
+            'suporte',
+
+          modulo:
+            'outro'
+        }
+      ];
+    // ==========================================================
     // RENDER
     // ==========================================================
 
@@ -4145,7 +4172,7 @@ const gestaoAreas =
 
       <div
         className={
-          styles.portal
+          telaCheia ? `${styles.portal} ${styles.portalTelaCheia}` : styles.portal
         }
       >
 
@@ -4192,84 +4219,84 @@ const gestaoAreas =
                 }
               )
               .map(
-              item => (
+                item => (
 
-                <button
-                  key={
-                    item.ambienteChave
-                      ? `amb:${item.ambienteChave}`
-                      : item.label
-                  }
-                  type="button"
-                  className={
-                    itemMenuAtivo(item)
-                      ? styles.intranetMenuActive
-                      : styles.intranetMenuItem
-                  }
-                  title={
-                    itemMenuAtivo(item)
-                      ? 'Módulo atual'
-                      : 'Módulo da Intranet DGT'
-                  }
-                  onClick={() => {
-
-                    if (
+                  <button
+                    key={
                       item.ambienteChave
-                    ) {
-                      setAmbienteAtualChave(
-                        item.ambienteChave
-                      );
+                        ? `amb:${item.ambienteChave}`
+                        : item.label
                     }
-
-                    if (
-                      item.pagina
-                    ) {
-                      navegar(
-                        item.pagina
-                      );
-                    }
-                  }}
-                >
-
-                  <span
+                    type="button"
                     className={
-                      styles.intranetIcon
+                      itemMenuAtivo(item)
+                        ? styles.intranetMenuActive
+                        : styles.intranetMenuItem
                     }
-                    aria-hidden="true"
+                    title={
+                      itemMenuAtivo(item)
+                        ? 'Módulo atual'
+                        : 'Módulo da Intranet DGT'
+                    }
+                    onClick={() => {
+
+                      if (
+                        item.ambienteChave
+                      ) {
+                        setAmbienteAtualChave(
+                          item.ambienteChave
+                        );
+                      }
+
+                      if (
+                        item.pagina
+                      ) {
+                        navegar(
+                          item.pagina
+                        );
+                      }
+                    }}
                   >
+
+                    <span
+                      className={
+                        styles.intranetIcon
+                      }
+                      aria-hidden="true"
+                    >
+                      {
+                        React.createElement(
+                          Icones[item.icon]
+                        )
+                      }
+                    </span>
+
+                    <span
+                      className={
+                        styles.intranetLabel
+                      }
+                    >
+                      {item.label}
+                    </span>
+
                     {
-                      React.createElement(
-                        Icones[item.icon]
+                      item.novo &&
+                      (
+                        <span
+                          className={
+                            styles.intranetNovo
+                          }
+                          aria-label="Novo"
+                          title="Novo"
+                        >
+                          NOVO
+                        </span>
                       )
                     }
-                  </span>
 
-                  <span
-                    className={
-                      styles.intranetLabel
-                    }
-                  >
-                    {item.label}
-                  </span>
-
-                  {
-                    item.novo &&
-                    (
-                      <span
-                        className={
-                          styles.intranetNovo
-                        }
-                        aria-label="Novo"
-                        title="Novo"
-                      >
-                        NOVO
-                      </span>
-                    )
-                  }
-
-                </button>
-              )
-            )}
+                  </button>
+                )
+              )}
 
             {
               // Somente o Administrador global cria ambientes.
@@ -4463,6 +4490,16 @@ const gestaoAreas =
               }
             >
 
+              <button
+                type="button"
+                className={styles.headerIcon}
+                aria-label={telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
+                title={telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
+                onClick={() => setTelaCheia(atual => !atual)}
+              >
+                <span aria-hidden="true">{telaCheia ? '⊟' : '⛶'}</span>
+              </button>
+
               {/* Versão do portal + Novidades */}
               <VersaoPortal />
 
@@ -4511,129 +4548,142 @@ const gestaoAreas =
                 ref={menuUsuarioRef}
                 style={{ position: 'relative' }}
               >
-              <div
-                className={
-                  styles.userBox
-                }
-                role="button"
-                tabIndex={0}
-                aria-haspopup="menu"
-                aria-expanded={menuUsuarioAberto}
-                title="Meu perfil e acessos"
-                style={{ cursor: 'pointer' }}
-                onClick={() => setMenuUsuarioAberto(!menuUsuarioAberto)}
-                onKeyDown={evento => {
-                  if (evento.key === 'Enter' || evento.key === ' ') {
-                    evento.preventDefault();
-                    setMenuUsuarioAberto(!menuUsuarioAberto);
-                  }
-                }}
-              >
-
                 <div
                   className={
-                    styles.avatar
+                    styles.userBox
                   }
+                  role="button"
+                  tabIndex={0}
+                  aria-haspopup="menu"
+                  aria-expanded={menuUsuarioAberto}
+                  title="Meu perfil e acessos"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setMenuUsuarioAberto(!menuUsuarioAberto)}
+                  onKeyDown={evento => {
+                    if (evento.key === 'Enter' || evento.key === ' ') {
+                      evento.preventDefault();
+                      setMenuUsuarioAberto(!menuUsuarioAberto);
+                    }
+                  }}
                 >
 
-                  {
-                    usuario.fotoUsuario &&
-                      !usuario.erroFotoUsuario
-                      ? (
-
-                        <img
-                          src={
-                            usuario.fotoUsuario
-                          }
-                          alt={
-                            userName
-                          }
-                          onError={
-                            usuario.registrarErroFoto
-                          }
-                        />
-
-                      ) : (
-
-                        <span>
-                          {
-                            usuario.primeiroNome
-                              .charAt(0)
-                              .toUpperCase()
-                          }
-                        </span>
-                      )
-                  }
-
-                </div>
-
-                <div
-                  className={
-                    styles.userText
-                  }
-                >
-
-                  <strong>
-                    {
-                      usuario.primeiroNome
+                  <div
+                    className={
+                      styles.avatar
                     }
-                  </strong>
+                  >
 
-                  <span>
                     {
-                      autorizacao.carregando
-                        ? 'Carregando perfil...'
-                        : perfilExibicao
+                      usuario.fotoUsuario &&
+                        !usuario.erroFotoUsuario
+                        ? (
+
+                          <img
+                            src={
+                              usuario.fotoUsuario
+                            }
+                            alt={
+                              userName
+                            }
+                            onError={
+                              usuario.registrarErroFoto
+                            }
+                          />
+
+                        ) : (
+
+                          <span>
+                            {
+                              usuario.primeiroNome
+                                .charAt(0)
+                                .toUpperCase()
+                            }
+                          </span>
+                        )
                     }
+
+                  </div>
+
+                  <div
+                    className={
+                      styles.userText
+                    }
+                  >
+
+                    <strong>
+                      {
+                        usuario.primeiroNome
+                      }
+                    </strong>
+
+                    <span>
+                      {
+                        autorizacao.carregando
+                          ? 'Carregando perfil...'
+                          : perfilExibicao
+                      }
+                    </span>
+
+                  </div>
+
+                  <span
+                    className={
+                      styles.chevron
+                    }
+                  >
+                    ⌄
                   </span>
 
                 </div>
 
-                <span
-                  className={
-                    styles.chevron
-                  }
-                >
-                  ⌄
-                </span>
-
-              </div>
-
-              {
-                menuUsuarioAberto && (
-                  <MenuUsuario
-                    nome={autorizacao.contexto?.nome || usuario.primeiroNome}
-                    email={autorizacao.contexto?.email || ''}
-                    perfil={autorizacao.contexto?.perfil || 'Funcionario'}
-                    fotoUrl={usuario.fotoUsuario && !usuario.erroFotoUsuario ? usuario.fotoUsuario : undefined}
-                    inicial={(usuario.primeiroNome || '?').charAt(0).toUpperCase()}
-                    vinculos={autorizacao.contexto?.vinculosArea || []}
-                    itens={
-                      [
-                        { chave: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', descricao: 'Seus dados, papéis e o que você acessa', icone: 'perfil' as const, visivel: true },
-                        { chave: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', descricao: 'Cadastro, perfis e módulos liberados', icone: 'usuarios' as const, visivel: podeAdministrarAcessos(autorizacao.contexto) },
-                        { chave: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', descricao: 'Áreas, equipes e papéis por área', icone: 'areas' as const, visivel: autorizacao.contexto?.perfil === 'Administrador' }
-                      ]
-                        .filter(item => item.visivel)
-                        .map(item => ({
-                          chave: item.chave,
-                          rotulo: item.rotulo,
-                          descricao: item.descricao,
-                          icone: item.icone,
-                          onClick: () => {
-                            setMenuUsuarioAberto(false);
-                            navegar(item.chave);
-                          }
-                        }))
-                    }
-                  />
-                )
-              }
+                {
+                  menuUsuarioAberto && (
+                    <MenuUsuario
+                      nome={autorizacao.contexto?.nome || usuario.primeiroNome}
+                      email={autorizacao.contexto?.email || ''}
+                      perfil={autorizacao.contexto?.perfil || 'Funcionario'}
+                      fotoUrl={usuario.fotoUsuario && !usuario.erroFotoUsuario ? usuario.fotoUsuario : undefined}
+                      inicial={(usuario.primeiroNome || '?').charAt(0).toUpperCase()}
+                      vinculos={autorizacao.contexto?.vinculosArea || []}
+                      itens={
+                        [
+                          { chave: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', descricao: 'Seus dados, papéis e o que você acessa', icone: 'perfil' as const, visivel: true },
+                          { chave: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', descricao: 'Cadastro, perfis e módulos liberados', icone: 'usuarios' as const, visivel: podeAdministrarAcessos(autorizacao.contexto) },
+                          { chave: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', descricao: 'Áreas, equipes e papéis por área', icone: 'areas' as const, visivel: autorizacao.contexto?.perfil === 'Administrador' },
+                          { chave: 'administrarIa', rotulo: 'Administrar IA', descricao: 'Chave, consumo, limites e áreas da IA', icone: 'ia' as const, visivel: autorizacao.contexto?.perfil === 'Administrador' }
+                        ]
+                          .filter(item => item.visivel)
+                          .map(item => ({
+                            chave: item.chave,
+                            rotulo: item.rotulo,
+                            descricao: item.descricao,
+                            icone: item.icone,
+                            onClick: () => {
+                              setMenuUsuarioAberto(false);
+                              if (item.chave === 'administrarIa') {
+                                setAdministrandoIa(true);
+                              } else {
+                                navegar(item.chave as Pagina);
+                              }
+                            }
+                          }))
+                      }
+                    />
+                  )
+                }
               </div>
 
             </div>
 
           </header>
+
+          {/* Administrar IA (aberto pelo menu do usuário, de qualquer tela). */}
+          {administrandoIa && (
+            <AdministrarIaModal
+              dataverseService={dataverseService}
+              onFechar={() => setAdministrandoIa(false)}
+            />
+          )}
 
           {/* Avisos no canto da tela (configuráveis em Meu perfil). */}
           <AvisosPortal
@@ -5785,11 +5835,11 @@ const gestaoAreas =
                 }
 
                 carregandoConformidade={
-                  conformidade.carregando
+                  conformidade.carregando || gestaoAreas.carregando
                 }
 
                 erroConformidade={
-                  conformidade.erro
+                  conformidade.erro || gestaoAreas.erro
                 }
               />
 

@@ -189,7 +189,7 @@ describe('Tela do registro: administrador × usuário comum', () => {
     expect(raiz.textContent).not.toMatch(/Campos preenchidos/);
     clicar('button[aria-label="Ações do administrador"]');
     const opcoes = Array.prototype.slice.call(raiz.querySelectorAll('[role="menuitem"]')).map((e: HTMLElement) => e.textContent);
-    expect(opcoes).toEqual(['Editar como administrador', 'Cancelar registro']);
+    expect(opcoes).toEqual(['Editar como administrador', 'Cancelar registro']); // sem onExecutarComoAdministrador, a 3ª opção não aparece
     clicar('[role="menuitem"]', 'Cancelar registro');
     expect(cancelou).toBe(1);
   });
@@ -209,5 +209,23 @@ describe('Tela do registro: administrador × usuário comum', () => {
     });
     expect(salvos).toHaveLength(1);
     expect(raiz.querySelector('[data-edicao-admin]')).toBeNull();
+  });
+});
+
+describe('Executar ação como administrador (motor)', () => {
+
+  it('executa no lugar do responsável, exige justificativa e marca o histórico', () => {
+    const antes = naExecucao();
+    expect(executarAcao(definicao, antes, { acaoChave: 'concluir', comentario: '', valores: {}, ator: admin }).erros)
+      .toEqual(['Admin não é responsável pela etapa "Executar auditoria em campo".']);
+    expect(executarAcao(definicao, antes, { acaoChave: 'concluir', comentario: '  ', valores: {}, ator: admin, comoAdministrador: true }).erros)
+      .toEqual(['Informe no comentário a justificativa da ação executada como administrador.']);
+    const r = executarAcao(definicao, antes, { acaoChave: 'concluir', comentario: 'Auditor de férias', valores: {}, ator: admin, comoAdministrador: true });
+    expect(r.erros).toEqual([]);
+    const depois = r.instancia as IFluxoInstancia;
+    expect(depois.status).toBe('concluido');
+    expect(depois.historico.find(h => h.elementoId === 'executar')).toMatchObject({
+      acaoRotulo: 'Concluir (como administrador)', executadoPorNome: 'Admin', comoAdministrador: true
+    });
   });
 });

@@ -4,6 +4,7 @@ import PageHeader from
   '../../components/layout/PageHeader';
 
 import {
+  calcularResumoConformidade,
   IItemConformidade,
   IResumoConformidade,
   StatusConformidade
@@ -138,6 +139,26 @@ const GestaoConformidadePage:
     ] =
       React.useState('');
 
+    const [filtroArea, setFiltroArea] = React.useState('');
+
+    const areas = React.useMemo(() => {
+      const nomesPorId = new Map<string, string>();
+      props.itens.forEach(item => item.areas?.forEach(area => nomesPorId.set(area.id, area.nome)));
+      return Array.from(nomesPorId).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+    }, [props.itens]);
+
+    const itensDaArea = React.useMemo(() => {
+      if (!filtroArea) return props.itens;
+      return props.itens.filter(item => filtroArea === 'sem-area'
+        ? !item.areas?.length
+        : item.areas?.some(area => area.id === filtroArea));
+    }, [filtroArea, props.itens]);
+
+    const resumo = React.useMemo(
+      () => filtroArea ? calcularResumoConformidade(itensDaArea) : props.resumo,
+      [filtroArea, itensDaArea, props.resumo]
+    );
+
     const filtrados =
       React.useMemo(
         () => {
@@ -147,7 +168,7 @@ const GestaoConformidadePage:
               .trim()
               .toLowerCase();
 
-          return props.itens
+          return itensDaArea
             .filter(
               item =>
                 filtro ===
@@ -178,7 +199,7 @@ const GestaoConformidadePage:
         [
           filtro,
           pesquisa,
-          props.itens
+          itensDaArea
         ]
       );
 
@@ -232,35 +253,35 @@ const GestaoConformidadePage:
           <Cartao
             titulo="Conformidade"
             valor={
-              `${props.resumo.conformidadePercentual}%`
+              `${resumo.conformidadePercentual}%`
             }
           />
 
           <Cartao
             titulo="Concluídos"
             valor={
-              props.resumo.concluidos
+              resumo.concluidos
             }
           />
 
           <Cartao
             titulo="Pendentes"
             valor={
-              props.resumo.pendentes
+              resumo.pendentes
             }
           />
 
           <Cartao
             titulo="Vencidos"
             valor={
-              props.resumo.vencidos
+              resumo.vencidos
             }
           />
 
           <Cartao
             titulo="A vencer"
             valor={
-              props.resumo.aVencer
+              resumo.aVencer
             }
             detalhe="Próximos 30 dias"
           />
@@ -268,7 +289,7 @@ const GestaoConformidadePage:
           <Cartao
             titulo="Em andamento"
             valor={
-              props.resumo.emAndamento
+              resumo.emAndamento
             }
           />
         </div>
@@ -322,6 +343,20 @@ const GestaoConformidadePage:
             />
 
             <select
+              aria-label="Filtrar por área"
+              value={filtroArea}
+              onChange={event => setFiltroArea(event.target.value)}
+              style={{ padding: '10px', border: '1px solid #d8dee8', borderRadius: '8px' }}
+            >
+              <option value="">Todas as áreas</option>
+              {areas.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
+              {props.itens.some(item => !item.areas?.length) && (
+                <option value="sem-area">Sem área</option>
+              )}
+            </select>
+
+            <select
+              aria-label="Filtrar por status"
               value={
                 filtro
               }
@@ -400,6 +435,7 @@ const GestaoConformidadePage:
                 <thead>
                   <tr>
                     <th>Usuário</th>
+                    <th>Área</th>
                     <th>Treinamento</th>
                     <th>Trilha</th>
                     <th>Status</th>
@@ -411,6 +447,9 @@ const GestaoConformidadePage:
                 </thead>
 
                 <tbody>
+                  {filtrados.length === 0 && (
+                    <tr><td colSpan={9}>Nenhum treinamento encontrado para os filtros selecionados.</td></tr>
+                  )}
                   {filtrados.map(
                     item => (
                       <tr
@@ -423,6 +462,8 @@ const GestaoConformidadePage:
                             item.usuario
                           }
                         </td>
+
+                        <td>{item.areas?.map(area => area.nome).join(', ') || 'Sem área'}</td>
 
                         <td>
                           {

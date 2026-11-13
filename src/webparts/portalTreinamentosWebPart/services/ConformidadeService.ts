@@ -17,6 +17,8 @@ export interface IItemConformidade {
   usuario: string;
   // Id do dgt_usuario (usado no recorte por área)
   usuarioId?: string;
+  usuarioEmail?: string;
+  areas?: { id: string; nome: string }[];
   treinamento: string;
   trilha: string;
   status: StatusConformidade;
@@ -398,6 +400,8 @@ export class ConformidadeService {
                 ],
                 ''
               ),
+
+            usuarioEmail: texto(registro, ['dgt_usuarioemail', 'dgt_email']),
 
             usuario:
               texto(

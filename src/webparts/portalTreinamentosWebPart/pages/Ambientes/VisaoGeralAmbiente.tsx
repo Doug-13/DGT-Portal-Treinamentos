@@ -69,7 +69,7 @@ const CORES_SITUACAO: Record<SituacaoRegistroAmbiente, { texto: string; cor: str
 };
 
 const celula: React.CSSProperties = {
-  padding: '9px 10px',
+  padding: '12px 12px',
   borderTop: `1px solid ${COR.borda}`,
   fontSize: '13px',
   color: COR.azul,
@@ -105,6 +105,9 @@ const VisaoGeralAmbiente: React.FC<IVisaoGeralAmbienteProps> = (props) => {
 
   const metadados = (definicao && definicao.metadados) || [];
 
+  // Linha sob o mouse/foco (destaque).
+  const [sobre, setSobre] = React.useState('');
+
   const visaoAtiva = layout.visoes.find(item => item.id === props.visaoSelecionada);
 
   const termo = props.busca.trim().toLowerCase();
@@ -134,9 +137,13 @@ const VisaoGeralAmbiente: React.FC<IVisaoGeralAmbienteProps> = (props) => {
   const valorColuna = (registro: IAmbienteRegistro, chave: string): React.ReactNode => {
     switch (chave) {
       case 'codigo':
-        return <strong style={{ whiteSpace: 'nowrap' }}>{registro.codigo}</strong>;
+        return (
+          <span style={{ whiteSpace: 'nowrap', padding: '3px 8px', borderRadius: '6px', background: '#EEF4FA', color: '#202A44', fontSize: '12px', fontWeight: 700 }}>
+            {registro.codigo}
+          </span>
+        );
       case 'titulo':
-        return registro.titulo;
+        return <strong style={{ color: '#202A44', fontWeight: 600 }}>{registro.titulo}</strong>;
       case 'etapa':
         return registro.etapaAtual || '—';
       case 'prazo':
@@ -148,7 +155,16 @@ const VisaoGeralAmbiente: React.FC<IVisaoGeralAmbienteProps> = (props) => {
         return <Selo texto={cores.texto} cor={cores.cor} fundo={cores.fundo} />;
       }
       case 'solicitante':
-        return registro.solicitanteNome || '—';
+        return registro.solicitanteNome
+          ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', whiteSpace: 'nowrap' }}>
+              <span aria-hidden="true" style={{ width: '22px', height: '22px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#E8F2FF', color: '#0B5CAB', fontSize: '10px', fontWeight: 800 }}>
+                {registro.solicitanteNome.split(' ').filter(Boolean).slice(0, 2).map(parte => parte.charAt(0).toUpperCase()).join('')}
+              </span>
+              {registro.solicitanteNome}
+            </span>
+          )
+          : '—';
       case 'area':
         return registro.areaNome || '—';
       case 'criadoEm':
@@ -234,29 +250,57 @@ const VisaoGeralAmbiente: React.FC<IVisaoGeralAmbienteProps> = (props) => {
       )}
 
       {/* Lista */}
-      <div style={{ ...cartao, padding: 0, overflowX: 'auto', marginBottom: 0 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FONTE }}>
-          <thead>
-            <tr>
-              {layout.colunas.map(chave => <th key={chave} style={cabecalhoCelula}>{rotuloColuna(chave)}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {lista.map(registro => (
-              <tr
-                key={registro.id}
-                onClick={() => props.onAbrir(registro)}
-                style={{ cursor: 'pointer' }}
-                title="Abrir"
-              >
-                {layout.colunas.map(chave => <td key={chave} style={celula}>{valorColuna(registro, chave)}</td>)}
+      <div style={{ ...cartao, padding: 0, marginBottom: 0, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '12px 16px', borderBottom: `1px solid ${COR.borda}` }}>
+          <strong style={{ fontSize: '14px', color: COR.azul }}>
+            {visaoAtiva ? visaoAtiva.nome : (props.mostrarEncerrados ? 'Todos os registros' : 'Em andamento')}
+          </strong>
+          <span style={{ padding: '2px 9px', borderRadius: '999px', background: '#EEF2F7', color: COR.texto2, fontSize: '12px', fontWeight: 700 }}>
+            {lista.length} {lista.length === 1 ? 'registro' : 'registros'}
+          </span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FONTE }}>
+            <thead>
+              <tr>
+                <th aria-hidden="true" style={{ ...cabecalhoCelula, width: '4px', padding: 0 }} />
+                {layout.colunas.map(chave => <th key={chave} style={cabecalhoCelula}>{rotuloColuna(chave)}</th>)}
+                <th aria-hidden="true" style={{ ...cabecalhoCelula, width: '28px' }} />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {lista.map(registro => {
+                const cores = CORES_SITUACAO[registro.situacao] || CORES_SITUACAO.emAndamento;
+                const marcada = sobre === registro.id;
+                return (
+                  <tr
+                    key={registro.id}
+                    tabIndex={0}
+                    onClick={() => props.onAbrir(registro)}
+                    onKeyDown={evento => { if (evento.key === 'Enter') { props.onAbrir(registro); } }}
+                    onMouseEnter={() => setSobre(registro.id)}
+                    onMouseLeave={() => setSobre('')}
+                    onFocus={() => setSobre(registro.id)}
+                    onBlur={() => setSobre('')}
+                    style={{ cursor: 'pointer', background: marcada ? '#F3F8FE' : '#FFFFFF', transition: 'background .12s', outline: 'none' }}
+                    title={`Abrir ${registro.codigo}`}
+                  >
+                    <td aria-hidden="true" style={{ ...celula, padding: 0, width: '4px', background: cores.cor, opacity: marcada ? 1 : 0.55 }} />
+                    {layout.colunas.map(chave => <td key={chave} style={celula}>{valorColuna(registro, chave)}</td>)}
+                    <td aria-hidden="true" style={{ ...celula, color: marcada ? '#0B5CAB' : '#CBD5E1', fontSize: '16px', textAlign: 'center' }}>›</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         {lista.length === 0 && (
-          <div style={{ padding: '18px', fontSize: '13.5px', color: COR.texto2, textAlign: 'center' }}>
-            Nenhum registro {visaoAtiva ? 'nesta visão' : 'encontrado'}.
+          <div style={{ padding: '36px 18px', textAlign: 'center' }}>
+            <div aria-hidden="true" style={{ fontSize: '28px', color: '#CBD5E1', marginBottom: '6px' }}>▤</div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: COR.azul }}>Nenhum registro {visaoAtiva ? 'nesta visão' : 'encontrado'}</div>
+            <div style={{ fontSize: '12.5px', color: COR.texto2, marginTop: '4px' }}>
+              {termo ? 'Ajuste a busca ou limpe o filtro.' : 'Os registros aparecem aqui assim que forem criados.'}
+            </div>
           </div>
         )}
       </div>

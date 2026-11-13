@@ -45,6 +45,8 @@ import PainelAssinatura, {
 
 import AnexosRegistro from './AnexosRegistro';
 
+import HistoricoRegistroAmbiente from './HistoricoRegistroAmbiente';
+
 import {
   AnexosAmbienteService,
   IRegraAnexos
@@ -112,6 +114,9 @@ export interface IRegistroAmbienteProps {
   // administrador. Sem isso, o menu não aparece.
   podeAdministrarSistema?: boolean;
   onEditarComoAdministrador?: (valores: Record<string, string>, comentario: string) => Promise<string[]>;
+  // "Executar ação como administrador": botões da etapa liberados para o
+  // Administrador do Sistema, com justificativa obrigatória.
+  onExecutarComoAdministrador?: (acaoChave: string, comentario: string, valores: Record<string, string>) => Promise<string[]>;
   onIniciarFluxo: () => void;
   onExecutar: (acaoChave: string, comentario: string, valores: Record<string, string>) => Promise<string[]>;
   // Campos do tipo Componente (dados do Dataverse).
@@ -150,7 +155,7 @@ const valorInfo: React.CSSProperties = { fontSize: '13.5px', color: COR.azul, wh
 // ------------------------------------------------------------
 // Menu ⋮ do Administrador do Sistema
 // ------------------------------------------------------------
-const MenuAdministrador: React.FC<{ desabilitado: boolean; onCancelar: () => void; onEditar: () => void }> = ({ desabilitado, onCancelar, onEditar }) => {
+const MenuAdministrador: React.FC<{ desabilitado: boolean; onCancelar: () => void; onEditar: () => void; onExecutar?: () => void }> = ({ desabilitado, onCancelar, onEditar, onExecutar }) => {
   const [aberto, setAberto] = React.useState(false);
   const item: React.CSSProperties = {
     display: 'block', width: '100%', textAlign: 'left', border: 0, background: '#FFFFFF', padding: '9px 14px',
@@ -175,6 +180,9 @@ const MenuAdministrador: React.FC<{ desabilitado: boolean; onCancelar: () => voi
           style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 20, background: '#FFFFFF', border: `1px solid ${COR.borda}`, borderRadius: '8px', boxShadow: '0 8px 24px rgba(15,23,42,.14)', overflow: 'hidden', minWidth: '210px' }}
         >
           <button type="button" role="menuitem" style={item} onClick={() => { setAberto(false); onEditar(); }}>Editar como administrador</button>
+          {onExecutar && (
+            <button type="button" role="menuitem" style={{ ...item, borderTop: `1px solid ${COR.borda}` }} onClick={() => { setAberto(false); onExecutar(); }}>Executar ação como administrador</button>
+          )}
           <button type="button" role="menuitem" style={{ ...item, color: '#B42318', borderTop: `1px solid ${COR.borda}` }} onClick={() => { setAberto(false); onCancelar(); }}>Cancelar registro</button>
         </div>
       )}
@@ -223,18 +231,30 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
   const duasColunas = layout.registro.disposicao !== 'umaColuna';
   // "Ver fluxo" sempre começa recolhido; a sequência começa visível
   // (se o ambiente a mostra). Ao abrir outro registro, volta ao início.
-  const [verFluxo, setVerFluxo] = React.useState(false);
+  // Painel da direita: o que foi escolhido na coluna da esquerda.
+  //   dados     → metadados e valores (campos e ações da etapa)
+  //   historico → todas as ocorrências do registro
+  //   fluxo     → fluxograma
+  const [visaoDireita, setVisaoDireita] = React.useState<'dados' | 'historico' | 'fluxo'>('dados');
   const [sequenciaVisivel, setSequenciaVisivel] = React.useState(true);
   // "Editar como administrador" (menu ⋮).
   const [modoAdmin, setModoAdmin] = React.useState(false);
+  // "Executar ação como administrador" (menu ⋮).
+  const [modoExecucaoAdmin, setModoExecucaoAdmin] = React.useState(false);
   // Configuração do ambiente (ambiente antigo sem a opção = mostra).
   const mostrarSequencia =
     props.mostrarSequencia !== undefined ? props.mostrarSequencia : ambiente.mostrarSequencia !== false;
   React.useEffect(() => {
-    setVerFluxo(false);
+    setVisaoDireita('dados');
     setSequenciaVisivel(true);
     setModoAdmin(false);
+    setModoExecucaoAdmin(false);
   }, [registro.id]);
+
+  // Ao avançar a etapa, sai do modo de execução administrativa.
+  React.useEffect(() => {
+    setModoExecucaoAdmin(false);
+  }, [atualId]);
 
   const edicaoAdmin = modoAdmin && !!props.podeAdministrarSistema && !!props.onEditarComoAdministrador && registro.situacao === 'emAndamento';
   const propsEdicaoAdmin = {
@@ -251,6 +271,34 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
     },
     onCancelarEdicaoAdmin: () => setModoAdmin(false)
   };
+
+  const execucaoAdmin =
+    modoExecucaoAdmin && !edicaoAdmin && !!props.podeAdministrarSistema && !!props.onExecutarComoAdministrador && registro.situacao === 'emAndamento';
+  // No modo administrativo os botões da etapa ficam liberados e a ação
+  // vai para onExecutarComoAdministrador (justificativa obrigatória).
+  const podeAgirPainel = props.podeAgir || execucaoAdmin;
+  const onExecutarPainel = async (acaoChave: string, comentario: string, valores: Record<string, string>): Promise<string[]> => {
+    if (execucaoAdmin && !props.podeAgir && props.onExecutarComoAdministrador) {
+      if (!(comentario || '').trim()) {
+        return ['Informe no comentário a justificativa da ação executada como administrador.'];
+      }
+      const erros = await props.onExecutarComoAdministrador(acaoChave, comentario, valores);
+      if (erros.length === 0) {
+        setModoExecucaoAdmin(false);
+      }
+      return erros;
+    }
+    return props.onExecutar(acaoChave, comentario, valores);
+  };
+  const avisoExecucaoAdmin = execucaoAdmin && !props.podeAgir ? (
+    <div data-execucao-admin="true" style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: '8px', background: '#FFF7E6', border: '1px solid #F5C26B', fontSize: '12.5px', color: '#7A4B00' }}>
+      <strong>Executando como administrador.</strong> A ação será registrada no histórico em seu nome, marcada como administrativa.
+      O comentário é obrigatório e serve de justificativa.{' '}
+      <button type="button" onClick={() => setModoExecucaoAdmin(false)} style={{ border: 0, background: 'transparent', color: '#0874CE', fontWeight: 700, cursor: 'pointer', fontFamily: FONTE, fontSize: '12.5px', padding: 0 }}>
+        Sair do modo administrador
+      </button>
+    </div>
+  ) : null;
 
   const elementoAtual = definicao && instancia ? obterElementoAtual(definicao, instancia) : undefined;
   const tarefaAtual = instancia ? tarefaPendente(instancia) : undefined;
@@ -323,7 +371,12 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
             <MenuAdministrador
               desabilitado={props.processando}
               onCancelar={props.onCancelar}
-              onEditar={() => { setModoAdmin(true); setVerFluxo(false); }}
+              onEditar={() => { setModoExecucaoAdmin(false); setModoAdmin(true); setVisaoDireita('dados'); }}
+              onExecutar={
+                props.onExecutarComoAdministrador && estado && instancia && instancia.status === 'emAndamento'
+                  ? () => { setModoAdmin(false); setModoExecucaoAdmin(true); setSelecionada(atualId); setVisaoDireita('dados'); }
+                  : undefined
+              }
             />
           )}
         </div>
@@ -459,60 +512,114 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
 
             {/* ESQUERDA: dados do registro */}
             <div style={{ flex: '0 1 340px', minWidth: '260px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ ...cartao, marginBottom: 0 }}>
-                <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>Dados do documento</strong>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
-                  <div><div style={rotuloInfo}>{ambiente.rotuloRegistro}</div><div style={{ ...valorInfo, fontWeight: 700 }}>{registro.titulo}</div></div>
-                  <div><div style={rotuloInfo}>Código</div><div style={valorInfo}>{registro.codigo}</div></div>
-                  <div>
-                    <div style={rotuloInfo}>Etapa atual</div>
-                    <div style={valorInfo}>
-                      {instancia && instancia.status === 'concluido' ? 'Concluído' : (elementoAtual ? elementoAtual.nome : '—')}
-                      {posicaoEtapa && <span style={{ color: COR.texto2 }}> · {posicaoEtapa}</span>}
-                    </div>
+              {/* Menu: escolhe o que aparece no painel da direita */}
+              <nav aria-label="Seções do registro" style={{ ...cartao, marginBottom: 0, padding: '6px' }}>
+                {([
+                  { chave: 'dados', icone: '☰', rotulo: 'Dados do documento', contador: undefined as number | undefined, visivel: true },
+                  { chave: 'historico', icone: '⟲', rotulo: 'Histórico', contador: instancia ? instancia.historico.length : undefined, visivel: layout.registro.mostrarHistorico !== false },
+                  { chave: 'fluxo', icone: '⧉', rotulo: 'Ver fluxo', contador: undefined as number | undefined, visivel: true }
+                ] as Array<{ chave: 'dados' | 'historico' | 'fluxo'; icone: string; rotulo: string; contador?: number; visivel: boolean }>)
+                  .filter(item => item.visivel)
+                  .map(item => {
+                    const ativo = visaoDireita === item.chave;
+                    return (
+                      <button
+                        key={item.chave}
+                        type="button"
+                        aria-pressed={ativo}
+                        onClick={() => setVisaoDireita(item.chave)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '9px 10px', margin: '1px 0',
+                          border: 0, borderRadius: '8px', cursor: 'pointer', textAlign: 'left', fontFamily: FONTE,
+                          background: ativo ? ESCURO.azul : 'transparent', color: ativo ? '#FFFFFF' : ESCURO.texto,
+                          fontSize: '13.5px', fontWeight: 700
+                        }}
+                      >
+                        <span aria-hidden="true" style={{ width: '18px', textAlign: 'center', opacity: ativo ? 1 : 0.7 }}>{item.icone}</span>
+                        <span style={{ flex: 1 }}>{item.rotulo}</span>
+                        {item.contador !== undefined && (
+                          <span style={{ minWidth: '22px', padding: '1px 7px', borderRadius: '999px', fontSize: '11.5px', textAlign: 'center', background: ativo ? 'rgba(255,255,255,.22)' : '#EEF2F7', color: ativo ? '#FFFFFF' : ESCURO.texto2 }}>
+                            {item.contador}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+              </nav>
+
+              {/* Resumo do registro */}
+              <div style={{ ...cartao, marginBottom: 0, padding: 0, overflow: 'hidden' }}>
+
+                {/* Identificação */}
+                <div style={{ padding: '14px 16px 12px' }}>
+                  <div style={{ ...rotuloInfo, marginBottom: '2px' }}>{ambiente.rotuloRegistro}</div>
+                  <div style={{ fontSize: '16px', fontWeight: 800, color: ESCURO.texto, lineHeight: '21px', wordBreak: 'break-word' }}>{registro.titulo}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: '6px', background: '#EEF4FA', color: ESCURO.texto, fontSize: '12px', fontWeight: 700 }}>{registro.codigo}</span>
+                    <Selo texto={situacao.texto} cor={situacao.cor} fundo={situacao.fundo} />
                   </div>
-                  <div>
-                    <div style={rotuloInfo}>Prazo da etapa</div>
-                    <div style={valorInfo}>{tarefaAtual && tarefaAtual.prazo ? <SeloPrazo prazo={tarefaAtual.prazo} situacao={situacaoPrazo(tarefaAtual.prazo, tarefaAtual.criadaEm)} /> : '—'}</div>
-                  </div>
-                  <div><div style={rotuloInfo}>Responsável da etapa</div><div style={valorInfo}>{responsaveisAtuais.length > 0 ? responsaveisAtuais.join(' · ') : '—'}</div></div>
-                  <div><div style={rotuloInfo}>Situação</div><div style={valorInfo}><Selo texto={situacao.texto} cor={situacao.cor} fundo={situacao.fundo} /></div></div>
-                  <div><div style={rotuloInfo}>Aberto por</div><div style={valorInfo}>{registro.solicitanteNome || '—'} · {formatarDataHora(registro.criadoEm)}</div></div>
-                  {registro.areaNome && <div><div style={rotuloInfo}>Área</div><div style={valorInfo}>{registro.areaNome}</div></div>}
-                  {registro.descricao && <div><div style={rotuloInfo}>Descrição</div><div style={valorInfo}>{registro.descricao}</div></div>}
                 </div>
-                {layout.registro.mostrarHistorico !== false && (
-                  <>
-                    <hr style={{ border: 0, borderTop: `1px solid ${COR.borda}`, margin: '14px 0 10px' }} />
-                    <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '8px' }}>
-                      Histórico{instancia ? ` (${instancia.historico.length})` : ''}
-                    </strong>
-                    <div aria-label="Histórico do registro" style={{ maxHeight: '280px', overflowY: 'auto' }}>
-                      {(!instancia || instancia.historico.length === 0) && (
-                        <div style={{ fontSize: '12.5px', color: COR.texto2 }}>Nenhum evento registrado ainda.</div>
-                      )}
-                      {instancia && instancia.historico.map(passo => (
-                        <div key={passo.id} data-historico={passo.id} style={{ fontSize: '12px', color: COR.azul, padding: '6px 0', borderTop: `1px solid ${COR.borda}` }}>
-                          <div style={{ color: COR.texto2 }}>{formatarDataHora(passo.data)} · {passo.executadoPorNome}</div>
-                          <div><strong>{passo.elementoNome}</strong> — {passo.acaoRotulo}</div>
-                          {passo.comentario && <div style={{ color: COR.texto2, whiteSpace: 'pre-line' }}>{passo.comentario}</div>}
-                        </div>
-                      ))}
+
+                {/* Etapa atual em destaque */}
+                <div style={{ margin: '0 12px', padding: '12px', borderRadius: '10px', background: '#F3F8FE', border: '1px solid #D6E7FB' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' }}>
+                    <span style={rotuloInfo}>Etapa atual</span>
+                    {posicaoEtapa && <span style={{ fontSize: '11.5px', fontWeight: 700, color: ESCURO.azul }}>{indiceEtapa + 1}/{etapas.length}</span>}
+                  </div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: ESCURO.texto, marginTop: '3px', lineHeight: '19px' }}>
+                    {instancia && instancia.status === 'concluido' ? 'Concluído' : (elementoAtual ? elementoAtual.nome : '—')}
+                  </div>
+                  {indiceEtapa >= 0 && etapas.length > 0 && (
+                    <div aria-hidden="true" style={{ height: '5px', borderRadius: '3px', background: '#DCE6F2', marginTop: '8px', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.round(((indiceEtapa + 1) / etapas.length) * 100)}%`, height: '100%', background: ESCURO.azul, borderRadius: '3px' }} />
                     </div>
-                  </>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span
+                        aria-hidden="true"
+                        style={{ width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: ESCURO.azul, color: '#FFFFFF', fontSize: '11px', fontWeight: 800 }}
+                      >
+                        {(responsaveisAtuais[0] || '?').split(' ').filter(Boolean).slice(0, 2).map(parte => parte.charAt(0).toUpperCase()).join('')}
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: '11px', color: ESCURO.texto2 }}>Responsável</span>
+                        <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: ESCURO.texto, wordBreak: 'break-word' }}>
+                          {responsaveisAtuais.length > 0 ? responsaveisAtuais.join(' · ') : '—'}
+                        </span>
+                      </span>
+                    </div>
+                    {tarefaAtual && tarefaAtual.prazo && (
+                      <div><SeloPrazo prazo={tarefaAtual.prazo} situacao={situacaoPrazo(tarefaAtual.prazo, tarefaAtual.criadaEm)} /></div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Detalhes: rótulo à esquerda, valor à direita */}
+                <dl style={{ margin: 0, padding: '10px 16px 4px' }}>
+                  {[
+                    { rotulo: 'Aberto por', valor: registro.solicitanteNome || '—' },
+                    { rotulo: 'Aberto em', valor: formatarDataHora(registro.criadoEm) },
+                    { rotulo: 'Área', valor: registro.areaNome || '' }
+                  ]
+                    .filter(item => !!item.valor)
+                    .map(item => (
+                      <div key={item.rotulo} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '7px 0', borderBottom: `1px solid ${COR.borda}` }}>
+                        <dt style={{ fontSize: '12.5px', color: ESCURO.texto2 }}>{item.rotulo}</dt>
+                        <dd style={{ margin: 0, fontSize: '12.5px', fontWeight: 600, color: ESCURO.texto, textAlign: 'right', wordBreak: 'break-word' }}>{item.valor}</dd>
+                      </div>
+                    ))}
+                </dl>
+
+                {registro.descricao && (
+                  <div style={{ padding: '8px 16px 14px' }}>
+                    <div style={{ fontSize: '12.5px', color: ESCURO.texto2, marginBottom: '4px' }}>Descrição</div>
+                    <div style={{ fontSize: '13px', color: ESCURO.texto, padding: '8px 10px', background: '#F7F9FB', borderLeft: '3px solid #05C3DD', borderRadius: '4px', whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
+                      {registro.descricao}
+                    </div>
+                  </div>
                 )}
-                <hr style={{ border: 0, borderTop: `1px solid ${COR.borda}`, margin: '12px 0 10px' }} />
-                <button
-                  type="button"
-                  aria-expanded={verFluxo}
-                  onClick={() => setVerFluxo(!verFluxo)}
-                  style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: FONTE, fontSize: '14px', fontWeight: 700, color: COR.azul }}
-                >
-                  {verFluxo ? '▼' : '▶'} Ver fluxo
-                </button>
-                {verFluxo && (
-                  <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '4px' }}>O desenho aparece abaixo, em largura total.</div>
-                )}
+                {!registro.descricao && <div style={{ height: '10px' }} />}
               </div>
 
               {props.anexos && props.anexos.regra.visivel && (
@@ -537,44 +644,51 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
 
             {/* DIREITA: campos da etapa */}
             <div style={{ ...cartao, marginBottom: 0, flex: '1 1 460px', minWidth: 0 }}>
+              {visaoDireita === 'historico' && instancia && (
+                <HistoricoRegistroAmbiente historico={instancia.historico} />
+              )}
+              {visaoDireita === 'fluxo' && instancia && definicao && (
+                <>
+                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: '8px' }}>
+                    Fluxo de {ambiente.nome} · {instancia.processoNome || definicao.nome} · v{definicao.versao}
+                  </div>
+                  <div style={{ overflowX: 'auto', maxWidth: '100%', border: `1px solid ${COR.borda}`, borderRadius: '8px', background: '#FFFFFF' }}>
+                    <FluxoDiagrama definicao={definicao} instancia={instancia} />
+                  </div>
+                </>
+              )}
+              <div style={{ display: visaoDireita === 'dados' ? 'block' : 'none' }}>
               <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '10px' }}>
                 {instancia && instancia.status === 'concluido' ? 'Fluxo encerrado' : `Etapa: ${elementoAtual ? elementoAtual.nome : '—'}`}
               </strong>
               {props.assinatura && <div style={{ marginBottom: '10px' }}><PainelAssinatura {...props.assinatura} /></div>}
+              {avisoExecucaoAdmin}
               <PainelFluxoOrcamento
                 {...propsEdicaoAdmin}
                 estado={estado}
                 dadosResponsaveis={props.dadosResponsaveis}
                 vinculos={props.vinculos}
                 usuarios={props.usuarios}
-                podeAgir={props.podeAgir}
+                podeAgir={podeAgirPainel}
                 processando={props.processando}
-                onExecutar={props.onExecutar}
+                onExecutar={onExecutarPainel}
                 textoConcluido={registro.situacao === 'cancelado' ? 'Registro cancelado' : `✓ ${ambiente.rotuloRegistro} concluído(a) — fluxo encerrado`}
                 modoCompacto={true}
                 ocultarHistorico={true}
                 dataverseService={props.dataverseService}
               />
+              </div>
             </div>
           </div>
 
-          {/* Ver fluxo: desenho em largura total (o histórico fica no painel). */}
-          {verFluxo && instancia && definicao && (
-            <div style={{ ...cartao, marginBottom: 0 }}>
-              <div style={{ fontSize: '11.5px', fontWeight: 700, color: COR.texto2, textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: '8px' }}>
-                Fluxo de {ambiente.nome} · {instancia.processoNome || definicao.nome} · v{definicao.versao}
-              </div>
-              <div style={{ overflowX: 'auto', maxWidth: '100%', border: `1px solid ${COR.borda}`, borderRadius: '8px', background: '#FFFFFF' }}>
-                <FluxoDiagrama definicao={definicao} instancia={instancia} />
-              </div>
-            </div>
-          )}
         </>
       )}
 
       {!props.carregando && estado && mostrarPainel && !duasColunas && props.assinatura && (
         <PainelAssinatura {...props.assinatura} />
       )}
+
+      {!props.carregando && estado && mostrarPainel && !duasColunas && avisoExecucaoAdmin}
 
       {!props.carregando && estado && mostrarPainel && !duasColunas && (
         <PainelFluxoOrcamento
@@ -583,9 +697,9 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
           dadosResponsaveis={props.dadosResponsaveis}
           vinculos={props.vinculos}
           usuarios={props.usuarios}
-          podeAgir={props.podeAgir}
+          podeAgir={podeAgirPainel}
           processando={props.processando}
-          onExecutar={props.onExecutar}
+          onExecutar={onExecutarPainel}
           rotuloFluxo={`Fluxo de ${ambiente.nome}`}
           textoConcluido={registro.situacao === 'cancelado' ? 'Registro cancelado' : `✓ ${ambiente.rotuloRegistro} concluído(a) — fluxo encerrado`}
           diagramaAberto={layout.registro.mostrarDiagrama}

@@ -20,6 +20,8 @@ namespace DGT.Treinamentos.Plugins
     //   2. Editar como administrador → entra no histórico do fluxo
     //      (dgt_fluxoestado) um evento NOVO com acaoChave
     //      'edicaoAdministrativa'
+    //   3. Executar ação como administrador → evento NOVO no histórico
+    //      com "comoAdministrador": true
     //
     // "Administrador do Sistema" = a MESMA regra do portal
     // (AutorizacaoService): cadastro em dgt_usuario com o e-mail do
@@ -72,7 +74,11 @@ namespace DGT.Treinamentos.Plugins
                 NovosEventos(alvo.GetAttributeValue<string>(ColunaEstado), antes?.GetAttributeValue<string>(ColunaEstado))
                     .Any(acao => string.Equals(acao, AcaoEdicaoAdministrativa, StringComparison.Ordinal));
 
-            if (!cancelando && !editando)
+            var executandoComoAdmin =
+                alvo.Contains(ColunaEstado) &&
+                NovosEventosComoAdministrador(alvo.GetAttributeValue<string>(ColunaEstado), antes?.GetAttributeValue<string>(ColunaEstado));
+
+            if (!cancelando && !editando && !executandoComoAdmin)
             {
                 return;
             }
@@ -88,7 +94,9 @@ namespace DGT.Treinamentos.Plugins
             throw new InvalidPluginExecutionException(
                 cancelando
                     ? "Somente o Administrador do Sistema pode cancelar registros."
-                    : "Somente o Administrador do Sistema pode editar como administrador.");
+                    : editando
+                        ? "Somente o Administrador do Sistema pode editar como administrador."
+                        : "Somente o Administrador do Sistema pode executar ações como administrador.");
         }
 
         // acaoChave dos eventos do histórico que não existiam antes.
@@ -98,6 +106,27 @@ namespace DGT.Treinamentos.Plugins
             return IdsDoHistorico(estadoNovo)
                 .Where(item => !anteriores.Contains(item.Key))
                 .Select(item => item.Value);
+        }
+
+        // Há evento novo marcado com "comoAdministrador": true?
+        private static bool NovosEventosComoAdministrador(string estadoNovo, string estadoAntigo)
+        {
+            var anteriores = new HashSet<string>(IdsDoHistorico(estadoAntigo).Select(item => item.Key));
+            try
+            {
+                var historico = string.IsNullOrWhiteSpace(estadoNovo) ? null : JObject.Parse(estadoNovo)["historico"] as JArray;
+                return historico != null && historico
+                    .OfType<JObject>()
+                    .Any(evento =>
+                        !anteriores.Contains((string)evento["id"] ?? string.Empty) &&
+                        evento["comoAdministrador"] != null &&
+                        evento["comoAdministrador"].Type == JTokenType.Boolean &&
+                        (bool)evento["comoAdministrador"]);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         // (id, acaoChave) de cada evento do histórico do estado do fluxo.

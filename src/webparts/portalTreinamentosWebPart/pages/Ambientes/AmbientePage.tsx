@@ -784,6 +784,34 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
           setProcessando(false);
         }
       }}
+      onExecutarComoAdministrador={async (acaoChave, comentario, valores) => {
+        if (!fluxo || !contexto) {
+          return ['Sem conexão com o Dataverse.'];
+        }
+        // Mesma regra de anexo obrigatório da ação normal.
+        const regra = regraAnexosDoRegistro(registro);
+        const elementoAtual = estado ? estado.definicao.elementos.find(item => item.id === estado.instancia.elementoAtualId) : undefined;
+        const acao = elementoAtual ? elementoAtual.acoes.find(item => item.chave === acaoChave) : undefined;
+        if (regra.obrigatorio && quantidadeAnexos === 0 && !(acao && acao.dispensaCampos)) {
+          return ['Esta etapa exige ao menos um anexo: use “+ Incluir arquivos” no quadro Anexos.'];
+        }
+        setProcessando(true);
+        setSucesso('');
+        try {
+          const resultado = await fluxo.executarComoAdministrador(ambiente, registro, contexto, acaoChave, comentario, valores);
+          if (!resultado.ok) {
+            return resultado.erros;
+          }
+          const texto = 'Ação executada como administrador e registrada no histórico.';
+          setSucesso(resultado.avisos.length > 0 ? `${texto}\n${resultado.avisos.join('\n')}` : texto);
+          await recarregarRegistro(registro.id);
+          return [];
+        } catch (falha) {
+          return [mensagem(falha)];
+        } finally {
+          setProcessando(false);
+        }
+      }}
       podeIniciar={podeCriar}
       motivoNaoIniciar={disponibilidade ? disponibilidade.motivo : undefined}
       dadosResponsaveis={fluxo && estado ? fluxo.dadosResponsaveis(registro, estado.instancia) : {}}
@@ -894,30 +922,68 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
 
         {visao.tipo === 'lista' && modo === 'inicio' && (
           <>
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
-              <input
-                value={filtro}
-                onChange={evento => setFiltro(evento.target.value)}
-                placeholder="Buscar por código, título, etapa, pessoa ou área"
-                aria-label="Buscar registros"
-                style={{ ...campo, flex: 1, minWidth: '220px' }}
-              />
+            {/* Barra de ferramentas: busca | filtros | ações */}
+            <div
+              style={{
+                display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', padding: '10px 12px',
+                background: '#FFFFFF', border: `1px solid ${COR.borda}`, borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)'
+              }}
+            >
+              <div style={{ position: 'relative', flex: '1 1 280px', minWidth: '220px' }}>
+                <span aria-hidden="true" style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: '14px', pointerEvents: 'none' }}>⌕</span>
+                <input
+                  value={filtro}
+                  onChange={evento => setFiltro(evento.target.value)}
+                  placeholder="Buscar por código, título, etapa, pessoa ou área"
+                  aria-label="Buscar registros"
+                  style={{ ...campo, width: '100%', boxSizing: 'border-box', paddingLeft: '32px', paddingRight: filtro ? '30px' : undefined, borderRadius: '8px', background: '#F7F9FB' }}
+                />
+                {filtro && (
+                  <button
+                    type="button"
+                    aria-label="Limpar busca"
+                    onClick={() => setFiltro('')}
+                    style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', border: 0, background: 'transparent', color: '#64748B', cursor: 'pointer', fontSize: '15px', padding: '2px 6px' }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
               {!visaoSelecionada && (
-                <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '13px', color: COR.azul, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={mostrarEncerrados} onChange={() => setMostrarEncerrados(!mostrarEncerrados)} />
-                  Mostrar concluídos e cancelados
-                </label>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={mostrarEncerrados}
+                  onClick={() => setMostrarEncerrados(!mostrarEncerrados)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '999px', cursor: 'pointer',
+                    border: `1px solid ${mostrarEncerrados ? '#0B5CAB' : COR.borda}`, background: mostrarEncerrados ? '#E8F2FF' : '#FFFFFF',
+                    color: mostrarEncerrados ? '#0B5CAB' : COR.azul, fontSize: '12.5px', fontWeight: 600, fontFamily: 'inherit'
+                  }}
+                >
+                  <span aria-hidden="true" style={{ position: 'relative', width: '28px', height: '16px', borderRadius: '8px', background: mostrarEncerrados ? '#0B5CAB' : '#CBD5E1', transition: 'background .15s' }}>
+                    <span style={{ position: 'absolute', top: '2px', left: mostrarEncerrados ? '14px' : '2px', width: '12px', height: '12px', borderRadius: '50%', background: '#FFFFFF', transition: 'left .15s' }} />
+                  </span>
+                  Concluídos e cancelados
+                </button>
               )}
-              <button type="button" disabled={carregando} onClick={() => { carregar().catch(() => undefined); }} style={botao('secundario', carregando)}>
-                Atualizar
+              <span aria-hidden="true" style={{ width: '1px', alignSelf: 'stretch', background: COR.borda, margin: '2px 2px' }} />
+              <button
+                type="button"
+                disabled={carregando}
+                onClick={() => { carregar().catch(() => undefined); }}
+                title="Atualizar a lista"
+                style={botao('secundario', carregando)}
+              >
+                ⟳ Atualizar
               </button>
               {administra && (
                 <>
                   <button type="button" onClick={() => setEditorTelas(true)} style={botao('secundario')} title="Visões, colunas, etapas e tela do registro">
-                    Personalizar telas
+                    ▦ Personalizar telas
                   </button>
                   <button type="button" onClick={() => setModo('config')} style={botao('secundario')} title="Fluxo, liberação e dados do ambiente">
-                    Configuração
+                    ⚙ Configuração
                   </button>
                 </>
               )}
@@ -926,7 +992,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
                 disabled={!podeCriar}
                 title={podeCriar ? undefined : (disponibilidade ? disponibilidade.motivo : '')}
                 onClick={() => { setSucesso(''); setVisao({ tipo: 'novo' }); }}
-                style={botao('principal', !podeCriar)}
+                style={{ ...botao('principal', !podeCriar), marginLeft: 'auto' }}
               >
                 + Novo(a) {ambiente.rotuloRegistro.toLowerCase()}
               </button>

@@ -518,6 +518,56 @@ export class AmbienteFluxoService {
     return { ok: true, erros: [], avisos };
   }
 
+  // Executa uma ação da etapa atual NO LUGAR do responsável. Só o
+  // Administrador do Sistema (conferido também no servidor, pelo
+  // plugin). Exige justificativa (comentário) e marca o histórico.
+  public async executarComoAdministrador(
+    ambiente: IAmbiente,
+    registro: IAmbienteRegistro,
+    contexto: IContextoAcesso,
+    acaoChave: string,
+    comentario: string,
+    valores: Record<string, string>
+  ): Promise<IResultadoAcaoAmbiente> {
+    if (!ehAdministradorSistema(contexto)) {
+      return { ok: false, erros: ['Somente o Administrador do Sistema pode executar ações como administrador.'], avisos: [] };
+    }
+    if (registro.situacao !== 'emAndamento') {
+      return { ok: false, erros: ['Somente registros em andamento aceitam ações.'], avisos: [] };
+    }
+    if (!(comentario || '').trim()) {
+      return { ok: false, erros: ['Informe no comentário a justificativa da ação executada como administrador.'], avisos: [] };
+    }
+    const antes = await this.carregar(registro);
+    if (!antes) {
+      return { ok: false, erros: ['O fluxo deste registro ainda não foi iniciado.'], avisos: [] };
+    }
+    await this.vinculos();
+    const usuario = { id: guid(contexto.usuarioId), nome: contexto.nome };
+    let resultado;
+    try {
+      resultado = await this.fluxo.executar(
+        registro.id,
+        { acaoChave, comentario, valores, ator: { ...usuario, papeisTeste: [] }, comoAdministrador: true },
+        this.contextoExecucao(ambiente, registro, usuario)
+      );
+    } catch (erro) {
+      return { ok: false, erros: [mensagem(erro)], avisos: [] };
+    }
+    if (!resultado.ok) {
+      return { ok: false, erros: resultado.erros, avisos: resultado.avisos || [] };
+    }
+    const avisos = (resultado.avisos || []).slice();
+    const depois = await this.carregar(registro);
+    if (depois) {
+      const aviso = await this.sincronizar(registro, depois);
+      if (aviso) {
+        avisos.push(aviso);
+      }
+    }
+    return { ok: true, erros: [], avisos };
+  }
+
   // Edição administrativa: salva os campos da etapa atual sem mudar a
   // etapa nem a situação. Só o Administrador do Sistema (conferido
   // também no servidor, pelo plugin).

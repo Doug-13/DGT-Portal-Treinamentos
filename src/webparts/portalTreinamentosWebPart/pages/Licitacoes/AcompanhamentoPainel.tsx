@@ -325,6 +325,7 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
                         ? (
                           <a
                             href={selecionado.pastaUrl}
+                            data-interception="off"
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{ ...botao(true), background: '#0F6CBD', textDecoration: 'none' }}

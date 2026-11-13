@@ -85,6 +85,12 @@ export interface IExecucaoAcao {
   comentario: string;
   valores: Record<string, string>;
   ator: IFluxoAtor;
+  // Administrador do Sistema executando no lugar do responsável:
+  // dispensa a conferência de responsável, exige justificativa no
+  // comentário e marca o evento do histórico. A permissão é conferida
+  // por quem chama e, no servidor, pelo plugin
+  // ValidarAcaoAdministrativaRegistroPlugin.
+  comoAdministrador?: boolean;
 }
 
 export interface IResultadoExecucao {
@@ -1308,6 +1314,18 @@ export const executarAcao = (
   }
 
   if (
+    execucao.comoAdministrador &&
+    !(execucao.comentario || '').trim()
+  ) {
+    return {
+      ok: false,
+      erros: ['Informe no comentário a justificativa da ação executada como administrador.'],
+      acoesSistema: []
+    };
+  }
+
+  if (
+    !execucao.comoAdministrador &&
     !atorPodeExecutar(
       elemento,
       execucao.ator
@@ -1438,7 +1456,7 @@ export const executarAcao = (
     elementoId: elemento.id,
     elementoNome: elemento.nome,
     acaoChave: acao.chave,
-    acaoRotulo: acao.rotulo,
+    acaoRotulo: execucao.comoAdministrador ? `${acao.rotulo} (como administrador)` : acao.rotulo,
     resultado: acao.resultado,
     comentario:
       comentarioHistorico.length > 0
@@ -1447,7 +1465,8 @@ export const executarAcao = (
     executadoPorId: execucao.ator.id,
     executadoPorNome: execucao.ator.nome,
     sistema: false,
-    revisao: instancia.revisao
+    revisao: instancia.revisao,
+    ...(execucao.comoAdministrador ? { comoAdministrador: true } : {})
   };
 
   instancia.historico.unshift(
