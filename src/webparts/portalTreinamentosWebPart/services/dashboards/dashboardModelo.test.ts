@@ -4,6 +4,8 @@ import {
   agrupar,
   aplicarFiltro,
   farolDe,
+  ordenarGrupos,
+  paginasDoDashboard,
   validarDashboard
 } from './dashboardModelo';
 
@@ -68,5 +70,36 @@ describe('Dashboards do portal', () => {
     expect(farolDe(60, 100).farol).toBe('vermelho');
     // Custo executado −120 para orçado −100: estourou (100/120 = 83%) → verde no limite; −150 → vermelho.
     expect(farolDe(-150, -100, 'menor').farol).toBe('vermelho');
+  });
+
+  it('páginas: agrupa as seções em abas, na ordem; sem "pagina" fica uma página só', () => {
+    const controladoria = EXEMPLOS_DASHBOARD.controladoria;
+    expect(paginasDoDashboard(controladoria).map(p => p.titulo))
+      .toEqual(['Visão geral', 'Resultado (DRE)', 'Por área', 'Desvios', 'Aprovações']);
+    expect(paginasDoDashboard(EXEMPLOS_DASHBOARD['orcamento-area']).map(p => p.titulo)).toEqual(['Visão geral']);
+    const misto = {
+      ...controladoria,
+      secoes: [
+        { titulo: 'A', itens: controladoria.secoes[0].itens },
+        { titulo: 'B', pagina: 'Detalhe', itens: controladoria.secoes[0].itens },
+        { titulo: 'C', itens: controladoria.secoes[0].itens }
+      ]
+    };
+    expect(paginasDoDashboard(misto).map(p => `${p.titulo}:${p.secoes.map(x => x.secao.titulo).join('')}`))
+      .toEqual(['Visão geral:A', 'Detalhe:BC']);
+  });
+
+  it('páginas: "pagina" vazia ou longa demais é recusada', () => {
+    const base = EXEMPLOS_DASHBOARD.controladoria;
+    const vazia = { ...base, secoes: [{ ...base.secoes[0], pagina: ' ' }] };
+    const longa = { ...base, secoes: [{ ...base.secoes[0], pagina: 'x'.repeat(41) }] };
+    expect(validarDashboard(JSON.stringify(vazia), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/pagina/);
+    expect(validarDashboard(JSON.stringify(longa), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/40 caracteres/);
+  });
+
+  it('ordenar "nenhum" mantém a ordem da fonte (ex.: linhas da DRE)', () => {
+    const itens = [{ rotulo: 'Receita', valor: 10 }, { rotulo: 'Custos', valor: -5 }, { rotulo: 'Lucro', valor: 5 }];
+    expect(ordenarGrupos(itens, 'nenhum').map(i => i.rotulo)).toEqual(['Receita', 'Custos', 'Lucro']);
+    expect(ordenarGrupos(itens, 'valor desc').map(i => i.rotulo)).toEqual(['Receita', 'Lucro', 'Custos']);
   });
 });

@@ -73,3 +73,14 @@ Nada fica gravado no Dataverse. Para acompanhar o uso, consulte o Rastreamento d
 
 A chave e o registro de consumo (por usuário e área) são administrados em Indicadores ›
 Administrar IA. Ver `docs/ia-administracao.md`.
+
+## Páginas (abas) — painéis curtos, como no Power BI
+
+Cada seção pode ter `"pagina": "Nome da aba"` (até 40 caracteres). Seções com a mesma página
+aparecem juntas numa aba; seção sem `pagina` fica na página da anterior. Sem nenhuma `pagina`, o
+painel continua numa tela só. Com mais de uma página e o `assistente` ativo, a IA ganha a aba
+**✦ Pergunte à IA** (a conversa se mantém ao navegar entre as abas e enxerga os dados de todas).
+
+Para manter a ordem natural das linhas (ex.: DRE), use `"ordenar": "nenhum"` na tabela ou gráfico.
+
+Exemplo completo: `docs/dashboards/exemplos/controladoria.json` (também em "Usar exemplo").

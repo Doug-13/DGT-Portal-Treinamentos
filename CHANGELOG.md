@@ -6,6 +6,8 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.24] - 2026-11-13
+
 - Melhoria: botão Tela cheia no cabeçalho do portal e banner dos ambientes exibido somente na visão geral.
 
 - Melhoria: Conformidade de treinamentos exibe as áreas dos usuários e permite filtrar a tabela e os indicadores por área.

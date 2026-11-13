@@ -18,7 +18,8 @@ import {
   aplicarFiltro,
   farolDe,
   fontesUsadas,
-  ordenarGrupos
+  ordenarGrupos,
+  paginasDoDashboard
 } from '../../services/dashboards/dashboardModelo';
 
 import {
@@ -202,7 +203,7 @@ const Tabela: React.FC<{ item: IItemTabela; linhas: Linha[] }> = ({ item, linhas
 
   if (item.colunas && item.colunas.length > 0) {
     let lista = filtradas.slice();
-    if (item.ordenar) {
+    if (item.ordenar && item.ordenar.trim().toLowerCase() !== 'nenhum') {
       const [campo, direcao] = item.ordenar.split(/\s+/);
       const fator = (direcao || 'asc').toLowerCase() === 'desc' ? -1 : 1;
       lista.sort((a, b) => {
@@ -286,6 +287,14 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
   const [carregando, setCarregando] = React.useState(true);
   const [erro, setErro] = React.useState('');
 
+  // Páginas (abas). Com mais de uma página, a IA ganha uma aba própria
+  // ("ia"); com uma página só, a caixa da IA fica no fim, como antes.
+  const paginas = React.useMemo(() => paginasDoDashboard(definicao), [definicao]);
+  const temIa = assistenteAtivo(definicao);
+  const comAbas = paginas.length > 1;
+  const [abaAtiva, setAbaAtiva] = React.useState<string>('0');
+  React.useEffect(() => { setAbaAtiva('0'); }, [definicao]);
+
   const areasSelecionaveis =
     props.areas.filter(item => !props.areasPermitidas || props.areasPermitidas.indexOf(item.id) >= 0);
 
@@ -364,40 +373,90 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
       {erro && <div style={{ ...cartaoEstilo, marginTop: '14px', background: '#FDECEA', color: '#A2352A', fontSize: '13px' }}>Não foi possível carregar os dados: {erro}</div>}
       {carregando && <div style={{ ...cartaoEstilo, marginTop: '14px', color: COR.muted, fontSize: '13px' }}>Carregando dados...</div>}
 
-      {!carregando && definicao.secoes.map((secao, s) => {
-        const cartoes = secao.itens.filter(item => item.tipo === 'cartao');
-        const outros = secao.itens.filter(item => item.tipo !== 'cartao');
-        return (
-          <section key={s} style={{ marginTop: '20px' }}>
-            <div style={{ fontSize: '15px', fontWeight: 800, color: COR.navy, display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <span style={{ width: '5px', height: '19px', background: COR.ciano, borderRadius: '3px', display: 'inline-block' }} />
-              {secao.titulo}
-              {secao.descricao && <small style={{ fontWeight: 500, fontSize: '12px', color: COR.muted }}>— {secao.descricao}</small>}
-            </div>
-            {cartoes.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px', marginBottom: outros.length > 0 ? '14px' : 0 }}>
-                {cartoes.map((item, i) => renderItem(item, `${s}-c${i}`))}
-              </div>
-            )}
-            {outros.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '14px' }}>
-                {outros.map((item, i) => renderItem(item, `${s}-o${i}`))}
-              </div>
-            )}
-          </section>
-        );
-      })}
+      {!carregando && comAbas && (
+        <nav
+          aria-label="Páginas do painel"
+          className="dgt-dashboard-abas"
+          style={{ display: 'flex', gap: '2px', marginTop: '14px', background: '#FFFFFF', borderRadius: '12px', padding: '4px', boxShadow: '0 1px 3px rgba(11,30,45,.08)', overflowX: 'auto' }}
+        >
+          <style>{'@media print { .dgt-dashboard-abas { display: none !important; } }'}</style>
+          {paginas.map((pagina, indice) => {
+            const ativa = abaAtiva === String(indice);
+            return (
+              <button
+                key={pagina.titulo}
+                type="button"
+                aria-current={ativa ? 'page' : undefined}
+                onClick={() => setAbaAtiva(String(indice))}
+                style={{
+                  border: 0, cursor: 'pointer', whiteSpace: 'nowrap', padding: '9px 16px', borderRadius: '9px',
+                  fontSize: '12.5px', fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase',
+                  background: ativa ? COR.navy : 'transparent', color: ativa ? '#FFFFFF' : COR.muted,
+                  boxShadow: ativa ? `inset 0 -3px 0 ${COR.ciano}` : 'none'
+                }}
+              >
+                {pagina.titulo}
+              </button>
+            );
+          })}
+          {temIa && (
+            <button
+              type="button"
+              aria-current={abaAtiva === 'ia' ? 'page' : undefined}
+              onClick={() => setAbaAtiva('ia')}
+              style={{
+                border: 0, cursor: 'pointer', whiteSpace: 'nowrap', padding: '9px 16px', borderRadius: '9px', marginLeft: 'auto',
+                fontSize: '12.5px', fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase',
+                background: abaAtiva === 'ia' ? COR.navy : '#EAF8FC', color: abaAtiva === 'ia' ? '#FFFFFF' : COR.navy,
+                boxShadow: abaAtiva === 'ia' ? `inset 0 -3px 0 ${COR.ciano}` : 'none'
+              }}
+            >
+              ✦ Pergunte à IA
+            </button>
+          )}
+        </nav>
+      )}
 
-      {!carregando && !erro && assistenteAtivo(definicao) && (
-        <AssistenteDashboard
-          dashboardId={props.dashboardId}
-          definicao={definicao}
-          dados={dados}
-          dataverseService={props.dataverseService}
-          ano={filtros.ano !== false ? ano : undefined}
-          areaNome={area ? (props.areas.filter(item => item.id === area)[0] || { nome: area }).nome : undefined}
-          areaId={area || undefined}
-        />
+      {!carregando && paginas.map((pagina, indicePagina) => (
+        (!comAbas || abaAtiva === String(indicePagina)) && pagina.secoes.map(({ secao, indice: s }) => {
+          const cartoes = secao.itens.filter(item => item.tipo === 'cartao');
+          const outros = secao.itens.filter(item => item.tipo !== 'cartao');
+          return (
+            <section key={s} style={{ marginTop: '20px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: COR.navy, display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <span style={{ width: '5px', height: '19px', background: COR.ciano, borderRadius: '3px', display: 'inline-block' }} />
+                {secao.titulo}
+                {secao.descricao && <small style={{ fontWeight: 500, fontSize: '12px', color: COR.muted }}>— {secao.descricao}</small>}
+              </div>
+              {cartoes.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '14px', marginBottom: outros.length > 0 ? '14px' : 0 }}>
+                  {cartoes.map((item, i) => renderItem(item, `${s}-c${i}`))}
+                </div>
+              )}
+              {outros.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '14px' }}>
+                  {outros.map((item, i) => renderItem(item, `${s}-o${i}`))}
+                </div>
+              )}
+            </section>
+          );
+        })
+      ))}
+
+      {/* A IA fica montada (oculta fora da aba) para a conversa não se
+          perder ao navegar entre as páginas. */}
+      {!carregando && !erro && temIa && (
+        <div style={{ display: !comAbas || abaAtiva === 'ia' ? 'block' : 'none' }}>
+          <AssistenteDashboard
+            dashboardId={props.dashboardId}
+            definicao={definicao}
+            dados={dados}
+            dataverseService={props.dataverseService}
+            ano={filtros.ano !== false ? ano : undefined}
+            areaNome={area ? (props.areas.filter(item => item.id === area)[0] || { nome: area }).nome : undefined}
+            areaId={area || undefined}
+          />
+        </div>
       )}
     </div>
   );

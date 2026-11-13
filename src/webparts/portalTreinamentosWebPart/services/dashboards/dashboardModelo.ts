@@ -11,8 +11,13 @@
 //   "formato": "dgt-portal/dashboard@1",
 //   "titulo": "Orçamento da área", "descricao": "…",
 //   "filtros": { "ano": true, "area": true },
-//   "secoes": [ { "titulo": "…", "itens": [ ITEM, … ] } ]
+//   "secoes": [ { "titulo": "…", "pagina"?: "…", "itens": [ ITEM, … ] } ]
 // }
+//
+// PÁGINAS (opcional): seções com o mesmo "pagina" formam uma aba do
+// painel (como as páginas do Power BI). Seção sem "pagina" fica na
+// página da seção anterior (a primeira, em "Visão geral"). Sem nenhum
+// "pagina", o painel tem uma página só, como antes.
 //
 // ITEM:
 //  cartao  { tipo, titulo, fonte, medida, agregacao, filtro?, formato?,
@@ -28,6 +33,7 @@
 // agregacao: soma | media | contagem | contagemDistinta | minimo | maximo
 // formato: moeda | numero | percentual | inteiro
 // ordenar: "valor desc" | "valor asc" | "dimensao asc" | "<campo> desc"
+//          | "nenhum" (mantém a ordem da fonte, ex.: linhas da DRE)
 //
 // ASSISTENTE DE IA (opcional) — caixa de perguntas no fim do painel:
 //  "assistente": { ativo, escopo, fontes?, perguntasSugeridas?,
@@ -119,8 +125,36 @@ export type ItemDashboard = IItemCartao | IItemGrafico | IItemTabela;
 export interface ISecaoDashboard {
   titulo: string;
   descricao?: string;
+  // Página (aba) do painel em que a seção aparece.
+  pagina?: string;
   itens: ItemDashboard[];
 }
+
+export const PAGINA_PADRAO = 'Visão geral';
+export const LIMITE_TITULO_PAGINA = 40;
+
+export interface IPaginaDashboard {
+  titulo: string;
+  // Seções da página, com o índice original (para chaves estáveis).
+  secoes: Array<{ secao: ISecaoDashboard; indice: number }>;
+}
+
+// Agrupa as seções em páginas, na ordem em que aparecem.
+export const paginasDoDashboard = (definicao: IDefinicaoDashboard): IPaginaDashboard[] => {
+  const paginas: IPaginaDashboard[] = [];
+  let atual = '';
+  definicao.secoes.forEach((secao, indice) => {
+    const nome = (secao.pagina || '').trim() || atual || PAGINA_PADRAO;
+    atual = nome;
+    let pagina = paginas.filter(item => item.titulo === nome)[0];
+    if (!pagina) {
+      pagina = { titulo: nome, secoes: [] };
+      paginas.push(pagina);
+    }
+    pagina.secoes.push({ secao, indice });
+  });
+  return paginas;
+};
 
 export interface IAssistenteDashboard {
   ativo: boolean;
@@ -244,6 +278,13 @@ export const validarDashboard = (
 
   bruto.secoes.forEach((secao, s) => {
     const ondeSecao = `secoes[${s}]`;
+    if (secao && secao.pagina !== undefined) {
+      if (typeof secao.pagina !== 'string' || !secao.pagina.trim()) {
+        erros.push(`${ondeSecao}: "pagina" deve ser um texto (ou ser omitido).`);
+      } else if (secao.pagina.trim().length > LIMITE_TITULO_PAGINA) {
+        erros.push(`${ondeSecao}: "pagina" deve ter no máximo ${LIMITE_TITULO_PAGINA} caracteres.`);
+      }
+    }
     if (!Array.isArray(secao.itens) || secao.itens.length === 0) {
       erros.push(`${ondeSecao}: "itens" deve ter pelo menos um item.`);
       return;
@@ -444,7 +485,7 @@ export const ordenarGrupos = <T extends { rotulo: string; valor: number; ordem?:
   itens: T[],
   ordenar?: string
 ): T[] => {
-  if (!ordenar) {
+  if (!ordenar || ordenar.trim().toLowerCase() === 'nenhum') {
     return itens;
   }
   const [campo, direcao] = ordenar.trim().split(/\s+/);

@@ -2720,7 +2720,8 @@ export class DataverseService {
 
     if (!resultadoJson) {
       throw new Error(
-        'A IA não retornou resposta.'
+        'A IA não respondeu: o passo do plugin AnalisarLicitacaoIaPlugin não está registrado, está desativado ou foi registrado como assíncrono. ' +
+        'Rode scripts/dataverse/diagnosticar-ia.ps1 para ver o que corrigir.'
       );
     }
 
@@ -2768,9 +2769,12 @@ export class DataverseService {
         ''
       );
 
+    // Resposta vazia = a Custom API existe, mas nenhum plugin executou
+    // (passo não registrado, assíncrono ou desativado).
     if (!resultadoJson) {
       throw new Error(
-        'A IA não retornou resposta.'
+        'A IA não respondeu: o passo do plugin PerguntarDashboardIaPlugin não está registrado, está desativado ou foi registrado como assíncrono. ' +
+        'Rode scripts/dataverse/diagnosticar-ia.ps1 para ver o que corrigir.'
       );
     }
 

@@ -328,6 +328,30 @@ const PortalTreinamentos:
     // ESTADOS
     // ==========================================================
 
+    // Menu lateral recolhido (só ícones). A preferência fica
+    // guardada no navegador do usuário.
+    const CHAVE_MENU_RECOLHIDO = 'dgtPortal.menuRecolhido';
+
+    const [
+      menuRecolhido,
+      setMenuRecolhido
+    ] =
+      React.useState<boolean>(() => {
+        try {
+          return window.localStorage.getItem(CHAVE_MENU_RECOLHIDO) === '1';
+        } catch {
+          return false;
+        }
+      });
+
+    React.useEffect(() => {
+      try {
+        window.localStorage.setItem(CHAVE_MENU_RECOLHIDO, menuRecolhido ? '1' : '0');
+      } catch {
+        // Navegador sem armazenamento: apenas não lembra a preferência.
+      }
+    }, [menuRecolhido]);
+
     const [
       paginaAtual,
       setPaginaAtual
@@ -4180,7 +4204,9 @@ const PortalTreinamentos:
 
         <aside
           className={
-            styles.sidebar
+            menuRecolhido
+              ? `${styles.sidebar} ${styles.sidebarRecolhida}`
+              : styles.sidebar
           }
         >
 
@@ -4193,6 +4219,45 @@ const PortalTreinamentos:
               src={logoDgt}
               alt="DGT"
             />
+
+            <button
+              type="button"
+              className={
+                styles.sidebarToggle
+              }
+              title={
+                menuRecolhido
+                  ? 'Expandir menu'
+                  : 'Recolher menu'
+              }
+              aria-label={
+                menuRecolhido
+                  ? 'Expandir menu'
+                  : 'Recolher menu'
+              }
+              aria-expanded={!menuRecolhido}
+              onClick={() =>
+                setMenuRecolhido(atual => !atual)
+              }
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                {
+                  menuRecolhido
+                    ? <polyline points="9 6 15 12 9 18" />
+                    : <polyline points="15 6 9 12 15 18" />
+                }
+              </svg>
+            </button>
           </div>
 
           <nav
@@ -4234,10 +4299,13 @@ const PortalTreinamentos:
                         : styles.intranetMenuItem
                     }
                     title={
-                      itemMenuAtivo(item)
-                        ? 'Módulo atual'
-                        : 'Módulo da Intranet DGT'
+                      menuRecolhido
+                        ? item.label
+                        : itemMenuAtivo(item)
+                          ? 'Módulo atual'
+                          : 'Módulo da Intranet DGT'
                     }
+                    aria-label={item.label}
                     onClick={() => {
 
                       if (

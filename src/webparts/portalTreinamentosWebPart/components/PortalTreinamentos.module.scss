@@ -66,21 +66,108 @@
 }
 
 .sidebar {
-  width: 212px;
-  min-width: 212px;
-  min-height: 100vh;
-  position: relative;
+  width: 232px;
+  min-width: 232px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
   color: #fff;
   background:
     radial-gradient(circle at 40% 100%, rgba(0, 133, 197, .25), transparent 25%),
     linear-gradient(180deg, #073b5e 0%, #052e4b 52%, #032744 100%);
+  transition: width .2s ease, min-width .2s ease;
+}
+
+/* Barra de rolagem só aparece ao passar o mouse e não rouba largura do texto */
+.sidebar::-webkit-scrollbar {
+  width: 0;
+}
+
+.sidebar:hover {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, .25) transparent;
+}
+
+.sidebar:hover::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, .25);
+  border-radius: 3px;
 }
 
 .sidebarLogo {
   height: 80px;
-  padding: 18px 28px;
+  padding: 18px 14px 18px 28px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Botão recolher / expandir o menu */
+.sidebarToggle {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9fd8f5;
+  background: rgba(255, 255, 255, .06);
+  cursor: pointer;
+}
+
+.sidebarToggle:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, .14);
+}
+
+.sidebarToggle:focus-visible {
+  outline: 2px solid #12c6ff;
+  outline-offset: 2px;
+}
+
+/* ---------- Menu recolhido: só ícones ---------- */
+.sidebar.sidebarRecolhida {
+  width: 64px;
+  min-width: 64px;
+}
+
+.sidebarRecolhida .sidebarLogo {
+  padding: 18px 0;
+  justify-content: center;
+}
+
+.sidebarRecolhida .sidebarLogo img,
+.sidebarRecolhida .intranetLabel,
+.sidebarRecolhida .intranetNovo,
+.sidebarRecolhida .sidebarWords {
+  display: none;
+}
+
+.sidebarRecolhida .intranetMenuItem,
+.sidebarRecolhida .intranetMenuActive {
+  padding: 9px 0;
+  justify-content: center;
+}
+
+.sidebarRecolhida .intranetMenuAdicionar {
+  width: 40px;
+  margin: 8px auto 0;
+  padding: 7px 0;
+  justify-content: center;
 }
 
 .sidebarLogo img {
@@ -115,7 +202,9 @@
 .intranetLabel {
   flex: 1;
   min-width: 0;
-  overflow-wrap: break-word;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
 }
 
 /* Selo "NOVO" — discreto, no tom da barra lateral */
@@ -206,9 +295,8 @@
 }
 
 .sidebarWords {
-  position: absolute;
-  left: 28px;
-  bottom: 38px;
+  margin-top: auto;
+  padding: 28px 28px 38px;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -219,7 +307,7 @@
 .workspace {
   flex: 1;
   min-width: 0;
-  width: calc(100% - 212px);
+  width: calc(100% - 232px);
 }
 
 .globalHeader {
@@ -514,12 +602,12 @@
 
 @media (max-width: 1000px) {
   .sidebar {
-    width: 172px;
-    min-width: 172px;
+    width: 196px;
+    min-width: 196px;
   }
 
   .workspace {
-    width: calc(100% - 172px);
+    width: calc(100% - 196px);
   }
 
   .intranetMenuItem,
@@ -556,10 +644,22 @@
     display: block;
   }
 
-  .sidebar {
+  .sidebar,
+  .sidebar.sidebarRecolhida {
     width: 100%;
     min-width: 100%;
+    height: auto;
     min-height: auto;
+    position: static;
+    overflow: visible;
+  }
+
+  .sidebarToggle {
+    display: none;
+  }
+
+  .sidebarRecolhida .intranetLabel {
+    display: inline;
   }
 
   .sidebarLogo,

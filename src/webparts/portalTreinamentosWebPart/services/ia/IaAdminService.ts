@@ -207,6 +207,12 @@ export class IaAdminService {
         IA_API_GERENCIAR,
         acao === 'salvarChave' ? { acao, chave: (chave || '').trim() } : { acao }
       );
+      if (Object.keys(resultado).length === 0) {
+        throw new Error(
+          'A Custom API dgt_GerenciarIa respondeu vazio: o passo do plugin GerenciarIaPlugin não está registrado, está desativado ou é assíncrono. ' +
+          'Rode scripts/dataverse/diagnosticar-ia.ps1 para ver o que corrigir.'
+        );
+      }
       return {
         ok: resultado.ok === true,
         mensagem: String(resultado.mensagem || ''),
@@ -214,6 +220,9 @@ export class IaAdminService {
       };
     } catch (erro) {
       const mensagem = mensagemDeErro(erro);
+      if (/respondeu vazio/.test(mensagem)) {
+        throw new Error(mensagem);
+      }
       throw new Error(/não foi encontrad|not found|404/i.test(mensagem)
         ? `A Custom API ${IA_API_GERENCIAR} ainda não existe ou o passo do plugin não foi registrado.`
         : mensagem);

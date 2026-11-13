@@ -1,0 +1,473 @@
+{
+  "formato": "dgt-portal/dashboard@1",
+  "titulo": "Controladoria — Orçamento consolidado",
+  "descricao": "Orçado × executado de todas as áreas, resultado (DRE), desvios e aprovações do CONT-001",
+  "filtros": {
+    "ano": true,
+    "area": true
+  },
+  "secoes": [
+    {
+      "pagina": "Visão geral",
+      "titulo": "Resultado do ano",
+      "itens": [
+        {
+          "tipo": "cartao",
+          "titulo": "Receita bruta",
+          "fonte": "orcamento.dre",
+          "medida": "executado",
+          "agregacao": "soma",
+          "filtro": {
+            "indicadorId": "RECEITA BRUTA"
+          },
+          "formato": "moeda",
+          "comparar": {
+            "medida": "orcado",
+            "rotulo": "Orçado"
+          }
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "Receita Operacional Líquida",
+          "fonte": "orcamento.dre",
+          "medida": "executado",
+          "agregacao": "soma",
+          "filtro": {
+            "indicadorId": "ROL"
+          },
+          "formato": "moeda",
+          "comparar": {
+            "medida": "orcado",
+            "rotulo": "Orçado"
+          }
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "Custos",
+          "fonte": "orcamento.dre",
+          "medida": "executado",
+          "agregacao": "soma",
+          "filtro": {
+            "indicadorId": "CUSTOS"
+          },
+          "formato": "moeda",
+          "comparar": {
+            "medida": "orcado",
+            "rotulo": "Orçado",
+            "direcao": "menor"
+          }
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "Despesas",
+          "fonte": "orcamento.dre",
+          "medida": "executado",
+          "agregacao": "soma",
+          "filtro": {
+            "indicadorId": "DESPESAS"
+          },
+          "formato": "moeda",
+          "comparar": {
+            "medida": "orcado",
+            "rotulo": "Orçado",
+            "direcao": "menor"
+          }
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "EBITDA",
+          "fonte": "orcamento.dre",
+          "medida": "executado",
+          "agregacao": "soma",
+          "filtro": {
+            "indicadorId": "EBITDA"
+          },
+          "formato": "moeda",
+          "comparar": {
+            "medida": "orcado",
+            "rotulo": "Orçado"
+          }
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "Lucro Líquido",
+          "fonte": "orcamento.dre",
+          "medida": "executado",
+          "agregacao": "soma",
+          "filtro": {
+            "indicadorId": "LL"
+          },
+          "formato": "moeda",
+          "comparar": {
+            "medida": "orcado",
+            "rotulo": "Orçado"
+          }
+        }
+      ]
+    },
+    {
+      "pagina": "Visão geral",
+      "titulo": "Tendência",
+      "itens": [
+        {
+          "tipo": "grafico",
+          "grafico": "linhas",
+          "titulo": "EBITDA — orçado × executado",
+          "fonte": "orcamento.dre",
+          "dimensao": "mes",
+          "filtro": {
+            "indicadorId": "EBITDA"
+          },
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "formato": "moeda"
+        },
+        {
+          "tipo": "grafico",
+          "grafico": "linhas",
+          "titulo": "Lucro Líquido — orçado × executado",
+          "fonte": "orcamento.dre",
+          "dimensao": "mes",
+          "filtro": {
+            "indicadorId": "LL"
+          },
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "formato": "moeda"
+        }
+      ]
+    },
+    {
+      "pagina": "Resultado (DRE)",
+      "titulo": "Receita e custos no mês",
+      "itens": [
+        {
+          "tipo": "grafico",
+          "grafico": "barras",
+          "titulo": "Receita bruta — orçado × executado",
+          "fonte": "orcamento.dre",
+          "dimensao": "mes",
+          "filtro": {
+            "indicadorId": "RECEITA BRUTA"
+          },
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "formato": "moeda"
+        },
+        {
+          "tipo": "grafico",
+          "grafico": "barras",
+          "titulo": "Custos — orçado × executado",
+          "fonte": "orcamento.dre",
+          "dimensao": "mes",
+          "filtro": {
+            "indicadorId": "CUSTOS"
+          },
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "formato": "moeda"
+        }
+      ]
+    },
+    {
+      "pagina": "Resultado (DRE)",
+      "titulo": "Linhas da DRE",
+      "itens": [
+        {
+          "tipo": "tabela",
+          "titulo": "DRE do ano",
+          "fonte": "orcamento.dre",
+          "dimensoes": [
+            "indicador"
+          ],
+          "filtro": {
+            "indicadorId": [
+              "RECEITA BRUTA",
+              "DEDUCOES",
+              "ROL",
+              "CUSTOS",
+              "LB",
+              "DESPESAS",
+              "LO",
+              "LAIR",
+              "LL",
+              "EBITDA"
+            ]
+          },
+          "medidas": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "ordenar": "nenhum",
+          "formato": "moeda",
+          "largura": 2
+        }
+      ]
+    },
+    {
+      "pagina": "Por área",
+      "titulo": "Comparativo entre áreas",
+      "itens": [
+        {
+          "tipo": "grafico",
+          "grafico": "barras",
+          "titulo": "EBITDA por área",
+          "fonte": "orcamento.dre",
+          "dimensao": "area",
+          "filtro": {
+            "indicadorId": "EBITDA"
+          },
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "ordenar": "valor desc",
+          "limite": 12,
+          "formato": "moeda"
+        },
+        {
+          "tipo": "grafico",
+          "grafico": "barras",
+          "titulo": "Despesas por área",
+          "fonte": "orcamento.dre",
+          "dimensao": "area",
+          "filtro": {
+            "indicadorId": "DESPESAS"
+          },
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "ordenar": "valor asc",
+          "limite": 12,
+          "formato": "moeda"
+        },
+        {
+          "tipo": "grafico",
+          "grafico": "barrasEmpilhadas",
+          "titulo": "Receita bruta executada por área, mês a mês",
+          "fonte": "orcamento.dre",
+          "dimensao": "mes",
+          "serieDimensao": "area",
+          "filtro": {
+            "indicadorId": "RECEITA BRUTA"
+          },
+          "series": [
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "formato": "moeda",
+          "largura": 2
+        }
+      ]
+    },
+    {
+      "pagina": "Desvios",
+      "titulo": "Onde o executado se afasta do orçado",
+      "itens": [
+        {
+          "tipo": "grafico",
+          "grafico": "barras",
+          "titulo": "Orçado por grupo de contas",
+          "fonte": "orcamento.linhas",
+          "dimensao": "grupo",
+          "series": [
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "ordenar": "valor asc",
+          "limite": 10,
+          "formato": "moeda",
+          "largura": 2
+        },
+        {
+          "tipo": "tabela",
+          "titulo": "Top 12 contas — maior desvio (executado − orçado)",
+          "fonte": "orcamento.linhas",
+          "dimensoes": [
+            "area",
+            "codigo",
+            "conta"
+          ],
+          "medidas": [
+            {
+              "medida": "diferenca",
+              "rotulo": "Diferença"
+            },
+            {
+              "medida": "orcado",
+              "rotulo": "Orçado"
+            },
+            {
+              "medida": "executado",
+              "rotulo": "Executado"
+            }
+          ],
+          "ordenar": "valor asc",
+          "limite": 12,
+          "formato": "moeda",
+          "largura": 2
+        }
+      ]
+    },
+    {
+      "pagina": "Aprovações",
+      "titulo": "Andamento do CONT-001",
+      "itens": [
+        {
+          "tipo": "cartao",
+          "titulo": "Planilhas no ano",
+          "fonte": "orcamento.planilhas",
+          "medida": "planilhas",
+          "agregacao": "soma",
+          "formato": "inteiro"
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "Planilhas atrasadas",
+          "fonte": "orcamento.planilhas",
+          "medida": "planilhas",
+          "agregacao": "soma",
+          "filtro": {
+            "atrasada": "Sim"
+          },
+          "formato": "inteiro"
+        },
+        {
+          "tipo": "cartao",
+          "titulo": "Maior atraso (dias úteis)",
+          "fonte": "orcamento.planilhas",
+          "medida": "diasAtraso",
+          "agregacao": "maximo",
+          "formato": "inteiro"
+        },
+        {
+          "tipo": "grafico",
+          "grafico": "rosca",
+          "titulo": "Planilhas por situação",
+          "fonte": "orcamento.planilhas",
+          "dimensao": "situacao",
+          "series": [
+            {
+              "medida": "planilhas",
+              "rotulo": "Planilhas"
+            }
+          ],
+          "formato": "inteiro"
+        },
+        {
+          "tipo": "grafico",
+          "grafico": "barras",
+          "titulo": "Planilhas por etapa do fluxo",
+          "fonte": "orcamento.planilhas",
+          "dimensao": "etapa",
+          "series": [
+            {
+              "medida": "planilhas",
+              "rotulo": "Planilhas"
+            }
+          ],
+          "ordenar": "valor desc",
+          "formato": "inteiro"
+        }
+      ]
+    },
+    {
+      "pagina": "Aprovações",
+      "titulo": "Planilhas por área",
+      "itens": [
+        {
+          "tipo": "tabela",
+          "titulo": "Situação das planilhas",
+          "fonte": "orcamento.planilhas",
+          "colunas": [
+            "area",
+            "situacao",
+            "etapa",
+            "atrasada",
+            "diasAtraso",
+            "totalOrcado",
+            "totalExecutado"
+          ],
+          "ordenar": "diasAtraso desc",
+          "formato": "moeda",
+          "largura": 2
+        }
+      ]
+    }
+  ],
+  "assistente": {
+    "ativo": true,
+    "escopo": "Painel da Controladoria sobre o planejamento orçamentário (processo CONT-001). Responda sobre orçado × executado por área, conta e mês, linhas da DRE (Receita Bruta, ROL, Custos, Despesas, Lucro Bruto, LAIR, EBITDA, Lucro Líquido), desvios entre executado e orçado e o andamento das aprovações das planilhas (situação, etapa e atrasos). Não faça projeções fiscais nem dê parecer contábil, tributário ou jurídico; aponte o que os números mostram e o que vale conferir.",
+    "fontes": [
+      "orcamento.dre",
+      "orcamento.planilhas",
+      "orcamento.linhas"
+    ],
+    "perguntasSugeridas": [
+      "Resuma o resultado do ano em 5 pontos.",
+      "Quais áreas estão com EBITDA abaixo do orçado?",
+      "Quais contas explicam o maior desvio de despesas?",
+      "Em que meses o Lucro Líquido ficou mais distante do orçado?",
+      "Quais planilhas estão atrasadas e em qual etapa?"
+    ]
+  }
+}
