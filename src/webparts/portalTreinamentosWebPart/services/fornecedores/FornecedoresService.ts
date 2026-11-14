@@ -22,7 +22,18 @@ import {
 
 import {
   API_CONSULTAR_FORNECEDOR,
+  ClassificacaoRisco,
+  CodigoCertidao,
   Criticidade,
+  IDadosBancarios,
+  IDeclaracoesFicha,
+  IdVerificacao,
+  IQuadroSocietario,
+  IVerificacao,
+  ResultadoCertidoes,
+  ResultadoHomologacao,
+  RespostaQuestionario,
+  RESULTADOS_HOMOLOGACAO,
   IConsultaFornecedor,
   IContatoFornecedor,
   IDadosFornecedores,
@@ -40,6 +51,10 @@ import {
   TipoConsulta,
   Visibilidade
 } from './modeloFornecedores';
+
+import {
+  statusPeloResultado
+} from './homologacao';
 
 // ============================================================
 // FORNECEDORES — SERVIÇO (Dataverse + SharePoint)
@@ -136,6 +151,49 @@ const resultadoValido = (valor: string): ResultadoSancoes =>
 const lerCategorias = (valor: string): string[] =>
   (valor || '').split(';').map(c => c.trim()).filter(Boolean);
 
+const lerJson = <T>(valor: string): T | undefined => {
+  if (!valor) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(valor) as T;
+  } catch {
+    return undefined;
+  }
+};
+
+const resultadoCertidoesValido = (valor: string): ResultadoCertidoes =>
+  (['Regular', 'Com pendência', 'Verificar'].indexOf(valor) >= 0 ? valor : 'Não consultado') as ResultadoCertidoes;
+
+const CODIGOS_CERTIDAO: CodigoCertidao[] = ['cnd_federal', 'fgts', 'cndt', 'cnd_estadual', 'cnd_municipal'];
+
+// Colunas lidas do fornecedor (as protegidas voltam vazias para quem
+// não está no perfil de segurança de campo).
+const COLUNAS_FORNECEDOR =
+  'dgt_fornecedorid,dgt_name,dgt_nomefantasia,dgt_cnpj,dgt_categoria,dgt_criticidade,dgt_status,dgt_uf,dgt_cidade,' +
+  'dgt_endereco,dgt_inscricaoestadual,dgt_inscricaomunicipal,dgt_regimetributario,dgt_situacaocadastral,dgt_datasituacao,' +
+  'dgt_dataabertura,dgt_naturezajuridica,dgt_porte,dgt_cnaeprincipal,dgt_contatocomercial,dgt_contatofiscal,' +
+  'dgt_contatofinanceiro,dgt_observacoes,dgt_ultimaconsultacnpj,dgt_ultimaconsultasancoes,dgt_resultadosancoes,dgt_ativo,createdon,' +
+  'dgt_protocolo,dgt_origem,dgt_tiposolicitacao,dgt_ficharecebidaem,dgt_cep,dgt_telefone,dgt_site,dgt_emailpedidos,' +
+  'dgt_portedeclarado,dgt_categoriafornecimento,dgt_descricaofornecimento,dgt_contatointegridade,dgt_quadrosocietario,' +
+  'dgt_faixafaturamento,dgt_anexosimples,dgt_previsaomudancaregime,dgt_dadosbancarios,dgt_bancarioconferido,' +
+  'dgt_questionario,dgt_certificacoes,dgt_detalhamentopositivas,dgt_declaracoes,dgt_classificacaorisco,' +
+  'dgt_resultadohomologacao,dgt_ressalvas,dgt_validadecadastro,dgt_verificacoes,dgt_responsavelsuprimentos,' +
+  'dgt_responsavelcompliance,dgt_ultimaconsultacertidoes,dgt_resultadocertidoes,dgt_vencimentocertidoes,dgt_assinaturastatus';
+
+// Dados do item 9 (uso interno) que o administrador do módulo grava.
+export interface IDadosHomologacao {
+  classificacaoRisco: ClassificacaoRisco;
+  resultadoHomologacao: ResultadoHomologacao;
+  ressalvas: string;
+  validadeCadastro: string;
+  verificacoes: Partial<Record<IdVerificacao, IVerificacao>>;
+  responsavelSuprimentos: string;
+  responsavelCompliance: string;
+  bancarioConferido: boolean;
+}
+
+
 // Campos do fornecedor que a tela edita (e o histórico compara).
 const CAMPOS_EDITAVEIS: Array<{ campo: keyof IFornecedor; coluna: string; rotulo: string; tamanho: number }> = [
   { campo: 'razaoSocial', coluna: 'dgt_name', rotulo: 'Razão social', tamanho: 200 },
@@ -149,8 +207,25 @@ const CAMPOS_EDITAVEIS: Array<{ campo: keyof IFornecedor; coluna: string; rotulo
   { campo: 'inscricaoEstadual', coluna: 'dgt_inscricaoestadual', rotulo: 'Inscrição estadual', tamanho: 30 },
   { campo: 'inscricaoMunicipal', coluna: 'dgt_inscricaomunicipal', rotulo: 'Inscrição municipal', tamanho: 30 },
   { campo: 'regimeTributario', coluna: 'dgt_regimetributario', rotulo: 'Regime tributário', tamanho: 60 },
-  { campo: 'observacoes', coluna: 'dgt_observacoes', rotulo: 'Observações', tamanho: 4000 }
+  { campo: 'observacoes', coluna: 'dgt_observacoes', rotulo: 'Observações', tamanho: 4000 },
+  // Ficha SUP-CPL-01
+  { campo: 'tipoSolicitacao', coluna: 'dgt_tiposolicitacao', rotulo: 'Tipo de solicitação', tamanho: 60 },
+  { campo: 'cep', coluna: 'dgt_cep', rotulo: 'CEP', tamanho: 9 },
+  { campo: 'telefone', coluna: 'dgt_telefone', rotulo: 'Telefone geral', tamanho: 40 },
+  { campo: 'site', coluna: 'dgt_site', rotulo: 'Site', tamanho: 200 },
+  { campo: 'emailPedidos', coluna: 'dgt_emailpedidos', rotulo: 'E-mail para pedidos / NF', tamanho: 200 },
+  { campo: 'porteDeclarado', coluna: 'dgt_portedeclarado', rotulo: 'Porte declarado', tamanho: 30 },
+  { campo: 'categoriaFornecimento', coluna: 'dgt_categoriafornecimento', rotulo: 'Categoria de fornecimento (ficha)', tamanho: 300 },
+  { campo: 'descricaoFornecimento', coluna: 'dgt_descricaofornecimento', rotulo: 'Produtos / serviços', tamanho: 4000 },
+  { campo: 'faixaFaturamento', coluna: 'dgt_faixafaturamento', rotulo: 'Faixa de faturamento', tamanho: 100 },
+  { campo: 'anexoSimples', coluna: 'dgt_anexosimples', rotulo: 'Anexo do Simples', tamanho: 200 },
+  { campo: 'previsaoMudancaRegime', coluna: 'dgt_previsaomudancaregime', rotulo: 'Previsão de mudança de regime', tamanho: 50 },
+  { campo: 'certificacoes', coluna: 'dgt_certificacoes', rotulo: 'Certificações', tamanho: 2000 },
+  { campo: 'detalhamentoPositivas', coluna: 'dgt_detalhamentopositivas', rotulo: 'Detalhamento das respostas positivas', tamanho: 4000 }
 ];
+
+// Textos longos: o histórico diz só "alterado(a)".
+const CAMPOS_LONGOS = ['observacoes', 'descricaoFornecimento', 'certificacoes', 'detalhamentoPositivas'];
 
 export interface INovoFornecedor {
   cnpj: string;
@@ -211,14 +286,10 @@ export class FornecedoresService {
 
     try {
       registros = await Promise.all([
-        this.dataverse.listarRegistros(TABELAS_FORN.fornecedor,
-          '$select=dgt_fornecedorid,dgt_name,dgt_nomefantasia,dgt_cnpj,dgt_categoria,dgt_criticidade,dgt_status,dgt_uf,dgt_cidade,' +
-          'dgt_endereco,dgt_inscricaoestadual,dgt_inscricaomunicipal,dgt_regimetributario,dgt_situacaocadastral,dgt_datasituacao,' +
-          'dgt_dataabertura,dgt_naturezajuridica,dgt_porte,dgt_cnaeprincipal,dgt_contatocomercial,dgt_contatofiscal,' +
-          'dgt_contatofinanceiro,dgt_observacoes,dgt_ultimaconsultacnpj,dgt_ultimaconsultasancoes,dgt_resultadosancoes,dgt_ativo,createdon'),
+        this.dataverse.listarRegistros(TABELAS_FORN.fornecedor, `$select=${COLUNAS_FORNECEDOR}`),
         this.dataverse.listarRegistros(TABELAS_FORN.tipoDocumento,
           '$select=dgt_tipodocumentofornecedorid,dgt_name,dgt_descricao,dgt_categorias,dgt_obrigatorio,dgt_exigevalidade,' +
-          'dgt_validadedias,dgt_visibilidade,dgt_ordem,dgt_ativo'),
+          'dgt_validadedias,dgt_visibilidade,dgt_ordem,dgt_ativo,dgt_codigoconsulta'),
         this.dataverse.listarRegistros(TABELAS_FORN.documento,
           '$select=dgt_fornecedordocumentoid,dgt_name,_dgt_fornecedor_value,_dgt_tipodocumento_value,dgt_dataemissao,' +
           'dgt_datavencimento,dgt_arquivourl,dgt_arquivonome,dgt_observacoes,dgt_situacao,dgt_responsavelnome,createdon' +
@@ -307,7 +378,7 @@ export class FornecedoresService {
 
   public async consultar(
     fornecedorId: string,
-    consultas: Array<'cnpj' | 'sancoes'>,
+    consultas: Array<'cnpj' | 'sancoes' | CodigoCertidao>,
     usuarioNome: string
   ): Promise<IResultadoConsulta> {
     try {
@@ -394,40 +465,40 @@ export class FornecedoresService {
       throw new Error('A razão social não pode ficar vazia.');
     }
 
-    verificarSensivel(
-      novo.observacoes,
-      motivo,
-      gravarContato(novo.contatoComercial),
-      gravarContato(novo.contatoFiscal),
-      gravarContato(novo.contatoFinanceiro)
-    );
-
     const dados: Record<string, unknown> = {};
     const mudancas: string[] = [];
+    // Só o que a pessoa mudou passa pelo bloqueio de dados sensíveis (o
+    // texto que veio do formulário do fornecedor não trava a edição).
+    const textosAlterados: string[] = [motivo];
 
     CAMPOS_EDITAVEIS.forEach(c => {
       const valorNovo = limitar(String(novo[c.campo] || ''), c.tamanho);
       const valorAntigo = String(anterior[c.campo] || '').trim();
       if (valorNovo !== valorAntigo) {
         dados[c.coluna] = c.campo === 'uf' ? valorNovo.toUpperCase() : valorNovo;
-        mudancas.push(c.campo === 'observacoes'
-          ? `${c.rotulo}: alteradas`
+        textosAlterados.push(valorNovo);
+        mudancas.push(CAMPOS_LONGOS.indexOf(c.campo) >= 0
+          ? `${c.rotulo}: alterado(a)`
           : `${c.rotulo}: "${valorAntigo || '—'}" → "${valorNovo || '—'}"`);
       }
     });
 
-    const contatos: Array<{ campo: 'contatoComercial' | 'contatoFiscal' | 'contatoFinanceiro'; coluna: string; rotulo: string }> = [
+    const contatos: Array<{ campo: 'contatoComercial' | 'contatoFiscal' | 'contatoFinanceiro' | 'contatoIntegridade'; coluna: string; rotulo: string }> = [
       { campo: 'contatoComercial', coluna: 'dgt_contatocomercial', rotulo: 'Contato comercial' },
       { campo: 'contatoFiscal', coluna: 'dgt_contatofiscal', rotulo: 'Contato fiscal/contábil' },
-      { campo: 'contatoFinanceiro', coluna: 'dgt_contatofinanceiro', rotulo: 'Contato financeiro' }
+      { campo: 'contatoFinanceiro', coluna: 'dgt_contatofinanceiro', rotulo: 'Contato financeiro' },
+      { campo: 'contatoIntegridade', coluna: 'dgt_contatointegridade', rotulo: 'Contato integridade/compliance' }
     ];
     contatos.forEach(c => {
       const valorNovo = gravarContato(novo[c.campo]);
       if (valorNovo !== gravarContato(anterior[c.campo])) {
         dados[c.coluna] = valorNovo;
+        textosAlterados.push(valorNovo);
         mudancas.push(`${c.rotulo}: alterado`);
       }
     });
+
+    verificarSensivel(...textosAlterados);
 
     if (novo.ativo !== anterior.ativo) {
       dados.dgt_ativo = novo.ativo;
@@ -447,6 +518,157 @@ export class FornecedoresService {
         : 'Alteração';
 
     await this.registrarHistorico(novo.id, acao, `${mudancas.join('\n')}\nMotivo: ${limitar(motivo, 1000)}`, usuarioNome);
+  }
+
+  // ==========================================================
+  // GRAVAÇÃO — FICHA (questionário, quadro societário, bancário)
+  // ==========================================================
+
+  public async salvarQuestionario(
+    fornecedor: IFornecedor,
+    respostas: Record<string, RespostaQuestionario>,
+    motivo: string,
+    usuarioNome: string
+  ): Promise<void> {
+    if (!motivo.trim()) {
+      throw new Error('Informe o motivo da alteração.');
+    }
+    verificarSensivel(motivo);
+    const alteradas = Object.keys({ ...fornecedor.questionario, ...respostas })
+      .filter(k => (respostas[k] || '') !== (fornecedor.questionario[k] || ''))
+      .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]));
+    if (alteradas.length === 0) {
+      return;
+    }
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.fornecedor, fornecedor.id, {
+      dgt_questionario: JSON.stringify(respostas).substring(0, 2000)
+    });
+    await this.registrarHistorico(fornecedor.id, 'Questionário alterado',
+      `${alteradas.map(k => `${k}: "${fornecedor.questionario[k] || '—'}" → "${respostas[k] || '—'}"`).join('\n')}\nMotivo: ${limitar(motivo, 1000)}`,
+      usuarioNome);
+  }
+
+  // Coluna protegida: o histórico registra só QUE mudou, nunca os valores.
+  public async salvarQuadroSocietario(
+    fornecedor: IFornecedor,
+    quadro: IQuadroSocietario,
+    motivo: string,
+    usuarioNome: string
+  ): Promise<void> {
+    if (!motivo.trim()) {
+      throw new Error('Informe o motivo da alteração.');
+    }
+    verificarSensivel(motivo);
+    const limpo: IQuadroSocietario = {
+      socios: quadro.socios
+        .filter(s => s.nome.trim())
+        .map(s => ({
+          nome: limitar(s.nome, 200),
+          cargo: limitar(s.cargo, 120),
+          cpf: (s.cpf || '').replace(/\D/g, '').substring(0, 11),
+          participacao: limitar(s.participacao, 20)
+        })),
+      participaOutras: quadro.participaOutras,
+      outrasSociedades: limitar(quadro.outrasSociedades, 1500),
+      grupoEconomico: quadro.grupoEconomico,
+      grupoEconomicoDetalhe: limitar(quadro.grupoEconomicoDetalhe, 1500)
+    };
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.fornecedor, fornecedor.id, {
+      dgt_quadrosocietario: JSON.stringify(limpo)
+    });
+    await this.registrarHistorico(fornecedor.id, 'Quadro societário alterado',
+      `${limpo.socios.length} sócio(s)/administrador(es) no quadro (valores na coluna protegida).\nMotivo: ${limitar(motivo, 1000)}`, usuarioNome);
+  }
+
+  // Coluna protegida. Toda alteração volta para "não conferido": a ficha
+  // exige confirmação por contato telefônico independente.
+  public async salvarDadosBancarios(
+    fornecedor: IFornecedor,
+    dados: IDadosBancarios,
+    motivo: string,
+    usuarioNome: string
+  ): Promise<void> {
+    if (!motivo.trim()) {
+      throw new Error('Informe o motivo da alteração (ex.: solicitação formal assinada recebida em dd/mm).');
+    }
+    verificarSensivel(motivo);
+    const limpo: IDadosBancarios = {
+      banco: limitar(dados.banco, 120),
+      agencia: limitar(dados.agencia, 20),
+      conta: limitar(dados.conta, 30),
+      tipoChavePix: limitar(dados.tipoChavePix, 30),
+      chavePix: limitar(dados.chavePix, 120),
+      titular: limitar(dados.titular, 200),
+      cnpjTitular: normalizarCnpj(dados.cnpjTitular || '')
+    };
+    if (limpo.cnpjTitular && !cnpjValido(limpo.cnpjTitular)) {
+      throw new Error('CNPJ do titular inválido.');
+    }
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.fornecedor, fornecedor.id, {
+      dgt_dadosbancarios: JSON.stringify(limpo),
+      dgt_bancarioconferido: false
+    });
+    await this.registrarHistorico(fornecedor.id, 'Dados bancários alterados',
+      'Dados bancários alterados (valores na coluna protegida). Confirmar por contato telefônico independente antes de pagar.' +
+      `\nMotivo: ${limitar(motivo, 1000)}`, usuarioNome);
+  }
+
+  // ==========================================================
+  // GRAVAÇÃO — HOMOLOGAÇÃO (item 9; administrador do módulo)
+  // ==========================================================
+
+  public async salvarHomologacao(
+    fornecedor: IFornecedor,
+    dados: IDadosHomologacao,
+    motivo: string,
+    usuarioNome: string
+  ): Promise<StatusFornecedor> {
+
+    const resultado: ResultadoHomologacao = dados.resultadoHomologacao || 'Pendente';
+    const aprovado = resultado === 'Aprovado' || resultado === 'Aprovado com ressalvas';
+
+    if (!motivo.trim()) {
+      throw new Error('Informe o motivo / referência do parecer.');
+    }
+    if (aprovado && !dados.classificacaoRisco) {
+      throw new Error('Defina a classificação de risco antes de aprovar.');
+    }
+    if (aprovado && !dados.validadeCadastro) {
+      throw new Error('Informe a validade do cadastro / próxima revisão antes de aprovar.');
+    }
+    if ((resultado === 'Aprovado com ressalvas' || resultado === 'Reprovado') && !dados.ressalvas.trim()) {
+      throw new Error('Descreva as ressalvas, medidas de mitigação ou a referência ao parecer.');
+    }
+    verificarSensivel(dados.ressalvas, dados.responsavelSuprimentos, dados.responsavelCompliance, motivo);
+
+    const status = statusPeloResultado(resultado, fornecedor.status);
+
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.fornecedor, fornecedor.id, {
+      dgt_classificacaorisco: dados.classificacaoRisco || '',
+      dgt_resultadohomologacao: resultado,
+      dgt_ressalvas: limitar(dados.ressalvas, 4000),
+      dgt_validadecadastro: dados.validadeCadastro || null,
+      dgt_verificacoes: JSON.stringify(dados.verificacoes || {}).substring(0, 4000),
+      dgt_responsavelsuprimentos: limitar(dados.responsavelSuprimentos, 200),
+      dgt_responsavelcompliance: limitar(dados.responsavelCompliance, 200),
+      dgt_bancarioconferido: dados.bancarioConferido,
+      dgt_status: status
+    });
+
+    const linhas: string[] = [];
+    if (resultado !== fornecedor.resultadoHomologacao) { linhas.push(`Resultado: "${fornecedor.resultadoHomologacao || '—'}" → "${resultado}"`); }
+    if (dados.classificacaoRisco !== fornecedor.classificacaoRisco) { linhas.push(`Risco: "${fornecedor.classificacaoRisco || '—'}" → "${dados.classificacaoRisco || '—'}"`); }
+    if (dados.validadeCadastro !== fornecedor.validadeCadastro) { linhas.push(`Validade do cadastro: ${dados.validadeCadastro || '—'}`); }
+    if (dados.bancarioConferido !== fornecedor.bancarioConferido) { linhas.push(dados.bancarioConferido ? 'Dados bancários conferidos (contato telefônico)' : 'Conferência bancária desmarcada'); }
+    if (status !== fornecedor.status) { linhas.push(`Status: "${fornecedor.status}" → "${status}"`); }
+    const verificacoes = dados.verificacoes || {};
+    const marcadas = Object.keys(verificacoes).filter(k => (verificacoes as Record<string, IVerificacao>)[k].ok).length;
+    linhas.push(`Verificações OK: ${marcadas} de 9`);
+
+    await this.registrarHistorico(fornecedor.id, status !== fornecedor.status ? `Homologação: ${resultado}` : 'Homologação atualizada',
+      `${linhas.join('\n')}\nMotivo: ${limitar(motivo, 1000)}`, usuarioNome);
+
+    return status;
   }
 
   // ==========================================================
@@ -547,7 +769,8 @@ export class FornecedoresService {
       dgt_validadedias: tipo.validadeDias && tipo.validadeDias > 0 ? Math.round(tipo.validadeDias) : null,
       dgt_visibilidade: tipo.visibilidade,
       dgt_ordem: Math.round(tipo.ordem || 0),
-      dgt_ativo: tipo.ativo
+      dgt_ativo: tipo.ativo,
+      dgt_codigoconsulta: tipo.codigoConsulta || null
     };
 
     if (tipo.id) {
@@ -557,18 +780,21 @@ export class FornecedoresService {
     }
   }
 
-  // Cria só os tipos sugeridos que ainda não existem (pelo nome).
+  // Cria os tipos sugeridos que ainda não existem (pelo nome) e liga a
+  // consulta automática nos que já existem sem ela.
   public async importarTiposSugeridos(existentes: ITipoDocumentoFornecedor[]): Promise<number> {
-    const nomes = existentes.map(t => t.nome.trim().toLowerCase());
-    let criados = 0;
+    let alterados = 0;
     for (const sugerido of TIPOS_SUGERIDOS) {
-      if (nomes.indexOf(sugerido.nome.trim().toLowerCase()) >= 0) {
-        continue;
+      const existente = existentes.filter(t => t.nome.trim().toLowerCase() === sugerido.nome.trim().toLowerCase())[0];
+      if (!existente) {
+        await this.salvarTipo({ ...sugerido, id: '', ativo: true });
+        alterados++;
+      } else if (sugerido.codigoConsulta && !existente.codigoConsulta) {
+        await this.salvarTipo({ ...existente, codigoConsulta: sugerido.codigoConsulta });
+        alterados++;
       }
-      await this.salvarTipo({ ...sugerido, id: '', ativo: true });
-      criados++;
     }
-    return criados;
+    return alterados;
   }
 
   // ==========================================================
@@ -617,7 +843,43 @@ export class FornecedoresService {
       ultimaConsultaSancoes: texto(r, 'dgt_ultimaconsultasancoes'),
       resultadoSancoes: resultadoValido(texto(r, 'dgt_resultadosancoes')),
       ativo: r.dgt_ativo !== false,
-      criadoEm: texto(r, 'createdon')
+      criadoEm: texto(r, 'createdon'),
+
+      protocolo: texto(r, 'dgt_protocolo'),
+      origem: texto(r, 'dgt_origem') || 'Portal',
+      tipoSolicitacao: texto(r, 'dgt_tiposolicitacao'),
+      fichaRecebidaEm: texto(r, 'dgt_ficharecebidaem'),
+      cep: texto(r, 'dgt_cep'),
+      telefone: texto(r, 'dgt_telefone'),
+      site: texto(r, 'dgt_site'),
+      emailPedidos: texto(r, 'dgt_emailpedidos'),
+      porteDeclarado: texto(r, 'dgt_portedeclarado'),
+      categoriaFornecimento: texto(r, 'dgt_categoriafornecimento'),
+      descricaoFornecimento: texto(r, 'dgt_descricaofornecimento'),
+      contatoIntegridade: lerContato(texto(r, 'dgt_contatointegridade')),
+      quadroSocietario: lerJson<IQuadroSocietario>(texto(r, 'dgt_quadrosocietario')),
+      faixaFaturamento: texto(r, 'dgt_faixafaturamento'),
+      anexoSimples: texto(r, 'dgt_anexosimples'),
+      previsaoMudancaRegime: texto(r, 'dgt_previsaomudancaregime'),
+      dadosBancarios: lerJson<IDadosBancarios>(texto(r, 'dgt_dadosbancarios')),
+      bancarioConferido: r.dgt_bancarioconferido === true,
+      questionario: lerJson<Record<string, RespostaQuestionario>>(texto(r, 'dgt_questionario')) || {},
+      certificacoes: texto(r, 'dgt_certificacoes'),
+      detalhamentoPositivas: texto(r, 'dgt_detalhamentopositivas'),
+      declaracoes: lerJson<IDeclaracoesFicha>(texto(r, 'dgt_declaracoes')),
+      classificacaoRisco: (['Baixo', 'Médio', 'Alto'].indexOf(texto(r, 'dgt_classificacaorisco')) >= 0
+        ? texto(r, 'dgt_classificacaorisco') : '') as ClassificacaoRisco,
+      resultadoHomologacao: (RESULTADOS_HOMOLOGACAO.indexOf(texto(r, 'dgt_resultadohomologacao') as ResultadoHomologacao) >= 0
+        ? texto(r, 'dgt_resultadohomologacao') : '') as ResultadoHomologacao,
+      ressalvas: texto(r, 'dgt_ressalvas'),
+      validadeCadastro: soData(texto(r, 'dgt_validadecadastro')),
+      verificacoes: lerJson<Partial<Record<IdVerificacao, IVerificacao>>>(texto(r, 'dgt_verificacoes')) || {},
+      responsavelSuprimentos: texto(r, 'dgt_responsavelsuprimentos'),
+      responsavelCompliance: texto(r, 'dgt_responsavelcompliance'),
+      ultimaConsultaCertidoes: texto(r, 'dgt_ultimaconsultacertidoes'),
+      resultadoCertidoes: resultadoCertidoesValido(texto(r, 'dgt_resultadocertidoes')),
+      vencimentoCertidoes: soData(texto(r, 'dgt_vencimentocertidoes')),
+      assinaturaStatus: texto(r, 'dgt_assinaturastatus')
     };
   }
 
@@ -633,7 +895,9 @@ export class FornecedoresService {
       validadeDias: dias > 0 ? dias : undefined,
       visibilidade: (texto(r, 'dgt_visibilidade') === 'Externo' ? 'Externo' : 'Interno') as Visibilidade,
       ordem: Number(r.dgt_ordem) || 0,
-      ativo: r.dgt_ativo !== false
+      ativo: r.dgt_ativo !== false,
+      codigoConsulta: (CODIGOS_CERTIDAO.indexOf(texto(r, 'dgt_codigoconsulta') as CodigoCertidao) >= 0
+        ? texto(r, 'dgt_codigoconsulta') : '') as CodigoCertidao | ''
     };
   }
 

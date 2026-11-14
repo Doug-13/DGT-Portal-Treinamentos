@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using Newtonsoft.Json;
@@ -32,6 +33,23 @@ namespace DGT.Treinamentos.Plugins
     //       Fornecedores ativos cuja última consulta é mais antiga que
     //       "diasEntreConsultas" (ou nunca consultados), até o limite.
     //
+    //   Certidões (Infosimples) — em "consultas" de "consultar"/"lote":
+    //     "cnd_federal" (Receita/PGFN), "fgts" (Caixa/CRF), "cndt" (TST),
+    //     "cnd_estadual", "cnd_municipal", ou "certidoes" (as cinco).
+    //     Cada certidão leva de segundos a ~1 min na fonte; a chamada tem
+    //     ~105 s no total (limite do Dataverse). O portal pede UMA por vez;
+    //     o que não couber no tempo volta como "pulada".
+    //     Certidão regular → registra o documento (tipo cujo
+    //     dgt_codigoconsulta é o código) e substitui a versão anterior.
+    //   { "acao": "lote", "consultas": ["certidoes"], "limite": 20 }
+    //       Renova as certidões que vencem em até "diasRenovacaoCertidoes"
+    //       (ou que faltam). Para quando o tempo acaba: "haMais" = true.
+    //   { "acao": "receberFicha", "ficha": { ... } }
+    //       Resposta do Microsoft Forms (Ficha SUP-CPL-01) enviada pelo
+    //       Power Automate. Cria (ou atualiza, se o CNPJ já existe) o
+    //       fornecedor em "Em homologação", completa com a Receita e
+    //       devolve { id, protocolo, novo, documentosPendentes[] }.
+    //
     // ResultadoJson: ver cada ação (Responder*).
     //
     // REGISTRO (Plugin Registration Tool) — passo, como o do ClickUp:
@@ -39,30 +57,74 @@ namespace DGT.Treinamentos.Plugins
     //   Primary Entity . none
     //   Stage .......... PostOperation   ·   Mode: Synchronous
     //   Secure Configuration (SOMENTE AQUI ficam as chaves):
-    //       { "cnpja": "<chave do CNPJá>", "transparencia": "<chave da API de dados>" }
+    //       { "cnpja": "<chave do CNPJá>", "transparencia": "<chave da API de dados>",
+    //         "infosimples": "<token da Infosimples>" }
     //   Unsecure Configuration (opcional; valores padrão abaixo):
     //       { "cnpjaUrl": "https://api.cnpja.com",
     //         "cnpjaParametros": "",              (ex.: "maxAge=30" para usar cache)
     //         "transparenciaUrl": "https://api.portaldatransparencia.gov.br/api-de-dados",
     //         "diasEntreConsultas": 14,
-    //         "limiteLote": 20 }
-    //   Sem a chave da Transparência, a consulta de sanções responde
-    //   "não configurada" e o resto funciona normalmente.
+    //         "limiteLote": 20,
+    //         "infosimplesUrl": "https://api.infosimples.com/api/v2/consultas",
+    //         "infosimplesTimeout": 90,           (segundos por certidão)
+    //         "diasRenovacaoCertidoes": 15,
+    //         "rotasEstaduais":  { "SC": "<rota>?inscricao_estadual={ie}" },
+    //         "rotasMunicipais": { "SC/FLORIANOPOLIS": "<rota>" } }
+    //   Rotas estaduais/municipais: o caminho da consulta na Infosimples
+    //   (depois de /consultas/), conforme o catálogo contratado. Depois do
+    //   "?" vão parâmetros extras; {cnpj}, {ie} e {im} são trocados pelos
+    //   dados do fornecedor. Sem rota: "Sem cobertura" (emissão manual).
+    //   Sem a chave de uma fonte, a consulta dela responde "não
+    //   configurada" e o resto funciona normalmente.
     //
     // LGPD:
     //   - o CNPJ é lido de dgt_fornecedor.dgt_cnpj (coluna protegida) com
     //     o usuário do sistema e NUNCA vai para o rastreamento;
     //   - do CNPJá só são gravados dados da EMPRESA: o quadro de sócios,
     //     telefones e e-mails não são lidos nem gravados;
-    //   - CPFs eventualmente presentes em textos devolvidos são mascarados.
+    //   - CPFs eventualmente presentes em textos devolvidos são mascarados;
+    //   - na ficha, sócios (com CPF) e dados bancários vão SÓ para colunas
+    //     com segurança de campo (dgt_quadrosocietario, dgt_dadosbancarios)
+    //     e nunca para o histórico ou o rastreamento.
     // ================================================================
     public sealed class ConsultarFornecedorPlugin : IPlugin
     {
         private const string TabelaFornecedor = "dgt_fornecedor";
         private const string TabelaConsulta = "dgt_fornecedorconsulta";
+        private const string TabelaTipo = "dgt_tipodocumentofornecedor";
+        private const string TabelaDocumento = "dgt_fornecedordocumento";
+        private const string TabelaHistorico = "dgt_fornecedorhistorico";
+
+        // Tempo total da chamada (o Dataverse encerra plugins síncronos em 2 min).
+        private const int SegundosPorChamada = 105;
 
         private static readonly HttpClient Http =
             new HttpClient { Timeout = TimeSpan.FromSeconds(25) };
+
+        // Certidões podem demorar na fonte: o prazo real vem do token de cancelamento.
+        private static readonly HttpClient HttpLongo =
+            new HttpClient { Timeout = TimeSpan.FromSeconds(SegundosPorChamada) };
+
+        private sealed class Certidao
+        {
+            public Certidao(string codigo, string tipo, string nome, string rota)
+            {
+                Codigo = codigo; Tipo = tipo; Nome = nome; Rota = rota;
+            }
+            public string Codigo { get; }
+            public string Tipo { get; }   // dgt_fornecedorconsulta.dgt_tipo
+            public string Nome { get; }
+            public string Rota { get; }   // null = estadual/municipal (configurável)
+        }
+
+        private static readonly Certidao[] Certidoes =
+        {
+            new Certidao("cnd_federal", "CND_FEDERAL", "CND Federal (Receita/PGFN)", "receita-federal/pgfn?preferencia_emissao=2via"),
+            new Certidao("fgts", "FGTS", "Certificado de Regularidade do FGTS (CRF)", "caixa/regularidade"),
+            new Certidao("cndt", "CNDT", "Certidão Negativa de Débitos Trabalhistas (CNDT)", "tst/cndt"),
+            new Certidao("cnd_estadual", "CND_ESTADUAL", "CND Estadual", null),
+            new Certidao("cnd_municipal", "CND_MUNICIPAL", "CND Municipal", null)
+        };
 
         private static readonly Regex Cpf =
             new Regex(@"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b", RegexOptions.Compiled);
@@ -77,11 +139,18 @@ namespace DGT.Treinamentos.Plugins
         private readonly string _urlTransparencia = "https://api.portaldatransparencia.gov.br/api-de-dados";
         private readonly int _diasEntreConsultas = 14;
         private readonly int _limiteLote = 20;
+        private readonly string _chaveInfosimples;
+        private readonly string _urlInfosimples = "https://api.infosimples.com/api/v2/consultas";
+        private readonly int _timeoutInfosimples = 90;
+        private readonly int _diasRenovacaoCertidoes = 15;
+        private readonly Dictionary<string, string> _rotasEstaduais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _rotasMunicipais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         public ConsultarFornecedorPlugin(string unsecureConfig, string secureConfig)
         {
             _chaveCnpja = string.Empty;
             _chaveTransparencia = string.Empty;
+            _chaveInfosimples = string.Empty;
 
             if (!string.IsNullOrWhiteSpace(secureConfig))
             {
@@ -90,6 +159,7 @@ namespace DGT.Treinamentos.Plugins
                     var segura = JObject.Parse(secureConfig);
                     _chaveCnpja = ((string)segura["cnpja"] ?? string.Empty).Trim();
                     _chaveTransparencia = ((string)segura["transparencia"] ?? string.Empty).Trim();
+                    _chaveInfosimples = ((string)segura["infosimples"] ?? string.Empty).Trim();
                 }
                 catch (JsonException)
                 {
@@ -107,6 +177,11 @@ namespace DGT.Treinamentos.Plugins
                     _urlTransparencia = Texto(config["transparenciaUrl"], _urlTransparencia).TrimEnd('/');
                     _diasEntreConsultas = Math.Max(1, (int?)config["diasEntreConsultas"] ?? _diasEntreConsultas);
                     _limiteLote = Math.Min(40, Math.Max(1, (int?)config["limiteLote"] ?? _limiteLote));
+                    _urlInfosimples = Texto(config["infosimplesUrl"], _urlInfosimples).TrimEnd('/');
+                    _timeoutInfosimples = Math.Min(100, Math.Max(15, (int?)config["infosimplesTimeout"] ?? _timeoutInfosimples));
+                    _diasRenovacaoCertidoes = Math.Max(1, (int?)config["diasRenovacaoCertidoes"] ?? _diasRenovacaoCertidoes);
+                    LerRotas(config["rotasEstaduais"] as JObject, _rotasEstaduais);
+                    LerRotas(config["rotasMunicipais"] as JObject, _rotasMunicipais);
                 }
                 catch (JsonException)
                 {
@@ -140,6 +215,7 @@ namespace DGT.Treinamentos.Plugins
 
             var acao = Texto(payload["acao"], string.Empty).ToLowerInvariant();
             var usuario = NomeUsuario(sistema, context.InitiatingUserId);
+            var prazo = DateTime.UtcNow.AddSeconds(SegundosPorChamada);
             JObject resultado;
 
             switch (acao)
@@ -154,15 +230,26 @@ namespace DGT.Treinamentos.Plugins
                     {
                         throw new InvalidPluginExecutionException("fornecedorId inválido.");
                     }
-                    resultado = Consultar(sistema, tracing, id, LerConsultas(payload), usuario);
+                    resultado = Consultar(sistema, tracing, id, LerConsultas(payload), usuario, prazo);
                     break;
 
                 case "lote":
-                    resultado = Lote(sistema, tracing, LerConsultas(payload), (int?)payload["limite"], usuario);
+                    var consultasLote = LerConsultas(payload);
+                    if (consultasLote.Any(EhCertidao) && consultasLote.Any(c => !EhCertidao(c)))
+                    {
+                        throw new InvalidPluginExecutionException("No lote, peça certidões separadamente de \"cnpj\"/\"sancoes\".");
+                    }
+                    resultado = consultasLote.Any(EhCertidao)
+                        ? LoteCertidoes(sistema, tracing, consultasLote, (int?)payload["limite"], usuario, prazo)
+                        : Lote(sistema, tracing, consultasLote, (int?)payload["limite"], usuario, prazo);
+                    break;
+
+                case "receberficha":
+                    resultado = ReceberFicha(sistema, tracing, payload["ficha"] as JObject, usuario);
                     break;
 
                 default:
-                    throw new InvalidPluginExecutionException("acao deve ser \"previa\", \"consultar\" ou \"lote\".");
+                    throw new InvalidPluginExecutionException("acao deve ser \"previa\", \"consultar\", \"lote\" ou \"receberFicha\".");
             }
 
             context.OutputParameters["ResultadoJson"] = resultado.ToString(Formatting.None);
@@ -219,10 +306,10 @@ namespace DGT.Treinamentos.Plugins
             return resultado;
         }
 
-        private JObject Consultar(IOrganizationService sistema, ITracingService tracing, Guid id, string[] consultas, string usuario)
+        private JObject Consultar(IOrganizationService sistema, ITracingService tracing, Guid id, string[] consultas, string usuario, DateTime prazo)
         {
             var fornecedor = sistema.Retrieve(TabelaFornecedor, id,
-                new ColumnSet("dgt_cnpj", "dgt_name", "dgt_uf", "dgt_cidade", "dgt_endereco"));
+                new ColumnSet("dgt_cnpj", "dgt_name", "dgt_nomefantasia", "dgt_uf", "dgt_cidade", "dgt_endereco", "dgt_inscricaoestadual", "dgt_inscricaomunicipal"));
 
             var cnpj = NormalizarCnpj(fornecedor.GetAttributeValue<string>("dgt_cnpj"));
             if (!CnpjValido(cnpj))
@@ -270,6 +357,31 @@ namespace DGT.Treinamentos.Plugins
                 atualizacao["dgt_ultimaconsultasancoes"] = DateTime.UtcNow;
             }
 
+            var pedidas = Certidoes.Where(c => consultas.Contains(c.Codigo)).ToList();
+            if (pedidas.Count > 0)
+            {
+                var certidoes = new JObject();
+                foreach (var certidao in pedidas)
+                {
+                    // Cada certidão precisa de tempo para a fonte responder.
+                    if ((prazo - DateTime.UtcNow).TotalSeconds < 25)
+                    {
+                        certidoes[certidao.Codigo] = new JObject
+                        {
+                            ["ok"] = false,
+                            ["pulada"] = true,
+                            ["mensagem"] = "Não executada: o tempo desta chamada acabou. Consulte de novo."
+                        };
+                        continue;
+                    }
+                    certidoes[certidao.Codigo] = ExecutarCertidao(sistema, tracing, fornecedor, cnpj, certidao, usuario, prazo);
+                }
+                resultado["certidoes"] = certidoes;
+                atualizacao["dgt_ultimaconsultacertidoes"] = DateTime.UtcNow;
+                ResumirCertidoes(sistema, id, atualizacao);
+                resultado["resultadoCertidoes"] = (string)atualizacao["dgt_resultadocertidoes"];
+            }
+
             if (atualizacao.Attributes.Count > 0)
             {
                 sistema.Update(atualizacao);
@@ -278,7 +390,7 @@ namespace DGT.Treinamentos.Plugins
             return resultado;
         }
 
-        private JObject Lote(IOrganizationService sistema, ITracingService tracing, string[] consultas, int? limiteInformado, string usuario)
+        private JObject Lote(IOrganizationService sistema, ITracingService tracing, string[] consultas, int? limiteInformado, string usuario, DateTime prazo)
         {
             var limite = Math.Min(_limiteLote, Math.Max(1, limiteInformado ?? _limiteLote));
             var campoData = consultas.Contains("sancoes") ? "dgt_ultimaconsultasancoes" : "dgt_ultimaconsultacnpj";
@@ -303,7 +415,7 @@ namespace DGT.Treinamentos.Plugins
             {
                 try
                 {
-                    var r = Consultar(sistema, tracing, id, consultas, usuario);
+                    var r = Consultar(sistema, tracing, id, consultas, usuario, prazo);
                     var situacao = (string)r["resultadoSancoes"] ?? string.Empty;
                     if (situacao == "Com registro") { comRegistro++; }
                     if (situacao == "Erro na consulta") { erros++; }
@@ -357,6 +469,18 @@ namespace DGT.Treinamentos.Plugins
             if (dataSituacao.HasValue) { atualizacao["dgt_datasituacao"] = dataSituacao.Value; }
             var abertura = DataIso((string)dados["dataAbertura"]);
             if (abertura.HasValue) { atualizacao["dgt_dataabertura"] = abertura.Value; }
+
+            // Cadastro vindo da ficha sem razão social: assume a da Receita.
+            var nomeAtual = fornecedor.GetAttributeValue<string>("dgt_name") ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(nomeAtual) || nomeAtual == "(razão social pendente)")
+            {
+                atualizacao["dgt_name"] = Limitar((string)dados["razaoSocial"], 200);
+                fornecedor["dgt_name"] = atualizacao["dgt_name"];
+            }
+            if (string.IsNullOrWhiteSpace(fornecedor.GetAttributeValue<string>("dgt_nomefantasia")))
+            {
+                atualizacao["dgt_nomefantasia"] = Limitar((string)dados["nomeFantasia"], 200);
+            }
 
             // Endereço: só preenche o que está vazio (a equipe pode ter
             // ajustado à mão; a diferença vai para o resumo).
@@ -628,6 +752,811 @@ namespace DGT.Treinamentos.Plugins
         }
 
         // ------------------------------------------------------------
+        // Certidões (Infosimples)
+        // ------------------------------------------------------------
+
+        private JObject LoteCertidoes(IOrganizationService sistema, ITracingService tracing, string[] consultas, int? limiteInformado, string usuario, DateTime prazo)
+        {
+            var limite = Math.Min(_limiteLote, Math.Max(1, limiteInformado ?? _limiteLote));
+            var corte = HojeBrasilia().AddDays(_diasRenovacaoCertidoes);
+            var pedidas = Certidoes.Where(c => consultas.Contains(c.Codigo)).ToList();
+
+            var consulta = new QueryExpression(TabelaFornecedor)
+            {
+                ColumnSet = new ColumnSet(false),
+                TopCount = limite
+            };
+            consulta.Criteria.AddCondition("dgt_ativo", ConditionOperator.Equal, true);
+            consulta.Criteria.AddCondition("dgt_status", ConditionOperator.NotIn, "Descredenciado", "Reprovado");
+            var filtroVencimento = new FilterExpression(LogicalOperator.Or);
+            filtroVencimento.AddCondition("dgt_vencimentocertidoes", ConditionOperator.Null);
+            filtroVencimento.AddCondition("dgt_vencimentocertidoes", ConditionOperator.LessEqual, corte);
+            consulta.Criteria.AddFilter(filtroVencimento);
+            // Quem já foi tentado nas últimas 20 h fica para o dia seguinte.
+            var filtroUltima = new FilterExpression(LogicalOperator.Or);
+            filtroUltima.AddCondition("dgt_ultimaconsultacertidoes", ConditionOperator.Null);
+            filtroUltima.AddCondition("dgt_ultimaconsultacertidoes", ConditionOperator.LessThan, DateTime.UtcNow.AddHours(-20));
+            consulta.Criteria.AddFilter(filtroUltima);
+            consulta.AddOrder("dgt_vencimentocertidoes", OrderType.Ascending);
+
+            var ids = sistema.RetrieveMultiple(consulta).Entities.Select(e => e.Id).ToList();
+            var tipos = TiposAutomaticos(sistema);
+
+            int processados = 0, regulares = 0, irregulares = 0, erros = 0;
+            var haMais = ids.Count >= limite;
+
+            foreach (var id in ids)
+            {
+                if ((prazo - DateTime.UtcNow).TotalSeconds < 30)
+                {
+                    haMais = true;
+                    break;
+                }
+
+                // Só as certidões ligadas a um tipo de documento e que faltam ou vencem logo.
+                var vencimentos = VencimentosVigentes(sistema, id, tipos.Values);
+                var renovar = pedidas
+                    .Where(c => tipos.ContainsKey(c.Codigo))
+                    .Where(c =>
+                    {
+                        DateTime? venc;
+                        return !vencimentos.TryGetValue(tipos[c.Codigo], out venc) || !venc.HasValue || venc.Value <= corte;
+                    })
+                    .Select(c => c.Codigo)
+                    .ToArray();
+
+                try
+                {
+                    if (renovar.Length == 0)
+                    {
+                        var marcar = new Entity(TabelaFornecedor, id) { ["dgt_ultimaconsultacertidoes"] = DateTime.UtcNow };
+                        ResumirCertidoes(sistema, id, marcar);
+                        sistema.Update(marcar);
+                        continue;
+                    }
+
+                    processados++;
+                    var r = Consultar(sistema, tracing, id, renovar, usuario, prazo);
+                    foreach (var item in ((JObject)r["certidoes"]).Properties().Select(p => (JObject)p.Value))
+                    {
+                        if ((bool?)item["pulada"] == true) { haMais = true; }
+                        else if ((bool?)item["regular"] == true) { regulares++; }
+                        else if ((bool?)item["regular"] == false) { irregulares++; }
+                        else if ((bool?)item["ok"] != true && (bool?)item["semCobertura"] != true) { erros++; }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    erros++;
+                    tracing.Trace("Lote de certidões: fornecedor {0} não consultado: {1}", id, ex.Message);
+                }
+            }
+
+            return new JObject
+            {
+                ["processados"] = processados,
+                ["regulares"] = regulares,
+                ["irregulares"] = irregulares,
+                ["erros"] = erros,
+                ["haMais"] = haMais
+            };
+        }
+
+        private JObject ExecutarCertidao(IOrganizationService sistema, ITracingService tracing, Entity fornecedor, string cnpj, Certidao certidao, string usuario, DateTime prazo)
+        {
+            const string Fonte = "Infosimples";
+
+            if (_chaveInfosimples.Length == 0)
+            {
+                RegistrarConsulta(sistema, fornecedor.Id, certidao.Tipo, "Não configurada", "Token da Infosimples ausente na Configuração segura do passo.", Fonte, usuario);
+                return new JObject { ["ok"] = false, ["mensagem"] = "Consulta à Infosimples não configurada." };
+            }
+
+            var uf = (fornecedor.GetAttributeValue<string>("dgt_uf") ?? string.Empty).Trim().ToUpperInvariant();
+            var cidade = (fornecedor.GetAttributeValue<string>("dgt_cidade") ?? string.Empty).Trim();
+            var rota = RotaDaCertidao(certidao, uf, cidade);
+
+            if (string.IsNullOrWhiteSpace(rota))
+            {
+                var onde = certidao.Codigo == "cnd_estadual"
+                    ? (uf.Length > 0 ? $"a UF {uf}" : "fornecedor sem UF no cadastro")
+                    : (cidade.Length > 0 ? $"{cidade}/{uf}" : "fornecedor sem cidade no cadastro");
+                var texto = $"Não há rota da Infosimples configurada para {onde}. Emita a certidão no site do órgão e registre em Documentos.";
+                RegistrarConsulta(sistema, fornecedor.Id, certidao.Tipo, "Sem cobertura", texto, Fonte, usuario);
+                return new JObject { ["ok"] = false, ["semCobertura"] = true, ["mensagem"] = $"Sem cobertura automática para {onde}." };
+            }
+
+            var partes = rota.Split(new[] { '?' }, 2);
+            var caminho = partes[0].Trim().Trim('/');
+            var segundos = (int)Math.Max(10, Math.Min(_timeoutInfosimples, (prazo - DateTime.UtcNow).TotalSeconds - 10));
+
+            var parametros = new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>("token", _chaveInfosimples),
+                new KeyValuePair<string, string>("timeout", segundos.ToString(CultureInfo.InvariantCulture)),
+                new KeyValuePair<string, string>("cnpj", cnpj)
+            };
+
+            if (partes.Length > 1)
+            {
+                foreach (var par in partes[1].Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var kv = par.Split(new[] { '=' }, 2);
+                    var chave = Uri.UnescapeDataString(kv[0].Trim());
+                    if (chave.Length == 0 || chave == "cnpj" || chave == "token" || chave == "timeout") { continue; }
+                    var valor = kv.Length > 1 ? Uri.UnescapeDataString(kv[1].Trim()) : string.Empty;
+                    valor = valor
+                        .Replace("{cnpj}", cnpj)
+                        .Replace("{ie}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaoestadual") ?? string.Empty, "[^0-9A-Za-z]", string.Empty))
+                        .Replace("{im}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaomunicipal") ?? string.Empty, "[^0-9A-Za-z]", string.Empty));
+                    parametros.Add(new KeyValuePair<string, string>(chave, valor));
+                }
+            }
+
+            JObject resposta;
+            string erro;
+            if (!ChamarInfosimples(tracing, caminho, parametros, prazo, out resposta, out erro))
+            {
+                RegistrarConsulta(sistema, fornecedor.Id, certidao.Tipo, "Erro", erro, Fonte, usuario);
+                return new JObject { ["ok"] = false, ["mensagem"] = erro };
+            }
+
+            var codigo = (int?)resposta["code"] ?? 0;
+            if (codigo != 200)
+            {
+                var mensagem = Mascarar(Texto(resposta["code_message"], "a fonte não devolveu a certidão"));
+                if (Regex.IsMatch(mensagem, "token|autentic", RegexOptions.IgnoreCase))
+                {
+                    mensagem += " (verifique o token na Configuração segura do passo)";
+                }
+                erro = Limitar($"Infosimples ({codigo}): {mensagem}", 1000);
+                tracing.Trace("{0}: Infosimples respondeu código {1}.", certidao.Tipo, codigo);
+                RegistrarConsulta(sistema, fornecedor.Id, certidao.Tipo, "Erro", erro, Fonte, usuario);
+                return new JObject { ["ok"] = false, ["mensagem"] = erro };
+            }
+
+            var dado = (resposta["data"] as JArray)?.OfType<JObject>().FirstOrDefault() ?? new JObject();
+            var comprovante = (resposta["site_receipts"] as JArray)?
+                .Select(t => t.Type == JTokenType.String ? (string)t : string.Empty)
+                .FirstOrDefault(u => u.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
+
+            var analise = AnalisarCertidao(dado);
+            var resultado = analise.Regular == true
+                ? (analise.EfeitoNegativa ? "Regular (positiva com efeito de negativa)" : "Regular")
+                : analise.Regular == false ? "Irregular" : "Verificar";
+
+            var resumo = new StringBuilder();
+            resumo.AppendLine($"{certidao.Nome}: {(analise.Situacao.Length > 0 ? analise.Situacao : resultado)}");
+            if (analise.Emissao.HasValue) { resumo.AppendLine($"Emissão: {analise.Emissao.Value:dd/MM/yyyy}"); }
+            resumo.AppendLine(analise.Validade.HasValue ? $"Validade: {analise.Validade.Value:dd/MM/yyyy}" : "Validade: não informada pela fonte");
+            if (analise.Codigo.Length > 0) { resumo.AppendLine($"Código de controle: {analise.Codigo}"); }
+            if (analise.Mensagem.Length > 0) { resumo.AppendLine(analise.Mensagem); }
+            if (analise.Regular == null) { resumo.AppendLine("Não foi possível identificar se a certidão é negativa: abra o comprovante e confira."); }
+            if (comprovante.Length > 0) { resumo.AppendLine($"Comprovante: {comprovante}"); }
+
+            if (analise.Regular == true)
+            {
+                resumo.AppendLine(RegistrarDocumentoAutomatico(sistema, fornecedor.Id, certidao, analise.Emissao ?? HojeBrasilia(), analise.Validade, comprovante, analise.Codigo, usuario));
+            }
+            else if (analise.Regular == false)
+            {
+                RegistrarHistorico(sistema, fornecedor.Id, "Certidão irregular", $"{certidao.Nome}: a fonte indicou pendência. Veja a aba Consultas.", usuario);
+            }
+
+            RegistrarConsulta(sistema, fornecedor.Id, certidao.Tipo, resultado, resumo.ToString(), Fonte, usuario);
+
+            return new JObject
+            {
+                ["ok"] = true,
+                ["regular"] = analise.Regular.HasValue ? (JToken)analise.Regular.Value : JValue.CreateNull(),
+                ["validade"] = analise.Validade.HasValue ? analise.Validade.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : string.Empty,
+                ["mensagem"] = resultado
+            };
+        }
+
+        private sealed class AnaliseCertidao
+        {
+            public bool? Regular;
+            public bool EfeitoNegativa;
+            public string Situacao = string.Empty;
+            public DateTime? Emissao;
+            public DateTime? Validade;
+            public string Codigo = string.Empty;
+            public string Mensagem = string.Empty;
+        }
+
+        // Os campos variam por fonte (PGFN, Caixa, TST, SEFAZ, prefeituras):
+        // lê o que existir, na ordem do mais específico para o mais genérico.
+        private static AnaliseCertidao AnalisarCertidao(JObject d)
+        {
+            var a = new AnaliseCertidao();
+
+            var certidaoCurta = Texto(d["certidao"], string.Empty);
+            if (certidaoCurta.Length > 80) { certidaoCurta = string.Empty; }   // texto integral da certidão
+            a.Situacao = Mascarar(Juntar(" · ", Texto(d["tipo"], string.Empty), Texto(d["situacao"], string.Empty), certidaoCurta));
+            var chave = SemAcento(a.Situacao).ToUpperInvariant();
+
+            var conseguiu = d["conseguiu_emitir_certidao_negativa"];
+            var consta = d["consta"];
+
+            if (chave.Contains("EFEITO"))
+            {
+                a.Regular = true;
+                a.EfeitoNegativa = true;
+            }
+            else if (conseguiu != null && conseguiu.Type == JTokenType.Boolean)
+            {
+                a.Regular = (bool)conseguiu;
+            }
+            else if (chave.Contains("IRREGULAR")) { a.Regular = false; }
+            else if (chave.Contains("REGULAR")) { a.Regular = true; }
+            else if (chave.Contains("POSITIVA")) { a.Regular = false; }
+            else if (chave.Contains("NEGATIVA")) { a.Regular = true; }
+            else if (consta != null && consta.Type == JTokenType.Boolean) { a.Regular = !(bool)consta; }
+
+            a.Validade = PrimeiraData(d, "validade_data", "validade_fim_data", "normalizado_validade", "validade", "data_validade");
+            a.Emissao = PrimeiraData(d, "emissao_data", "validade_inicio_data", "normalizado_expedicao", "expedicao", "data_emissao", "datahora", "consulta_datahora");
+            a.Codigo = Limitar(Mascarar(Juntar(" ", Texto(d["certidao_codigo"], string.Empty), Texto(d["crf"], string.Empty), Texto(d["codigo_controle"], string.Empty))), 120);
+            a.Mensagem = Limitar(Mascarar(Juntar(" ", Texto(d["mensagem"], string.Empty), Texto(d["observacoes"], string.Empty))), 600);
+            return a;
+        }
+
+        private static DateTime? PrimeiraData(JObject d, params string[] campos)
+        {
+            foreach (var campo in campos)
+            {
+                var data = LerData(Texto(d[campo], string.Empty));
+                if (data.HasValue) { return data; }
+            }
+            return null;
+        }
+
+        private static DateTime? LerData(string valor)
+        {
+            var v = (valor ?? string.Empty).Trim();
+            DateTime data;
+            var br = Regex.Match(v, @"^(\d{2}/\d{2}/\d{4})");
+            if (br.Success && DateTime.TryParseExact(br.Groups[1].Value, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out data))
+            {
+                return DateTime.SpecifyKind(data.Date, DateTimeKind.Unspecified);
+            }
+            var iso = Regex.Match(v, @"^(\d{4}-\d{2}-\d{2})");
+            if (iso.Success && DateTime.TryParseExact(iso.Groups[1].Value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out data))
+            {
+                return DateTime.SpecifyKind(data.Date, DateTimeKind.Unspecified);
+            }
+            return null;
+        }
+
+        private bool ChamarInfosimples(ITracingService tracing, string caminho, List<KeyValuePair<string, string>> parametros, DateTime prazo, out JObject resposta, out string erro)
+        {
+            resposta = null;
+            erro = string.Empty;
+
+            var restante = prazo - DateTime.UtcNow;
+            if (restante.TotalSeconds < 5)
+            {
+                erro = "Não executada: o tempo desta chamada acabou. Consulte de novo.";
+                return false;
+            }
+
+            // O token vai no CORPO (nunca na URL, que pode aparecer em logs).
+            using (var cancelamento = new CancellationTokenSource(restante))
+            using (var requisicao = new HttpRequestMessage(HttpMethod.Post, $"{_urlInfosimples}/{caminho}"))
+            {
+                requisicao.Content = new FormUrlEncodedContent(parametros);
+                requisicao.Headers.TryAddWithoutValidation("Accept", "application/json");
+
+                HttpResponseMessage http;
+                string conteudo;
+                try
+                {
+                    http = HttpLongo.SendAsync(requisicao, cancelamento.Token).GetAwaiter().GetResult();
+                    conteudo = http.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException)
+                {
+                    erro = "A fonte demorou demais para responder. Tente de novo em instantes.";
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    tracing.Trace("Infosimples: falha de rede: {0}", ex.GetType().Name);
+                    erro = "Não foi possível falar com a Infosimples agora. Tente de novo em instantes.";
+                    return false;
+                }
+
+                if (!http.IsSuccessStatusCode)
+                {
+                    var status = (int)http.StatusCode;
+                    tracing.Trace("Infosimples respondeu HTTP {0}.", status);
+                    erro = status == 401 || status == 403
+                        ? "A Infosimples recusou o token configurado no plugin (verifique a Configuração segura)."
+                        : status == 404
+                            ? $"Rota \"{caminho}\" não encontrada na Infosimples (confira o catálogo contratado)."
+                            : status == 429
+                                ? "Limite de requisições da Infosimples atingido. Tente mais tarde."
+                                : $"A Infosimples respondeu com erro ({status}).";
+                    return false;
+                }
+
+                try
+                {
+                    resposta = JObject.Parse(conteudo);
+                    return true;
+                }
+                catch (JsonException)
+                {
+                    erro = "Resposta da Infosimples em formato inesperado.";
+                    return false;
+                }
+            }
+        }
+
+        private string RotaDaCertidao(Certidao certidao, string uf, string cidade)
+        {
+            if (certidao.Rota != null) { return certidao.Rota; }
+            string rota;
+            if (certidao.Codigo == "cnd_estadual")
+            {
+                return uf.Length > 0 && _rotasEstaduais.TryGetValue(uf, out rota) ? rota : string.Empty;
+            }
+            return uf.Length > 0 && cidade.Length > 0 && _rotasMunicipais.TryGetValue(ChaveMunicipio(uf, cidade), out rota) ? rota : string.Empty;
+        }
+
+        private static string ChaveMunicipio(string uf, string cidade) =>
+            Regex.Replace(SemAcento($"{uf}/{cidade}").ToUpperInvariant(), @"\s+", " ").Trim();
+
+        private static void LerRotas(JObject origem, Dictionary<string, string> destino)
+        {
+            if (origem == null) { return; }
+            foreach (var p in origem.Properties())
+            {
+                var rota = Texto(p.Value, string.Empty);
+                if (rota.Length == 0) { continue; }
+                var chave = p.Name.Contains("/")
+                    ? ChaveMunicipio(p.Name.Split('/')[0].Trim(), p.Name.Substring(p.Name.IndexOf('/') + 1).Trim())
+                    : p.Name.Trim().ToUpperInvariant();
+                destino[chave] = rota;
+            }
+        }
+
+        // Código da certidão → id do tipo de documento ligado a ela (dgt_codigoconsulta).
+        private static Dictionary<string, Guid> TiposAutomaticos(IOrganizationService sistema)
+        {
+            var consulta = new QueryExpression(TabelaTipo) { ColumnSet = new ColumnSet("dgt_codigoconsulta") };
+            consulta.Criteria.AddCondition("dgt_ativo", ConditionOperator.Equal, true);
+            consulta.Criteria.AddCondition("dgt_codigoconsulta", ConditionOperator.NotNull);
+            var mapa = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in sistema.RetrieveMultiple(consulta).Entities)
+            {
+                var codigo = (t.GetAttributeValue<string>("dgt_codigoconsulta") ?? string.Empty).Trim();
+                if (codigo.Length > 0 && !mapa.ContainsKey(codigo)) { mapa[codigo] = t.Id; }
+            }
+            return mapa;
+        }
+
+        // Tipo → maior validade entre as versões vigentes do fornecedor (null = sem validade).
+        private static Dictionary<Guid, DateTime?> VencimentosVigentes(IOrganizationService sistema, Guid fornecedorId, IEnumerable<Guid> tipos)
+        {
+            var mapa = new Dictionary<Guid, DateTime?>();
+            var lista = tipos.Distinct().Cast<object>().ToArray();
+            if (lista.Length == 0) { return mapa; }
+
+            var consulta = new QueryExpression(TabelaDocumento) { ColumnSet = new ColumnSet("dgt_tipodocumento", "dgt_datavencimento") };
+            consulta.Criteria.AddCondition("dgt_fornecedor", ConditionOperator.Equal, fornecedorId);
+            consulta.Criteria.AddCondition("dgt_situacao", ConditionOperator.Equal, "Vigente");
+            consulta.Criteria.AddCondition("dgt_tipodocumento", ConditionOperator.In, lista);
+
+            foreach (var d in sistema.RetrieveMultiple(consulta).Entities)
+            {
+                var tipo = d.GetAttributeValue<EntityReference>("dgt_tipodocumento");
+                if (tipo == null) { continue; }
+                var venc = d.GetAttributeValue<DateTime?>("dgt_datavencimento");
+                DateTime? atual;
+                if (!mapa.TryGetValue(tipo.Id, out atual) || (venc.HasValue && (!atual.HasValue || venc.Value > atual.Value)))
+                {
+                    mapa[tipo.Id] = venc;
+                }
+            }
+            return mapa;
+        }
+
+        private static string RegistrarDocumentoAutomatico(IOrganizationService sistema, Guid fornecedorId, Certidao certidao, DateTime emissao, DateTime? validade, string comprovante, string codigo, string usuario)
+        {
+            var consultaTipo = new QueryExpression(TabelaTipo) { ColumnSet = new ColumnSet("dgt_name", "dgt_validadedias"), TopCount = 1 };
+            consultaTipo.Criteria.AddCondition("dgt_codigoconsulta", ConditionOperator.Equal, certidao.Codigo);
+            consultaTipo.Criteria.AddCondition("dgt_ativo", ConditionOperator.Equal, true);
+            var tipo = sistema.RetrieveMultiple(consultaTipo).Entities.FirstOrDefault();
+
+            if (tipo == null)
+            {
+                return "Nenhum tipo de documento está ligado a esta certidão (Tipos de documento › Consulta automática): o documento não foi registrado.";
+            }
+
+            var nomeTipo = tipo.GetAttributeValue<string>("dgt_name") ?? certidao.Nome;
+            if (!validade.HasValue)
+            {
+                var dias = tipo.GetAttributeValue<int?>("dgt_validadedias");
+                if (dias.HasValue && dias.Value > 0) { validade = emissao.AddDays(dias.Value); }
+            }
+
+            var consultaDoc = new QueryExpression(TabelaDocumento) { ColumnSet = new ColumnSet("dgt_dataemissao", "dgt_datavencimento") };
+            consultaDoc.Criteria.AddCondition("dgt_fornecedor", ConditionOperator.Equal, fornecedorId);
+            consultaDoc.Criteria.AddCondition("dgt_tipodocumento", ConditionOperator.Equal, tipo.Id);
+            consultaDoc.Criteria.AddCondition("dgt_situacao", ConditionOperator.Equal, "Vigente");
+            var vigentes = sistema.RetrieveMultiple(consultaDoc).Entities;
+
+            // A 2ª via devolve a mesma certidão: não duplica.
+            if (vigentes.Any(v =>
+                v.GetAttributeValue<DateTime?>("dgt_dataemissao")?.Date == emissao.Date &&
+                v.GetAttributeValue<DateTime?>("dgt_datavencimento")?.Date == validade?.Date))
+            {
+                return $"Documento \"{nomeTipo}\" já estava registrado com estas datas.";
+            }
+
+            var documento = new Entity(TabelaDocumento);
+            documento["dgt_name"] = Limitar(nomeTipo, 200);
+            documento["dgt_fornecedor"] = new EntityReference(TabelaFornecedor, fornecedorId);
+            documento["dgt_tipodocumento"] = new EntityReference(TabelaTipo, tipo.Id);
+            documento["dgt_dataemissao"] = DateTime.SpecifyKind(emissao.Date, DateTimeKind.Unspecified);
+            if (validade.HasValue) { documento["dgt_datavencimento"] = DateTime.SpecifyKind(validade.Value.Date, DateTimeKind.Unspecified); }
+            documento["dgt_arquivourl"] = Limitar(comprovante, 2000);
+            documento["dgt_observacoes"] = Limitar(
+                "Emitida automaticamente pela Infosimples" + (codigo.Length > 0 ? $" (código {codigo})" : string.Empty) +
+                ". O link é o comprovante guardado pela Infosimples.", 4000);
+            documento["dgt_situacao"] = "Vigente";
+            documento["dgt_responsavelnome"] = Limitar(usuario + " (automático)", 200);
+            sistema.Create(documento);
+
+            foreach (var anterior in vigentes)
+            {
+                sistema.Update(new Entity(TabelaDocumento, anterior.Id) { ["dgt_situacao"] = "Substituído" });
+            }
+
+            var datas = $"emissão {emissao:dd/MM/yyyy}" + (validade.HasValue ? $", validade {validade.Value:dd/MM/yyyy}" : ", sem validade informada");
+            RegistrarHistorico(sistema, fornecedorId, vigentes.Count > 0 ? "Documento renovado" : "Documento registrado",
+                $"{nomeTipo}: {datas} (emitida automaticamente pela Infosimples).", usuario);
+
+            return $"Documento \"{nomeTipo}\" registrado ({datas}).";
+        }
+
+        // Resultado geral (última consulta de cada certidão) e a menor
+        // validade entre as certidões automáticas vigentes.
+        private static void ResumirCertidoes(IOrganizationService sistema, Guid fornecedorId, Entity atualizacao)
+        {
+            var consulta = new QueryExpression(TabelaConsulta) { ColumnSet = new ColumnSet("dgt_tipo", "dgt_resultado"), TopCount = 60 };
+            consulta.Criteria.AddCondition("dgt_fornecedor", ConditionOperator.Equal, fornecedorId);
+            consulta.Criteria.AddCondition("dgt_tipo", ConditionOperator.In, Certidoes.Select(c => (object)c.Tipo).ToArray());
+            consulta.AddOrder("createdon", OrderType.Descending);
+
+            var ultimas = new Dictionary<string, string>();
+            foreach (var linha in sistema.RetrieveMultiple(consulta).Entities)
+            {
+                var tipo = linha.GetAttributeValue<string>("dgt_tipo") ?? string.Empty;
+                var resultado = linha.GetAttributeValue<string>("dgt_resultado") ?? string.Empty;
+                if (resultado == "Sem cobertura" || resultado == "Não configurada" || ultimas.ContainsKey(tipo)) { continue; }
+                ultimas[tipo] = resultado;
+            }
+
+            atualizacao["dgt_resultadocertidoes"] =
+                ultimas.Values.Any(r => r.StartsWith("Irregular", StringComparison.Ordinal)) ? "Com pendência"
+                : ultimas.Values.Any(r => r.StartsWith("Erro", StringComparison.Ordinal) || r.StartsWith("Verificar", StringComparison.Ordinal)) ? "Verificar"
+                : ultimas.Count > 0 ? "Regular"
+                : "Não consultado";
+
+            var tipos = TiposAutomaticos(sistema).Values;
+            var vencimentos = VencimentosVigentes(sistema, fornecedorId, tipos).Values.Where(v => v.HasValue).Select(v => v.Value).ToList();
+            atualizacao["dgt_vencimentocertidoes"] = vencimentos.Count > 0 ? (object)DateTime.SpecifyKind(vencimentos.Min().Date, DateTimeKind.Unspecified) : null;
+        }
+
+        // ------------------------------------------------------------
+        // Ficha de Cadastro (Microsoft Forms → Power Automate)
+        // ------------------------------------------------------------
+
+        private JObject ReceberFicha(IOrganizationService sistema, ITracingService tracing, JObject ficha, string usuario)
+        {
+            if (ficha == null)
+            {
+                throw new InvalidPluginExecutionException("Informe \"ficha\" com as respostas do formulário.");
+            }
+
+            var cnpj = NormalizarCnpj(Campo(ficha, "cnpj", 30));
+            if (!CnpjValido(cnpj))
+            {
+                throw new InvalidPluginExecutionException("CNPJ inválido na ficha.");
+            }
+
+            var busca = new QueryExpression(TabelaFornecedor)
+            {
+                ColumnSet = new ColumnSet("dgt_name", "dgt_dadosbancarios", "dgt_status"),
+                TopCount = 1
+            };
+            busca.Criteria.AddCondition("dgt_cnpj", ConditionOperator.Equal, cnpj);
+            var existente = sistema.RetrieveMultiple(busca).Entities.FirstOrDefault();
+            var novo = existente == null;
+
+            var registro = novo ? new Entity(TabelaFornecedor) : new Entity(TabelaFornecedor, existente.Id);
+            var tipoSolicitacao = Campo(ficha, "tipoSolicitacao", 60);
+            if (tipoSolicitacao.Length == 0) { tipoSolicitacao = novo ? "Cadastro inicial" : "Atualização periódica"; }
+
+            registro["dgt_tiposolicitacao"] = tipoSolicitacao;
+            registro["dgt_ficharecebidaem"] = DateTime.UtcNow;
+
+            // Item 1 — só sobrescreve com o que veio preenchido.
+            Preencher(registro, "dgt_nomefantasia", Campo(ficha, "nomeFantasia", 200));
+            Preencher(registro, "dgt_inscricaoestadual", Campo(ficha, "inscricaoEstadual", 30));
+            Preencher(registro, "dgt_inscricaomunicipal", Campo(ficha, "inscricaoMunicipal", 30));
+            Preencher(registro, "dgt_endereco", Campo(ficha, "endereco", 400));
+            Preencher(registro, "dgt_cidade", Campo(ficha, "cidade", 120));
+            Preencher(registro, "dgt_uf", Campo(ficha, "uf", 2).ToUpperInvariant());
+            Preencher(registro, "dgt_cep", Campo(ficha, "cep", 9));
+            Preencher(registro, "dgt_telefone", Campo(ficha, "telefone", 40));
+            Preencher(registro, "dgt_site", Campo(ficha, "site", 200));
+            Preencher(registro, "dgt_emailpedidos", Campo(ficha, "emailPedidos", 200));
+            Preencher(registro, "dgt_portedeclarado", Campo(ficha, "porte", 30));
+
+            var categorias = Lista(ficha["categoriaFornecimento"]);
+            var outros = Campo(ficha, "categoriaOutros", 200);
+            if (outros.Length > 0) { categorias.Add("Outros: " + outros); }
+            Preencher(registro, "dgt_categoriafornecimento", Limitar(string.Join("; ", categorias), 300));
+            Preencher(registro, "dgt_descricaofornecimento", Campo(ficha, "descricaoFornecimento", 4000));
+
+            // Item 2 — contatos ("Nome — cargo | e-mail | telefone").
+            var contatos = ficha["contatos"] as JObject ?? new JObject();
+            Preencher(registro, "dgt_contatocomercial", ContatoFicha(contatos["comercial"] as JObject));
+            Preencher(registro, "dgt_contatofiscal", ContatoFicha(contatos["fiscal"] as JObject));
+            Preencher(registro, "dgt_contatofinanceiro", ContatoFicha(contatos["financeiro"] as JObject));
+            Preencher(registro, "dgt_contatointegridade", ContatoFicha(contatos["integridade"] as JObject));
+
+            // Item 3 — quadro societário (coluna protegida).
+            var socios = new JArray();
+            foreach (var s in (ficha["socios"] as JArray ?? new JArray()).OfType<JObject>().Take(30))
+            {
+                var nome = Campo(s, "nome", 200);
+                if (nome.Length == 0) { continue; }
+                socios.Add(new JObject
+                {
+                    ["nome"] = nome,
+                    ["cargo"] = Campo(s, "cargo", 120),
+                    ["cpf"] = Regex.Replace(Campo(s, "cpf", 20), "[^0-9]", string.Empty),
+                    ["participacao"] = Campo(s, "participacao", 20)
+                });
+            }
+            var quadro = new JObject
+            {
+                ["socios"] = socios,
+                ["participaOutras"] = SimNao(Campo(ficha, "participaOutrasSociedades", 20)),
+                ["outrasSociedades"] = Campo(ficha, "outrasSociedades", 1500),
+                ["grupoEconomico"] = SimNao(Campo(ficha, "grupoEconomico", 20)),
+                ["grupoEconomicoDetalhe"] = Campo(ficha, "grupoEconomicoDetalhe", 1500)
+            };
+            registro["dgt_quadrosocietario"] = Limitar(quadro.ToString(Formatting.None), 8000);
+
+            // Item 4 — enquadramento tributário.
+            Preencher(registro, "dgt_regimetributario", Campo(ficha, "regimeTributario", 60));
+            Preencher(registro, "dgt_faixafaturamento", Campo(ficha, "faixaFaturamento", 100));
+            Preencher(registro, "dgt_anexosimples", Campo(ficha, "anexoSimples", 200));
+            Preencher(registro, "dgt_previsaomudancaregime", Campo(ficha, "previsaoMudancaRegime", 50));
+
+            // Item 5 — dados bancários (coluna protegida). Alteração exige
+            // confirmação por telefone: volta para "não conferido".
+            var banco = ficha["banco"] as JObject ?? new JObject();
+            var bancario = new JObject
+            {
+                ["banco"] = Campo(banco, "banco", 120),
+                ["agencia"] = Campo(banco, "agencia", 20),
+                ["conta"] = Campo(banco, "conta", 30),
+                ["tipoChavePix"] = Campo(banco, "tipoChavePix", 30),
+                ["chavePix"] = Campo(banco, "chavePix", 120),
+                ["titular"] = Campo(banco, "titular", 200),
+                ["cnpjTitular"] = NormalizarCnpj(Campo(banco, "cnpjTitular", 30))
+            };
+            var bancarioJson = bancario.Properties().Any(p => ((string)p.Value).Length > 0) ? bancario.ToString(Formatting.None) : string.Empty;
+            var bancoAnterior = novo ? string.Empty : (existente.GetAttributeValue<string>("dgt_dadosbancarios") ?? string.Empty);
+            var bancoAlterado = bancarioJson.Length > 0 && !string.Equals(bancarioJson, bancoAnterior, StringComparison.Ordinal);
+            if (bancoAlterado)
+            {
+                registro["dgt_dadosbancarios"] = bancarioJson;
+                registro["dgt_bancarioconferido"] = false;
+            }
+
+            // Item 6 — questionário de integridade.
+            var respostas = new JObject();
+            var questionario = ficha["questionario"] as JObject ?? new JObject();
+            foreach (var p in questionario.Properties())
+            {
+                respostas[Limitar(p.Name, 10)] = RespostaQuestionario(Texto(p.Value, string.Empty));
+            }
+            registro["dgt_questionario"] = Limitar(respostas.ToString(Formatting.None), 2000);
+            Preencher(registro, "dgt_certificacoes", Campo(ficha, "certificacoes", 2000));
+            Preencher(registro, "dgt_detalhamentopositivas", Campo(ficha, "detalhamentoPositivas", 4000));
+
+            // Item 8 — declarações (a assinatura formal vem pelo Clicksign).
+            var declaracoes = new JObject
+            {
+                ["aceitas"] = Aceite(ficha["declaracoesAceitas"]),
+                ["representante"] = Campo(ficha, "representanteNome", 200),
+                ["cargo"] = Campo(ficha, "representanteCargo", 120),
+                ["local"] = Campo(ficha, "local", 120),
+                ["data"] = DateTime.UtcNow.AddHours(-3).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            };
+            registro["dgt_declaracoes"] = declaracoes.ToString(Formatting.None);
+
+            Guid id;
+            if (novo)
+            {
+                var razao = Campo(ficha, "razaoSocial", 200);
+                var categoriaFicha = string.Join(" ", categorias);
+                registro["dgt_name"] = razao.Length > 0 ? razao : "(razão social pendente)";
+                registro["dgt_cnpj"] = cnpj;
+                registro["dgt_status"] = "Em homologação";
+                registro["dgt_resultadohomologacao"] = "Pendente";
+                registro["dgt_origem"] = "Formulário";
+                registro["dgt_categoria"] = CategoriaInterna(categoriaFicha);
+                registro["dgt_resultadosancoes"] = "Não consultado";
+                registro["dgt_resultadocertidoes"] = "Não consultado";
+                registro["dgt_responsavelnome"] = "Formulário do fornecedor";
+                registro["dgt_ativo"] = true;
+                if (!registro.Contains("dgt_bancarioconferido")) { registro["dgt_bancarioconferido"] = false; }
+                id = sistema.Create(registro);
+
+                RegistrarHistorico(sistema, id, "Ficha recebida",
+                    $"Cadastro criado pela Ficha de Cadastro (formulário) — {tipoSolicitacao}.", usuario);
+            }
+            else
+            {
+                id = existente.Id;
+                sistema.Update(registro);
+                RegistrarHistorico(sistema, id, "Ficha recebida",
+                    $"{tipoSolicitacao}: dados da ficha atualizados pelo formulário." +
+                    (bancoAlterado ? "\nDados bancários alterados: confirmar por contato telefônico independente antes de pagar (SUP-CPL-01, item 5)." : string.Empty),
+                    usuario);
+            }
+
+            // Receita: completa razão social, CNAE, natureza, porte e endereço vazios.
+            if (_chaveCnpja.Length > 0)
+            {
+                try
+                {
+                    var fornecedor = sistema.Retrieve(TabelaFornecedor, id,
+                        new ColumnSet("dgt_cnpj", "dgt_name", "dgt_nomefantasia", "dgt_uf", "dgt_cidade", "dgt_endereco"));
+                    var atualizacao = new Entity(TabelaFornecedor, id);
+                    ExecutarCnpj(sistema, tracing, fornecedor, cnpj, atualizacao, usuario);
+                    if (atualizacao.Attributes.Count > 0) { sistema.Update(atualizacao); }
+                }
+                catch (Exception ex)
+                {
+                    tracing.Trace("Ficha: consulta à Receita não concluída: {0}", ex.Message);
+                }
+            }
+
+            var gravado = sistema.Retrieve(TabelaFornecedor, id, new ColumnSet("dgt_protocolo", "dgt_name", "dgt_categoria"));
+            var categoria = gravado.GetAttributeValue<string>("dgt_categoria") ?? string.Empty;
+
+            return new JObject
+            {
+                ["id"] = id.ToString(),
+                ["protocolo"] = gravado.GetAttributeValue<string>("dgt_protocolo") ?? string.Empty,
+                ["novo"] = novo,
+                ["razaoSocial"] = gravado.GetAttributeValue<string>("dgt_name") ?? string.Empty,
+                ["dadosBancariosAlterados"] = !novo && bancoAlterado,
+                ["documentosPendentes"] = new JArray(DocumentosParaEnviar(sistema, categoria).Cast<object>().ToArray())
+            };
+        }
+
+        // Obrigatórios da categoria que o fornecedor precisa ENVIAR
+        // (os ligados a uma consulta automática a DGT emite sozinha).
+        private static List<string> DocumentosParaEnviar(IOrganizationService sistema, string categoria)
+        {
+            var consulta = new QueryExpression(TabelaTipo) { ColumnSet = new ColumnSet("dgt_name", "dgt_categorias", "dgt_codigoconsulta", "dgt_ordem") };
+            consulta.Criteria.AddCondition("dgt_ativo", ConditionOperator.Equal, true);
+            consulta.Criteria.AddCondition("dgt_obrigatorio", ConditionOperator.Equal, true);
+            consulta.AddOrder("dgt_ordem", OrderType.Ascending);
+
+            return sistema.RetrieveMultiple(consulta).Entities
+                .Where(t => string.IsNullOrWhiteSpace(t.GetAttributeValue<string>("dgt_codigoconsulta")))
+                .Where(t =>
+                {
+                    var cats = (t.GetAttributeValue<string>("dgt_categorias") ?? string.Empty)
+                        .Split(';').Select(c => c.Trim()).Where(c => c.Length > 0).ToList();
+                    return cats.Count == 0 || cats.Contains(categoria);
+                })
+                .Select(t => t.GetAttributeValue<string>("dgt_name") ?? string.Empty)
+                .Where(n => n.Length > 0)
+                .ToList();
+        }
+
+        private static string CategoriaInterna(string declarada)
+        {
+            var c = SemAcento(declarada ?? string.Empty).ToUpperInvariant();
+            if (c.Contains("TERCEIRIZAD") || c.Contains("CESSAO DE MAO")) { return "Terceirizado em campo"; }
+            if (c.Contains("TRANSPORTE")) { return "Transporte"; }
+            if (c.Contains("MATERIA") || c.Contains("PRODUTO")) { return "Material"; }
+            return "Serviço";
+        }
+
+        private static string Campo(JObject origem, string nome, int tamanho) =>
+            origem == null ? string.Empty : Limitar(Texto(origem[nome], string.Empty), tamanho);
+
+        private static void Preencher(Entity registro, string coluna, string valor)
+        {
+            if (!string.IsNullOrWhiteSpace(valor)) { registro[coluna] = valor; }
+        }
+
+        // Aceita lista JSON ou texto do Forms (["a","b"] ou "a;b").
+        private static List<string> Lista(JToken token)
+        {
+            if (token is JArray arr)
+            {
+                return arr.Select(t => Texto(t, string.Empty)).Where(t => t.Length > 0).ToList();
+            }
+            var texto = Texto(token, string.Empty);
+            if (texto.StartsWith("[", StringComparison.Ordinal))
+            {
+                try { return Lista(JArray.Parse(texto)); }
+                catch (JsonException) { /* segue como texto */ }
+            }
+            return texto.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+        }
+
+        private static string ContatoFicha(JObject c)
+        {
+            if (c == null) { return string.Empty; }
+            var nome = Juntar(" — ", Campo(c, "nome", 150), Campo(c, "cargo", 100));
+            var partes = new[] { nome, Campo(c, "email", 150), Campo(c, "telefone", 40) }.Select(v => v.Replace("|", "/")).ToArray();
+            return partes.Any(p => p.Length > 0) ? Limitar(string.Join(" | ", partes), 500) : string.Empty;
+        }
+
+        private static string SimNao(string valor)
+        {
+            var v = SemAcento(valor).Trim().ToUpperInvariant();
+            return v.StartsWith("S", StringComparison.Ordinal) ? "Sim" : v.StartsWith("N", StringComparison.Ordinal) ? "Não" : string.Empty;
+        }
+
+        private static string RespostaQuestionario(string valor)
+        {
+            var v = SemAcento(valor).Trim().ToUpperInvariant();
+            if (v == "SIM" || v == "S") { return "Sim"; }
+            if (v == "NAO" || v == "N") { return "Não"; }
+            return v.Length == 0 ? string.Empty : "Não se aplica / Não sei";
+        }
+
+        private static bool Aceite(JToken token)
+        {
+            if (token == null) { return false; }
+            if (token.Type == JTokenType.Boolean) { return (bool)token; }
+            var v = SemAcento(Texto(token, string.Empty)).ToUpperInvariant();
+            return v.StartsWith("SIM", StringComparison.Ordinal) || v.StartsWith("DECLARO", StringComparison.Ordinal) || v.StartsWith("ACEIT", StringComparison.Ordinal) || v == "TRUE";
+        }
+
+        private static void RegistrarHistorico(IOrganizationService sistema, Guid fornecedorId, string acao, string descricao, string usuario)
+        {
+            var linha = new Entity(TabelaHistorico);
+            linha["dgt_name"] = Limitar(acao, 200);
+            linha["dgt_fornecedor"] = new EntityReference(TabelaFornecedor, fornecedorId);
+            linha["dgt_descricao"] = Limitar(descricao, 4000);
+            linha["dgt_usuarionome"] = Limitar(usuario, 200);
+            sistema.Create(linha);
+        }
+
+        private static bool EhCertidao(string codigo) => Certidoes.Any(c => c.Codigo == codigo);
+
+        private static DateTime HojeBrasilia() =>
+            DateTime.SpecifyKind(DateTime.UtcNow.AddHours(-3).Date, DateTimeKind.Unspecified);
+
+        private static string SemAcento(string texto)
+        {
+            var decomposto = (texto ?? string.Empty).Normalize(NormalizationForm.FormD);
+            var sb = new StringBuilder(decomposto.Length);
+            foreach (var ch in decomposto)
+            {
+                if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark) { sb.Append(ch); }
+            }
+            return sb.ToString().Normalize(NormalizationForm.FormC);
+        }
+
+        // ------------------------------------------------------------
         // Gravação e auxiliares
         // ------------------------------------------------------------
 
@@ -647,12 +1576,24 @@ namespace DGT.Treinamentos.Plugins
         private static string[] LerConsultas(JObject payload)
         {
             var lista = payload["consultas"] as JArray;
-            var consultas = lista == null
-                ? new[] { "cnpj", "sancoes" }
-                : lista.Select(c => ((string)c ?? string.Empty).Trim().ToLowerInvariant()).Where(c => c == "cnpj" || c == "sancoes").Distinct().ToArray();
+            if (lista == null)
+            {
+                return new[] { "cnpj", "sancoes" };
+            }
+
+            var pedidas = new List<string>();
+            foreach (var item in lista.Select(c => ((string)c ?? string.Empty).Trim().ToLowerInvariant()))
+            {
+                if (item == "certidoes") { pedidas.AddRange(Certidoes.Select(c => c.Codigo)); }
+                else if (item == "cnpj" || item == "sancoes" || EhCertidao(item)) { pedidas.Add(item); }
+            }
+
+            var consultas = pedidas.Distinct().ToArray();
             if (consultas.Length == 0)
             {
-                throw new InvalidPluginExecutionException("Informe consultas: \"cnpj\" e/ou \"sancoes\".");
+                throw new InvalidPluginExecutionException(
+                    "Informe consultas: \"cnpj\", \"sancoes\", \"certidoes\" ou " +
+                    string.Join(", ", Certidoes.Select(c => $"\"{c.Codigo}\"")) + ".");
             }
             return consultas;
         }

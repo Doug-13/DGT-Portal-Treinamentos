@@ -19,6 +19,12 @@ import {
   sugerirVencimento
 } from './situacaoDocumental';
 
+import {
+  pontosDeAtencao,
+  statusPeloResultado,
+  sugerirVerificacoes
+} from './homologacao';
+
 // ============================================================
 // TESTES — módulo Fornecedores
 //
@@ -68,7 +74,7 @@ describe('cnpj', () => {
 
 const hoje = new Date(2026, 10, 10); // 10/11/2026
 
-const fornecedor = (categoria: string): IFornecedor => ({
+const fornecedor = (categoria: string, extra: Partial<IFornecedor> = {}): IFornecedor => ({
   id: 'f1', razaoSocial: 'Empresa Teste', nomeFantasia: '', cnpj: '', categoria,
   criticidade: '', status: 'Em homologação', uf: '', cidade: '', endereco: '',
   inscricaoEstadual: '', inscricaoMunicipal: '', regimeTributario: '',
@@ -77,7 +83,16 @@ const fornecedor = (categoria: string): IFornecedor => ({
   contatoFiscal: { nome: '', email: '', telefone: '' },
   contatoFinanceiro: { nome: '', email: '', telefone: '' },
   observacoes: '', ultimaConsultaCnpj: '', ultimaConsultaSancoes: '', resultadoSancoes: 'Não consultado',
-  ativo: true, criadoEm: ''
+  ativo: true, criadoEm: '',
+  protocolo: '', origem: 'Portal', tipoSolicitacao: '', fichaRecebidaEm: '', cep: '', telefone: '', site: '',
+  emailPedidos: '', porteDeclarado: '', categoriaFornecimento: '', descricaoFornecimento: '',
+  contatoIntegridade: { nome: '', email: '', telefone: '' },
+  faixaFaturamento: '', anexoSimples: '', previsaoMudancaRegime: '', bancarioConferido: false,
+  questionario: {}, certificacoes: '', detalhamentoPositivas: '',
+  classificacaoRisco: '', resultadoHomologacao: '', ressalvas: '', validadeCadastro: '', verificacoes: {},
+  responsavelSuprimentos: '', responsavelCompliance: '',
+  ultimaConsultaCertidoes: '', resultadoCertidoes: 'Não consultado', vencimentoCertidoes: '', assinaturaStatus: '',
+  ...extra
 });
 
 const tipo = (id: string, extra: Partial<ITipoDocumentoFornecedor> = {}): ITipoDocumentoFornecedor => ({
@@ -134,5 +149,57 @@ describe('situacaoDocumental', () => {
     expect(sugerirVencimento('2026-11-10', 180)).toBe('2027-05-09');
     expect(sugerirVencimento('2026-11-10', undefined)).toBe('');
     expect(sugerirVencimento('', 30)).toBe('');
+  });
+});
+
+describe('homologacao (item 9 da ficha)', () => {
+
+  it('destaca "Sim" nas perguntas de risco e "Não" em integridade/LGPD', () => {
+    const pontos = pontosDeAtencao({ '6.1': 'Não', '6.5': 'Sim', '6.8': 'Não', '6.9': 'Sim', '6.10': 'Não se aplica / Não sei' });
+    expect(pontos.map(p => p.id)).toEqual(['6.5', '6.8']);
+    expect(pontosDeAtencao({})).toEqual([]);
+  });
+
+  it('muda o status conforme o resultado da homologação', () => {
+    expect(statusPeloResultado('Aprovado', 'Em homologação')).toBe('Homologado');
+    expect(statusPeloResultado('Aprovado com ressalvas', 'Reprovado')).toBe('Homologado');
+    expect(statusPeloResultado('Aprovado', 'Suspenso')).toBe('Suspenso');
+    expect(statusPeloResultado('Reprovado', 'Em homologação')).toBe('Reprovado');
+    expect(statusPeloResultado('Pendente', 'Em homologação')).toBe('Em homologação');
+  });
+
+  it('sugere as verificações a partir das consultas, certidões e da ficha', () => {
+    const cnpj = montar('112223330001');
+    const outro = montar('998887770001');
+    const tipos = [
+      tipo('cnd', { codigoConsulta: 'cnd_federal' }),
+      tipo('fgts', { codigoConsulta: 'fgts' }),
+      tipo('cndt', { codigoConsulta: 'cndt' })
+    ];
+    const docs = [doc('cnd', '2027-03-01'), doc('fgts', '2026-11-01'), doc('cndt', '2027-03-01')];
+    const f = fornecedor('Serviço', {
+      cnpj,
+      situacaoCadastral: 'Ativa',
+      resultadoSancoes: 'Com registro',
+      questionario: { '6.5': 'Sim' },
+      dadosBancarios: { banco: 'x', agencia: '1', conta: '2', tipoChavePix: '', chavePix: '', titular: 'Empresa Teste', cnpjTitular: outro }
+    });
+    const v = sugerirVerificacoes(f, calcularSituacao(f, tipos, docs, hoje));
+
+    expect(v.receita.situacao).toBe('ok');
+    expect(v.ceisCnep.situacao).toBe('atencao');
+    expect(v.cnds.situacao).toBe('atencao');          // FGTS vencido
+    expect(v.cndt.situacao).toBe('ok');
+    expect(v.credito.situacao).toBe('atencao');       // 6.5 = Sim
+    expect(v.questionario.situacao).toBe('atencao');
+    expect(v.bancario.situacao).toBe('atencao');      // titular com outro CNPJ
+
+    const certo = fornecedor('Serviço', {
+      cnpj,
+      dadosBancarios: { banco: 'x', agencia: '1', conta: '2', tipoChavePix: '', chavePix: '', titular: 'Empresa Teste', cnpjTitular: cnpj },
+      bancarioConferido: true
+    });
+    expect(sugerirVerificacoes(certo, calcularSituacao(certo, [], [], hoje)).bancario.situacao).toBe('ok');
+    expect(sugerirVerificacoes(certo, calcularSituacao(certo, [], [], hoje)).cnds.situacao).toBe('pendente');
   });
 });

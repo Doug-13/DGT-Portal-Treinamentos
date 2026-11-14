@@ -6,6 +6,8 @@ import {
 
 import {
   CATEGORIAS_FORNECEDOR,
+  CERTIDOES,
+  CodigoCertidao,
   ITipoDocumentoFornecedor,
   TIPOS_SUGERIDOS,
   VISIBILIDADES,
@@ -128,6 +130,14 @@ const EditarTipoModal: React.FC<{
           <input id="tipo-ordem" style={campo} inputMode="numeric" value={String(t.ordem || '')}
             onChange={e => { const n = parseInt(e.target.value.replace(/\D/g, ''), 10); mudar({ ordem: isNaN(n) ? 0 : n }); }} />
         </div>
+        <div>
+          <label style={rotulo} htmlFor="tipo-consulta">Consulta automática</label>
+          <select id="tipo-consulta" style={campo} value={t.codigoConsulta || ''} onChange={e => mudar({ codigoConsulta: e.target.value as CodigoCertidao | '' })}>
+            <option value="">Nenhuma (registro manual)</option>
+            {CERTIDOES.map(c => <option key={c.codigo} value={c.codigo}>{c.rotulo} (Infosimples)</option>)}
+          </select>
+          <div style={ajuda}>A certidão regular entra sozinha neste tipo. Ligue cada certidão a um único tipo.</div>
+        </div>
       </div>
     </Modal>
   );
@@ -144,18 +154,20 @@ const TiposDocumentoView: React.FC<{
   const [importando, setImportando] = React.useState(false);
   const [erro, setErro] = React.useState('');
 
-  const faltamSugeridos = TIPOS_SUGERIDOS.filter(s =>
-    !tipos.some(t => t.nome.trim().toLowerCase() === s.nome.trim().toLowerCase())).length;
+  const faltamSugeridos = TIPOS_SUGERIDOS.filter(s => {
+    const existente = tipos.filter(t => t.nome.trim().toLowerCase() === s.nome.trim().toLowerCase())[0];
+    return !existente || (!!s.codigoConsulta && !existente.codigoConsulta);
+  }).length;
 
   const importar = async (): Promise<void> => {
-    if (!window.confirm(`Criar ${faltamSugeridos} tipo(s) sugerido(s)? Os que já existem (mesmo nome) não são duplicados. Confira validades e obrigatoriedade depois.`)) {
+    if (!window.confirm(`Aplicar ${faltamSugeridos} sugestão(ões)? Cria os tipos que faltam e liga a consulta automática nas certidões que já existem (mesmo nome). Confira validades e obrigatoriedade depois.`)) {
       return;
     }
     setImportando(true);
     setErro('');
     try {
       const n = await servico.importarTiposSugeridos(tipos);
-      await aoAlterar(`${n} tipo(s) de documento criado(s). Revise obrigatoriedade e validade de cada um.`);
+      await aoAlterar(`${n} tipo(s) de documento criado(s) ou ligado(s) à consulta automática. Revise obrigatoriedade e validade de cada um.`);
     } catch (e) {
       setErro(String((e as Error)?.message || e));
     } finally {
@@ -183,7 +195,7 @@ const TiposDocumentoView: React.FC<{
       {erro && <Aviso tipo="alerta">{erro}</Aviso>}
 
       {tipos.length === 0
-        ? <Aviso tipo="info">Nenhum tipo cadastrado.{podeEditar ? ' Use "Criar sugestões" para começar pela Ficha de Cadastramento (RTC) e pelo relatório de due diligence.' : ''}</Aviso>
+        ? <Aviso tipo="info">Nenhum tipo cadastrado.{podeEditar ? ' Use "Criar sugestões" para começar pela Ficha de Cadastro SUP-CPL-01 (item 7).' : ''}</Aviso>
         : (
           <div style={{ overflowX: 'auto', border: `1px solid ${COR.cinzaClaro}`, borderRadius: '10px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', background: COR.branco }}>
@@ -206,7 +218,10 @@ const TiposDocumentoView: React.FC<{
                       {!t.ativo && <div style={{ fontSize: '12px', color: COR.texto2 }}>inativo</div>}
                     </td>
                     <td style={celula}>{t.categorias.length === 0 ? 'Todas' : t.categorias.join(', ')}</td>
-                    <td style={celula}>{t.obrigatorio ? 'Obrigatório' : 'Opcional'}{t.exigeValidade ? ' · com validade' : ''}</td>
+                    <td style={celula}>
+                      {t.obrigatorio ? 'Obrigatório' : 'Opcional'}{t.exigeValidade ? ' · com validade' : ''}
+                      {t.codigoConsulta && <div><Selo tom="ciano">automática</Selo></div>}
+                    </td>
                     <td style={celula}>{t.validadeDias ? `${t.validadeDias} dias` : '—'}</td>
                     <td style={celula}><Selo tom={t.visibilidade === 'Externo' ? 'azul' : 'cinza'}>{t.visibilidade}</Selo></td>
                     {podeEditar && (

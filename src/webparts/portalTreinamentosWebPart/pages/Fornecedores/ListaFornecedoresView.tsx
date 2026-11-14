@@ -314,6 +314,7 @@ const ListaFornecedoresView: React.FC<{
     if (!termo) { return true; }
     return f.razaoSocial.toLowerCase().indexOf(termo) >= 0 ||
       f.nomeFantasia.toLowerCase().indexOf(termo) >= 0 ||
+      f.protocolo.toLowerCase().indexOf(termo) >= 0 ||
       f.cidade.toLowerCase().indexOf(termo) >= 0 ||
       (termoCnpj.length >= 4 && !!f.cnpj && f.cnpj.indexOf(termoCnpj) >= 0);
   });
@@ -365,7 +366,7 @@ const ListaFornecedoresView: React.FC<{
                     <td style={celula}>
                       <div style={{ fontWeight: 600 }}>{i.fornecedor.razaoSocial}</div>
                       <div style={{ fontSize: '12.5px', color: COR.texto2 }}>
-                        {[i.fornecedor.nomeFantasia, [i.fornecedor.cidade, i.fornecedor.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') || '—'}
+                        {[i.fornecedor.protocolo, i.fornecedor.nomeFantasia, [i.fornecedor.cidade, i.fornecedor.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') || '—'}
                         {!i.fornecedor.ativo && ' · inativo'}
                       </div>
                     </td>
