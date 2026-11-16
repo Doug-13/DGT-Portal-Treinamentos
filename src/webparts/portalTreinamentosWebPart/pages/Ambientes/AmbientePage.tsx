@@ -53,7 +53,8 @@ import {
 } from '../../services/assinatura/controleAssinatura';
 
 import {
-  assinaturaPendente
+  assinaturaPendente,
+  subprocessoAguardando
 } from '../../services/fluxo/FluxoEngine';
 
 import {
@@ -732,6 +733,36 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
     }
   };
 
+  // ---------- Subprocesso (modo "aguardar") ----------
+  const [estadoSub, setEstadoSub] = React.useState<{ erros: string[]; processando: boolean }>({ erros: [], processando: false });
+  const pendenteSub = estado ? subprocessoAguardando(estado.definicao, estado.instancia) : undefined;
+  const subConferido = React.useRef('');
+
+  const conferirSubprocessoDoRegistro = async (registro: IAmbienteRegistro, motivo?: string): Promise<void> => {
+    if (!fluxo || !contexto) {
+      return;
+    }
+    setEstadoSub({ erros: [], processando: true });
+    try {
+      const resultado = await fluxo.conferirSubprocesso(ambiente, registro, contexto, motivo);
+      setEstadoSub({ erros: motivo !== undefined || resultado.ok ? resultado.erros : [], processando: false });
+      if (resultado.ok) {
+        setSucesso(motivo !== undefined ? 'Fluxo liberado sem esperar os registros.' : 'Todos os registros terminaram: o fluxo seguiu.');
+        await carregar();
+        await abrirRegistro(registro);
+      }
+    } catch (falha) {
+      setEstadoSub({ erros: [mensagem(falha)], processando: false });
+    }
+  };
+
+  React.useEffect(() => {
+    if (pendenteSub && registroAberto && subConferido.current !== pendenteSub.id) {
+      subConferido.current = pendenteSub.id;
+      conferirSubprocessoDoRegistro(registroAberto).catch(() => undefined);
+    }
+  }, [pendenteSub ? pendenteSub.id : '', registroAberto ? registroAberto.id : '']);
+
   // Abriu um registro parado na assinatura: confere uma vez.
   const pendenteAssinatura = estado ? assinaturaPendente(estado.definicao, estado.instancia) : undefined;
   const chaveConferida = React.useRef('');
@@ -823,6 +854,19 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
       onExecutar={(acaoChave, comentario, valores) => executar(registro, acaoChave, comentario, valores)}
       dataverseService={dataverseService}
       mostrarSequencia={ambiente.mostrarSequencia !== false}
+      subprocesso={
+        pendenteSub
+          ? {
+            elementoNome: pendenteSub.elementoNome,
+            filhos: pendenteSub.filhos.map(filho => ({ codigo: filho.codigo, titulo: filho.titulo, concluido: filho.concluido })),
+            erros: (pendenteSub.erros || []).concat(estadoSub.erros),
+            processando: estadoSub.processando,
+            podeLiberar: adminGlobal,
+            onConferir: () => { conferirSubprocessoDoRegistro(registro).catch(() => undefined); },
+            onLiberar: motivo => { conferirSubprocessoDoRegistro(registro, motivo).catch(() => undefined); }
+          }
+          : undefined
+      }
       assinatura={
         pendenteAssinatura
           ? {

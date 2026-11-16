@@ -198,3 +198,24 @@ posteriores no pai não alteram o filho.
 
 Os valores herdados ficam **protegidos** da limpeza que roda nas devoluções do fluxo filho (antes, um
 campo herdado que aparecia editável numa etapa ainda não percorrida podia ser apagado numa devolução).
+
+---
+
+## Subprocesso em ambientes (ambiente → ambiente)
+
+Num **registro de ambiente** (ex.: Auditoria), a etapa Subprocesso cria **registros** no ambiente cujo
+fluxo foi escolhido (ex.: *AMB-NAO-CONFORMIDADES — Ambiente: Não Conformidades*), com as mesmas opções:
+um por linha da tabela (com o filtro, ex.: Resultado = NC) ou um único; título pelo modelo; código pelo
+prefixo do ambiente de destino; valores pelos mapeamentos; ligação gravada no campo de referências.
+
+- **Solicitante (“Autor da revisão do novo documento”)**: com uma coluna do tipo Usuário, a pessoa da
+  **linha** abre o registro filho. **Coluna vazia = a linha não vira registro** (erro no histórico,
+  ex.: “Linha 4: a coluna Responsável pela RNC está vazia”). As outras linhas são criadas.
+- **Aguardar todos**: o pai fica parado até todos os registros filhos terminarem (**concluídos ou
+  cancelados**). Ao abrir o pai, o portal confere sozinho; há **Conferir agora** e, para o Administrador
+  do Sistema, **Liberar sem esperar** (com motivo).
+- Linhas que já viraram registro não são recriadas.
+- O fluxo escolhido precisa ser o de um **ambiente ativo** (em ambientes, o subprocesso não cria
+  documentos). Senão, o erro fica no histórico e o registro aguarda a liberação do Administrador.
+- Se nenhuma linha atender ao filtro, o fluxo segue na hora.
+

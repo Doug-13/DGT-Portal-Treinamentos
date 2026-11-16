@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Correção: subprocesso em registros de ambiente — antes era ignorado ("nenhum documento criado — fluxo retomado"); agora cria registros no ambiente de destino (ex.: Auditoria → Não Conformidades), um por linha filtrada, com o responsável da linha como solicitante (linha sem responsável vira erro), e aguarda todos terminarem (conferência automática, Conferir agora e Liberar sem esperar para o Administrador do Sistema).
 - Novo: Planejamento orçamentário — cada gestor preenche a sua planilha anual (contas do plano de contas × janeiro a dezembro), podendo adicionar e remover linhas, e envia ao concluir.
 - Novo: visão "Todas as planilhas" para o Administrador, com consolidado por grupo, consulta de cada planilha, reabertura e exportação CSV no layout da planilha de orçamento.
 - Novo: aprovação das planilhas do Planejamento orçamentário pelo fluxo CONT-001, com a tela Aprovações e o painel do fluxo na planilha.
