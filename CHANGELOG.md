@@ -6,6 +6,14 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.26] - 2026-11-13
+
+- Melhoria: ajustes e correções internas.
+
+## [1.4.25] - 2026-11-13
+
+- Melhoria: ajustes e correções internas.
+
 ## [1.4.24] - 2026-11-13
 
 - Melhoria: botão Tela cheia no cabeçalho do portal e banner dos ambientes exibido somente na visão geral.

@@ -96,7 +96,8 @@ function Get-ErroDv {
 $apis = @(
   @{ Api = 'dgt_PerguntarDashboardIa'; Tipo = 'DGT.Treinamentos.Plugins.PerguntarDashboardIaPlugin'; Chave = $true },
   @{ Api = 'dgt_GerenciarIa';          Tipo = 'DGT.Treinamentos.Plugins.GerenciarIaPlugin';          Chave = $false },
-  @{ Api = 'dgt_AnalisarLicitacaoIa';  Tipo = 'DGT.Treinamentos.Plugins.AnalisarLicitacaoIaPlugin';  Chave = $true }
+  @{ Api = 'dgt_AnalisarLicitacaoIa';  Tipo = 'DGT.Treinamentos.Plugins.AnalisarLicitacaoIaPlugin';  Chave = $true },
+  @{ Api = 'dgt_GerarDashboardIa';     Tipo = 'DGT.Treinamentos.Plugins.GerarDashboardIaPlugin';     Chave = $false }
 )
 
 $NOMES_ESTAGIO = @{ 10 = 'PreValidation'; 20 = 'PreOperation'; 30 = 'Operação principal'; 40 = 'PostOperation' }

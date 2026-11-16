@@ -49,12 +49,16 @@ export interface IDashboard {
   definicao: string;
   // Áreas que veem (ids); vazio = todas.
   areas: string[];
+  // Dashboard pessoal (criado com IA): só o dono vê. Publicar = false.
+  pessoal?: boolean;
+  // Dono do registro (systemuser), para mostrar os pessoais só a ele.
+  donoId?: string;
 }
 
 export type TipoDashboard = 'Link' | 'Portal';
 
 export type IDashboardEdicao =
-  Omit<IDashboard, 'id'> & { id?: string };
+  Omit<IDashboard, 'id' | 'donoId'> & { id?: string };
 
 export const TABELA_DASHBOARD = 'dgt_dashboard';
 
@@ -209,10 +213,26 @@ export const podeVerDashboard = (
   return false;
 };
 
+// Separa os dashboards oficiais (publicados) dos pessoais do usuário.
+// Pessoais de OUTRAS pessoas nunca entram (nem para o Administrador).
+export const separarDashboards = (
+  dashboards: IDashboard[],
+  meuId: string
+): { oficiais: IDashboard[]; meus: IDashboard[] } => {
+  const eu = (meuId || '').replace(/[{}]/g, '').toLowerCase();
+  return {
+    oficiais: dashboards.filter(d => !d.pessoal),
+    meus: dashboards.filter(d => !!d.pessoal && d.ativo && !!eu && (d.donoId || '').toLowerCase() === eu)
+  };
+};
+
 export class DashboardService {
 
   // Colunas do dashboard do portal existem? (lido em listar)
   public colunasPortal: boolean | undefined;
+
+  // Coluna dgt_pessoal existe? (scripts/dataverse/criar-ia-criacao-dashboards.ps1)
+  public colunaPessoal: boolean | undefined;
 
   private readonly dataverse: DataverseService;
 
@@ -244,6 +264,20 @@ export class DashboardService {
       this.colunasPortal = false;
     }
 
+    // Pessoal e dono numa consulta à parte (coluna criada por outro script).
+    const pessoais: { [id: string]: IDataverseRecord } = {};
+    try {
+      const lidos =
+        await this.dataverse.listarRegistros(
+          TABELA_DASHBOARD,
+          '$select=dgt_dashboardid,dgt_pessoal,_ownerid_value'
+        );
+      lidos.forEach(registro => { pessoais[texto(registro, 'dgt_dashboardid')] = registro; });
+      this.colunaPessoal = true;
+    } catch {
+      this.colunaPessoal = false;
+    }
+
     const lerAreas = (valor: string): string[] => {
       try {
         const lista = JSON.parse(valor || '[]');
@@ -265,7 +299,9 @@ export class DashboardService {
         ordem: Number(texto(registro, 'dgt_ordem', '0')) || 0,
         altura: Number(texto(registro, 'dgt_altura', '0')) || ALTURA_PADRAO,
         publico: normalizarPublico(texto(registro, 'dgt_publico', 'Todos')),
-        ativo: booleano(registro, 'dgt_ativo', true)
+        ativo: booleano(registro, 'dgt_ativo', true),
+        pessoal: (pessoais[texto(registro, 'dgt_dashboardid')] || {}).dgt_pessoal === true,
+        donoId: texto(pessoais[texto(registro, 'dgt_dashboardid')] || {}, '_ownerid_value').replace(/[{}]/g, '').toLowerCase()
       }))
       .sort((a, b) =>
         a.ordem - b.ordem ||
@@ -273,7 +309,8 @@ export class DashboardService {
       );
   }
 
-  public async salvar(dados: IDashboardEdicao): Promise<void> {
+  // Devolve o id do registro (novo ou existente).
+  public async salvar(dados: IDashboardEdicao): Promise<string> {
 
     const nome = (dados.nome || '').trim();
 
@@ -315,18 +352,25 @@ export class DashboardService {
       registro.dgt_areas = JSON.stringify(dados.areas || []);
     }
 
+    if (dados.pessoal === true && this.colunaPessoal === false) {
+      throw new Error('A coluna de dashboard pessoal ainda não existe. Execute scripts/dataverse/criar-ia-criacao-dashboards.ps1.');
+    }
+    if (dados.pessoal !== undefined && this.colunaPessoal) {
+      registro.dgt_pessoal = dados.pessoal;
+    }
+
     if (dados.id) {
       await this.dataverse.atualizarRegistro(
         TABELA_DASHBOARD,
         dados.id,
         registro
       );
-    } else {
-      await this.dataverse.criarRegistro(
-        TABELA_DASHBOARD,
-        registro
-      );
+      return dados.id;
     }
+    return this.dataverse.criarRegistro(
+      TABELA_DASHBOARD,
+      registro
+    );
   }
 
   public async definirAtivo(id: string, ativo: boolean): Promise<void> {

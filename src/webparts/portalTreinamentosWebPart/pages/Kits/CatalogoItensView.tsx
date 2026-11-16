@@ -194,6 +194,14 @@ const EditorItem: React.FC<IEditorProps> = ({ item, catalogo, podeEditar, aoFech
           <label style={rotulo} htmlFor="kit-item-codigo">Código CIGAM</label>
           <input id="kit-item-codigo" style={campo} value={dados.codigo} disabled={bloqueado} onChange={e => mudar({ codigo: e.target.value })} placeholder="Ex.: 3100050082" />
           <div style={ajuda}>{dados.codigo.trim() ? (codigoRepetido ? 'Atenção: outro item ativo do mesmo tipo já usa este código.' : 'É o código que vai para a planilha do CIGAM.') : 'Sem código o item entra no B.O.M. como pendente (não orçável).'}</div>
+          {item && catalogo.valoresDisponiveis && item.codigo.trim() && (
+            <div style={{ ...ajuda, marginTop: '6px', color: COR.azul }}>
+              Valor no CIGAM: <strong>{item.valor !== undefined && !isNaN(item.valor) ? item.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : (item.valorSituacao || 'ainda não buscado')}</strong>
+              {item.valorAtualizadoEm && ` · ${new Date(item.valorAtualizadoEm).toLocaleDateString('pt-BR')}`}
+              {item.valorOrigem && ` · ${item.valorOrigem}`}
+              <span style={{ display: 'block', color: COR.texto2 }}>Somente leitura: o valor vem do CIGAM. Ao trocar o código, o valor é buscado de novo na próxima atualização.</span>
+            </div>
+          )}
         </div>
 
         <div>
@@ -282,11 +290,60 @@ export interface ICatalogoItensViewProps {
   // Filtro inicial (links da Wiki: "Câmeras de vídeo", ...).
   tipoInicial?: TipoItemKit;
   aoSalvarItem: (item: IItemKit, anterior: IItemKit | undefined, motivo: string) => Promise<void>;
+  // Pede ao fluxo do Power Automate a atualização dos valores do CIGAM.
+  aoAtualizarValores?: () => Promise<void>;
 }
 
 type FiltroTipo = 'todos' | TipoItemKit;
 
-const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEditar, chaveInicial, tipoInicial, aoSalvarItem }) => {
+// ------------------------------------------------------------
+// Valor (R$) — vem do CIGAM pela integração; o portal só exibe.
+// ------------------------------------------------------------
+
+const moeda = (n: number): string =>
+  n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const dataCurta = (iso?: string): string => {
+  if (!iso) {
+    return '';
+  }
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR');
+};
+
+// Valor sem atualização há mais de 30 dias aparece como "antigo".
+const DIAS_VALOR_ANTIGO = 30;
+
+const valorAntigo = (iso?: string): boolean => {
+  const d = iso ? new Date(iso) : undefined;
+  return !!d && !isNaN(d.getTime()) && (Date.now() - d.getTime()) / 86400000 > DIAS_VALOR_ANTIGO;
+};
+
+const CelulaValor: React.FC<{ item: IItemKit }> = ({ item }) => {
+  if (!item.codigo.trim()) {
+    return <span style={{ color: COR.texto2, fontSize: '13px' }}>—</span>;
+  }
+  if (item.valor === undefined || isNaN(item.valor)) {
+    return (
+      <Selo tom="indigo" titulo={item.valorSituacao || 'Ainda não buscado no CIGAM'}>
+        {item.valorSituacao ? '! sem preço' : 'a buscar'}
+      </Selo>
+    );
+  }
+  const antigo = valorAntigo(item.valorAtualizadoEm);
+  return (
+    <span title={`${item.valorOrigem || 'CIGAM'}${item.valorAtualizadoEm ? ` · atualizado em ${dataCurta(item.valorAtualizadoEm)}` : ''}`}>
+      <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{moeda(item.valor)}</strong>
+      {item.valorAtualizadoEm && (
+        <span style={{ display: 'block', fontSize: '12px', color: antigo ? COR.indigo : COR.texto2 }}>
+          {antigo ? '! ' : ''}{dataCurta(item.valorAtualizadoEm)}
+        </span>
+      )}
+    </span>
+  );
+};
+
+const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEditar, chaveInicial, tipoInicial, aoSalvarItem, aoAtualizarValores }) => {
 
   const [tipo, setTipo] = React.useState<FiltroTipo>(tipoInicial || 'todos');
 
@@ -302,6 +359,9 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
   const [busca, setBusca] = React.useState('');
   const [inativos, setInativos] = React.useState(false);
   const [soPendentes, setSoPendentes] = React.useState(false);
+  const [soSemValor, setSoSemValor] = React.useState(false);
+  const [pedindo, setPedindo] = React.useState(false);
+  const [erroPedido, setErroPedido] = React.useState('');
   const [editando, setEditando] = React.useState<IItemKit | 'novo' | undefined>(undefined);
 
   React.useEffect(() => {
@@ -322,6 +382,7 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
     .filter(i => !categoria || i.categoria === categoria)
     .filter(i => inativos || i.ativo)
     .filter(i => !soPendentes || !i.codigo.trim())
+    .filter(i => !soSemValor || (!!i.codigo.trim() && (i.valor === undefined || isNaN(i.valor))))
     .filter(i => !termo || `${i.descricao} ${i.codigo} ${i.chave}`.toLowerCase().indexOf(termo) >= 0)
     .sort((a, b) =>
       TIPOS_ITEM.map(t => t.tipo).indexOf(a.tipo) - TIPOS_ITEM.map(t => t.tipo).indexOf(b.tipo) ||
@@ -330,6 +391,53 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
 
   const contagem = (t: FiltroTipo): number =>
     itensCatalogo.filter(i => (t === 'todos' || i.tipo === t) && (inativos || i.ativo)).length;
+
+  // ---- integração de valores com o CIGAM
+  const ultima = catalogo.ultimaSincronizacao;
+  const emCurso = !!ultima && (ultima.situacao === 'Pendente' || ultima.situacao === 'Em andamento');
+  const comCodigo = itensCatalogo.filter(i => i.ativo && i.codigo.trim());
+  const comValor = comCodigo.filter(i => i.valor !== undefined && !isNaN(i.valor as number));
+
+  const pedirAtualizacao = (): void => {
+    if (!aoAtualizarValores) {
+      return;
+    }
+    setPedindo(true);
+    setErroPedido('');
+    aoAtualizarValores()
+      .catch(e => setErroPedido(String((e as Error)?.message || e)))
+      .then(() => setPedindo(false), () => setPedindo(false));
+  };
+
+  const barraValores = catalogo.origem !== 'dataverse' ? null : !catalogo.valoresDisponiveis
+    ? (
+      <Aviso tipo="info">
+        A coluna Valor (R$) aparece depois de criar as colunas de valor no Dataverse
+        (scripts/dataverse/criar-colunas-valor-cigam.ps1) e configurar a integração com o CIGAM.
+      </Aviso>
+    )
+    : (
+      <div style={{ ...painel, padding: '10px 14px', marginBottom: '14px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', fontSize: '13.5px' }}>
+        <span>
+          <strong>Valores do CIGAM:</strong> {comValor.length} de {comCodigo.length} itens com código têm valor.
+        </span>
+        {ultima && (
+          <span style={{ color: ultima.situacao === 'Erro' ? COR.indigo : COR.texto2 }}>
+            Última atualização: {ultima.situacao}
+            {ultima.situacao === 'Concluída' && ` em ${dataCurta(ultima.concluidoEm || ultima.solicitadoEm)} (${ultima.itensAtualizados} atualizados${ultima.itensSemPreco ? `, ${ultima.itensSemPreco} sem preço` : ''})`}
+            {emCurso && ` — pedida por ${ultima.solicitadoPor || '—'} em ${dataCurta(ultima.solicitadoEm)}`}
+            {ultima.situacao === 'Erro' && ultima.mensagem ? `: ${ultima.mensagem}` : ''}
+          </span>
+        )}
+        {podeEditar && aoAtualizarValores && catalogo.sincronizacaoDisponivel && (
+          <button type="button" style={{ ...botao('secundario', pedindo || emCurso), marginLeft: 'auto' }} disabled={pedindo || emCurso} onClick={pedirAtualizacao}
+            title={emCurso ? 'Já há uma atualização em andamento' : 'O fluxo de integração busca os preços no CIGAM e grava aqui'}>
+            {pedindo ? 'Pedindo…' : emCurso ? 'Atualização em andamento…' : '↻ Atualizar valores do CIGAM'}
+          </button>
+        )}
+        {erroPedido && <span style={{ color: COR.indigo, width: '100%' }}>{erroPedido}</span>}
+      </div>
+    );
 
   const chip = (ativo: boolean): React.CSSProperties => ({
     padding: '6px 12px',
@@ -362,24 +470,27 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
           </select>
         )}
         <Interruptor marcado={soPendentes} aoMudar={setSoPendentes} texto="Só sem código CIGAM" />
+        {catalogo.valoresDisponiveis && <Interruptor marcado={soSemValor} aoMudar={setSoSemValor} texto="Só sem valor" />}
         <Interruptor marcado={inativos} aoMudar={setInativos} texto="Mostrar desativados" />
         {podeEditar && (
           <button type="button" style={{ ...botao('principal'), marginLeft: 'auto' }} onClick={() => setEditando('novo')}>+ Novo item</button>
         )}
       </div>
 
+      {barraValores}
+
       <div style={{ ...painel, padding: 0, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', color: COR.azul, minWidth: '760px', boxShadow: 'none', borderRadius: 0 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', color: COR.azul, minWidth: '860px', boxShadow: 'none', borderRadius: 0 }}>
           <thead>
             <tr>
-              {['Item', 'Código CIGAM', 'Tipo', 'Situação', 'Usado em', ''].map(h => (
-                <th key={h} style={celulaCabecalho}>{h}</th>
+              {['Item', 'Código CIGAM', 'Valor (R$)', 'Tipo', 'Situação', 'Usado em', ''].map(h => (
+                <th key={h} style={h === 'Valor (R$)' ? { ...celulaCabecalho, textAlign: 'right' } : celulaCabecalho}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {visiveis.length === 0 && (
-              <tr><td colSpan={6} style={{ ...celula, padding: '28px', textAlign: 'center', color: COR.texto2 }}>
+              <tr><td colSpan={7} style={{ ...celula, padding: '28px', textAlign: 'center', color: COR.texto2 }}>
                 Nenhum item com esses filtros.{podeEditar && ' Use "+ Novo item" para cadastrar.'}
               </td></tr>
             )}
@@ -395,6 +506,7 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
                   <td style={{ ...celula, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                     {item.codigo.trim() ? item.codigo : <Selo tom="indigo" titulo="Entra no B.O.M. como pendente">! sem código</Selo>}
                   </td>
+                  <td style={{ ...celula, whiteSpace: 'nowrap', textAlign: 'right' }}><CelulaValor item={item} /></td>
                   <td style={{ ...celula, whiteSpace: 'nowrap' }}>{item.tipo === 'item' ? item.categoria : nomeTipo(item.tipo)}</td>
                   <td style={celula}>
                     {item.ativo ? <Selo tom={TOM_SITUACAO[item.situacao]}>{item.situacao}</Selo> : <Selo tom="cinza">Desativado</Selo>}

@@ -47,7 +47,11 @@ export type IconeChave =
   | 'info'
   | 'wallet'
   | 'package'
-  | 'briefcase';
+  | 'briefcase'
+  | 'chevronDown'
+  | 'expand'
+  | 'shrink'
+  | 'arrowRight';
 
 export const Icones:
   Record<IconeChave, React.FC> = {
@@ -271,6 +275,41 @@ export const Icones:
       <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
       <path d="M3 12.5h18" />
       <line x1="12" y1="11.5" x2="12" y2="13.5" />
+    </svg>
+  ),
+
+  // Cabeçalho: abrir menu do usuário
+  chevronDown: () => (
+    <svg {...base}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  ),
+
+  // Cabeçalho: entrar em tela cheia
+  expand: () => (
+    <svg {...base}>
+      <polyline points="4 9 4 4 9 4" />
+      <polyline points="15 4 20 4 20 9" />
+      <polyline points="20 15 20 20 15 20" />
+      <polyline points="9 20 4 20 4 15" />
+    </svg>
+  ),
+
+  // Cabeçalho: sair da tela cheia
+  shrink: () => (
+    <svg {...base}>
+      <polyline points="9 4 9 9 4 9" />
+      <polyline points="20 9 15 9 15 4" />
+      <polyline points="15 20 15 15 20 15" />
+      <polyline points="4 15 9 15 9 20" />
+    </svg>
+  ),
+
+  // Ação "abrir" em listas e tabelas
+  arrowRight: () => (
+    <svg {...base}>
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="13 6 19 12 13 18" />
     </svg>
   ),
 

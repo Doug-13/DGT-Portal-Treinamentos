@@ -23,28 +23,121 @@
 }
 
 
+/* ============================================================
+   PADRÃO VISUAL DGT — tokens (v1)
+   Fonte única de cores, tipografia, espaçamento, raio e sombra.
+   Escopo: somente dentro de .portal (não vaza para o SharePoint).
+   Use em estilos inline via constants/designTokens.ts (T.*).
+   Identidade: azul #202A44, ciano #05C3DD, índigo #485CC7,
+   cinzas #888B8D / #D9D9D6 (já declarados na página Início).
+   ============================================================ */
 .portal {
-  --navy: #063654;
-  --navy2: #052b47;
-  --blue: #0878d1;
-  --cyan: #11c9df;
-  --bg: #f5f8fb;
-  --text: #102a43;
-  --muted: #5e7185;
+  /* Marca */
+  --dgt-azul: #202A44;
+  --dgt-azul-escuro: #161D30;
+  --dgt-azul-claro: #EDF0F5;
+  --dgt-ciano: #05C3DD;              /* acento: só sobre fundo escuro, bordas e marcadores */
+  --dgt-ciano-texto: #0E7C8C;        /* ciano legível sobre branco (4.9:1) */
+  --dgt-ciano-claro: #E6F9FC;
+  --dgt-indigo: #485CC7;             /* links e "precisa de atenção" (5.8:1) */
+  --dgt-indigo-claro: #E8EAF8;
+
+  /* Neutros */
+  --dgt-texto: #202A44;              /* 14.2:1 */
+  --dgt-texto-2: #5E6470;            /* 5.9:1 — texto secundário */
+  --dgt-texto-3: #888B8D;            /* só ícones/decoração, nunca texto pequeno */
+  --dgt-fundo: #F4F6F9;
+  --dgt-superficie: #FFFFFF;
+  --dgt-superficie-2: #F8FAFC;
+  --dgt-linha: #D9D9D6;
+  --dgt-linha-suave: #EDF0F5;
+
+  /* Estados */
+  --dgt-sucesso: #13795B;
+  --dgt-sucesso-claro: #E7F6EC;
+  --dgt-alerta: #B45309;
+  --dgt-alerta-claro: #FFF4E5;
+  --dgt-erro: #B42318;
+  --dgt-erro-claro: #FDE7E9;
+  --dgt-info: #485CC7;
+  --dgt-info-claro: #E8EAF8;
+
+  /* Tipografia */
+  --dgt-fonte: Barlow, "Segoe UI", "Segoe UI Web (West European)", -apple-system, Arial, sans-serif;
+  --dgt-fs-legenda: 12px;
+  --dgt-fs-denso: 13px;
+  --dgt-fs-corpo: 14px;
+  --dgt-fs-painel: 16px;
+  --dgt-fs-secao: 20px;
+  --dgt-fs-pagina: 24px;
+  --dgt-fs-destaque: 30px;
+
+  /* Espaçamento (base 4) */
+  --dgt-esp-1: 4px;
+  --dgt-esp-2: 8px;
+  --dgt-esp-3: 12px;
+  --dgt-esp-4: 16px;
+  --dgt-esp-5: 20px;
+  --dgt-esp-6: 24px;
+  --dgt-esp-8: 32px;
+
+  /* Forma e elevação */
+  --dgt-raio-controle: 6px;
+  --dgt-raio-cartao: 10px;
+  --dgt-raio-pilula: 999px;
+  --dgt-sombra-1: 0 1px 2px rgba(32, 42, 68, .06);
+  --dgt-sombra-2: 0 4px 14px rgba(32, 42, 68, .10);
+  --dgt-controle-altura: 36px;
+  --dgt-foco: 0 0 0 2px #FFFFFF, 0 0 0 4px #485CC7;
+  --dgt-transicao: .15s ease;
+
+  /* Compatibilidade: nomes antigos apontam para os tokens novos */
+  --navy: var(--dgt-azul);
+  --navy2: var(--dgt-azul-escuro);
+  --blue: var(--dgt-indigo);
+  --cyan: var(--dgt-ciano);
+  --bg: var(--dgt-fundo);
+  --text: var(--dgt-texto);
+  --muted: var(--dgt-texto-2);
+
   width: 100%;
   min-height: 100vh;
   display: flex;
-  background: var(--bg);
-  color: var(--text);
-  font-family: "Segoe UI", Arial, sans-serif;
+  background: var(--dgt-fundo);
+  color: var(--dgt-texto);
+  font-family: var(--dgt-fonte);
+  font-size: var(--dgt-fs-corpo);
+  line-height: 1.45;
 
   * {
     box-sizing: border-box;
   }
 
   button,
-  input {
+  input,
+  select,
+  textarea {
     font-family: inherit;
+  }
+
+  /* Foco visível padrão para tudo que é interativo */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [role="button"]:focus-visible,
+  [tabindex]:focus-visible {
+    outline: none;
+    box-shadow: var(--dgt-foco);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -66,8 +159,8 @@
 }
 
 .sidebar {
-  width: 232px;
-  min-width: 232px;
+  width: 240px;
+  min-width: 240px;
   height: 100vh;
   position: sticky;
   top: 0;
@@ -78,11 +171,10 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
-  color: #fff;
-  background:
-    radial-gradient(circle at 40% 100%, rgba(0, 133, 197, .25), transparent 25%),
-    linear-gradient(180deg, #073b5e 0%, #052e4b 52%, #032744 100%);
-  transition: width .2s ease, min-width .2s ease;
+  color: #FFFFFF;
+  background: var(--dgt-azul);
+  border-right: 1px solid rgba(255, 255, 255, .06);
+  transition: width var(--dgt-transicao), min-width var(--dgt-transicao);
 }
 
 /* Barra de rolagem só aparece ao passar o mouse e não rouba largura do texto */
@@ -105,38 +197,41 @@
 }
 
 .sidebarLogo {
-  height: 80px;
-  padding: 18px 14px 18px 28px;
+  height: 64px;
+  padding: 0 var(--dgt-esp-3) 0 var(--dgt-esp-5);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--dgt-esp-2);
   flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
 }
 
 /* Botão recolher / expandir o menu */
 .sidebarToggle {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, .18);
-  border-radius: 8px;
+  border-radius: var(--dgt-raio-controle);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #9fd8f5;
-  background: rgba(255, 255, 255, .06);
+  color: #C7CCD6;
+  background: transparent;
   cursor: pointer;
+  transition: background var(--dgt-transicao), color var(--dgt-transicao);
 }
 
 .sidebarToggle:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, .14);
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, .10);
 }
 
 .sidebarToggle:focus-visible {
-  outline: 2px solid #12c6ff;
+  outline: 2px solid var(--dgt-ciano);
   outline-offset: 2px;
+  box-shadow: none;
 }
 
 /* ---------- Menu recolhido: só ícones ---------- */
@@ -146,7 +241,7 @@
 }
 
 .sidebarRecolhida .sidebarLogo {
-  padding: 18px 0;
+  padding: 0;
   justify-content: center;
 }
 
@@ -159,7 +254,9 @@
 
 .sidebarRecolhida .intranetMenuItem,
 .sidebarRecolhida .intranetMenuActive {
-  padding: 9px 0;
+  margin: 2px 8px;
+  width: calc(100% - 16px);
+  padding: 10px 0;
   justify-content: center;
 }
 
@@ -171,70 +268,95 @@
 }
 
 .sidebarLogo img {
-  width: 82px;
-  height: 42px;
+  width: 76px;
+  height: 38px;
   object-fit: contain;
 }
 
 .intranetMenu {
-  padding-top: 2px;
+  padding: var(--dgt-esp-3) 0;
 }
 
+/* Item de menu: pílula com marcador lateral; alvo mínimo de 40px */
 .intranetMenuItem,
 .intranetMenuActive {
-  width: 100%;
-  min-height: 46px;
+  position: relative;
+  width: calc(100% - 16px);
+  min-height: 40px;
+  margin: 2px 8px;
   border: 0;
-  border-left: 4px solid transparent;
-  padding: 9px 14px 9px 20px;
+  border-radius: var(--dgt-raio-controle);
+  padding: 8px 10px 8px 12px;
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #edf6fb;
+  color: #D9DEE7;
   background: transparent;
   cursor: pointer;
   text-align: left;
-  font-size: 13px;
+  font-size: var(--dgt-fs-corpo);
+  font-weight: 500;
   line-height: 1.25;
+  transition: background var(--dgt-transicao), color var(--dgt-transicao);
+}
+
+.intranetMenuItem:focus-visible,
+.intranetMenuActive:focus-visible,
+.intranetMenuAdicionar:focus-visible {
+  outline: 2px solid var(--dgt-ciano);
+  outline-offset: -2px;
+  box-shadow: none;
 }
 
 /* Nome do item: ocupa o espaço livre e quebra em até 2 linhas */
 .intranetLabel {
   flex: 1;
   min-width: 0;
-  overflow-wrap: normal;
-  word-break: normal;
-  hyphens: none;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 /* Selo "NOVO" — discreto, no tom da barra lateral */
 .intranetNovo {
   flex-shrink: 0;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid rgba(18, 198, 255, .55);
-  background: rgba(18, 198, 255, .16);
-  color: #8fe6ff;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: .06em;
-  line-height: 13px;
+  padding: 1px 6px;
+  border: 1px solid rgba(5, 195, 221, .55);
+  border-radius: var(--dgt-raio-pilula);
+  color: var(--dgt-ciano);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  line-height: 1.5;
 }
 
 .intranetMenuActive .intranetNovo {
-  border-color: #ffffff;
-  background: #ffffff;
-  color: #075b96;
+  border-color: rgba(255, 255, 255, .6);
+  color: #FFFFFF;
 }
 
 .intranetMenuItem:hover {
-  background: rgba(255, 255, 255, .06);
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, .07);
 }
 
 .intranetMenuActive {
-  border-left-color: #12c6ff;
-  background: linear-gradient(90deg, #0875bd, #075b96);
+  color: #FFFFFF;
   font-weight: 600;
+  background: rgba(5, 195, 221, .14);
+}
+
+/* Marcador do item ativo (não depende só de cor: tem forma) */
+.intranetMenuActive::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--dgt-ciano);
 }
 
 .intranetIcon {
@@ -244,142 +366,235 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #9fd8f5;
-  opacity: .95;
+  color: #AEB6C4;
 }
 
 .intranetIcon svg {
-  width: 19px;
-  height: 19px;
+  width: 20px;
+  height: 20px;
 }
 
 .intranetMenuItem:hover .intranetIcon {
-  color: #ffffff;
+  color: #FFFFFF;
 }
 
 /* "+ Adicionar ambiente" (somente Administrador) — fim do menu */
 .intranetMenuAdicionar {
-  width: calc(100% - 28px);
-  min-height: 40px;
-  margin: 8px 14px 0;
-  border: 1px dashed rgba(143, 230, 255, .55);
-  border-radius: 8px;
-  padding: 7px 12px;
+  width: calc(100% - 16px);
+  margin: 10px 8px 0;
+  padding: 8px 12px;
+  border: 1px dashed rgba(255, 255, 255, .28);
+  border-radius: var(--dgt-raio-controle);
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: #8fe6ff;
+  gap: 12px;
+  color: #C7CCD6;
   background: transparent;
   cursor: pointer;
   text-align: left;
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: var(--dgt-fs-denso);
 }
 
 .intranetMenuAdicionar .intranetIcon {
   font-size: 18px;
-  font-weight: 700;
-  color: #8fe6ff;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .intranetMenuAdicionar:hover {
+  border-color: var(--dgt-ciano);
+  color: #FFFFFF;
   background: rgba(255, 255, 255, .06);
-  border-style: solid;
-  color: #ffffff;
 }
 
 .intranetMenuActive .intranetIcon {
-  color: #ffffff;
-  opacity: 1;
+  color: var(--dgt-ciano);
 }
 
 .sidebarWords {
   margin-top: auto;
-  padding: 28px 28px 38px;
+  padding: var(--dgt-esp-6) var(--dgt-esp-5) var(--dgt-esp-6);
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  font-size: 13px;
-  letter-spacing: .3px;
+  gap: 4px;
+  color: #8E97A8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  border-top: 1px solid rgba(255, 255, 255, .06);
 }
 
 .workspace {
   flex: 1;
   min-width: 0;
-  width: calc(100% - 232px);
+  width: calc(100% - 240px);
 }
 
+/* ---------- Cabeçalho global: mesmo tom do menu lateral ----------
+   64px = mesma altura do bloco do logo, para as linhas se encontrarem. */
 .globalHeader {
-  height: 66px;
-  padding: 0 28px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 64px;
+  padding: 0 var(--dgt-esp-5);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 28px;
-  color: #fff;
-  background: linear-gradient(90deg, #073a5d 0%, #052d4b 100%);
+  gap: var(--dgt-esp-6);
+  color: #FFFFFF;
+  background: var(--dgt-azul);
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
 }
 
 .globalSearch {
-  width: min(510px, 45vw);
-  height: 39px;
-  padding: 0 14px;
+  width: min(480px, 45vw);
+  height: var(--dgt-controle-altura);
+  padding: 0 12px;
   display: flex;
   align-items: center;
-  gap: 9px;
-  border-radius: 7px;
-  color: #5d7085;
-  background: #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: var(--dgt-raio-controle);
+  color: #C7CCD6;
+  background: rgba(255, 255, 255, .08);
+}
+
+.globalSearch:focus-within {
+  border-color: var(--dgt-ciano);
+  box-shadow: 0 0 0 1px var(--dgt-ciano);
+}
+
+.globalSearch svg {
+  width: 18px;
+  height: 18px;
 }
 
 .globalSearch input {
   flex: 1;
   border: 0;
   outline: 0;
-  font-size: 12px;
+  background: transparent;
+  color: #FFFFFF;
+  font-size: var(--dgt-fs-denso);
+}
+
+.globalSearch input::placeholder {
+  color: #AEB6C4;
+}
+
+.globalSearch input:focus-visible {
+  box-shadow: none;
+}
+
+/* Ocupa o lugar da busca quando ela está desligada, mantendo as ações à direita */
+.headerEspaco {
+  flex: 1;
 }
 
 .headerActions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--dgt-esp-2);
 }
 
+/* Estado da conexão: pílula legível com ponto (forma + texto, não só cor) */
 .connection {
-  font-size: 9px;
-  color: #c9f7f5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--dgt-raio-pilula);
+  font-size: var(--dgt-fs-legenda);
+  font-weight: 600;
   white-space: nowrap;
+  color: #8EE6C3;
+  background: rgba(19, 121, 91, .28);
+  border: 1px solid rgba(142, 230, 195, .25);
+}
+
+.connection::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.connectionPendente {
+  color: #C7CCD6;
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .16);
+}
+
+.connectionErro {
+  color: #FFB4AB;
+  background: rgba(180, 35, 24, .30);
+  border-color: rgba(255, 180, 171, .30);
+}
+
+.connectionErro::before {
+  border-radius: 1px;
 }
 
 .headerIcon {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border: 0;
+  border-radius: var(--dgt-raio-controle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
-  color: #fff;
+  color: #C7CCD6;
   cursor: pointer;
-  font-size: 20px;
+  transition: background var(--dgt-transicao), color var(--dgt-transicao);
+}
+
+.headerIcon:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, .10);
+}
+
+/* Foco sobre fundo escuro: ciano */
+.globalHeader button:focus-visible,
+.globalHeader [role="button"]:focus-visible {
+  outline: 2px solid var(--dgt-ciano);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.headerIcon svg {
+  width: 20px;
+  height: 20px;
 }
 
 .userBox {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   min-width: 150px;
+  padding: 4px 8px 4px 4px;
+  border-radius: var(--dgt-raio-controle);
+  transition: background var(--dgt-transicao);
+}
+
+.userBox:hover {
+  background: rgba(255, 255, 255, .08);
 }
 
 .avatar {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   overflow: hidden;
   display: grid;
   place-items: center;
-  background: #fff;
-  color: #073b5e;
+  background: #FFFFFF;
+  color: var(--dgt-azul);
   font-weight: 700;
+  font-size: var(--dgt-fs-corpo);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .18);
 }
 
 .avatar img {
@@ -391,138 +606,191 @@
 .userText {
   display: flex;
   flex-direction: column;
+  line-height: 1.25;
 }
 
 .userText strong {
-  font-size: 12px;
+  font-size: var(--dgt-fs-denso);
+  color: #FFFFFF;
 }
 
 .userText span {
-  font-size: 10px;
-  opacity: .8;
+  font-size: var(--dgt-fs-legenda);
+  color: #C7CCD6;
 }
 
 .chevron {
-  margin-left: 4px;
+  margin-left: 2px;
+  display: inline-flex;
+  color: #C7CCD6;
 }
 
+/* Conteúdo ocupa toda a largura disponível ao lado do menu. */
 .page {
   width: 100%;
-  padding: 12px 16px 34px;
+  padding: var(--dgt-esp-5) var(--dgt-esp-5) var(--dgt-esp-8);
 }
 
+/* ---------- Cabeçalho de módulo: compacto (≈ 96px), sem imagem externa ---------- */
 .trainingHero {
   width: 100%;
-  min-height: 138px;
-  padding: 22px 32px;
+  padding: var(--dgt-esp-4) var(--dgt-esp-6);
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: var(--dgt-esp-4);
   position: relative;
   overflow: hidden;
-  border-radius: 12px;
-  color: #092e50;
-  background:
-    linear-gradient(90deg, rgba(207, 231, 249, .98) 0%, rgba(216, 234, 248, .88) 48%, rgba(6, 47, 78, .12) 70%),
-    url("https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1800&q=80") right center/52% 100% no-repeat,
-    #dcecf8;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .8);
+  border-radius: var(--dgt-raio-cartao) var(--dgt-raio-cartao) 0 0;
+  color: var(--dgt-texto);
+  background: var(--dgt-superficie);
+  border: 1px solid var(--dgt-linha-suave);
+  border-bottom: 0;
+}
+
+/* Sem abas abaixo: cartão completo */
+.trainingHeroSolo {
+  border-bottom: 1px solid var(--dgt-linha-suave);
+  border-radius: var(--dgt-raio-cartao);
+}
+
+/* Faixa de identidade no topo do cabeçalho */
+.trainingHero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--dgt-azul) 0%, var(--dgt-azul) 60%, var(--dgt-ciano) 100%);
 }
 
 .heroIcon {
-  width: 58px;
-  height: 58px;
-  min-width: 58px;
-  border-radius: 14px;
-  background: #202A44;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: var(--dgt-raio-cartao);
+  background: var(--dgt-azul);
   color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 10px rgba(9, 46, 80, .18);
+}
+
+.heroText {
+  min-width: 0;
 }
 
 .heroText h1 {
   margin: 0;
-  font-size: 34px;
-  line-height: 1;
+  color: var(--dgt-texto);
+  font-size: var(--dgt-fs-pagina);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -.01em;
 }
 
 .heroText h2 {
-  margin: 7px 0 3px;
-  font-size: 18px;
-  font-weight: 500;
+  margin: 2px 0 0;
+  color: var(--dgt-texto-2);
+  font-size: var(--dgt-fs-corpo);
+  font-weight: 400;
 }
 
+/* A descrição longa repete o subtítulo: fica disponível para leitores de tela */
 .heroText p {
-  margin: 0;
-  font-size: 13px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .heroQuote {
   margin-left: auto;
-  width: 220px;
-  min-height: 94px;
-  padding: 18px 20px;
-  border-radius: 10px;
-  color: #fff;
-  background: rgba(4, 43, 72, .88);
-  box-shadow: 0 5px 18px rgba(0, 0, 0, .12);
+  max-width: 300px;
+  padding-left: var(--dgt-esp-4);
+  border-left: 3px solid var(--dgt-ciano);
+  color: var(--dgt-texto-2);
 }
 
 .heroQuote p {
-  margin: 0 0 10px;
-  color: #fff;
-  font-size: 12px;
-  line-height: 1.5;
+  margin: 0;
+  color: var(--dgt-texto-2);
+  font-size: var(--dgt-fs-denso);
+  font-style: italic;
+  line-height: 1.45;
 }
 
 .heroQuote strong {
-  display: block;
-  text-align: right;
-  font-style: italic;
+  display: none;
 }
 
+/* ---------- Abas do módulo ---------- */
 .trainingTabs {
-  height: 50px;
-  margin-top: 4px;
+  min-height: 44px;
+  padding: 0 var(--dgt-esp-3);
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  gap: 2px;
   overflow-x: auto;
-  border-bottom: 1px solid #dbe4ec;
-  background: #fff;
-  border-radius: 10px 10px 0 0;
+  scrollbar-width: thin;
+  border: 1px solid var(--dgt-linha-suave);
+  border-radius: 0 0 var(--dgt-raio-cartao) var(--dgt-raio-cartao);
+  background: var(--dgt-superficie);
 }
 
 .trainingTab,
 .trainingTabActive {
   min-width: max-content;
-  padding: 0 20px;
+  padding: 0 var(--dgt-esp-3);
   border: 0;
   border-bottom: 3px solid transparent;
   display: flex;
   align-items: center;
-  gap: 9px;
-  color: #15344f;
+  gap: 8px;
+  color: var(--dgt-texto-2);
   background: transparent;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--dgt-fs-denso);
+  transition: color var(--dgt-transicao), border-color var(--dgt-transicao);
+}
+
+.trainingTab strong,
+.trainingTabActive strong {
+  font-weight: 500;
+}
+
+.trainingTab svg,
+.trainingTabActive svg {
+  width: 18px;
+  height: 18px;
 }
 
 .trainingTab:hover {
-  background: #f4f8fc;
+  color: var(--dgt-texto);
+  border-bottom-color: var(--dgt-linha);
 }
 
 .trainingTabActive {
-  color: #0874ce;
-  border-bottom-color: #168cff;
-  background: #eef7ff;
+  color: var(--dgt-texto);
+  border-bottom-color: var(--dgt-azul);
 }
 
+.trainingTabActive strong {
+  font-weight: 700;
+}
+
+.trainingTab:focus-visible,
+.trainingTabActive:focus-visible {
+  outline: 2px solid var(--dgt-indigo);
+  outline-offset: -4px;
+  box-shadow: none;
+}
+
+/* ---------- Área de conteúdo: defaults herdados por todas as páginas ---------- */
 .content {
   width: 100%;
-  padding: 18px 8px 0;
+  padding: var(--dgt-esp-5) 0 0;
 }
 
 .content>section {
@@ -532,88 +800,395 @@
 }
 
 .content h1 {
-  color: #102b47;
-  font-size: 25px;
+  color: var(--dgt-texto);
+  font-size: var(--dgt-fs-pagina);
+  font-weight: 600;
 }
 
 .content h2 {
-  color: #102b47;
-  font-size: 16px;
+  color: var(--dgt-texto);
+  font-size: var(--dgt-fs-painel);
+  font-weight: 600;
 }
 
 .content p {
-  color: var(--muted);
+  color: var(--dgt-texto-2);
 }
 
+/* Botão padrão (primário). Páginas antigas que definem estilo inline continuam valendo. */
 .content button {
   border: 0;
-  border-radius: 7px;
-  padding: 9px 15px;
-  color: #fff;
-  background: #0877c9;
+  border-radius: var(--dgt-raio-controle);
+  padding: 7px 14px;
+  color: #FFFFFF;
+  background: var(--dgt-azul);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--dgt-fs-denso);
   font-weight: 600;
+  line-height: 1.3;
+  transition: background var(--dgt-transicao), box-shadow var(--dgt-transicao);
+}
+
+/* Hover só nos botões "crus" (sem classe nem fundo inline), para não
+   sobrescrever componentes que têm o próprio hover. */
+.content button:not([class]):not([style*="background"]):hover:not(:disabled) {
+  background: var(--dgt-azul-escuro);
 }
 
 /* CONTRASTE: botão que define o PRÓPRIO fundo (style inline) e não
    define a cor do texto herdava o branco acima → texto branco em fundo
    branco (ex.: lista da Gestão documental, botões "Voltar").
    Estes passam a usar texto escuro. A cor inline, quando existe,
-   continua valendo; botões sem fundo próprio mantêm o azul/branco. */
+   continua valendo; botões sem fundo próprio mantêm o padrão. */
 .content button[style*="background"] {
   color: #1F2937;
 }
 
 .content button:disabled {
-  color: #748493;
-  background: #dce4ea;
+  color: #6B7280;
+  background: #E5E8EE;
   cursor: not-allowed;
 }
 
-.content article {
-  background: #fff !important;
-  border: 1px solid #e1e9ef !important;
-  border-radius: 11px !important;
-  box-shadow: 0 3px 12px rgba(15, 52, 79, .06);
+.content input,
+.content select,
+.content textarea {
+  font-size: var(--dgt-fs-corpo);
+  color: var(--dgt-texto);
 }
 
+.content article {
+  background: var(--dgt-superficie) !important;
+  border: 1px solid var(--dgt-linha-suave) !important;
+  border-radius: var(--dgt-raio-cartao) !important;
+  box-shadow: var(--dgt-sombra-1);
+}
+
+/* Tabela padrão: legível (13px), cabeçalho distinto, linhas com hover */
 .content table {
   width: 100%;
-  background: #fff;
+  background: var(--dgt-superficie);
   border-collapse: collapse;
-  border-radius: 10px;
+  border-radius: var(--dgt-raio-cartao);
   overflow: hidden;
-  box-shadow: 0 2px 10px rgba(15, 52, 79, .05);
 }
 
 .content th {
   padding: 10px 12px;
   text-align: left;
-  font-size: 10px;
-  background: #edf4f8;
+  color: var(--dgt-texto-2);
+  font-size: var(--dgt-fs-legenda);
+  font-weight: 600;
+  background: var(--dgt-superficie-2);
+  border-bottom: 1px solid var(--dgt-linha);
 }
 
 .content td {
   padding: 10px 12px;
-  border-bottom: 1px solid #e8eef3;
-  font-size: 10px;
+  border-bottom: 1px solid var(--dgt-linha-suave);
+  font-size: var(--dgt-fs-denso);
+}
+
+.content tbody tr:hover>td {
+  background: var(--dgt-superficie-2);
+}
+
+/* ============================================================
+   BIBLIOTECA DE COMPONENTES DGT (classes globais com prefixo dgt-,
+   válidas somente dentro de .portal). Use pelo className, como
+   string: className="dgt-btn dgt-btn--secundario".
+   ============================================================ */
+.portal {
+  :global {
+
+    /* Utilitário de acessibilidade */
+    .dgt-sr-only {
+      position: absolute !important;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ---- Cartão / painel ---- */
+    .dgt-card {
+      background: var(--dgt-superficie);
+      border: 1px solid var(--dgt-linha-suave);
+      border-radius: var(--dgt-raio-cartao);
+      box-shadow: var(--dgt-sombra-1);
+      min-width: 0;
+    }
+
+    .dgt-card__header {
+      min-height: 52px;
+      padding: var(--dgt-esp-3) var(--dgt-esp-4);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--dgt-esp-3);
+      border-bottom: 1px solid var(--dgt-linha-suave);
+    }
+
+    .dgt-card__title {
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--dgt-esp-2);
+      color: var(--dgt-texto);
+      font-size: var(--dgt-fs-painel);
+      font-weight: 600;
+    }
+
+    .dgt-card__meta {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--dgt-esp-3);
+      color: var(--dgt-texto-2);
+      font-size: var(--dgt-fs-denso);
+    }
+
+    /* ---- Botões ---- */
+    .dgt-btn {
+      min-height: var(--dgt-controle-altura);
+      padding: 0 var(--dgt-esp-4);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--dgt-esp-2);
+      border: 1px solid var(--dgt-azul);
+      border-radius: var(--dgt-raio-controle);
+      background: var(--dgt-azul);
+      color: #FFFFFF;
+      font-size: var(--dgt-fs-denso);
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background var(--dgt-transicao), border-color var(--dgt-transicao), color var(--dgt-transicao);
+    }
+
+    .dgt-btn:hover:not(:disabled) {
+      background: var(--dgt-azul-escuro);
+      border-color: var(--dgt-azul-escuro);
+    }
+
+    .dgt-btn--secundario {
+      background: var(--dgt-superficie);
+      color: var(--dgt-azul);
+      border-color: var(--dgt-linha);
+    }
+
+    .dgt-btn--secundario:hover:not(:disabled) {
+      background: var(--dgt-azul-claro);
+      color: var(--dgt-azul);
+      border-color: var(--dgt-azul);
+    }
+
+    .dgt-btn--fantasma {
+      background: transparent;
+      color: var(--dgt-indigo);
+      border-color: transparent;
+      padding: 0 var(--dgt-esp-2);
+    }
+
+    .dgt-btn--fantasma:hover:not(:disabled) {
+      background: var(--dgt-indigo-claro);
+      color: var(--dgt-indigo);
+      border-color: transparent;
+    }
+
+    .dgt-btn--sm {
+      min-height: 30px;
+      padding: 0 var(--dgt-esp-3);
+      font-size: var(--dgt-fs-legenda);
+    }
+
+    .dgt-btn:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    /* ---- Campos de formulário ---- */
+    .dgt-field {
+      display: flex;
+      flex-direction: column;
+      gap: var(--dgt-esp-1);
+      min-width: 0;
+    }
+
+    .dgt-field__label {
+      color: var(--dgt-texto-2);
+      font-size: var(--dgt-fs-legenda);
+      font-weight: 600;
+    }
+
+    .dgt-input,
+    .dgt-select {
+      width: 100%;
+      min-height: var(--dgt-controle-altura);
+      padding: 0 var(--dgt-esp-3);
+      border: 1px solid var(--dgt-linha);
+      border-radius: var(--dgt-raio-controle);
+      background: var(--dgt-superficie);
+      color: var(--dgt-texto);
+      font-size: var(--dgt-fs-corpo);
+      transition: border-color var(--dgt-transicao), box-shadow var(--dgt-transicao);
+    }
+
+    .dgt-input:hover,
+    .dgt-select:hover {
+      border-color: #B9BEC8;
+    }
+
+    .dgt-input:focus,
+    .dgt-select:focus {
+      outline: none;
+      border-color: var(--dgt-indigo);
+      box-shadow: 0 0 0 1px var(--dgt-indigo);
+    }
+
+    .dgt-input::placeholder {
+      color: #7A808B;
+    }
+
+    .dgt-input--busca {
+      padding-left: 36px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235E6470' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: 12px center;
+    }
+
+    /* ---- Barra de filtros: quebra sozinha em telas menores ---- */
+    .dgt-toolbar {
+      margin-top: var(--dgt-esp-4);
+      padding: var(--dgt-esp-3) var(--dgt-esp-4);
+      display: grid;
+      grid-template-columns: minmax(240px, 2fr) repeat(auto-fit, minmax(150px, 1fr));
+      align-items: end;
+      gap: var(--dgt-esp-3);
+      background: var(--dgt-superficie);
+      border: 1px solid var(--dgt-linha-suave);
+      border-radius: var(--dgt-raio-cartao);
+    }
+
+    .dgt-toolbar__acoes {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-height: var(--dgt-controle-altura);
+    }
+
+    /* ---- Tabela de dados ---- */
+    .dgt-table-wrap {
+      overflow: auto;
+      max-height: min(70vh, 900px);
+    }
+
+    .dgt-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: var(--dgt-fs-denso);
+      border-radius: 0;
+      overflow: visible;
+    }
+
+    .dgt-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      padding: 10px 14px;
+      text-align: left;
+      white-space: nowrap;
+      color: var(--dgt-texto-2);
+      font-size: var(--dgt-fs-legenda);
+      font-weight: 600;
+      letter-spacing: .02em;
+      background: var(--dgt-superficie-2);
+      border-bottom: 1px solid var(--dgt-linha);
+    }
+
+    .dgt-table td {
+      padding: 11px 14px;
+      color: var(--dgt-texto);
+      font-size: var(--dgt-fs-denso);
+      vertical-align: middle;
+      border-bottom: 1px solid var(--dgt-linha-suave);
+    }
+
+    .dgt-table tbody tr:last-child>td {
+      border-bottom: 0;
+    }
+
+    .dgt-table tbody tr:hover>td {
+      background: #F7F9FC;
+    }
+
+    .dgt-table .dgt-col-acao {
+      width: 1%;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    /* ---- Contador / selo ---- */
+    .dgt-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: var(--dgt-raio-pilula);
+      font-size: var(--dgt-fs-legenda);
+      font-weight: 600;
+      color: var(--dgt-azul);
+      background: var(--dgt-azul-claro);
+    }
+
+    /* ---- Chip de filtro ativo ---- */
+    .dgt-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 0 6px 0 10px;
+      border: 1px solid var(--dgt-indigo);
+      border-radius: var(--dgt-raio-pilula);
+      background: var(--dgt-indigo-claro);
+      color: var(--dgt-indigo);
+      font-size: var(--dgt-fs-legenda);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .dgt-chip:hover {
+      background: #DCE0F5;
+    }
+  }
+}
+
+/* ============================================================
+   RESPONSIVO
+   ============================================================ */
+@media (max-width: 1200px) {
+  .heroQuote {
+    display: none;
+  }
 }
 
 @media (max-width: 1000px) {
   .sidebar {
-    width: 196px;
-    min-width: 196px;
+    width: 208px;
+    min-width: 208px;
   }
 
   .workspace {
-    width: calc(100% - 196px);
-  }
-
-  .intranetMenuItem,
-  .intranetMenuActive {
-    padding: 9px 10px 9px 14px;
-    gap: 10px;
+    width: calc(100% - 208px);
   }
 
   /* Telas menores: o selo vira um ponto, sem ocupar espaço do nome */
@@ -623,19 +1198,19 @@
     padding: 0;
     font-size: 0;
     border: 0;
-    background: #12c6ff;
+    background: var(--dgt-ciano);
   }
 
   .intranetMenuActive .intranetNovo {
-    background: #ffffff;
+    background: #FFFFFF;
   }
 
   .connection {
     display: none;
   }
 
-  .heroQuote {
-    display: none;
+  .page {
+    padding: var(--dgt-esp-4);
   }
 }
 
@@ -668,14 +1243,30 @@
   }
 
   .intranetMenu {
+    padding: var(--dgt-esp-2);
     display: flex;
+    gap: 4px;
     overflow-x: auto;
   }
 
   .intranetMenuItem,
-  .intranetMenuActive {
+  .intranetMenuActive,
+  .sidebarRecolhida .intranetMenuItem,
+  .sidebarRecolhida .intranetMenuActive {
+    width: auto;
     min-width: max-content;
-    padding: 0 14px;
+    margin: 0;
+    padding: 0 12px;
+  }
+
+  .intranetMenuActive::before {
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 2px;
+    width: auto;
+    height: 3px;
+    border-radius: 3px;
   }
 
   .workspace {
@@ -683,32 +1274,42 @@
   }
 
   .globalHeader {
-    padding: 0 14px;
+    position: static;
+    padding: 0 var(--dgt-esp-3);
   }
 
   .globalSearch {
     width: 100%;
   }
 
-  .headerIcon,
   .userText,
   .chevron {
     display: none;
   }
 
+  .userBox {
+    min-width: 0;
+  }
+
   .page {
-    padding: 10px;
+    padding: var(--dgt-esp-3);
   }
 
   .trainingHero {
-    padding: 20px;
+    padding: var(--dgt-esp-3) var(--dgt-esp-4);
   }
 
   .heroIcon {
-    font-size: 38px;
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
   }
 
   .heroText h1 {
-    font-size: 28px;
+    font-size: var(--dgt-fs-secao);
+  }
+
+  .heroText h2 {
+    font-size: var(--dgt-fs-denso);
   }
 }

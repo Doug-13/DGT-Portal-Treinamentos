@@ -64,6 +64,8 @@ import {
   ProcessoNegocioService
 } from '../../services/processos/ProcessoNegocioService';
 
+import { Icones } from '../../components/common/Icones';
+
 import ResumoModulo, {
   CORES_INDICADOR,
   IIndicadorResumo
@@ -268,36 +270,6 @@ const tiposNavegacao = [
   }
 ];
 
-const inputStyle:
-  React.CSSProperties = {
-
-  width:
-    '100%',
-
-  minHeight:
-    '42px',
-
-  boxSizing:
-    'border-box',
-
-  padding:
-    '10px 12px',
-
-  border:
-    `1px solid ${C.borda}`,
-
-  borderRadius:
-    '9px',
-
-  background:
-    C.branco,
-
-  color:
-    C.azulEscuro,
-
-  fontSize:
-    '13px'
-};
 
 // Linhas da tabela: cabeçalhos de grupo (área/processo) ou documento.
 type ItemTabelaDocumentos =
@@ -306,44 +278,6 @@ type ItemTabelaDocumentos =
   | { tipo: 'documento'; documento: IDocumento };
 
 const CHAVE_AGRUPAR = 'dgt-documentos-agrupar';
-
-const th:
-  React.CSSProperties = {
-
-  padding:
-    '12px 14px',
-
-  textAlign:
-    'left',
-
-  fontSize:
-    '12px',
-
-  fontWeight:
-    800,
-
-  color:
-    '#38536D',
-
-  whiteSpace:
-    'nowrap'
-};
-
-const td:
-  React.CSSProperties = {
-
-  padding:
-    '13px 14px',
-
-  color:
-    '#28445F',
-
-  fontSize:
-    '13px',
-
-  verticalAlign:
-    'middle'
-};
 
 // Nome do documento: ícone pelo tipo de arquivo + link que abre a
 // TELA DO DOCUMENTO (dados, revisões, histórico e botões de ação).
@@ -922,12 +856,12 @@ const DocumentosHomePage:
                 cursor: 'pointer',
                 fontFamily: 'inherit',
                 color: ehArea ? '#202A44' : (item.semProcesso ? '#66788A' : '#485CC7'),
-                fontSize: ehArea ? '13px' : '12.5px',
+                fontSize: '13px',
                 fontWeight: ehArea ? 800 : 700,
                 fontStyle: item.semProcesso ? 'italic' : 'normal'
               }}
             >
-              <span style={{ width: '12px', display: 'inline-block' }}>{recolhido ? '▸' : '▾'}</span>
+              <span aria-hidden="true" style={{ width: '12px', display: 'inline-block' }}>{recolhido ? '▸' : '▾'}</span>
               <span aria-hidden="true">{ehArea ? '🏢' : '⚙'}</span>
               {ehArea ? item.nome.toUpperCase() : item.nome}
               <span
@@ -936,8 +870,8 @@ const DocumentosHomePage:
                   borderRadius: '10px',
                   background: ehArea ? '#202A44' : '#E8EAF8',
                   color: ehArea ? '#FFFFFF' : '#485CC7',
-                  fontSize: '10.5px',
-                  lineHeight: '17px',
+                  fontSize: '12px',
+                  lineHeight: '18px',
                   fontStyle: 'normal'
                 }}
               >
@@ -1039,6 +973,24 @@ const DocumentosHomePage:
         ]
       );
 
+    // "Todas as áreas" só existe para quem vê mais de uma área.
+    const podeTodasAreas =
+      administrador || areasVisiveis.length !== 1;
+
+    const filtrosAtivos =
+      !!pesquisa || !!tipo || !!status || !!filtroIndicador ||
+      (podeTodasAreas && !!area);
+
+    const limparFiltros = (): void => {
+      setPesquisa('');
+      setTipo('');
+      setStatus('');
+      setFiltroIndicador('');
+      if (podeTodasAreas) {
+        setArea('');
+      }
+    };
+
     return (
       <section
         style={{
@@ -1074,187 +1026,75 @@ const DocumentosHomePage:
           onSelecionar={setArea}
         />
 
-        {/* FILTROS */}
+        {/* FILTROS — padrão DGT: rótulo visível, grade que quebra sozinha */}
 
-        <div
-          style={{
-            display:
-              'grid',
+        <div className="dgt-toolbar" role="search" aria-label="Filtrar documentos">
+          <label className="dgt-field">
+            <span className="dgt-field__label">Pesquisar</span>
+            <input
+              type="search"
+              className="dgt-input dgt-input--busca"
+              placeholder="Nome, código ou palavra-chave"
+              value={pesquisa}
+              onChange={event => setPesquisa(event.target.value)}
+            />
+          </label>
 
-            gridTemplateColumns:
-              'minmax(320px,1fr) 150px 150px 150px',
+          <label className="dgt-field">
+            <span className="dgt-field__label">Área</span>
+            <select className="dgt-select" value={area} onChange={event => setArea(event.target.value)}>
+              {
+                podeTodasAreas &&
+                <option value="">{administrador || !contexto ? 'Todas as áreas' : 'Minhas áreas'}</option>
+              }
+              {areasVisiveis.map(item => <option key={item.id} value={item.id}>{item.nome}</option>)}
+            </select>
+          </label>
 
-            gap:
-              '9px',
+          <label className="dgt-field">
+            <span className="dgt-field__label">Tipo</span>
+            <select className="dgt-select" value={tipo} onChange={event => setTipo(event.target.value)}>
+              <option value="">Todos os tipos</option>
+              {tipos.map(item => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
 
-            marginTop:
-              '12px'
-          }}
-        >
-          <input
-            type="search"
-            placeholder="Pesquisar documentos por nome, código ou palavra-chave..."
-            value={
-              pesquisa
-            }
-            onChange={
-              event =>
-                setPesquisa(
-                  event.target.value
-                )
-            }
-            style={
-              inputStyle
-            }
-          />
+          <label className="dgt-field">
+            <span className="dgt-field__label">Status</span>
+            <select className="dgt-select" value={status} onChange={event => setStatus(event.target.value)}>
+              <option value="">Todos os status</option>
+              {statusDisponiveis.map(item => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
 
-          <select
-            value={
-              area
-            }
-            onChange={
-              event =>
-                setArea(
-                  event.target.value
-                )
-            }
-            style={
-              inputStyle
-            }
-          >
-            {
-              (administrador || areasVisiveis.length !== 1) &&
-              (
-                <option value="">
-                  {administrador || !contexto ? 'Todas as áreas' : 'Minhas áreas'}
-                </option>
-              )
-            }
-
-            {
-              areasVisiveis.map(
-                item => (
-                  <option
-                    key={
-                      item.id
-                    }
-                    value={
-                      item.id
-                    }
-                  >
-                    {
-                      item.nome
-                    }
-                  </option>
-                )
-              )
-            }
-          </select>
-
-          <select
-            value={
-              tipo
-            }
-            onChange={
-              event =>
-                setTipo(
-                  event.target.value
-                )
-            }
-            style={
-              inputStyle
-            }
-          >
-            <option value="">
-              Todos os tipos
-            </option>
-
-            {
-              tipos.map(
-                item => (
-                  <option
-                    key={
-                      item
-                    }
-                    value={
-                      item
-                    }
-                  >
-                    {
-                      item
-                    }
-                  </option>
-                )
-              )
-            }
-          </select>
-
-          <select
-            value={
-              status
-            }
-            onChange={
-              event =>
-                setStatus(
-                  event.target.value
-                )
-            }
-            style={
-              inputStyle
-            }
-          >
-            <option value="">
-              Todos os status
-            </option>
-
-            {
-              statusDisponiveis.map(
-                item => (
-                  <option
-                    key={
-                      item
-                    }
-                    value={
-                      item
-                    }
-                  >
-                    {
-                      item
-                    }
-                  </option>
-                )
-              )
-            }
-          </select>
+          <div className="dgt-toolbar__acoes">
+            <button
+              type="button"
+              className="dgt-btn dgt-btn--fantasma"
+              disabled={!filtrosAtivos}
+              onClick={limparFiltros}
+            >
+              Limpar filtros
+            </button>
+          </div>
         </div>
 
         {
           erro &&
           (
             <div
+              role="alert"
               style={{
-                marginTop:
-                  '12px',
-
-                padding:
-                  '12px 14px',
-
-                borderRadius:
-                  '8px',
-
-                background:
-                  '#FDE7E9',
-
-                color:
-                  '#A4262C',
-
-                fontSize:
-                  '13px'
+                marginTop: '12px',
+                padding: '12px 14px',
+                borderRadius: '8px',
+                border: '1px solid #F4C7CB',
+                background: '#FDE7E9',
+                color: '#B42318',
+                fontSize: '14px'
               }}
             >
-              {
-                erro
-              }
+              {erro}
             </div>
           )
         }
@@ -1290,103 +1130,39 @@ const DocumentosHomePage:
             }}
           >
 
-            <article
-              style={{
-                background:
-                  C.branco,
-
-                border:
-                  `1px solid ${C.borda}`,
-
-                borderRadius:
-                  '12px',
-
-                overflow:
-                  'hidden'
-              }}
-            >
-              <div
-                style={{
-                  padding:
-                    '12px 14px',
-
-                  display:
-                    'flex',
-
-                  justifyContent:
-                    'space-between',
-
-                  alignItems:
-                    'center',
-
-                  borderBottom:
-                    '1px solid #E6EDF3'
-                }}
-              >
-                <strong
-                  style={{
-                    fontSize:
-                      '14px',
-
-                    color:
-                      C.azulEscuro
-                  }}
-                >
-                  📄 {
+            <article className="dgt-card" style={{ overflow: 'hidden' }}>
+              <div className="dgt-card__header">
+                <h2 className="dgt-card__title">
+                  {
                     filtroIndicador
                       ? `Documentos · ${ROTULO_FILTRO_INDICADOR[filtroIndicador]}`
                       : 'Documentos recentes'
                   }
+                  <span className="dgt-badge" aria-label={`${filtrados.length} encontrado(s)`}>
+                    {filtrados.length}
+                  </span>
+                </h2>
 
+                <div className="dgt-card__meta">
                   {
                     filtroIndicador &&
                     (
                       <button
                         type="button"
+                        className="dgt-chip"
                         onClick={() => setFiltroIndicador('')}
-                        title="Remover filtro"
-                        style={{
-                          marginLeft: '10px',
-                          padding: '2px 10px',
-                          border: '1px solid #CBD5E1',
-                          borderRadius: '12px',
-                          background: '#FFFFFF',
-                          color: '#475569',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
+                        aria-label={`Remover filtro ${ROTULO_FILTRO_INDICADOR[filtroIndicador]}`}
                       >
-                        ✕ Limpar filtro
+                        {ROTULO_FILTRO_INDICADOR[filtroIndicador]} <span aria-hidden="true">✕</span>
                       </button>
                     )
                   }
-                </strong>
 
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '12px'
-                  }}
-                >
                   <label
                     title="Agrupar a lista por área e, dentro dela, por processo"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      color: '#202A44',
-                      fontSize: '11.5px',
-                      fontWeight: 700,
-                      cursor: 'pointer'
-                    }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#202A44', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={agrupar}
-                      onChange={alternarAgrupar}
-                    />
+                    <input type="checkbox" checked={agrupar} onChange={alternarAgrupar} />
                     Agrupar por área › processo
                   </label>
 
@@ -1395,56 +1171,22 @@ const DocumentosHomePage:
                     (
                       <button
                         type="button"
+                        className="dgt-btn dgt-btn--fantasma dgt-btn--sm"
                         onClick={() => setRecolhidos({})}
-                        style={{
-                          border: 0,
-                          background: 'transparent',
-                          padding: 0,
-                          color: '#0867D7',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          fontFamily: 'inherit'
-                        }}
                       >
                         Expandir tudo
                       </button>
                     )
                   }
-
-                  <span
-                    style={{
-                      color:
-                        '#0867D7',
-
-                      fontSize:
-                        '11px',
-
-                      fontWeight:
-                        700
-                    }}
-                  >
-                    {
-                      filtrados.length
-                    } encontrado(s)
-                  </span>
-                </span>
+                </div>
               </div>
 
               {
                 carregando
                   ? (
                     <div
-                      style={{
-                        padding:
-                          '28px',
-
-                        textAlign:
-                          'center',
-
-                        color:
-                          C.secundario
-                      }}
+                      role="status"
+                      style={{ padding: '28px', textAlign: 'center', color: C.secundario, fontSize: '14px' }}
                     >
                       Carregando documentos...
                     </div>
@@ -1469,76 +1211,58 @@ const DocumentosHomePage:
                       </div>
                     )
                     : (
-                      <div
-                        style={{
-                          overflowX:
-                            'auto'
-                        }}
-                      >
-                        <table
-                          style={{
-                            width:
-                              '100%',
-
-                            borderCollapse:
-                              'collapse'
-                          }}
-                        >
+                      <div className="dgt-table-wrap" tabIndex={0} aria-label="Lista de documentos">
+                        <table className="dgt-table">
                           <thead>
-                            <tr
-                              style={{
-                                background:
-                                  '#F1F5F8'
-                              }}
-                            >
-                              <th style={th}>
+                            <tr>
+                              <th scope="col">
                                 Nome
                               </th>
 
-                              <th style={th}>
+                              <th scope="col">
                                 Código
                               </th>
 
-                              <th style={th}>
+                              <th scope="col">
                                 Tipo
                               </th>
 
-                              <th style={th}>
+                              <th scope="col">
                                 Área
                               </th>
 
-                              <th style={th}>
+                              <th scope="col">
                                 Etapa atual
                               </th>
 
                               <th
-                                style={th}
+                                scope="col"
                                 title="Responsável pela etapa atual do fluxo (ou pelo documento, quando não há revisão em andamento)"
                               >
                                 Responsável
                               </th>
 
-                              <th style={th}>
+                              <th scope="col">
                                 Revisão
                               </th>
 
-                              <th style={th}>
+                              <th scope="col">
                                 Criado em
                               </th>
 
                               <th
-                                style={th}
+                                scope="col"
                                 title="Data limite da próxima revisão periódica (1 ano após a criação ou a última publicação)"
                               >
                                 Vencimento
                               </th>
 
-                              <th style={th}>
+                              <th scope="col">
                                 Status
                               </th>
 
-                              <th style={th}>
-                                Ações
+                              <th scope="col" className="dgt-col-acao">
+                                <span className="dgt-sr-only">Ações</span>
                               </th>
                             </tr>
                           </thead>
@@ -1549,16 +1273,8 @@ const DocumentosHomePage:
                                 item => item.tipo !== 'documento'
                                   ? renderCabecalhoGrupo(item)
                                   : ((documento: IDocumento) => (
-                                  <tr
-                                    key={
-                                      documento.id
-                                    }
-                                    style={{
-                                      borderTop:
-                                        '1px solid #EDF1F5'
-                                    }}
-                                  >
-                                    <td style={td}>
+                                  <tr key={documento.id}>
+                                    <td>
                                       <NomeDocumentoCelula
                                         documento={documento}
                                         arquivo={arquivos[guidTela(documento.id)]}
@@ -1566,21 +1282,21 @@ const DocumentosHomePage:
                                       />
                                     </td>
 
-                                    <td style={td}>
+                                    <td>
                                       {
                                         documento.codigo ||
                                         '-'
                                       }
                                     </td>
 
-                                    <td style={td}>
+                                    <td>
                                       {
                                         documento.tipo ||
                                         '-'
                                       }
                                     </td>
 
-                                    <td style={td}>
+                                    <td>
                                       {
                                         documento.area ||
                                         '-'
@@ -1622,7 +1338,7 @@ const DocumentosHomePage:
 
                                         return (
                                           <>
-                                            <td style={td}>
+                                            <td>
                                               {
                                                 situacao && situacao.emAndamento && !fluxoEncerrado
                                                   ? (
@@ -1668,7 +1384,6 @@ const DocumentosHomePage:
                                             </td>
 
                                             <td
-                                              style={td}
                                               title={
                                                 etapaAtiva && documento.responsavel
                                                   ? `Responsável pelo documento: ${documento.responsavel}`
@@ -1683,7 +1398,7 @@ const DocumentosHomePage:
                                               />
                                             </td>
 
-                                            <td style={td}>
+                                            <td>
                                               {
                                                 (situacao && situacao.revisao) ||
                                                 documento.revisaoAtual ||
@@ -1695,11 +1410,11 @@ const DocumentosHomePage:
                                       })()
                                     }
 
-                                    <td style={td}>
+                                    <td>
                                       {formatarDataCurta(documento.criadoEm)}
                                     </td>
 
-                                    <td style={td}>
+                                    <td>
                                       {
                                         (() => {
                                           const vencimento = vencimentoDocumento(documento);
@@ -1714,7 +1429,7 @@ const DocumentosHomePage:
                                       }
                                     </td>
 
-                                    <td style={td}>
+                                    <td>
                                       {
                                         (() => {
                                           const situacao =
@@ -1760,38 +1475,17 @@ const DocumentosHomePage:
                                       }
                                     </td>
 
-                                    <td style={td}>
+                                    <td className="dgt-col-acao">
                                       {
                                         onAbrirDocumento
                                           ? (
                                             <button
                                               type="button"
-                                              onClick={() =>
-                                                onAbrirDocumento(
-                                                  documento
-                                                )
-                                              }
-                                              style={{
-                                                border:
-                                                  0,
-
-                                                background:
-                                                  'transparent',
-
-                                                color:
-                                                  C.azul,
-
-                                                fontWeight:
-                                                  800,
-
-                                                cursor:
-                                                  'pointer',
-
-                                                fontSize:
-                                                  '17px'
-                                              }}
+                                              className="dgt-btn dgt-btn--secundario dgt-btn--sm"
+                                              aria-label={`Abrir ${documento.titulo || documento.codigo || 'documento'}`}
+                                              onClick={() => onAbrirDocumento(documento)}
                                             >
-                                              ⋯
+                                              Abrir <Icones.arrowRight />
                                             </button>
                                           )
                                           : '-'
@@ -1840,7 +1534,7 @@ const DocumentosHomePage:
                     '14px'
                 }}
               >
-                ▰ Navegar por tipo de documento
+                Navegar por tipo de documento
               </strong>
 
               <div
@@ -1849,7 +1543,7 @@ const DocumentosHomePage:
                     'grid',
 
                   gridTemplateColumns:
-                    'repeat(6,minmax(120px,1fr))',
+                    'repeat(auto-fill,minmax(150px,1fr))',
 
                   gap:
                     '8px'

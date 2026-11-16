@@ -18,6 +18,7 @@ import {
   aplicarFiltro,
   farolDe,
   fontesUsadas,
+  anoInicialDoDashboard,
   ordenarGrupos,
   paginasDoDashboard
 } from '../../services/dashboards/dashboardModelo';
@@ -30,9 +31,12 @@ import {
 
 import {
   GraficoBarras,
+  GraficoBarrasHorizontais,
   GraficoLinhas,
   GraficoRosca
 } from './graficosDashboard';
+
+import EditorVisual from './EditorVisual';
 
 import AssistenteDashboard from './AssistenteDashboard';
 
@@ -52,6 +56,8 @@ export interface IDashboardPortalViewProps {
   // Id do registro dgt_dashboard (usado pela IA; vazio na pré-visualização).
   dashboardId?: string;
   definicao: IDefinicaoDashboard;
+  // Quem pode gerenciar dashboards: grava os ajustes feitos no ✎.
+  onSalvarDefinicao?: (definicao: IDefinicaoDashboard) => Promise<void>;
   dataverseService: DataverseService;
   // Áreas que a pessoa pode ver (undefined = todas).
   areasPermitidas?: string[];
@@ -154,6 +160,8 @@ const Cartao: React.FC<{ item: IItemCartao; linhas: Linha[] }> = ({ item, linhas
   );
 };
 
+const ALTURA_GRAFICO: { [altura: string]: number } = { baixa: 220, media: 280, alta: 380 };
+
 const Grafico: React.FC<{ item: IItemGrafico; linhas: Linha[] }> = ({ item, linhas }) => {
   const filtradas = aplicarFiltro(linhas, item.filtro);
   const formatar = formatador(item.formato);
@@ -185,13 +193,25 @@ const Grafico: React.FC<{ item: IItemGrafico; linhas: Linha[] }> = ({ item, linh
   if (categorias.length === 0) {
     return <div style={{ padding: '30px', textAlign: 'center', color: COR.muted, fontSize: '13px' }}>Sem dados para os filtros escolhidos.</div>;
   }
+  const comuns = {
+    categorias,
+    series,
+    formatar,
+    altura: ALTURA_GRAFICO[item.altura || 'media'],
+    rotulos: item.rotulos,
+    mostrarValores: item.mostrarValores
+  };
   if (item.grafico === 'linhas') {
-    return <GraficoLinhas categorias={categorias} series={series} formatar={formatar} />;
+    return <GraficoLinhas {...comuns} />;
   }
   if (item.grafico === 'rosca') {
-    return <GraficoRosca categorias={categorias} series={series} formatar={formatar} />;
+    return <GraficoRosca {...comuns} />;
   }
-  return <GraficoBarras categorias={categorias} series={series} formatar={formatar} empilhado={item.grafico === 'barrasEmpilhadas'} />;
+  if (item.grafico === 'barrasHorizontais') {
+    // Com série por campo (ex.: concluído × pendente), empilha na horizontal.
+    return <GraficoBarrasHorizontais {...comuns} empilhado={!!item.serieDimensao} />;
+  }
+  return <GraficoBarras {...comuns} empilhado={item.grafico === 'barrasEmpilhadas'} />;
 };
 
 const Tabela: React.FC<{ item: IItemTabela; linhas: Linha[] }> = ({ item, linhas }) => {
@@ -279,9 +299,40 @@ const Tabela: React.FC<{ item: IItemTabela; linhas: Linha[] }> = ({ item, linhas
 
 const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
 
-  const { definicao } = props;
+  // Definição em uso na tela: começa igual à salva e recebe os ajustes
+  // do ✎ (editar visual). Volta à salva quando o dashboard muda.
+  const [definicao, setDefinicao] = React.useState<IDefinicaoDashboard>(props.definicao);
+  React.useEffect(() => { setDefinicao(props.definicao); }, [props.definicao]);
+  const [editando, setEditando] = React.useState('');
+  const [salvando, setSalvando] = React.useState(false);
+  const [avisoEdicao, setAvisoEdicao] = React.useState('');
+  const alterado = JSON.stringify(definicao) !== JSON.stringify(props.definicao);
+
+  const alterarItem = (secao: number, indice: number, novo: ItemDashboard): void => {
+    setDefinicao(atual => ({
+      ...atual,
+      secoes: atual.secoes.map((s, i) => (i !== secao ? s : { ...s, itens: s.itens.map((item, j) => (j === indice ? novo : item)) }))
+    }));
+  };
+
+  const salvarAjustes = async (): Promise<void> => {
+    if (!props.onSalvarDefinicao) {
+      return;
+    }
+    setSalvando(true);
+    setAvisoEdicao('');
+    try {
+      await props.onSalvarDefinicao(definicao);
+      setAvisoEdicao('Ajustes salvos no dashboard.');
+    } catch (falha) {
+      setAvisoEdicao(`Não foi possível salvar: ${falha instanceof Error ? falha.message : String(falha)}`);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   const anoAtual = new Date().getFullYear();
-  const [ano, setAno] = React.useState<number>(new Date().getMonth() >= 6 ? anoAtual + 1 : anoAtual);
+  const [ano, setAno] = React.useState<number>(() => anoInicialDoDashboard(props.definicao));
   const [area, setArea] = React.useState('');
   const [dados, setDados] = React.useState<{ [fonte: string]: Linha[] }>({});
   const [carregando, setCarregando] = React.useState(true);
@@ -293,7 +344,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
   const temIa = assistenteAtivo(definicao);
   const comAbas = paginas.length > 1;
   const [abaAtiva, setAbaAtiva] = React.useState<string>('0');
-  React.useEffect(() => { setAbaAtiva('0'); }, [definicao]);
+  React.useEffect(() => { setAbaAtiva('0'); }, [props.definicao]);
 
   const areasSelecionaveis =
     props.areas.filter(item => !props.areasPermitidas || props.areasPermitidas.indexOf(item.id) >= 0);
@@ -304,7 +355,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
     let ativo = true;
     setCarregando(true);
     setErro('');
-    const fontes = fontesUsadas(definicao);
+    const fontes = fontesUsadas(props.definicao);
     Promise.all(fontes.map(fonte => carregarFonte(fonte, { dataverse: props.dataverseService, ano, areaIds }).then(linhas => ({ fonte, linhas }))))
       .then(resultados => {
         if (!ativo) {
@@ -320,16 +371,39 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
     return () => { ativo = false; };
   // areaIds é derivado de area e areasPermitidas.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [definicao, props.dataverseService, ano, area, (props.areasPermitidas || []).join(',')]);
+  }, [props.definicao, props.dataverseService, ano, area, (props.areasPermitidas || []).join(',')]);
 
-  const renderItem = (item: ItemDashboard, chave: string): React.ReactNode => {
+  const renderItem = (item: ItemDashboard, chave: string, secao: number, indice: number): React.ReactNode => {
     const linhas = dados[item.fonte] || [];
     if (item.tipo === 'cartao') {
       return <Cartao key={chave} item={item} linhas={linhas} />;
     }
+    const emEdicao = editando === chave;
+    const original = (props.definicao.secoes[secao] && props.definicao.secoes[secao].itens[indice]) || item;
     return (
       <div key={chave} style={{ ...cartaoEstilo, gridColumn: (item.largura || 1) === 2 ? '1 / -1' : undefined }}>
-        <div style={{ fontSize: '14px', fontWeight: 700, color: COR.navy, marginBottom: '10px' }}>{item.titulo}</div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '10px' }}>
+          <div style={{ flex: 1, fontSize: '14px', fontWeight: 700, color: COR.navy }}>{item.titulo}</div>
+          <button
+            type="button"
+            className="dgt-editar-visual"
+            title="Editar este visual"
+            aria-label={`Editar ${item.titulo}`}
+            aria-expanded={emEdicao}
+            onClick={() => setEditando(emEdicao ? '' : chave)}
+            style={{ border: `1px solid ${emEdicao ? COR.ciano : COR.linha}`, background: emEdicao ? '#EAF8FC' : '#FFFFFF', color: COR.navy, borderRadius: '7px', padding: '2px 8px', fontSize: '12px', cursor: 'pointer', lineHeight: 1.6 }}
+          >
+            ✎
+          </button>
+        </div>
+        {emEdicao && (
+          <EditorVisual
+            item={item}
+            original={original.tipo === 'cartao' ? item : original}
+            onAlterar={novo => alterarItem(secao, indice, novo)}
+            onFechar={() => setEditando('')}
+          />
+        )}
         {item.tipo === 'grafico' ? <Grafico item={item} linhas={linhas} /> : <Tabela item={item} linhas={linhas} />}
       </div>
     );
@@ -348,7 +422,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
           <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             Ano
             <select value={ano} onChange={e => setAno(Number(e.target.value))} style={{ padding: '6px 8px', borderRadius: '8px', border: 0, fontSize: '13px' }}>
-              {[anoAtual - 1, anoAtual, anoAtual + 1].map(item => <option key={item} value={item}>{item}</option>)}
+              {[anoAtual - 2, anoAtual - 1, anoAtual, anoAtual + 1, ano].filter((item, i, lista) => lista.indexOf(item) === i).sort((x, y) => x - y).map(item => <option key={item} value={item}>{item}</option>)}
             </select>
           </label>
         )}
@@ -417,6 +491,43 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
         </nav>
       )}
 
+      {(alterado || avisoEdicao) && (
+        <div
+          role="status"
+          className="dgt-ajustes-dashboard"
+          style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 14px', borderRadius: '12px', background: alterado ? '#FFF4D6' : '#E6F6EE', color: alterado ? '#7A5600' : '#11683F', fontSize: '12.5px' }}
+        >
+          <style>{'@media print { .dgt-ajustes-dashboard, .dgt-editar-visual { display: none !important; } }'}</style>
+          <span style={{ flex: 1, minWidth: '220px' }}>
+            {alterado
+              ? (props.onSalvarDefinicao
+                ? 'Você ajustou visuais deste painel. Salve para que todos vejam assim, ou desfaça.'
+                : 'Você ajustou visuais deste painel. Os ajustes valem só enquanto você estiver nesta tela.')
+              : avisoEdicao}
+          </span>
+          {alterado && (
+            <button
+              type="button"
+              disabled={salvando}
+              onClick={() => { setDefinicao(props.definicao); setEditando(''); setAvisoEdicao(''); }}
+              style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid #E0C27A', background: '#FFFFFF', fontSize: '12px', cursor: 'pointer' }}
+            >
+              Desfazer ajustes
+            </button>
+          )}
+          {alterado && props.onSalvarDefinicao && (
+            <button
+              type="button"
+              disabled={salvando}
+              onClick={() => { salvarAjustes().catch(() => undefined); }}
+              style={{ padding: '6px 14px', borderRadius: '7px', border: 0, background: COR.navy, color: '#FFFFFF', fontSize: '12px', fontWeight: 700, cursor: salvando ? 'default' : 'pointer' }}
+            >
+              {salvando ? 'Salvando...' : 'Salvar no dashboard'}
+            </button>
+          )}
+        </div>
+      )}
+
       {!carregando && paginas.map((pagina, indicePagina) => (
         (!comAbas || abaAtiva === String(indicePagina)) && pagina.secoes.map(({ secao, indice: s }) => {
           const cartoes = secao.itens.filter(item => item.tipo === 'cartao');
@@ -430,12 +541,12 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
               </div>
               {cartoes.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '14px', marginBottom: outros.length > 0 ? '14px' : 0 }}>
-                  {cartoes.map((item, i) => renderItem(item, `${s}-c${i}`))}
+                  {cartoes.map(item => renderItem(item, `${s}-${secao.itens.indexOf(item)}`, s, secao.itens.indexOf(item)))}
                 </div>
               )}
               {outros.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '14px' }}>
-                  {outros.map((item, i) => renderItem(item, `${s}-o${i}`))}
+                  {outros.map(item => renderItem(item, `${s}-${secao.itens.indexOf(item)}`, s, secao.itens.indexOf(item)))}
                 </div>
               )}
             </section>

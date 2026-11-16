@@ -3,6 +3,7 @@ import {
   agregar,
   agrupar,
   aplicarFiltro,
+  anoInicialDoDashboard,
   farolDe,
   ordenarGrupos,
   paginasDoDashboard,
@@ -101,5 +102,19 @@ describe('Dashboards do portal', () => {
     const itens = [{ rotulo: 'Receita', valor: 10 }, { rotulo: 'Custos', valor: -5 }, { rotulo: 'Lucro', valor: 5 }];
     expect(ordenarGrupos(itens, 'nenhum').map(i => i.rotulo)).toEqual(['Receita', 'Custos', 'Lucro']);
     expect(ordenarGrupos(itens, 'valor desc').map(i => i.rotulo)).toEqual(['Receita', 'Lucro', 'Custos']);
+  });
+
+  it('ano padrão: orçamento abre no ano seguinte a partir de julho; os demais, no ano atual', () => {
+    const novembro = new Date(2026, 10, 13);
+    const marco = new Date(2026, 2, 10);
+    expect(anoInicialDoDashboard(EXEMPLOS_DASHBOARD.controladoria, novembro)).toBe(2027);
+    expect(anoInicialDoDashboard(EXEMPLOS_DASHBOARD.controladoria, marco)).toBe(2026);
+    expect(anoInicialDoDashboard(EXEMPLOS_DASHBOARD.treinamentos, novembro)).toBe(2026);
+    const fixo = { ...EXEMPLOS_DASHBOARD.treinamentos, filtros: { ano: true, area: true, anoPadrao: 2025 } };
+    expect(anoInicialDoDashboard(fixo, novembro)).toBe(2025);
+    const proximo = { ...EXEMPLOS_DASHBOARD.treinamentos, filtros: { ano: true, anoPadrao: 'proximo' as const } };
+    expect(anoInicialDoDashboard(proximo, marco)).toBe(2027);
+    const invalido = { ...EXEMPLOS_DASHBOARD.treinamentos, filtros: { ano: true, anoPadrao: 'ontem' } };
+    expect(validarDashboard(JSON.stringify(invalido), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/anoPadrao/);
   });
 });

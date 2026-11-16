@@ -35,6 +35,36 @@ export const COL_ITEM = {
   ativo: 'dgt_ativo'
 };
 
+// Valor (R$) vindo do CIGAM. Quem grava é a integração (Power
+// Automate), NUNCA o portal: a tela só lê. Colunas criadas por
+// scripts/dataverse/criar-colunas-valor-cigam.ps1.
+export const COL_ITEM_VALOR = {
+  valor: 'dgt_valor',
+  atualizadoEm: 'dgt_valoratualizadoem',
+  origem: 'dgt_valororigem',
+  situacao: 'dgt_valorsituacao'
+};
+
+// Pedidos de atualização de preços: o portal cria uma linha e o fluxo
+// do Power Automate ("Quando uma linha é adicionada") busca os preços
+// no CIGAM e devolve o resultado na mesma linha. Assim nenhuma
+// credencial do CIGAM passa pelo navegador.
+export const TABELA_SINCRONIZACAO_CIGAM = 'dgt_cigamsincronizacao';
+
+export const COL_SINCRONIZACAO = {
+  id: 'dgt_cigamsincronizacaoid',
+  nome: 'dgt_name',
+  tipo: 'dgt_tipo',
+  situacao: 'dgt_situacao',
+  mensagem: 'dgt_mensagem',
+  solicitadoPor: 'dgt_solicitadopor',
+  itensAtualizados: 'dgt_itensatualizados',
+  itensSemPreco: 'dgt_itenssempreco',
+  concluidoEm: 'dgt_concluidoem'
+};
+
+export type SituacaoSincronizacao = 'Pendente' | 'Em andamento' | 'Concluída' | 'Erro';
+
 export const COL_KIT = {
   id: 'dgt_kitkitid',
   nome: 'dgt_name',

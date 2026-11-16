@@ -365,13 +365,610 @@ const fonteConsumoIa: IFonte = {
   }
 };
 
+// ============================================================
+// MÓDULOS DA PLATAFORMA — Treinamentos, Documentos (tarefas),
+// Ambientes, Licitações, Fornecedores e Projetos
+//
+// Regra de ÁREA (é o que restringe o gestor ao próprio time):
+//  - treinamentos: a linha vale para CADA área ativa do usuário
+//    (dgt_usuarioarea); quem está em duas áreas aparece nas duas;
+//  - documentos.tarefas: área do documento; ambientes: área do registro;
+//  - licitações: área de sigla LIC;
+//  - fornecedores e projetos não têm área: só aparecem para quem vê
+//    todas as áreas (Administrador), como "Sem área".
+// ============================================================
+
+interface IAreaInfo {
+  id: string;
+  nome: string;
+}
+
+// Carga compartilhada por painel: áreas e vínculos usuário → área.
+// O cache vale por objeto de contexto (um carregamento de painel).
+const cacheBase = new WeakMap<IContextoFonte, Promise<{ areas: { [id: string]: IAreaInfo }; porSigla: { [sigla: string]: IAreaInfo }; areasDoUsuario: { [usuarioId: string]: IAreaInfo[] } }>>();
+
+const baseAreas = (contexto: IContextoFonte): Promise<{ areas: { [id: string]: IAreaInfo }; porSigla: { [sigla: string]: IAreaInfo }; areasDoUsuario: { [usuarioId: string]: IAreaInfo[] } }> => {
+  let promessa = cacheBase.get(contexto);
+  if (!promessa) {
+    promessa = (async () => {
+      const [registrosArea, vinculos] = await Promise.all([
+        contexto.dataverse.listarRegistros('dgt_area', '$select=dgt_areaid,dgt_name,dgt_sigla'),
+        contexto.dataverse.listarRegistros('dgt_usuarioarea', '$select=_dgt_usuario_value,_dgt_area_value&$filter=dgt_ativo eq true')
+      ]);
+      const areas: { [id: string]: IAreaInfo } = {};
+      const porSigla: { [sigla: string]: IAreaInfo } = {};
+      registrosArea.forEach(registro => {
+        const id = guid(registro.dgt_areaid);
+        const sigla = String(registro.dgt_sigla || '').trim();
+        const nome = String(registro.dgt_name || '').trim();
+        areas[id] = { id, nome: sigla ? `${sigla} · ${nome}` : nome };
+        if (sigla) {
+          porSigla[sigla.toUpperCase()] = areas[id];
+        }
+      });
+      const areasDoUsuario: { [usuarioId: string]: IAreaInfo[] } = {};
+      vinculos.forEach(vinculo => {
+        const usuarioId = guid(vinculo._dgt_usuario_value);
+        const areaId = guid(vinculo._dgt_area_value);
+        if (usuarioId && areaId) {
+          (areasDoUsuario[usuarioId] = areasDoUsuario[usuarioId] || []).push(areas[areaId] || { id: areaId, nome: formatado(vinculo, '_dgt_area_value') });
+        }
+      });
+      return { areas, porSigla, areasDoUsuario };
+    })();
+    cacheBase.set(contexto, promessa);
+  }
+  return promessa;
+};
+
+// Atribuições de treinamento ativas (todas, sem filtro de ano): base de
+// avaliações e certificados, que chegam ao usuário por elas.
+const cacheAtribuicoes = new WeakMap<IContextoFonte, Promise<{ [atribuicaoId: string]: { usuarioId: string; usuario: string; treinamento: string } }>>();
+
+const atribuicoesPorId = (contexto: IContextoFonte): Promise<{ [atribuicaoId: string]: { usuarioId: string; usuario: string; treinamento: string } }> => {
+  let promessa = cacheAtribuicoes.get(contexto);
+  if (!promessa) {
+    promessa = contexto.dataverse.listarRegistros(
+      'dgt_usuariotreinamento',
+      '$select=dgt_usuariotreinamentoid,_dgt_usuario_value,_dgt_treinamento_value'
+    ).then(registros => {
+      const mapa: { [atribuicaoId: string]: { usuarioId: string; usuario: string; treinamento: string } } = {};
+      registros.forEach(registro => {
+        mapa[guid(registro.dgt_usuariotreinamentoid)] = {
+          usuarioId: guid(registro._dgt_usuario_value),
+          usuario: formatado(registro, '_dgt_usuario_value'),
+          treinamento: formatado(registro, '_dgt_treinamento_value')
+        };
+      });
+      return mapa;
+    });
+    cacheAtribuicoes.set(contexto, promessa);
+  }
+  return promessa;
+};
+
+// Uma cópia da linha para cada área do usuário que a pessoa pode ver.
+// Usuário sem nenhuma área: "Sem área", só para quem vê todas as áreas.
+const porAreasDoUsuario = (contexto: IContextoFonte, areas: IAreaInfo[] | undefined, linha: Linha, destino: Linha[]): void => {
+  if (!areas || areas.length === 0) {
+    if (!contexto.areaIds) {
+      destino.push({ ...linha, area: 'Sem área' });
+    }
+    return;
+  }
+  areas.filter(area => naArea(contexto, area.id)).forEach(area => destino.push({ ...linha, area: area.nome || 'Sem área' }));
+};
+
+// Linhas sem área: só para quem vê todas as áreas.
+const semAreaVisivel = (contexto: IContextoFonte): boolean => !contexto.areaIds;
+
+const intervaloDoAno = (contexto: IContextoFonte): { inicio: string; fim: string } => ({
+  inicio: new Date(Date.UTC(contexto.ano, 0, 1)).toISOString(),
+  fim: new Date(Date.UTC(contexto.ano + 1, 0, 1)).toISOString()
+});
+
+// Filtro do ano pela data do registro; sem a data, vale a de criação
+// (mesma regra do portal: data da atribuição || createdon).
+const filtroAnoComReserva = (contexto: IContextoFonte, campo: string): string => {
+  const { inicio, fim } = intervaloDoAno(contexto);
+  return `((${campo} ge ${inicio} and ${campo} lt ${fim}) or (${campo} eq null and createdon ge ${inicio} and createdon lt ${fim}))`;
+};
+
+const mesDe = (valor: unknown): number | undefined => {
+  const data = new Date(String(valor || ''));
+  return valor && !isNaN(data.getTime()) ? data.getMonth() + 1 : undefined;
+};
+
+const situacaoDeData = (dias: number | undefined, semData: string): string =>
+  dias === undefined ? semData : dias < 0 ? 'Vencido' : dias <= 30 ? 'Vence em 30 dias' : 'Em dia';
+
+const SITUACOES_VALIDADE = ['Vencido', 'Vence em 30 dias', 'Em dia', 'Sem validade'];
+const SITUACOES_PRAZO = ['Vencido', 'Vence em 30 dias', 'Em dia', 'Sem prazo'];
+
+const simNao = (valor: unknown): string => (valor === true ? 'Sim' : 'Não');
+
+const texto = (valor: unknown): string => (valor === undefined || valor === null ? '' : String(valor));
+
+// ------------------------------------------------------------
+// Treinamentos
+// ------------------------------------------------------------
+
+const fonteTreinamentosAtribuicoes: IFonte = {
+  id: 'treinamentos.atribuicoes',
+  nome: 'Treinamentos — atribuições por usuário',
+  descricao: 'Uma linha por treinamento atribuído (no ano da atribuição) e área do usuário: status, conclusão, validade, prazo e nota.',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'usuario', rotulo: 'Usuário', tipo: 'texto' },
+    { chave: 'treinamento', rotulo: 'Treinamento', tipo: 'texto' },
+    { chave: 'trilha', rotulo: 'Trilha', tipo: 'texto' },
+    { chave: 'status', rotulo: 'Status', tipo: 'texto' },
+    { chave: 'origem', rotulo: 'Origem da atribuição', tipo: 'texto' },
+    { chave: 'concluido', rotulo: 'Concluído', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'mes', rotulo: 'Mês da atribuição', tipo: 'mes' },
+    { chave: 'situacaoValidade', rotulo: 'Situação da validade', tipo: 'texto', valores: SITUACOES_VALIDADE },
+    { chave: 'situacaoPrazo', rotulo: 'Situação do prazo (não concluídos)', tipo: 'texto', valores: SITUACOES_PRAZO },
+    { chave: 'diasAtraso', rotulo: 'Dias de atraso (não concluídos)', tipo: 'numero' },
+    { chave: 'nota', rotulo: 'Nota', tipo: 'numero' },
+    { chave: 'atribuicoes', rotulo: 'Quantidade (1 por atribuição)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    const [base, registros] = await Promise.all([
+      baseAreas(contexto),
+      contexto.dataverse.listarRegistros(
+        'dgt_usuariotreinamento',
+        '$select=createdon,dgt_dataatribuicao,dgt_datavalidade,dgt_datalimite,dgt_dataconclusao,dgt_status,dgt_origem,dgt_nota,_dgt_usuario_value,_dgt_treinamento_value,_dgt_trilha_value' +
+        `&$filter=dgt_ativo ne false and ${filtroAnoComReserva(contexto, 'dgt_dataatribuicao')}`
+      )
+    ]);
+    const linhas: Linha[] = [];
+    registros.forEach(registro => {
+      const concluido = !!registro.dgt_dataconclusao;
+      const prazo = concluido ? undefined : diasAte(texto(registro.dgt_datalimite) || undefined);
+      porAreasDoUsuario(contexto, base.areasDoUsuario[guid(registro._dgt_usuario_value)], {
+        usuario: formatado(registro, '_dgt_usuario_value'),
+        treinamento: formatado(registro, '_dgt_treinamento_value'),
+        trilha: formatado(registro, '_dgt_trilha_value') || 'Sem trilha',
+        status: formatado(registro, 'dgt_status'),
+        origem: formatado(registro, 'dgt_origem'),
+        concluido: simNao(concluido),
+        mes: mesDe(registro.dgt_dataatribuicao || registro.createdon),
+        situacaoValidade: situacaoDeData(diasAte(texto(registro.dgt_datavalidade) || undefined), 'Sem validade'),
+        situacaoPrazo: concluido ? 'Em dia' : situacaoDeData(prazo, 'Sem prazo'),
+        diasAtraso: prazo !== undefined && prazo < 0 ? -prazo : 0,
+        nota: concluido ? Number(registro.dgt_nota) || 0 : undefined,
+        atribuicoes: 1
+      }, linhas);
+    });
+    return linhas;
+  }
+};
+
+const fonteTreinamentosTrilhas: IFonte = {
+  id: 'treinamentos.trilhas',
+  nome: 'Treinamentos — trilhas por usuário',
+  descricao: 'Uma linha por trilha atribuída (no ano da atribuição) e área do usuário: status, obrigatoriedade, conclusão e prazo.',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'usuario', rotulo: 'Usuário', tipo: 'texto' },
+    { chave: 'trilha', rotulo: 'Trilha', tipo: 'texto' },
+    { chave: 'status', rotulo: 'Status', tipo: 'texto' },
+    { chave: 'origem', rotulo: 'Origem da atribuição', tipo: 'texto' },
+    { chave: 'obrigatoria', rotulo: 'Obrigatória', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'concluida', rotulo: 'Concluída', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'mes', rotulo: 'Mês da atribuição', tipo: 'mes' },
+    { chave: 'situacaoPrazo', rotulo: 'Situação do prazo (não concluídas)', tipo: 'texto', valores: SITUACOES_PRAZO },
+    { chave: 'diasAtraso', rotulo: 'Dias de atraso (não concluídas)', tipo: 'numero' },
+    { chave: 'trilhas', rotulo: 'Quantidade (1 por trilha atribuída)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    const [base, registros] = await Promise.all([
+      baseAreas(contexto),
+      contexto.dataverse.listarRegistros(
+        'dgt_usuariotrilha',
+        '$select=createdon,dgt_dataatribuicao,dgt_dataconclusao,dgt_datalimite,dgt_obrigatoria,dgt_origem,dgt_status,_dgt_usuario_value,_dgt_trilha_value' +
+        `&$filter=dgt_ativa ne false and ${filtroAnoComReserva(contexto, 'dgt_dataatribuicao')}`
+      )
+    ]);
+    const linhas: Linha[] = [];
+    registros.forEach(registro => {
+      const concluida = !!registro.dgt_dataconclusao;
+      const prazo = concluida ? undefined : diasAte(texto(registro.dgt_datalimite) || undefined);
+      porAreasDoUsuario(contexto, base.areasDoUsuario[guid(registro._dgt_usuario_value)], {
+        usuario: formatado(registro, '_dgt_usuario_value'),
+        trilha: formatado(registro, '_dgt_trilha_value'),
+        status: formatado(registro, 'dgt_status'),
+        origem: formatado(registro, 'dgt_origem'),
+        obrigatoria: simNao(registro.dgt_obrigatoria),
+        concluida: simNao(concluida),
+        mes: mesDe(registro.dgt_dataatribuicao || registro.createdon),
+        situacaoPrazo: concluida ? 'Em dia' : situacaoDeData(prazo, 'Sem prazo'),
+        diasAtraso: prazo !== undefined && prazo < 0 ? -prazo : 0,
+        trilhas: 1
+      }, linhas);
+    });
+    return linhas;
+  }
+};
+
+const fonteTreinamentosAvaliacoes: IFonte = {
+  id: 'treinamentos.avaliacoes',
+  nome: 'Treinamentos — tentativas de avaliação',
+  descricao: 'Uma linha por tentativa de avaliação iniciada no ano, por área do usuário: nota, acertos, aprovação e tempo.',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'usuario', rotulo: 'Usuário', tipo: 'texto' },
+    { chave: 'treinamento', rotulo: 'Treinamento', tipo: 'texto' },
+    { chave: 'avaliacao', rotulo: 'Avaliação', tipo: 'texto' },
+    { chave: 'status', rotulo: 'Status da tentativa', tipo: 'texto' },
+    { chave: 'aprovado', rotulo: 'Aprovado', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'numeroTentativa', rotulo: 'Número da tentativa', tipo: 'numero' },
+    { chave: 'mes', rotulo: 'Mês', tipo: 'mes' },
+    { chave: 'nota', rotulo: 'Nota', tipo: 'numero' },
+    { chave: 'acertos', rotulo: 'Acertos', tipo: 'numero' },
+    { chave: 'questoes', rotulo: 'Questões', tipo: 'numero' },
+    { chave: 'minutos', rotulo: 'Tempo utilizado (min)', tipo: 'numero' },
+    { chave: 'tentativas', rotulo: 'Quantidade (1 por tentativa)', tipo: 'numero' },
+    { chave: 'aprovacoes', rotulo: 'Aprovações (1 se aprovado)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    const [base, atribuicoes, registros] = await Promise.all([
+      baseAreas(contexto),
+      atribuicoesPorId(contexto),
+      contexto.dataverse.listarRegistros(
+        'dgt_tentativa',
+        '$select=createdon,dgt_datainicio,dgt_aprovado,dgt_nota,dgt_acertos,dgt_quantidadequestoes,dgt_numerotentativa,dgt_tempoutilizadoseg,dgt_status,_dgt_avaliacao_value,_dgt_usuariotreinamento_value' +
+        `&$filter=dgt_ativa ne false and ${filtroAnoComReserva(contexto, 'dgt_datainicio')}`
+      )
+    ]);
+    const linhas: Linha[] = [];
+    registros.forEach(registro => {
+      const atribuicao = atribuicoes[guid(registro._dgt_usuariotreinamento_value)];
+      if (!atribuicao) {
+        return;
+      }
+      const aprovado = registro.dgt_aprovado === true;
+      porAreasDoUsuario(contexto, base.areasDoUsuario[atribuicao.usuarioId], {
+        usuario: atribuicao.usuario,
+        treinamento: atribuicao.treinamento,
+        avaliacao: formatado(registro, '_dgt_avaliacao_value'),
+        status: formatado(registro, 'dgt_status'),
+        aprovado: simNao(aprovado),
+        numeroTentativa: Number(registro.dgt_numerotentativa) || 1,
+        mes: mesDe(registro.dgt_datainicio || registro.createdon),
+        nota: Number(registro.dgt_nota) || 0,
+        acertos: Number(registro.dgt_acertos) || 0,
+        questoes: Number(registro.dgt_quantidadequestoes) || 0,
+        minutos: Math.round((Number(registro.dgt_tempoutilizadoseg) || 0) / 6) / 10,
+        tentativas: 1,
+        aprovacoes: aprovado ? 1 : 0
+      }, linhas);
+    });
+    return linhas;
+  }
+};
+
+const fonteTreinamentosCertificados: IFonte = {
+  id: 'treinamentos.certificados',
+  nome: 'Treinamentos — certificados emitidos',
+  descricao: 'Uma linha por certificado emitido no ano, por área do usuário: treinamento, emissão e situação da validade.',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'treinamento', rotulo: 'Treinamento', tipo: 'texto' },
+    { chave: 'mes', rotulo: 'Mês da emissão', tipo: 'mes' },
+    { chave: 'situacaoValidade', rotulo: 'Situação da validade', tipo: 'texto', valores: SITUACOES_VALIDADE },
+    { chave: 'diasParaVencer', rotulo: 'Dias para vencer (negativo = vencido)', tipo: 'numero' },
+    { chave: 'certificados', rotulo: 'Quantidade (1 por certificado)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    const [base, atribuicoes, registros] = await Promise.all([
+      baseAreas(contexto),
+      atribuicoesPorId(contexto),
+      contexto.dataverse.listarRegistros(
+        'dgt_certificado',
+        '$select=createdon,dgt_dataemissao,dgt_datavalidade,_dgt_usuariotreinamento_value' +
+        `&$filter=dgt_ativo ne false and ${filtroAnoComReserva(contexto, 'dgt_dataemissao')}`
+      )
+    ]);
+    const linhas: Linha[] = [];
+    registros.forEach(registro => {
+      const atribuicao = atribuicoes[guid(registro._dgt_usuariotreinamento_value)];
+      if (!atribuicao) {
+        return;
+      }
+      const dias = diasAte(texto(registro.dgt_datavalidade) || undefined);
+      porAreasDoUsuario(contexto, base.areasDoUsuario[atribuicao.usuarioId], {
+        treinamento: atribuicao.treinamento,
+        mes: mesDe(registro.dgt_dataemissao || registro.createdon),
+        situacaoValidade: situacaoDeData(dias, 'Sem validade'),
+        diasParaVencer: dias,
+        certificados: 1
+      }, linhas);
+    });
+    return linhas;
+  }
+};
+
+// ------------------------------------------------------------
+// Documentos — tarefas do fluxo de revisão
+// ------------------------------------------------------------
+
+const fonteDocumentosTarefas: IFonte = {
+  id: 'documentos.tarefas',
+  nome: 'Documentos — tarefas do fluxo de revisão',
+  descricao: 'Uma linha por tarefa de etapa do fluxo de revisão criada no ano (pendente ou concluída), pela área do documento.',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'documento', rotulo: 'Documento', tipo: 'texto' },
+    { chave: 'etapa', rotulo: 'Etapa', tipo: 'texto' },
+    { chave: 'situacao', rotulo: 'Situação da tarefa', tipo: 'texto' },
+    { chave: 'pendente', rotulo: 'Pendente', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'acao', rotulo: 'Ação executada', tipo: 'texto' },
+    { chave: 'mes', rotulo: 'Mês de criação', tipo: 'mes' },
+    { chave: 'situacaoPrazo', rotulo: 'Situação do prazo (pendentes)', tipo: 'texto', valores: SITUACOES_PRAZO },
+    { chave: 'diasAtraso', rotulo: 'Dias de atraso (pendentes)', tipo: 'numero' },
+    { chave: 'diasParaConcluir', rotulo: 'Dias até concluir (concluídas)', tipo: 'numero' },
+    { chave: 'tarefas', rotulo: 'Quantidade (1 por tarefa)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    const { inicio, fim } = intervaloDoAno(contexto);
+    const [documentos, revisoes, registros] = await Promise.all([
+      new DocumentoService(contexto.dataverse).getDocumentos(),
+      contexto.dataverse.listarRegistros('dgt_documentorevisao', '$select=dgt_documentorevisaoid,_dgt_documento_value'),
+      contexto.dataverse.listarRegistros(
+        'dgt_tarefafluxo',
+        '$select=createdon,dgt_etapanome,dgt_situacao,dgt_acaorotulo,dgt_prazo,dgt_concluidaem,_dgt_documentorevisao_value' +
+        `&$filter=createdon ge ${inicio} and createdon lt ${fim}`
+      )
+    ]);
+    const documentoPorId: { [id: string]: { area: string; areaId?: string; rotulo: string } } = {};
+    documentos.forEach(documento => {
+      documentoPorId[guid(documento.id)] = { area: documento.area || '', areaId: documento.areaId, rotulo: [documento.codigo, documento.titulo].filter(Boolean).join(' — ') };
+    });
+    const documentoDaRevisao: { [revisaoId: string]: string } = {};
+    revisoes.forEach(revisao => { documentoDaRevisao[guid(revisao.dgt_documentorevisaoid)] = guid(revisao._dgt_documento_value); });
+    return registros
+      .map(registro => ({ registro, documento: documentoPorId[documentoDaRevisao[guid(registro._dgt_documentorevisao_value)]] }))
+      .filter(item => !!item.documento && naArea(contexto, item.documento.areaId))
+      .map(({ registro, documento }) => {
+        const pendente = !registro.dgt_concluidaem;
+        const prazo = pendente ? diasAte(texto(registro.dgt_prazo) || undefined) : undefined;
+        const criada = new Date(texto(registro.createdon)).getTime();
+        const concluida = new Date(texto(registro.dgt_concluidaem)).getTime();
+        return {
+          area: documento.area || 'Sem área',
+          documento: documento.rotulo,
+          etapa: texto(registro.dgt_etapanome),
+          situacao: texto(registro.dgt_situacao) || (pendente ? 'Pendente' : 'Concluída'),
+          pendente: simNao(pendente),
+          acao: texto(registro.dgt_acaorotulo),
+          mes: mesDe(registro.createdon),
+          situacaoPrazo: pendente ? situacaoDeData(prazo, 'Sem prazo') : 'Em dia',
+          diasAtraso: prazo !== undefined && prazo < 0 ? -prazo : 0,
+          diasParaConcluir: !pendente && !isNaN(criada) && !isNaN(concluida) ? Math.max(0, Math.round((concluida - criada) / 86400000)) : undefined,
+          tarefas: 1
+        };
+      });
+  }
+};
+
+// ------------------------------------------------------------
+// Ambientes — registros (solicitações e processos)
+// ------------------------------------------------------------
+
+const fonteAmbientesRegistros: IFonte = {
+  id: 'ambientes.registros',
+  nome: 'Ambientes — registros dos fluxos',
+  descricao: 'Uma linha por registro de ambiente aberto no ano (solicitações, processos…): etapa atual, situação, prazo da etapa e tempo até concluir.',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'ambiente', rotulo: 'Ambiente', tipo: 'texto' },
+    { chave: 'codigo', rotulo: 'Código', tipo: 'texto' },
+    { chave: 'registro', rotulo: 'Registro', tipo: 'texto' },
+    { chave: 'etapa', rotulo: 'Etapa atual', tipo: 'texto' },
+    { chave: 'situacao', rotulo: 'Situação', tipo: 'texto' },
+    { chave: 'concluido', rotulo: 'Concluído/cancelado', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'mes', rotulo: 'Mês de abertura', tipo: 'mes' },
+    { chave: 'situacaoPrazo', rotulo: 'Prazo da etapa (em andamento)', tipo: 'texto', valores: SITUACOES_PRAZO },
+    { chave: 'diasAtraso', rotulo: 'Dias de atraso da etapa', tipo: 'numero' },
+    { chave: 'diasAteConcluir', rotulo: 'Dias até concluir', tipo: 'numero' },
+    { chave: 'registros', rotulo: 'Quantidade (1 por registro)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    const { inicio, fim } = intervaloDoAno(contexto);
+    const [base, registros] = await Promise.all([
+      baseAreas(contexto),
+      contexto.dataverse.listarRegistros(
+        'dgt_ambienteregistro',
+        '$select=createdon,dgt_codigo,dgt_name,dgt_etapaatual,dgt_situacao,dgt_prazoetapa,dgt_concluidoem,_dgt_ambiente_value,_dgt_area_value' +
+        `&$filter=createdon ge ${inicio} and createdon lt ${fim}`
+      )
+    ]);
+    return registros
+      .filter(registro => (registro._dgt_area_value ? naArea(contexto, guid(registro._dgt_area_value)) : semAreaVisivel(contexto)))
+      .map(registro => {
+        const concluido = !!registro.dgt_concluidoem;
+        const prazo = concluido ? undefined : diasAte(texto(registro.dgt_prazoetapa) || undefined);
+        const aberto = new Date(texto(registro.createdon)).getTime();
+        const fechado = new Date(texto(registro.dgt_concluidoem)).getTime();
+        const area = base.areas[guid(registro._dgt_area_value)];
+        return {
+          area: area ? area.nome : (formatado(registro, '_dgt_area_value') || 'Sem área'),
+          ambiente: formatado(registro, '_dgt_ambiente_value'),
+          codigo: texto(registro.dgt_codigo),
+          registro: texto(registro.dgt_name),
+          etapa: concluido ? 'Concluído' : texto(registro.dgt_etapaatual),
+          situacao: texto(registro.dgt_situacao),
+          concluido: simNao(concluido),
+          mes: mesDe(registro.createdon),
+          situacaoPrazo: concluido ? 'Em dia' : situacaoDeData(prazo, 'Sem prazo'),
+          diasAtraso: prazo !== undefined && prazo < 0 ? -prazo : 0,
+          diasAteConcluir: concluido && !isNaN(aberto) && !isNaN(fechado) ? Math.max(0, Math.round((fechado - aberto) / 86400000)) : undefined,
+          registros: 1
+        };
+      });
+  }
+};
+
+// ------------------------------------------------------------
+// Licitações — editais acompanhados
+// ------------------------------------------------------------
+
+const fonteLicitacoesEditais: IFonte = {
+  id: 'licitacoes.editais',
+  nome: 'Licitações — editais acompanhados',
+  descricao: 'Uma linha por edital do PNCP acompanhado e ativo (todos os anos de cadastro): órgão, modalidade, situação e valor estimado. Área: Licitações (LIC).',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'edital', rotulo: 'Edital', tipo: 'texto' },
+    { chave: 'orgao', rotulo: 'Órgão', tipo: 'texto' },
+    { chave: 'modalidade', rotulo: 'Modalidade', tipo: 'texto' },
+    { chave: 'local', rotulo: 'Local', tipo: 'texto' },
+    { chave: 'situacao', rotulo: 'Situação', tipo: 'texto' },
+    { chave: 'abertura', rotulo: 'Abertura das propostas', tipo: 'texto' },
+    { chave: 'mes', rotulo: 'Mês do cadastro', tipo: 'mes' },
+    { chave: 'valorEstimado', rotulo: 'Valor estimado (R$)', tipo: 'numero' },
+    { chave: 'editais', rotulo: 'Quantidade (1 por edital)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    const [base, registros] = await Promise.all([
+      baseAreas(contexto),
+      contexto.dataverse.listarRegistros(
+        'dgt_licitacaoacompanhamento',
+        '$select=createdon,dgt_numeroedital,dgt_name,dgt_orgao,dgt_modalidade,dgt_local,dgt_situacao,dgt_dataabertura,dgt_valorestimado&$filter=dgt_ativo ne false'
+      )
+    ]);
+    const areaLic = base.porSigla.LIC;
+    if (areaLic ? !naArea(contexto, areaLic.id) : !semAreaVisivel(contexto)) {
+      return [];
+    }
+    return registros.map(registro => ({
+      area: areaLic ? areaLic.nome : 'Sem área',
+      edital: texto(registro.dgt_numeroedital) || texto(registro.dgt_name),
+      orgao: texto(registro.dgt_orgao),
+      modalidade: texto(registro.dgt_modalidade),
+      local: texto(registro.dgt_local),
+      situacao: texto(registro.dgt_situacao),
+      abertura: texto(registro.dgt_dataabertura),
+      mes: mesDe(registro.createdon),
+      valorEstimado: Number(registro.dgt_valorestimado) || 0,
+      editais: 1
+    }));
+  }
+};
+
+// ------------------------------------------------------------
+// Fornecedores — documentos e validade (sem área)
+// ------------------------------------------------------------
+
+const fonteFornecedoresDocumentos: IFonte = {
+  id: 'fornecedores.documentos',
+  nome: 'Fornecedores — documentos vigentes',
+  descricao: 'Uma linha por documento VIGENTE de fornecedor (todos os anos): tipo, emissão e situação da validade. Sem área: só para quem vê todas as áreas.',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'fornecedor', rotulo: 'Fornecedor', tipo: 'texto' },
+    { chave: 'tipoDocumento', rotulo: 'Tipo de documento', tipo: 'texto' },
+    { chave: 'situacaoValidade', rotulo: 'Situação da validade', tipo: 'texto', valores: SITUACOES_VALIDADE },
+    { chave: 'diasParaVencer', rotulo: 'Dias para vencer (negativo = vencido)', tipo: 'numero' },
+    { chave: 'mes', rotulo: 'Mês da emissão', tipo: 'mes' },
+    { chave: 'documentos', rotulo: 'Quantidade (1 por documento)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    if (!semAreaVisivel(contexto)) {
+      return [];
+    }
+    const registros = await contexto.dataverse.listarRegistros(
+      'dgt_fornecedordocumento',
+      "$select=dgt_dataemissao,dgt_datavencimento,_dgt_fornecedor_value,_dgt_tipodocumento_value&$filter=dgt_situacao eq 'Vigente'"
+    );
+    return registros.map(registro => {
+      const dias = diasAte(texto(registro.dgt_datavencimento) || undefined);
+      return {
+        area: 'Sem área',
+        fornecedor: formatado(registro, '_dgt_fornecedor_value'),
+        tipoDocumento: formatado(registro, '_dgt_tipodocumento_value'),
+        situacaoValidade: situacaoDeData(dias, 'Sem validade'),
+        diasParaVencer: dias,
+        mes: mesDe(registro.dgt_dataemissao),
+        documentos: 1
+      };
+    });
+  }
+};
+
+// ------------------------------------------------------------
+// Projetos (PMO) — atividades do cronograma (sem área)
+// ------------------------------------------------------------
+
+const fonteProjetosAtividades: IFonte = {
+  id: 'projetos.atividades',
+  nome: 'Projetos — atividades do cronograma',
+  descricao: 'Uma linha por atividade do cronograma dos projetos do PMO (todos os anos): fase, status, % realizado, peso e atraso em relação ao fim previsto. Sem área: só para quem vê todas as áreas.',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'projeto', rotulo: 'Projeto', tipo: 'texto' },
+    { chave: 'fase', rotulo: 'Fase / frente', tipo: 'texto' },
+    { chave: 'atividade', rotulo: 'Atividade', tipo: 'texto' },
+    { chave: 'grupo', rotulo: 'Grupo (G1 a G5)', tipo: 'texto' },
+    { chave: 'status', rotulo: 'Status', tipo: 'texto' },
+    { chave: 'marco', rotulo: 'Marco de medição', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'situacaoPrazo', rotulo: 'Situação do prazo (não concluídas)', tipo: 'texto', valores: SITUACOES_PRAZO },
+    { chave: 'mes', rotulo: 'Mês do fim previsto', tipo: 'mes' },
+    { chave: 'percentualRealizado', rotulo: '% realizado', tipo: 'numero' },
+    { chave: 'peso', rotulo: 'Peso', tipo: 'numero' },
+    { chave: 'diasAtraso', rotulo: 'Dias de atraso (não concluídas)', tipo: 'numero' },
+    { chave: 'valorMarco', rotulo: 'Valor do marco (R$)', tipo: 'numero' },
+    { chave: 'atividades', rotulo: 'Quantidade (1 por atividade)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    if (!semAreaVisivel(contexto)) {
+      return [];
+    }
+    const registros = await contexto.dataverse.listarRegistros(
+      'dgt_projetoatividade',
+      '$select=dgt_name,dgt_fase,dgt_grupo,dgt_status,dgt_marco,dgt_fim,dgt_fimrevisado,dgt_fimrealizado,dgt_percentualrealizado,dgt_peso,dgt_valor,_dgt_projeto_value'
+    );
+    return registros.map(registro => {
+      const concluida = !!registro.dgt_fimrealizado || Number(registro.dgt_percentualrealizado) >= 100;
+      const fimPrevisto = texto(registro.dgt_fimrevisado) || texto(registro.dgt_fim);
+      const prazo = concluida ? undefined : diasAte(fimPrevisto || undefined);
+      return {
+        area: 'Sem área',
+        projeto: formatado(registro, '_dgt_projeto_value'),
+        fase: texto(registro.dgt_fase),
+        atividade: texto(registro.dgt_name),
+        grupo: registro.dgt_grupo ? `G${registro.dgt_grupo}` : '',
+        status: texto(registro.dgt_status),
+        marco: simNao(registro.dgt_marco),
+        situacaoPrazo: concluida ? 'Em dia' : situacaoDeData(prazo, 'Sem prazo'),
+        mes: mesDe(fimPrevisto),
+        percentualRealizado: Number(registro.dgt_percentualrealizado) || 0,
+        peso: Number(registro.dgt_peso) || 0,
+        diasAtraso: prazo !== undefined && prazo < 0 ? -prazo : 0,
+        valorMarco: Number(registro.dgt_valor) || 0,
+        atividades: 1
+      };
+    });
+  }
+};
+
 export const FONTES_DASHBOARD: IFonte[] = [
   fonteOrcamentoLinhas,
   fonteOrcamentoDre,
   fonteOrcamentoPlanilhas,
   fonteDocumentos,
   fonteRevisoes,
-  fonteConsumoIa
+  fonteConsumoIa,
+  fonteTreinamentosAtribuicoes,
+  fonteTreinamentosTrilhas,
+  fonteTreinamentosAvaliacoes,
+  fonteTreinamentosCertificados,
+  fonteDocumentosTarefas,
+  fonteAmbientesRegistros,
+  fonteLicitacoesEditais,
+  fonteFornecedoresDocumentos,
+  fonteProjetosAtividades
 ];
 
 // Catálogo sem as funções (para validar e para a skill).

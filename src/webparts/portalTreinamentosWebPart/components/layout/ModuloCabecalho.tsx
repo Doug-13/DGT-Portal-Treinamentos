@@ -118,9 +118,15 @@ const ModuloCabecalho:
 
     return (
       <>
-        <section className={styles.trainingHero}>
+        <section
+          className={
+            abas.length > 0
+              ? styles.trainingHero
+              : `${styles.trainingHero} ${styles.trainingHeroSolo}`
+          }
+        >
 
-          <div className={styles.heroIcon}>
+          <div className={styles.heroIcon} aria-hidden="true">
             <IconeHero />
           </div>
 
@@ -130,7 +136,7 @@ const ModuloCabecalho:
             <p>{config.descricao}</p>
           </div>
 
-          <div className={styles.heroQuote}>
+          <div className={styles.heroQuote} aria-hidden="true">
             <p>“{config.citacao}”</p>
             <strong>DGT</strong>
           </div>
@@ -140,7 +146,10 @@ const ModuloCabecalho:
         {
           abas.length > 0 &&
           (
-            <nav className={styles.trainingTabs}>
+            <nav
+              className={styles.trainingTabs}
+              aria-label={`Seções de ${config.titulo}`}
+            >
               {
                 abas.map(
                   (aba, indice) => {
@@ -164,9 +173,10 @@ const ModuloCabecalho:
                         aria-current={ativo ? 'page' : undefined}
                       >
                         <span
+                          aria-hidden="true"
                           style={{
                             display: 'inline-flex',
-                            color: ativo ? '#0874ce' : '#5C7287'
+                            color: 'currentColor'
                           }}
                         >
                           <IconeAba />

@@ -40,6 +40,10 @@ import {
   COL_ALTERACAO,
   COL_COMPOSICAO,
   COL_ITEM,
+  COL_ITEM_VALOR,
+  COL_SINCRONIZACAO,
+  SituacaoSincronizacao,
+  TABELA_SINCRONIZACAO_CIGAM,
   COL_KIT,
   IAtributosItemKit,
   SituacaoItemKit,
@@ -73,6 +77,24 @@ export interface IItemKit {
   ordem: number;
   ativo: boolean;
   atributos: IAtributosItemKit;
+  // Valor unitário (R$) do CIGAM — somente leitura no portal.
+  valor?: number;
+  valorAtualizadoEm?: string;
+  valorOrigem?: string;
+  // Ex.: "Não encontrado na tabela de preços" (gravado pela integração).
+  valorSituacao?: string;
+}
+
+// Último pedido de atualização de preços do CIGAM.
+export interface ISincronizacaoCigam {
+  id: string;
+  situacao: SituacaoSincronizacao;
+  mensagem: string;
+  solicitadoPor: string;
+  solicitadoEm: string;
+  concluidoEm: string;
+  itensAtualizados: number;
+  itensSemPreco: number;
 }
 
 export interface IKitParametros {
@@ -115,6 +137,10 @@ export interface ICatalogoKitsCarregado {
   // Kits cuja composição já está gravada no Dataverse.
   composicaoGravada: Record<string, boolean>;
   alteracoes: IAlteracaoKit[];
+  // Integração de preços com o CIGAM.
+  valoresDisponiveis?: boolean;     // colunas de valor existem
+  sincronizacaoDisponivel?: boolean; // tabela de pedidos existe
+  ultimaSincronizacao?: ISincronizacaoCigam;
 }
 
 // ------------------------------------------------------------
@@ -592,6 +618,52 @@ export class KitsService {
       detalhes: texto(registro, COL_ALTERACAO.detalhes)
     }));
 
+    // ---- Valores do CIGAM (colunas opcionais: lê à parte para não
+    // quebrar o catálogo enquanto o script não foi rodado).
+    const colunasValor = Object.keys(COL_ITEM_VALOR).map(k => (COL_ITEM_VALOR as Record<string, string>)[k]);
+    let valoresDisponiveis = true;
+    const registrosValor = await this.dataverse
+      .listarRegistros(TABELAS_KITS.item, `$select=${COL_ITEM.id},${colunasValor.join(',')}`)
+      .catch(() => { valoresDisponiveis = false; return [] as IDataverseRecord[]; });
+
+    const valorPorId: Record<string, IDataverseRecord> = {};
+    registrosValor.forEach(r => { valorPorId[guid(r[COL_ITEM.id])] = r; });
+
+    Object.keys(porChave).forEach(chave => {
+      const item = porChave[chave];
+      const r = item.id ? valorPorId[item.id] : undefined;
+      if (!r) {
+        return;
+      }
+      const bruto = r[COL_ITEM_VALOR.valor];
+      item.valor = bruto === undefined || bruto === null || bruto === '' ? undefined : Number(bruto);
+      item.valorAtualizadoEm = texto(r, COL_ITEM_VALOR.atualizadoEm);
+      item.valorOrigem = texto(r, COL_ITEM_VALOR.origem);
+      item.valorSituacao = texto(r, COL_ITEM_VALOR.situacao);
+    });
+
+    // ---- Último pedido de atualização de preços
+    let sincronizacaoDisponivel = true;
+    const ultimas = await this.dataverse
+      .listarRegistros(
+        TABELA_SINCRONIZACAO_CIGAM,
+        `$select=${Object.keys(COL_SINCRONIZACAO).map(k => (COL_SINCRONIZACAO as Record<string, string>)[k]).join(',')},createdon&$orderby=createdon desc&$top=1`
+      )
+      .catch(() => { sincronizacaoDisponivel = false; return [] as IDataverseRecord[]; });
+
+    const ultimaSincronizacao: ISincronizacaoCigam | undefined = ultimas[0]
+      ? {
+        id: guid(ultimas[0][COL_SINCRONIZACAO.id]),
+        situacao: (texto(ultimas[0], COL_SINCRONIZACAO.situacao) || 'Pendente') as SituacaoSincronizacao,
+        mensagem: texto(ultimas[0], COL_SINCRONIZACAO.mensagem),
+        solicitadoPor: texto(ultimas[0], COL_SINCRONIZACAO.solicitadoPor),
+        solicitadoEm: texto(ultimas[0], 'createdon'),
+        concluidoEm: texto(ultimas[0], COL_SINCRONIZACAO.concluidoEm),
+        itensAtualizados: numero(ultimas[0], COL_SINCRONIZACAO.itensAtualizados),
+        itensSemPreco: numero(ultimas[0], COL_SINCRONIZACAO.itensSemPreco)
+      }
+      : undefined;
+
     return {
       origem: 'dataverse',
       vazio,
@@ -599,8 +671,23 @@ export class KitsService {
       kits,
       composicoes,
       composicaoGravada,
-      alteracoes
+      alteracoes,
+      valoresDisponiveis,
+      sincronizacaoDisponivel,
+      ultimaSincronizacao
     };
+  }
+
+  // Pede ao fluxo do Power Automate que atualize os valores do CIGAM.
+  // O portal só cria o pedido: login e consulta ao CIGAM ficam no
+  // fluxo (credencial guardada no Power Platform, nunca no navegador).
+  public async solicitarAtualizacaoValores(usuarioNome: string): Promise<void> {
+    await this.dataverse.criarRegistro(TABELA_SINCRONIZACAO_CIGAM, {
+      [COL_SINCRONIZACAO.nome]: `Preços dos kits — ${new Date().toLocaleString('pt-BR')}`.substring(0, 200),
+      [COL_SINCRONIZACAO.tipo]: 'Preços dos kits',
+      [COL_SINCRONIZACAO.situacao]: 'Pendente',
+      [COL_SINCRONIZACAO.solicitadoPor]: usuarioNome.substring(0, 200)
+    });
   }
 
   // ---------------- gravação ----------------

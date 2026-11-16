@@ -1472,6 +1472,15 @@ const PortalRouter:
             onAbrirDocumentoPorId={
               props.abrirDocumentoPorId
             }
+
+            // Mesma visibilidade de documentos da tela Documentos.
+            areas={
+              props.areasAdministrativas
+            }
+
+            usuariosAreas={
+              props.usuariosAreasAdministrativos
+            }
           />
           </>
         );

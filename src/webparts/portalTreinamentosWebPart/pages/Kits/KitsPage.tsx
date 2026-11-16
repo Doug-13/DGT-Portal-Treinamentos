@@ -153,6 +153,17 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
 
   // ---------------- gravações ----------------
 
+  // Valores do CIGAM: cria o pedido; o fluxo do Power Automate faz o
+  // resto. Recarrega depois de alguns segundos para mostrar a situação.
+  const atualizarValores = async (): Promise<void> => {
+    if (!servico) {
+      return;
+    }
+    await servico.solicitarAtualizacaoValores(usuarioNome);
+    await carregar();
+    avisar('Atualização pedida. Os valores aparecem aqui quando o fluxo terminar (recarregue a página em alguns minutos).');
+  };
+
   const salvarItem = async (item: IItemKit, anterior: IItemKit | undefined, motivo: string): Promise<void> => {
     if (!servico) {
       return;
@@ -303,6 +314,7 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
               chaveInicial={itemFoco}
               tipoInicial={tipoFoco}
               aoSalvarItem={salvarItem}
+              aoAtualizarValores={atualizarValores}
             />
           )}
           {aba === 'kits' && (

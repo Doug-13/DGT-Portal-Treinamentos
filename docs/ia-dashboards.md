@@ -84,3 +84,32 @@ painel continua numa tela só. Com mais de uma página e o `assistente` ativo, a
 Para manter a ordem natural das linhas (ex.: DRE), use `"ordenar": "nenhum"` na tabela ou gráfico.
 
 Exemplo completo: `docs/dashboards/exemplos/controladoria.json` (também em "Usar exemplo").
+
+## Fontes dos módulos (Treinamentos, Ambientes, Licitações, Fornecedores, Projetos)
+
+`treinamentos.atribuicoes`, `treinamentos.trilhas`, `treinamentos.avaliacoes`, `treinamentos.certificados`,
+`documentos.tarefas`, `ambientes.registros`, `licitacoes.editais`, `fornecedores.documentos` e
+`projetos.atividades` (em `services/dashboards/fontesDashboard.ts`, testadas em `fontesModulos.test.ts`).
+
+Regra de área: treinamentos pela(s) área(s) do usuário (`dgt_usuarioarea`, a linha se repete em cada área);
+tarefas pela área do documento; ambientes pela área do registro; licitações pela área de sigla LIC;
+fornecedores e projetos não têm área (só aparecem para quem vê todas as áreas).
+
+Permissões: quem vê o painel precisa de **Ler** nas tabelas de origem no nível que cobre o time
+(ex.: Unidade de Negócios ou Organização para gestores). Com nível "Usuário", o gestor só enxerga os
+próprios registros e o painel fica incompleto.
+
+## Ano em que o painel abre (`filtros.anoPadrao`)
+
+`"atual"`, `"proximo"` ou um ano. Sem ele: painéis só de orçamento abrem no ano seguinte a partir de julho;
+os demais, no ano atual. As fontes de treinamento usam a data da atribuição (ou de criação, quando vazia)
+e consideram "ativo" vazio como ativo, igual ao restante do portal.
+
+## Gráficos legíveis e edição na tela
+
+- Rótulos do eixo se ajustam sozinhos (`rotulos: auto`): inclinam (-40°) ou ficam na vertical quando não
+  cabem, e a margem cresce para o texto não ser cortado. Valores aparecem sobre as barras quando há poucas.
+- Novo tipo `barrasHorizontais` (nomes completos à esquerda; empilha com `serieDimensao`).
+- ✎ em cada gráfico e tabela: título, tipo, nomes no eixo, valores, ordem, quantidade, altura e largura.
+  Quem gerencia dashboards clica em **Salvar no dashboard**; os demais veem o ajuste só na tela.
+

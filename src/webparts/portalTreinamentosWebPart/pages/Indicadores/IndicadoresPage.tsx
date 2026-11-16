@@ -12,11 +12,18 @@ import {
 import {
   DashboardService,
   IDashboard,
-  podeVerDashboard
+  podeVerDashboard,
+  separarDashboards
 } from '../../services/DashboardService';
 
 import GerenciarDashboardsModal from
   './GerenciarDashboardsModal';
+
+import CriarDashboardIaModal from './CriarDashboardIaModal';
+
+import {
+  IAcessoCriacao
+} from '../../services/dashboards/criacaoIa';
 
 import DashboardPortalView from './DashboardPortalView';
 
@@ -29,6 +36,7 @@ import {
 } from '../../services/AreaAdminService';
 
 import {
+  IDefinicaoDashboard,
   validarDashboard
 } from '../../services/dashboards/dashboardModelo';
 
@@ -179,8 +187,29 @@ const IndicadoresPage:
       [carregarDashboards]
     );
 
+    // Quem sou eu no Dataverse (dono dos dashboards pessoais).
+    const [meuId, setMeuId] =
+      React.useState('');
+
+    React.useEffect(
+      () => {
+        if (!props.dataverseService) {
+          return;
+        }
+        props.dataverseService.whoAmI()
+          .then(eu => setMeuId(eu.UserId.replace(/[{}]/g, '').toLowerCase()))
+          .catch(() => setMeuId(''));
+      },
+      [props.dataverseService]
+    );
+
+    // Dashboards oficiais (publicados) e os pessoais do usuário. Os
+    // pessoais de outras pessoas nunca aparecem.
+    const { oficiais, meus: meusDashboards } =
+      separarDashboards(dashboards, meuId);
+
     const abasVisiveis =
-      dashboards.filter(
+      oficiais.filter(
         d =>
           d.ativo &&
           podeVerDashboard(
@@ -188,7 +217,32 @@ const IndicadoresPage:
             veTodasAsAreas ? 'Administrador' : props.perfil,
             areasDoUsuario
           )
+      ).concat(meusDashboards);
+
+    // ✦ Criar com IA: qualquer usuário com acesso aos Indicadores (o
+    // Dataverse exige Criar em dgt_dashboard; a IA só recebe as fontes
+    // liberadas para ele).
+    const podeCriarComIa = !!dashboardService && !!props.dataverseService;
+
+    const acessoCriacao: IAcessoCriacao =
+      React.useMemo(
+        () => ({
+          perfil: props.perfil,
+          modulosPermitidos: props.contexto ? props.contexto.modulosPermitidos : undefined,
+          veTodasAsAreas
+        }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [props.perfil, veTodasAsAreas, JSON.stringify(props.contexto ? props.contexto.modulosPermitidos || [] : [])]
       );
+
+    const [criandoComIa, setCriandoComIa] =
+      React.useState<'novo' | 'ajustar' | ''>('');
+
+    const [publicoPublicar, setPublicoPublicar] =
+      React.useState<'Todos' | 'Gestor' | 'Administrador'>('Todos');
+
+    const [acaoPessoal, setAcaoPessoal] =
+      React.useState('');
 
     const dashboardAtivo =
       abasVisiveis.find(
@@ -199,6 +253,31 @@ const IndicadoresPage:
       abasVisiveis.length > 0
         ? abasVisiveis[0].id
         : '';
+
+    // Definição do dashboard do portal, convertida UMA vez por texto salvo
+    // (antes era refeita a cada renderização: recarregava os dados e
+    // apagaria os ajustes feitos no ✎ do painel).
+    const textoDefinicao =
+      dashboardAtivo && dashboardAtivo.tipo === 'Portal' ? dashboardAtivo.definicao : '';
+
+    const validacaoAtiva =
+      React.useMemo(
+        () => (textoDefinicao ? validarDashboard(textoDefinicao, CATALOGO_DASHBOARD) : undefined),
+        [textoDefinicao]
+      );
+
+    // Quem gerencia dashboards grava os ajustes feitos no painel.
+    const salvarDefinicao =
+      React.useCallback(
+        async (definicao: IDefinicaoDashboard): Promise<void> => {
+          if (!dashboardService || !dashboardAtivo) {
+            return;
+          }
+          await dashboardService.salvar({ ...dashboardAtivo, definicao: JSON.stringify(definicao, null, 2) });
+          await carregarDashboards();
+        },
+        [dashboardService, dashboardAtivo, carregarDashboards]
+      );
 
     // Sem aba válida (início, removida ou sem permissão): abre a 1ª.
     React.useEffect(
@@ -231,7 +310,7 @@ const IndicadoresPage:
 
         {/* ===================== ABAS ===================== */}
 
-        {(abasVisiveis.length > 0 || podeGerenciar) && (
+        {(abasVisiveis.length > 0 || podeGerenciar || podeCriarComIa) && (
           <div
             style={{
               display: 'flex',
@@ -257,11 +336,34 @@ const IndicadoresPage:
                   aria-selected={abaAtiva === d.id}
                   onClick={() => setAbaAtiva(d.id)}
                   style={estiloAba(abaAtiva === d.id)}
+                  title={d.pessoal ? 'Meu dashboard (só você vê)' : undefined}
                 >
-                  {d.nome}
+                  {d.pessoal ? `☆ ${d.nome}` : d.nome}
                 </button>
               ))}
             </div>
+
+            {podeCriarComIa && (
+              <button
+                type="button"
+                onClick={() => setCriandoComIa('novo')}
+                style={{
+                  padding: '7px 12px',
+                  border: 0,
+                  borderRadius: '8px',
+                  background: '#0B1E2D',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  marginBottom: '6px',
+                  marginRight: '6px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                ✦ Criar com IA
+              </button>
+            )}
 
             {podeGerenciar && dashboardService && (
               <button
@@ -301,10 +403,63 @@ const IndicadoresPage:
           </div>
         )}
 
+        {/* ===================== MEU DASHBOARD (pessoal) ===================== */}
+
+        {dashboardAtivo && dashboardAtivo.pessoal && dashboardService && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px', padding: '10px 12px', borderRadius: '10px', background: '#EAF8FC', fontSize: '12.5px', color: '#0B1E2D' }}>
+            <span style={{ flex: 1, minWidth: '200px' }}>☆ <strong>Meu dashboard</strong> — só você vê.</span>
+            <button type="button" disabled={!!acaoPessoal} onClick={() => setCriandoComIa('ajustar')} style={{ padding: '6px 12px', borderRadius: '7px', border: 0, background: '#0B1E2D', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              ✦ Ajustar com IA
+            </button>
+            {podeGerenciar && (
+              <>
+                <select value={publicoPublicar} onChange={e => setPublicoPublicar(e.target.value as 'Todos' | 'Gestor' | 'Administrador')} style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid #cbd5e1', fontSize: '12px' }} aria-label="Publicar para">
+                  <option value="Todos">Publicar para todos</option>
+                  <option value="Gestor">Publicar para gestores e admins</option>
+                  <option value="Administrador">Publicar só para administradores</option>
+                </select>
+                <button
+                  type="button"
+                  disabled={!!acaoPessoal}
+                  onClick={() => {
+                    setAcaoPessoal('publicar');
+                    dashboardService.salvar({ ...dashboardAtivo, pessoal: false, publico: publicoPublicar })
+                      .then(() => carregarDashboards())
+                      .catch((e: unknown) => window.alert(e instanceof Error ? e.message : String(e)))
+                      .then(() => setAcaoPessoal(''))
+                      .catch(() => undefined);
+                  }}
+                  style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '12px', cursor: 'pointer' }}
+                >
+                  {acaoPessoal === 'publicar' ? 'Publicando...' : 'Publicar'}
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              disabled={!!acaoPessoal}
+              onClick={() => {
+                if (!window.confirm(`Excluir o dashboard “${dashboardAtivo.nome}”?`)) {
+                  return;
+                }
+                setAcaoPessoal('excluir');
+                dashboardService.excluir(dashboardAtivo.id)
+                  .then(() => carregarDashboards())
+                  .catch((e: unknown) => window.alert(e instanceof Error ? e.message : String(e)))
+                  .then(() => setAcaoPessoal(''))
+                  .catch(() => undefined);
+              }}
+              style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid #f3c1c4', background: '#fff', color: '#a4262c', fontSize: '12px', cursor: 'pointer' }}
+            >
+              {acaoPessoal === 'excluir' ? 'Excluindo...' : 'Excluir'}
+            </button>
+          </div>
+        )}
+
         {/* ===================== DASHBOARD SELECIONADO ===================== */}
 
-        {dashboardAtivo && dashboardAtivo.tipo === 'Portal' && props.dataverseService && (() => {
-          const validacao = validarDashboard(dashboardAtivo.definicao, CATALOGO_DASHBOARD);
+        {dashboardAtivo && dashboardAtivo.tipo === 'Portal' && props.dataverseService && validacaoAtiva && (() => {
+          const validacao = validacaoAtiva;
           return validacao.definicao
             ? (
               <DashboardPortalView
@@ -314,6 +469,7 @@ const IndicadoresPage:
                 dataverseService={props.dataverseService}
                 areasPermitidas={veTodasAsAreas ? undefined : areasDoUsuario}
                 areas={areas}
+                onSalvarDefinicao={dashboardService && (podeGerenciar || (!!dashboardAtivo.pessoal && dashboardAtivo.donoId === meuId)) ? salvarDefinicao : undefined}
               />
             )
             : (
@@ -427,10 +583,28 @@ const IndicadoresPage:
         {gerenciando && dashboardService && (
           <GerenciarDashboardsModal
             service={dashboardService}
-            dashboards={dashboards}
+            dashboards={oficiais}
             onFechar={() => setGerenciando(false)}
             onAlterado={carregarDashboards}
             areas={areas}
+          />
+        )}
+
+        {criandoComIa && dashboardService && props.dataverseService && (
+          <CriarDashboardIaModal
+            dataverseService={props.dataverseService}
+            dashboardService={dashboardService}
+            acesso={acessoCriacao}
+            areas={areas}
+            areasPermitidas={veTodasAsAreas ? undefined : areasDoUsuario}
+            existente={criandoComIa === 'ajustar' && dashboardAtivo && dashboardAtivo.pessoal ? dashboardAtivo : undefined}
+            onFechar={() => setCriandoComIa('')}
+            onSalvo={id => {
+              setCriandoComIa('');
+              carregarDashboards()
+                .then(() => setAbaAtiva(id.replace(/[{}]/g, '').toLowerCase()))
+                .catch(() => undefined);
+            }}
           />
         )}
       </section>

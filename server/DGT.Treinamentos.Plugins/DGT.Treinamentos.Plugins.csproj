@@ -21,5 +21,10 @@
     <Reference Include="System.Net.Http" />
   </ItemGroup>
 
+  <!-- GerarDashboardIaPlugin: instruções da IA (skill dashboard-dgt) embutidas na DLL -->
+  <ItemGroup>
+    <EmbeddedResource Include="Recursos\InstrucoesDashboardIa.md" LogicalName="DGT.Treinamentos.Plugins.InstrucoesDashboardIa.md" />
+  </ItemGroup>
+
 
 </Project>

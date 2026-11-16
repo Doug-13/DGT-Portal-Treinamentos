@@ -22,9 +22,10 @@
 // ITEM:
 //  cartao  { tipo, titulo, fonte, medida, agregacao, filtro?, formato?,
 //            comparar?: { medida, agregacao?, rotulo?, direcao? } }
-//  grafico { tipo, grafico: barras|barrasEmpilhadas|linhas|rosca,
+//  grafico { tipo, grafico: barras|barrasEmpilhadas|barrasHorizontais|linhas|rosca,
 //            titulo, fonte, dimensao, series: [{ medida, agregacao?, rotulo? }],
-//            serieDimensao?, filtro?, formato?, ordenar?, limite?, largura? }
+//            serieDimensao?, filtro?, formato?, ordenar?, limite?, largura?,
+//            rotulos?: auto|horizontal|inclinado|vertical, mostrarValores?, altura?: baixa|media|alta }
 //  tabela  { tipo, titulo, fonte, dimensoes: [campo], medidas: [{ medida,
 //            agregacao?, rotulo? }] | colunas: [campo], filtro?, formato?,
 //            ordenar?, limite?, largura? }
@@ -66,7 +67,15 @@ export interface IDescricaoFonte {
 
 export type Agregacao = 'soma' | 'media' | 'contagem' | 'contagemDistinta' | 'minimo' | 'maximo';
 export type FormatoValor = 'moeda' | 'numero' | 'percentual' | 'inteiro';
-export type TipoGrafico = 'barras' | 'barrasEmpilhadas' | 'linhas' | 'rosca';
+export type TipoGrafico = 'barras' | 'barrasEmpilhadas' | 'barrasHorizontais' | 'linhas' | 'rosca';
+
+// Rótulos do eixo das categorias: "auto" inclina ou verticaliza quando
+// os nomes não cabem lado a lado.
+export type RotulosGrafico = 'auto' | 'horizontal' | 'inclinado' | 'vertical';
+export type AlturaGrafico = 'baixa' | 'media' | 'alta';
+
+export const ROTULOS_GRAFICO: RotulosGrafico[] = ['auto', 'horizontal', 'inclinado', 'vertical'];
+export const ALTURAS_GRAFICO: AlturaGrafico[] = ['baixa', 'media', 'alta'];
 
 export type Filtro = { [campo: string]: string | number | boolean | Array<string | number | boolean> };
 
@@ -104,6 +113,10 @@ export interface IItemGrafico {
   ordenar?: string;
   limite?: number;
   largura?: 1 | 2;
+  rotulos?: RotulosGrafico;
+  // true/false força; sem o campo, o portal decide pela quantidade de barras.
+  mostrarValores?: boolean;
+  altura?: AlturaGrafico;
 }
 
 export interface IItemTabela {
@@ -174,7 +187,10 @@ export interface IDefinicaoDashboard {
   formato: string;
   titulo: string;
   descricao?: string;
-  filtros?: { ano?: boolean; area?: boolean };
+  // anoPadrao: ano em que o painel abre. "atual", "proximo" ou um ano
+  // (ex.: 2026). Sem ele: painéis só de orçamento abrem no ano seguinte a
+  // partir de julho (planejamento); os demais, no ano atual.
+  filtros?: { ano?: boolean; area?: boolean; anoPadrao?: 'atual' | 'proximo' | number };
   secoes: ISecaoDashboard[];
   assistente?: IAssistenteDashboard;
 }
@@ -186,7 +202,7 @@ export type Linha = { [campo: string]: string | number | boolean | undefined };
 
 const AGREGACOES: Agregacao[] = ['soma', 'media', 'contagem', 'contagemDistinta', 'minimo', 'maximo'];
 const FORMATOS: FormatoValor[] = ['moeda', 'numero', 'percentual', 'inteiro'];
-const GRAFICOS: TipoGrafico[] = ['barras', 'barrasEmpilhadas', 'linhas', 'rosca'];
+export const GRAFICOS: TipoGrafico[] = ['barras', 'barrasEmpilhadas', 'barrasHorizontais', 'linhas', 'rosca'];
 
 // Fontes usadas por uma definição (para carregar só o necessário).
 export const fontesUsadas = (definicao: IDefinicaoDashboard): string[] => {
@@ -198,6 +214,25 @@ export const fontesUsadas = (definicao: IDefinicaoDashboard): string[] => {
   }));
   return lista;
 };
+
+// Ano em que o painel abre (ver filtros.anoPadrao).
+export const anoInicialDoDashboard = (definicao: IDefinicaoDashboard, hoje: Date = new Date()): number => {
+  const atual = hoje.getFullYear();
+  const padrao = definicao.filtros ? definicao.filtros.anoPadrao : undefined;
+  if (typeof padrao === 'number') {
+    return padrao;
+  }
+  if (padrao === 'atual') {
+    return atual;
+  }
+  if (padrao === 'proximo') {
+    return atual + 1;
+  }
+  const fontes = fontesUsadas(definicao);
+  const soOrcamento = fontes.length > 0 && fontes.every(id => id.indexOf('orcamento.') === 0);
+  return soOrcamento && hoje.getMonth() >= 6 ? atual + 1 : atual;
+};
+
 
 // ------------------------------------------------------------
 // Validação (contra o catálogo de fontes)
@@ -276,6 +311,12 @@ export const validarDashboard = (
     });
   };
 
+  const anoPadrao = bruto.filtros ? bruto.filtros.anoPadrao : undefined;
+  if (anoPadrao !== undefined && anoPadrao !== 'atual' && anoPadrao !== 'proximo' &&
+    !(typeof anoPadrao === 'number' && Math.floor(anoPadrao) === anoPadrao && anoPadrao >= 2000 && anoPadrao <= 2100)) {
+    erros.push('filtros.anoPadrao deve ser "atual", "proximo" ou um ano (ex.: 2026).');
+  }
+
   bruto.secoes.forEach((secao, s) => {
     const ondeSecao = `secoes[${s}]`;
     if (secao && secao.pagina !== undefined) {
@@ -320,6 +361,15 @@ export const validarDashboard = (
           erros.push(`${onde}: "series" deve ter pelo menos uma medida.`);
         } else {
           item.series.forEach((serie, n) => validarMedida(`${onde}.series[${n}]`, fonte, serie));
+        }
+        if (item.rotulos !== undefined && ROTULOS_GRAFICO.indexOf(item.rotulos) < 0) {
+          erros.push(`${onde}: rotulos "${item.rotulos}" inválido. Use: ${ROTULOS_GRAFICO.join(', ')}.`);
+        }
+        if (item.altura !== undefined && ALTURAS_GRAFICO.indexOf(item.altura) < 0) {
+          erros.push(`${onde}: altura "${item.altura}" inválida. Use: ${ALTURAS_GRAFICO.join(', ')}.`);
+        }
+        if (item.mostrarValores !== undefined && typeof item.mostrarValores !== 'boolean') {
+          erros.push(`${onde}: "mostrarValores" deve ser true ou false.`);
         }
       } else if (item.tipo === 'tabela') {
         if (item.colunas && item.colunas.length > 0) {

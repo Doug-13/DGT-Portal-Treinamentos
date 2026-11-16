@@ -4264,6 +4264,7 @@ const PortalTreinamentos:
             className={
               styles.intranetMenu
             }
+            aria-label="Módulos da Intranet DGT"
           >
 
             {menuIntranet
@@ -4301,11 +4302,14 @@ const PortalTreinamentos:
                     title={
                       menuRecolhido
                         ? item.label
-                        : itemMenuAtivo(item)
-                          ? 'Módulo atual'
-                          : 'Módulo da Intranet DGT'
+                        : undefined
                     }
                     aria-label={item.label}
+                    aria-current={
+                      itemMenuAtivo(item)
+                        ? 'page'
+                        : undefined
+                    }
                     onClick={() => {
 
                       if (
@@ -4410,6 +4414,7 @@ const PortalTreinamentos:
             className={
               styles.sidebarWords
             }
+            aria-hidden="true"
           >
             <strong>
               CONHECIMENTO
@@ -4534,23 +4539,25 @@ const PortalTreinamentos:
             }
           >
 
-            <label
-              className={
-                styles.globalSearch
-              }
-            >
+            {
+              FEATURE_FLAGS.CABECALHO_BUSCA_GLOBAL
+                ? (
+                  <label
+                    className={
+                      styles.globalSearch
+                    }
+                  >
+                    <Icones.search />
 
-              <span>
-                ⌕
-              </span>
-
-              <input
-                type="text"
-                placeholder="Pesquisar pessoas, documentos, treinamentos, processos..."
-                aria-label="Pesquisar na Intranet DGT"
-              />
-
-            </label>
+                    <input
+                      type="search"
+                      placeholder="Pesquisar pessoas, documentos, treinamentos, processos..."
+                      aria-label="Pesquisar na Intranet DGT"
+                    />
+                  </label>
+                )
+                : <span className={styles.headerEspaco} />
+            }
 
             <div
               className={
@@ -4565,7 +4572,7 @@ const PortalTreinamentos:
                 title={telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
                 onClick={() => setTelaCheia(atual => !atual)}
               >
-                <span aria-hidden="true">{telaCheia ? '⊟' : '⛶'}</span>
+                {telaCheia ? <Icones.shrink /> : <Icones.expand />}
               </button>
 
               {/* Versão do portal + Novidades */}
@@ -4573,8 +4580,13 @@ const PortalTreinamentos:
 
               <span
                 className={
-                  styles.connection
+                  carregandoDataverse
+                    ? `${styles.connection} ${styles.connectionPendente}`
+                    : conectadoDataverse
+                      ? styles.connection
+                      : `${styles.connection} ${styles.connectionErro}`
                 }
+                role="status"
                 title={
                   erroDataverse || autorizacao.erro
                     ? `${diagnosticarErro(erroDataverse || autorizacao.erro).titulo} — abra qualquer página para ver o diagnóstico completo.`
@@ -4586,31 +4598,40 @@ const PortalTreinamentos:
                   carregandoDataverse
                     ? 'Conectando...'
                     : conectadoDataverse
-                      ? '● Dataverse conectado'
-                      : '○ Dataverse indisponível'
+                      ? 'Dataverse conectado'
+                      : 'Dataverse indisponível'
                 }
 
               </span>
 
-              <button
-                type="button"
-                className={
-                  styles.headerIcon
-                }
-                title="Notificações"
-              >
-                ♢
-              </button>
+              {
+                FEATURE_FLAGS.CABECALHO_ATALHOS_SEM_ACAO &&
+                (
+                  <>
+                    <button
+                      type="button"
+                      className={
+                        styles.headerIcon
+                      }
+                      title="Notificações"
+                      aria-label="Notificações"
+                    >
+                      <Icones.bell />
+                    </button>
 
-              <button
-                type="button"
-                className={
-                  styles.headerIcon
-                }
-                title="Aplicativos"
-              >
-                ▦
-              </button>
+                    <button
+                      type="button"
+                      className={
+                        styles.headerIcon
+                      }
+                      title="Aplicativos"
+                      aria-label="Aplicativos"
+                    >
+                      <Icones.grid />
+                    </button>
+                  </>
+                )
+              }
 
               <div
                 ref={menuUsuarioRef}
@@ -4698,8 +4719,9 @@ const PortalTreinamentos:
                     className={
                       styles.chevron
                     }
+                    aria-hidden="true"
                   >
-                    ⌄
+                    <Icones.chevronDown />
                   </span>
 
                 </div>
@@ -4764,6 +4786,7 @@ const PortalTreinamentos:
           {/* CONTEÚDO */}
 
           <main
+            id="dgt-conteudo"
             className={
               styles.page
             }

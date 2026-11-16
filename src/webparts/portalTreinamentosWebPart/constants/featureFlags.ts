@@ -23,6 +23,8 @@ export type ModoPersistenciaFluxo =
 export const FEATURE_FLAGS: {
   FLUXO_CONFIGURAVEL_TESTE: boolean;
   FLUXO_PERSISTENCIA: ModoPersistenciaFluxo;
+  CABECALHO_BUSCA_GLOBAL: boolean;
+  CABECALHO_ATALHOS_SEM_ACAO: boolean;
 } = {
 
   // Liga o módulo Processos, o editor de fluxo e a aba "Fluxo" do
@@ -30,7 +32,17 @@ export const FEATURE_FLAGS: {
   // (O nome foi mantido por compatibilidade.)
   FLUXO_CONFIGURAVEL_TESTE: true,
 
-  FLUXO_PERSISTENCIA: 'dataverse'
+  FLUXO_PERSISTENCIA: 'dataverse',
+
+  // Campo "Pesquisar..." do cabeçalho. Ainda não pesquisa nada (não tem
+  // ação ligada); fica oculto para não prometer uma busca que não existe.
+  // Ligue (true) quando a busca global for implementada.
+  CABECALHO_BUSCA_GLOBAL: false,
+
+  // Botões "Notificações" e "Aplicativos" do cabeçalho. Ainda não têm
+  // ação (os avisos já aparecem no canto da tela e em "Aguardando você").
+  // Ligue (true) quando ganharem comportamento.
+  CABECALHO_ATALHOS_SEM_ACAO: false
 };
 
 export const fluxoNoDataverse = (): boolean =>
