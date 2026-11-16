@@ -174,9 +174,15 @@ Dataverse passa.
 ## 5. Documentos (SharePoint)
 
 `CONFIG_DOCUMENTOS_FORNECEDORES` em `services/fornecedores/FornecedoresService.ts`:
-site vazio = site do portal; biblioteca `Documentos de Fornecedores`. Ajustar
-`siteUrl` para o site de Compras quando o acesso sair. Enquanto o upload falhar
-por permissão, a tela aceita o **link** do arquivo.
+site **Suprimentos**, pasta `Documentos > General > 03. CONTRATOS > Contratos >
+Contratos Fornecedores` (caminho server-relative em `pasta`). A pasta precisa
+existir: o portal não cria biblioteca nem pasta fora dela, só a subpasta de cada
+fornecedor dentro dela.
+
+O envio usa a **permissão de quem anexa**: Suprimentos/compradores precisam de
+**Editar** nessa pasta; quem só consulta, de **Ler**. Sem permissão, a tela
+avisa e aceita o **link** do arquivo. As certidões automáticas (Infosimples) não
+passam pelo SharePoint: guardam o link do comprovante.
 
 Pasta por fornecedor: `Razão social (8 primeiros caracteres do id)` — sem CNPJ
 no nome da pasta.

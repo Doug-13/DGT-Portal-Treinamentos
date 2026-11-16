@@ -75,11 +75,14 @@ import {
 //   • Toda alteração gera uma linha em dgt_fornecedorhistorico.
 // ============================================================
 
-// Onde os documentos INTERNOS ficam. Site vazio = site do portal.
-// AJUSTAR quando o acesso ao site de Compras for liberado.
+// Onde os documentos anexados ficam: site de Suprimentos, pasta
+// "Contratos Fornecedores" (já existente; o portal só cria, dentro dela,
+// a subpasta de cada fornecedor). Quem anexa precisa de Editar nessa
+// pasta — o envio usa a permissão da própria pessoa.
 export const CONFIG_DOCUMENTOS_FORNECEDORES = {
-  siteUrl: '',
-  biblioteca: 'Documentos de Fornecedores'
+  siteUrl: 'https://dgtnh.sharepoint.com/sites/Suprimentos',
+  biblioteca: 'Documentos (Suprimentos)',
+  pasta: '/sites/Suprimentos/Shared Documents/General/03. CONTRATOS/Contratos/Contratos Fornecedores'
 };
 
 const guid = (valor: unknown): string =>
@@ -268,7 +271,8 @@ export class FornecedoresService {
     this.dataverse = dataverse;
     const site = CONFIG_DOCUMENTOS_FORNECEDORES.siteUrl || siteUrlPortal || '';
     this.envio = spHttpClient && site
-      ? new SharePointDocumentoService(spHttpClient, site, CONFIG_DOCUMENTOS_FORNECEDORES.biblioteca)
+      ? new SharePointDocumentoService(
+        spHttpClient, site, CONFIG_DOCUMENTOS_FORNECEDORES.biblioteca, CONFIG_DOCUMENTOS_FORNECEDORES.pasta)
       : undefined;
   }
 
@@ -720,7 +724,8 @@ export class FornecedoresService {
         const m = erro instanceof Error ? erro.message : String(erro);
         throw new Error(
           /\b(401|403|404)\b/.test(m)
-            ? `Não foi possível gravar na biblioteca "${CONFIG_DOCUMENTOS_FORNECEDORES.biblioteca}" (sem acesso ou biblioteca inexistente). Use o campo de link enquanto o acesso não é liberado.`
+            ? 'Não foi possível gravar na pasta "Contratos Fornecedores" do site de Suprimentos ' +
+              '(sem permissão de edição ou pasta inexistente). Peça acesso a Suprimentos ou informe o link do arquivo.'
             : m);
       }
     }
