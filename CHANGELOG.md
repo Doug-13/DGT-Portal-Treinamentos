@@ -18,10 +18,17 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Melhoria: catálogo de Kits atualizado para utilizar informações de valores e preços integradas.
 - Melhoria: identidade visual do portal centralizada com novos tokens de design para padronização das telas.
 - Melhoria: documentação técnica de IA e dashboards ampliada com orientações de configuração e uso.
-- Novo: fontes de dashboard "Documentos — histórico de revisões do ano", "distribuição por setor" e "distribuição por processo".
-- Melhoria: fontes de documentos com datas e meses (cadastro, prazo, revisão, aprovação, vigência), processo, estágio, etapa e situação do fluxo, faixas de prazo e de tempo em aberto.
-- Novo: filtros globais opcionais nos dashboards: período (De / Até) e situação do prazo.
-- Correção: a criação com IA deixa de responder que documentos e revisões não têm data ou filtro de período.
+- Novo: filtros de período (de mês / até mês) e por campo (até 4 listas, ex.: status, tipo, responsável) nos dashboards; valem também para a IA do painel.
+- Melhoria: fontes de documentos com processo, datas e meses de cadastro e abertura, etapa e situação do fluxo, motivo e retreinamento; nova fonte "Documentos — histórico de revisões do ano" (aprovação, vigência e dias até aprovar).
+- Novo: Fornecedores — certidões automáticas pela Infosimples (CND Federal, FGTS, CNDT; estadual e municipal por rota configurável): certidão regular entra sozinha em Documentos, irregular vai para Consultas e histórico; lote diário renova as que vencem. Token na Configuração segura do passo do plugin.
+- Novo: Fornecedores — Ficha de Cadastro SUP-CPL-01 recebida pelo Microsoft Forms (ação receberFicha), com protocolo FORN-AAAA-NNNN e lista de documentos a enviar por e-mail; abas Ficha (itens 1 a 8, questionário com respostas de atenção destacadas) e Homologação (item 9: checklist com sugestões do sistema, risco, resultado, validade do cadastro). Status Reprovado.
+- Novo: Fornecedores — quadro societário e dados bancários em colunas com segurança de campo (perfis próprios), exibidos mascarados e sem valores no histórico.
+- Melhoria: Fornecedores — anexos gravados no site de Suprimentos (Contratos Fornecedores), numa subpasta por fornecedor, com a permissão de quem anexa; o portal não cria bibliotecas fora do próprio site.
+- Correção: script criar-tabelas-fornecedores.ps1 começava com o BOM escrito como texto e não executava.
+
+- Novo: Implantações — acessos controlados dentro do painel (Gestão de usuários, Setores, Perfis e permissões) e Histórico de atividades; no portal, só o Administrador do módulo.
+- Novo: Implantações — e-mails com horário por dia da semana e vários dias no mês; tecla F para tela cheia.
+- Melhoria: o assistente IA do Implantações registra o consumo na área de Implantações (Administrar IA).
 
 ## [1.4.26] - 2026-11-13
 
