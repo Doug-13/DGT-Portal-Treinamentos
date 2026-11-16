@@ -6,6 +6,19 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: criação de dashboards com apoio de IA, permitindo gerar estruturas iniciais a partir das fontes disponíveis no portal.
+- Novo: editor visual de dashboards para ajustar componentes, indicadores e organização das informações.
+- Novo: plugin no servidor para geração de dashboards com IA.
+- Novo: documentação e scripts de configuração da criação de dashboards por IA no Dataverse.
+- Novo: exemplo de dashboard para Treinamentos, disponível como modelo de referência.
+- Novo: integração de valores e preços do CIGAM com a estrutura de Kits/B.O.M.
+- Novo: scripts para criação das colunas de valores do CIGAM e diagnóstico das tabelas e colunas do Dataverse.
+- Melhoria: módulo Indicadores ampliado com novas fontes de dados, modelos de dashboard e recursos de edição.
+- Melhoria: gráficos e visualização dos dashboards atualizados para suportar os novos modelos e fontes de informação.
+- Melhoria: catálogo de Kits atualizado para utilizar informações de valores e preços integradas.
+- Melhoria: identidade visual do portal centralizada com novos tokens de design para padronização das telas.
+- Melhoria: documentação técnica de IA e dashboards ampliada com orientações de configuração e uso.
+
 ## [1.4.26] - 2026-11-13
 
 - Melhoria: ajustes e correções internas.
