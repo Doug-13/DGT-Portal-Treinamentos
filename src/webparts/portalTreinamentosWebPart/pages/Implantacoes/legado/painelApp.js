@@ -9882,7 +9882,7 @@ export function iniciarPainelLegado(window, document, fetch) {
     el.innerHTML = `<div class="stop"><button class="ico stg" data-sidetg title="${sideAberta ? "Recolher a barra" : "Abrir a barra de projetos"}" aria-label="${sideAberta ? "Recolher a barra" : "Abrir a barra de projetos"}" aria-expanded="${sideAberta}">${SIC.menu}</button><span class="stit">Navegação</span><button class="ico sfix ${sideFixa ? "on" : ""}" data-sidefix title="${sideFixa ? "Desafixar a barra (volta a recolher ao clicar fora)" : "Fixar a barra aberta ao lado do conteúdo"}" aria-label="${sideFixa ? "Desafixar a barra" : "Fixar a barra"}" aria-pressed="${sideFixa}">${SIC.pino}</button></div><button class="pitem cartb ${view === "carteira" ? "on" : ""}" data-cart title="Painel da carteira"><span class="sico">${SIC.cart}</span><span class="stx"><span class="pn">Painel da carteira</span><span class="pc">${carregando ? "carregando…" : `${L.length} projeto${L.length === 1 ? "" : "s"}`}</span></span></button>${PODE("projetos") || PODE("campo") ? (() => {
       const n = nAtrasadasMinhas();
       return `<button class="pitem cartb ${view === "minhas" ? "on" : ""}" data-minhas title="Minhas atividades${n ? ` · ${n} atrasada${n > 1 ? "s" : ""}` : ""}"><span class="sico">${SIC.minhas}${n ? `<i class="mvbadge">${n > 99 ? "99+" : n}</i>` : ""}</span><span class="stx"><span class="pn">Minhas atividades</span><span class="pc">${n ? `<b class="bad">${n} atrasada${n > 1 ? "s" : ""}</b>` : "Avisos e pendências"}</span></span></button>`;
-    })() : ""}${PODE("pmo") || PODE("campo") ? `<button class="pitem cartb ${view === "pmo" ? "on" : ""}" data-pmo title="Gestão de equipes"><span class="sico">${SIC.pmo}</span><span class="stx"><span class="pn">Gestão de equipes</span><span class="pc">Supervisão, calendário e campo</span></span></button>` : ""}${temConfig() ? `<button class="pitem cartb ${view === "config" ? "on" : ""}" data-cfg title="Configurações"><span class="sico">${SIC.cfg}</span><span class="stx"><span class="pn">Configurações</span><span class="pc">E-mails e relatórios</span></span></button>` : ""}<button class="pitem cartb sprj ${atual ? "on" : ""}" data-sidetg title="${esc(atual ? "Projeto: " + (atual.nome || "") : "Projetos")}"><span class="sico">${SIC.pasta}</span><b class="sbadge">${atual ? esc((String(atual.nome || "").match(/\d{3,}/) || ["•"])[0]) : carregando ? "…" : L.length}</b></button><button class="pitem cartb sprj" data-sideenc title="Projetos encerrados (${E.length})"><span class="sico enc">${SIC.arquivo}</span><b class="sbadge">${carregando ? "…" : E.length}</b></button><div class="side-h"><span class="shl"><span class="sico">${SIC.pasta}</span>Projetos</span><label class="sbw">${SIC.lupa}<input class="sbusca" type="search" value="${esc(sideBusca)}" placeholder="Pesquisar projeto" aria-label="Pesquisar projeto"></label></div><div class="sscroll"><p class="svazio mut" hidden>Nenhum projeto encontrado.</p><nav class="plist ativos">${L.map(item).join("")}</nav>${
+    })() : ""}${PODE("pmo") || PODE("campo") ? `<button class="pitem cartb ${view === "pmo" ? "on" : ""}" data-pmo title="Gestão de equipes"><span class="sico">${SIC.pmo}</span><span class="stx"><span class="pn">Gestão de equipes</span><span class="pc">Supervisão, calendário e campo</span></span></button>` : ""}${temConfig() ? `<button class="pitem cartb ${view === "config" ? "on" : ""}" data-cfg title="Configurações"><span class="sico">${SIC.cfg}</span><span class="stx"><span class="pn">Configurações</span><span class="pc">Usuários, setores e permissões</span></span></button>` : ""}<button class="pitem cartb sprj ${atual ? "on" : ""}" data-sidetg title="${esc(atual ? "Projeto: " + (atual.nome || "") : "Projetos")}"><span class="sico">${SIC.pasta}</span><b class="sbadge">${atual ? esc((String(atual.nome || "").match(/\d{3,}/) || ["•"])[0]) : carregando ? "…" : L.length}</b></button><button class="pitem cartb sprj" data-sideenc title="Projetos encerrados (${E.length})"><span class="sico enc">${SIC.arquivo}</span><b class="sbadge">${carregando ? "…" : E.length}</b></button><div class="side-h"><span class="shl"><span class="sico">${SIC.pasta}</span>Projetos</span><label class="sbw">${SIC.lupa}<input class="sbusca" type="search" value="${esc(sideBusca)}" placeholder="Pesquisar projeto" aria-label="Pesquisar projeto"></label></div><div class="sscroll"><p class="svazio mut" hidden>Nenhum projeto encontrado.</p><nav class="plist ativos">${L.map(item).join("")}</nav>${
       // pasta dos projetos encerrados: sempre no fim da lista (vazia, explica como encerrar)
       `<details class="encf" ${abertaEnc ? "open" : ""}><summary class="side-h"><span class="shl"><span class="sico enc">${SIC.arquivo}</span>Projetos encerrados</span><span class="encn">${E.length}</span></summary>${E.length ? `<label class="sbw encbw">${SIC.lupa}<input class="sbusca sbuscaEnc" type="search" value="${esc(sideBuscaEnc)}" placeholder="Pesquisar encerrado" aria-label="Pesquisar projeto encerrado"></label><p class="svazio svazioEnc mut" hidden>Nenhum encerrado encontrado.</p><nav class="plist">${E.map(item).join("")}</nav>` : `<p class="encvz mut">Nenhum projeto encerrado. Para encerrar, use o lápis do projeto e marque “Projeto encerrado”.</p>`}</details>`
     }${db && PODE("projetos", "criar") ? `<button class="btn newp" data-newproj>+ Novo projeto</button>` : ""}</div>${(() => {
@@ -15005,8 +15005,9 @@ export function iniciarPainelLegado(window, document, fetch) {
     "dados.criar": "Registros criados",
     "dados.editar": "Registros alterados",
     "dados.excluir": "Registros excluídos",
-    "relatorio.enviar": "Relatório semanal enviado",
-    "relatorio.configurar": "Relatório semanal configurado",
+    "relatorio.enviar": "E-mail enviado (Enviar agora)",
+    "relatorio.teste": "E-mail de teste enviado",
+    "relatorio.configurar": "E-mails e relatórios configurados",
   };
   function cfgAbas() {
     return [
@@ -15068,7 +15069,7 @@ export function iniciarPainelLegado(window, document, fetch) {
       return;
     }
     if (!abas.some((a) => a[0] === CFGV.tab)) CFGV.tab = abas[0][0];
-    const top = `<header class="top cfgtop"><div class="title-block"><h1 class="cfgh1">Configurações</h1><p class="subtitle">E-mails automáticos do painel. Usuários, áreas e permissões são os do Portal DGT (Usuários e acessos).</p></div></header>
+    const top = `<header class="top cfgtop"><div class="title-block"><h1 class="cfgh1">Configurações</h1><p class="subtitle">Usuários, setores, perfis de permissão e histórico de atividades do painel.</p></div></header>
       <nav class="ctabs cfgtabs">${abas.map(([k, l]) => `<button class="${CFGV.tab === k ? "on" : ""}" data-cfgtab="${k}">${l}</button>`).join("")}</nav>`;
     if (CFGV.tab === "historico") {
       v.innerHTML = top + cfgHistHTML();
@@ -15133,11 +15134,11 @@ export function iniciarPainelLegado(window, document, fetch) {
     <section class="panel"><div class="cfgbar"><label class="sbw cfgbusca">${SIC.lupa}<input type="search" data-cfgq value="${esc(F.q)}" placeholder="Pesquisar por nome ou e-mail" aria-label="Pesquisar usuário"></label>
       <select data-cfguf="setor" aria-label="Filtrar por setor">${opt((D.setores || []).map((s) => [s.id, s.nome]), F.setor, "Todos os setores")}</select>
       <select data-cfguf="perfil" aria-label="Filtrar por perfil">${opt((D.perfis || []).map((p) => [p.id, p.nome]), F.perfil, "Todos os perfis")}</select>
-      <select data-cfguf="status" aria-label="Filtrar por status">${opt([["ativo", "Ativos"], ["inativo", "Inativos"], ["bloqueado", "Bloqueados por tentativas"]], F.status, "Todos os status")}</select>
+      <select data-cfguf="status" aria-label="Filtrar por status">${opt([["ativo", "Ativos"], ["inativo", "Inativos"]], F.status, "Todos os status")}</select>
       ${PODE("usuarios", "criar") ? `<button class="btn primary cfgnovo" data-cfgunovo>+ Cadastrar usuário</button>` : ""}</div>
     <div class="scroll"><table class="stack cfgt"><colgroup><col style="width:19%"><col style="width:21%"><col style="width:11%"><col style="width:11%"><col style="width:9%"><col></colgroup><thead><tr>${th("nome", "Usuário")}${th("email", "E-mail")}${th("setor", "Setor")}${th("perfil", "Perfil")}${th("status", "Status")}<th class="c-act">Ações</th></tr></thead><tbody>
     ${pagL.length ? pagL.map((u) => `<tr><td class="full"><span class="cfgu"><span class="cfgav" aria-hidden="true">${esc(iniciais(u.nome))}</span><span><b>${esc(u.nome)}</b>${u.id === eu ? ` <span class="cfgvoce">você</span>` : ""}</span></span></td><td data-l="E-mail">${esc(u.email)}</td><td data-l="Setor">${esc(u.setorNome || "–")}</td><td data-l="Perfil">${esc(u.perfilNome || "–")}${Object.keys(u.perms || {}).length ? ` <span class="cfgind" title="Tem permissões individuais além do perfil">+ ind.</span>` : ""}</td><td data-l="Status">${stUsuario(u)}</td>
-      <td class="c-act"><div class="cfgacts"><button class="btn ghost" data-cfguver="${u.id}">Ver</button>${PODE("usuarios", "editar") ? `<button class="btn ghost" data-cfguedit="${u.id}">Editar</button>` : ""}${adm && u.ativo ? `<button class="btn ghost" data-cfgulink="${u.id}" title="Gera um link temporário (24 h) para o colaborador criar uma nova senha">Redefinir senha</button>` : ""}${adm && u.id !== eu ? (u.ativo ? `<button class="btn ghost" data-cfgudes="${u.id}">${u.bloqueado ? "Desbloquear" : "Desativar"}</button>` : `<button class="btn ghost" data-cfguat="${u.id}">Ativar</button>`) : ""}${PODE("usuarios", "excluir") && u.id !== eu ? `<button class="btn ghost danger" data-cfgudel="${u.id}" ${u.ultimoLogin ? `title="Já acessou o painel: para manter o histórico, desative em vez de excluir"` : ""}>Excluir</button>` : ""}</div></td></tr>`).join("") : `<tr><td colspan="6" class="hint">Nenhum usuário encontrado com esses filtros.</td></tr>`}
+      <td class="c-act"><div class="cfgacts"><button class="btn ghost" data-cfguver="${u.id}">Ver</button>${PODE("usuarios", "editar") ? `<button class="btn ghost" data-cfguedit="${u.id}">Editar</button>` : ""}${adm && u.id !== eu ? (u.ativo ? `<button class="btn ghost" data-cfgudes="${u.id}">${u.bloqueado ? "Desbloquear" : "Desativar"}</button>` : `<button class="btn ghost" data-cfguat="${u.id}">Ativar</button>`) : ""}${PODE("usuarios", "excluir") && u.id !== eu ? `<button class="btn ghost danger" data-cfgudel="${u.id}" ${u.ultimoLogin ? `title="Já acessou o painel: para manter o histórico, desative em vez de excluir"` : ""}>Excluir</button>` : ""}</div></td></tr>`).join("") : `<tr><td colspan="6" class="hint">Nenhum usuário encontrado com esses filtros.</td></tr>`}
     </tbody></table></div>
     <div class="cfgpag"><span class="mut">${L.length} usuário${L.length === 1 ? "" : "s"}${L.length !== U.length ? ` de ${U.length}` : ""}</span>${np > 1 ? `<span><button class="btn ghost" data-cfgpag="-1" ${CFGV.pag <= 1 ? "disabled" : ""} aria-label="Página anterior">‹</button> Página ${CFGV.pag} de ${np} <button class="btn ghost" data-cfgpag="1" ${CFGV.pag >= np ? "disabled" : ""} aria-label="Próxima página">›</button></span>` : ""}</div></section>`;
   }
@@ -15182,8 +15183,8 @@ export function iniciarPainelLegado(window, document, fetch) {
     const { d, f } = cfgDlg(
       `<h3>${u ? "Editar usuário" : "Cadastrar usuário"}</h3><div class="fgrid">
       <label class="fwide">Nome completo<input name="nome" required maxlength="120" value="${esc(u ? u.nome : "")}" autocomplete="off"></label>
-      <label class="fwide">E-mail corporativo<input name="email" type="email" required maxlength="254" value="${esc(u ? u.email : "")}" autocomplete="off" placeholder="nome@dgt.com.br"></label>
-      ${u ? "" : `<label class="fwide">Senha inicial<span class="lgsenha"><input name="senha" type="password" required maxlength="200" autocomplete="new-password"><button type="button" class="ico lgolho" data-olho aria-label="Mostrar a senha" aria-pressed="false">${OLHO_CFG}</button></span><span class="fdica">Mínimo de 8 caracteres, com letras e números. O colaborador troca no primeiro acesso.</span></label>`}
+      <label class="fwide">E-mail corporativo<input name="email" type="email" required maxlength="254" value="${esc(u ? u.email : "")}" autocomplete="off" placeholder="nome@dgt.com.br" list="cfgPortalUs"><span class="fdica">O mesmo do login do Microsoft 365: é por ele que a pessoa é reconhecida ao abrir o portal.</span></label><datalist id="cfgPortalUs">${(D.portalUsuarios || []).map((p) => `<option value="${esc(p.email)}">${esc(p.nome)}</option>`).join("")}</datalist>
+      ${true ? "" : `<label class="fwide">Senha inicial<span class="lgsenha"><input name="senha" type="password" required maxlength="200" autocomplete="new-password"><button type="button" class="ico lgolho" data-olho aria-label="Mostrar a senha" aria-pressed="false">${OLHO_CFG}</button></span><span class="fdica">Mínimo de 8 caracteres, com letras e números. O colaborador troca no primeiro acesso.</span></label>`}
       <label>Setor<select name="setor" required><option value="">Escolha…</option>${D.setores.filter((s) => s.ativo || (u && u.setor === s.id)).map((s) => `<option value="${s.id}" ${u && u.setor === s.id ? "selected" : ""}>${esc(s.nome)}${s.ativo ? "" : " (inativo)"}</option>`).join("")}</select></label>
       <label>Perfil de permissão<select name="perfil" required>${perfisL.map((p) => `<option value="${p.id}" ${perfilSel === p.id ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select></label>
       ${u ? "" : `<label>Status<select name="ativo"><option value="1">Ativo</option><option value="0">Inativo</option></select></label>`}
@@ -15216,23 +15217,25 @@ export function iniciarPainelLegado(window, document, fetch) {
     f.onsubmit = async (e) => {
       e.preventDefault();
       const corpo = { acao: u ? "editar" : "criar", id: u ? u.id : "", nome: f.nome.value, email: f.email.value, setor: f.setor.value, perfil: f.perfil.value };
-      if (!u) {
-        corpo.senha = f.senha.value;
-        corpo.ativo = f.ativo.value === "1";
-      }
+      if (!u) corpo.ativo = f.ativo.value === "1";
       if (adm) corpo.perms = lerMatriz(f, true);
       const b = f.querySelector('[type="submit"]');
       b.disabled = true;
       try {
         await cfgApi("api/admin/usuario", corpo);
         d.close();
-        toast(u ? "Usuário atualizado." : "Usuário cadastrado. No primeiro acesso, ele troca a senha inicial.");
+        toast(u ? "Usuário atualizado. Vale quando a pessoa abrir o painel de novo." : "Usuário cadastrado. Ele já pode abrir Implantações no portal.");
         cfgCarregar(true);
       } catch (err) {
         erro(err.message);
       }
       b.disabled = false;
     };
+    // e-mail escolhido da lista do portal: preenche o nome
+    f.email.addEventListener("change", () => {
+      const p = (D.portalUsuarios || []).find((x) => x.email.toLowerCase() === f.email.value.trim().toLowerCase());
+      if (p && !f.nome.value.trim()) f.nome.value = p.nome;
+    });
     f.nome.focus();
   }
   function cfgUsuarioVer(id) {
@@ -15257,7 +15260,7 @@ export function iniciarPainelLegado(window, document, fetch) {
     const u = CFGV.D.usuarios.find((x) => x.id === id);
     if (!u) return;
     const T = {
-      desativar: [u.bloqueado ? `Desbloquear ${u.nome}? As tentativas erradas são zeradas.` : `Desativar ${u.nome}? Ele perde o acesso na hora (as sessões abertas são encerradas). O cadastro e o histórico continuam.`, u.bloqueado ? "Desbloquear" : "Desativar"],
+      desativar: [u.bloqueado ? `Desbloquear ${u.nome}? As tentativas erradas são zeradas.` : `Desativar ${u.nome}? Ele perde o acesso ao painel (quem estiver com o painel aberto perde ao recarregar). O cadastro e o histórico continuam.`, u.bloqueado ? "Desbloquear" : "Desativar"],
       ativar: [`Ativar ${u.nome}? Ele volta a poder entrar no painel.`, "Ativar"],
       excluir: [`Excluir ${u.nome} definitivamente? Só é possível para quem nunca acessou o painel.`, "Excluir"],
     }[acao];
@@ -15449,12 +15452,16 @@ export function iniciarPainelLegado(window, document, fetch) {
         <p class="hint">${REL_DESC[tipo]}</p>
         <label class="relchk"><input type="checkbox" name="ativo" ${t.ativo ? "checked" : ""}> Enviar automaticamente</label>
         ${(() => {
-          const rc = Object.assign({ freq: "semanal", dias: [0], diaMes: 1, hora: "07:00" }, t.recorrencia || {});
+          // recorrência (portal): diária com 1 hora; semanal/quinzenal com hora por dia; mensal com vários dias, cada um com hora
+          const rc = Object.assign({ freq: "semanal", hora: "07:00", semana: [{ dia: 0, hora: "07:00" }], mes: [{ dia: 1, hora: "07:00" }] }, t.recorrencia || {});
+          const semH = {};
+          (rc.semana || []).forEach((h) => (semH[h.dia] = h.hora));
           const sem = rc.freq === "semanal" || rc.freq === "quinzenal";
+          const linhaMes = (h) => `<span class="relrecm"><label>Dia<input type="number" name="recmesd" min="1" max="31" value="${+h.dia || 1}"></label><label>Hora<input type="time" name="recmesh" value="${esc(h.hora || "07:00")}"></label><button type="button" class="ico rm" data-relmesrm aria-label="Remover este dia">×</button></span>`;
           return `<div class="relrec"><label>Recorrência<select name="freq">${[["diaria", "Diária (segunda a sexta)"], ["semanal", "Semanal"], ["quinzenal", "Quinzenal (a cada duas semanas)"], ["mensal", "Mensal"]].map(([v2, l]) => `<option value="${v2}" ${rc.freq === v2 ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-          <span class="relrecdias" ${sem ? "" : "hidden"}>${DIAS_S.map((d, j) => `<label class="chkl"><input type="checkbox" name="recdia" value="${j}" ${(rc.dias || []).includes(j) ? "checked" : ""}> ${d.slice(0, 3)}</label>`).join("")}</span>
-          <label class="relrecmes" ${rc.freq === "mensal" ? "" : "hidden"}>Dia do mês<input type="number" name="diaMes" min="1" max="31" value="${+rc.diaMes || 1}"></label>
-          <label>Hora<input type="time" name="hora" value="${esc(rc.hora || "07:00")}" required></label></div>`;
+          <label class="relrecdiaria" ${rc.freq === "diaria" ? "" : "hidden"}>Hora<input type="time" name="hora" value="${esc(rc.hora || "07:00")}"></label></div>
+          <div class="relrecsem" ${sem ? "" : "hidden"}><span class="relrecleg">Dias e horários</span>${DIAS_S.map((d, j) => `<label class="relrecd ${semH[j] ? "on" : ""}"><input type="checkbox" name="recdia" value="${j}" ${semH[j] ? "checked" : ""}><span>${d.slice(0, 3)}</span><input type="time" name="recdiah" data-dia="${j}" value="${esc(semH[j] || "07:00")}" ${semH[j] ? "" : "disabled"} aria-label="Hora de ${d}"></label>`).join("")}</div>
+          <div class="relrecmes" ${rc.freq === "mensal" ? "" : "hidden"}><span class="relrecleg">Dias do mês e horários</span><div class="relrecmesl">${(rc.mes && rc.mes.length ? rc.mes : [{ dia: 1, hora: "07:00" }]).map(linhaMes).join("")}</div><button type="button" class="btn ghost" data-relmesadd>+ Adicionar dia</button><span class="hint">Dia 29, 30 ou 31 em mês mais curto = último dia do mês.</span></div>`;
         })()}
         ${cron ? `<fieldset class="relger relcli"><legend>Clientes</legend><label class="relchk"><input type="checkbox" name="clientes" ${t.clientes !== false ? "checked" : ""}> Enviar a cada projeto aos contatos do cliente cadastrados (Stakeholders › Cliente, com e-mail preenchido)</label>
             <p class="hint">Cada contato recebe só o cronograma do próprio projeto, sem o link do painel. Para incluir ou corrigir um contato, edite os stakeholders do cliente no projeto.</p>${relCliHTML(t)}</fieldset>` : ""}
@@ -15464,10 +15471,10 @@ export function iniciarPainelLegado(window, document, fetch) {
           <label class="relchk"><input type="checkbox" name="alocados" ${t.alocados ? "checked" : ""}> Enviar também a cada usuário o cronograma dos projetos em que está alocado como stakeholder DGT</label>` : ""}
         ${cron ? `<h3 class="relsub">Equipe DGT que também recebe</h3>` : ""}
         <div class="relcols">
-          <fieldset class="relger"><legend>Por perfil no portal</legend>${R.perfis.map((p) => `<label class="relchk"><input type="checkbox" name="perfil" value="${esc(p.id)}" ${perfis.has(p.id) ? "checked" : ""}> ${esc(p.nome)} <span class="mut">(${contPerfil(p.id)})</span></label>`).join("")}</fieldset>
+          <fieldset class="relger"><legend>Por perfil de usuário</legend>${R.perfis.map((p) => `<label class="relchk"><input type="checkbox" name="perfil" value="${esc(p.id)}" ${perfis.has(p.id) ? "checked" : ""}> ${esc(p.nome)} <span class="mut">(${contPerfil(p.id)})</span></label>`).join("")}</fieldset>
           <fieldset class="relger"><legend>Por usuário</legend>${U.length ? marcaTodos("usuario") + U.map((u) => { const pp = perfis.has(u.perfil); return `<label class="relchk${pp ? " relpp" : ""}"><input type="checkbox" name="usuario" value="${esc(u.id)}" data-perfil="${esc(u.perfil || "")}" data-exp="${us.has(u.id) ? 1 : 0}" ${pp || us.has(u.id) ? "checked" : ""} ${pp ? "disabled" : ""}> ${esc(u.nome)} <span class="mut">${esc(u.email)}</span><span class="relpptx"> · pelo perfil</span></label>`; }).join("") : `<p class="hint">Nenhum usuário ativo com e-mail.</p>`}</fieldset>
         </div>
-        ${tipo === "pendencias" ? "" : `<label class="rellink">Outros e-mails (sem acesso ao portal), um por linha ou separados por vírgula<textarea name="extras" rows="2" placeholder="nome@dgt.com.br">${esc((t.extras || []).join("\n"))}</textarea></label>`}
+        ${tipo === "pendencias" ? "" : `<label class="rellink">Outros e-mails (fora do painel), um por linha ou separados por vírgula<textarea name="extras" rows="2" placeholder="nome@dgt.com.br">${esc((t.extras || []).join("\n"))}</textarea></label>`}
         <div class="relquem" data-relquem></div>
         <div class="actions relacts"><button type="button" class="btn" data-relprev="${tipo}">Prévia${tipo === "pendencias" ? ": minhas atividades" : cron ? ": equipe" : ""}</button>${cron ? `<button type="button" class="btn" data-relprev="${tipo}" data-cli="1">Prévia: e-mail do cliente</button>` : ""}<button type="button" class="btn" data-relteste="${tipo}">Enviar teste para mim</button><button type="button" class="btn primary" data-relagora="${tipo}">Enviar agora</button></div>
       </section>`;
@@ -15505,9 +15512,9 @@ export function iniciarPainelLegado(window, document, fetch) {
       ativo: sec.querySelector("[name=ativo]").checked,
       recorrencia: {
         freq: sec.querySelector("[name=freq]").value,
-        dias: q("input[name=recdia]:checked").map((x) => +x.value),
-        diaMes: Math.max(1, Math.min(31, Math.round(+sec.querySelector("[name=diaMes]").value || 1))),
         hora: sec.querySelector("[name=hora]").value || "07:00",
+        semana: q("input[name=recdia]:checked").map((x) => ({ dia: +x.value, hora: (sec.querySelector(`[name=recdiah][data-dia="${x.value}"]`) || {}).value || "07:00" })),
+        mes: q(".relrecm").map((r) => ({ dia: Math.max(1, Math.min(31, Math.round(+r.querySelector("[name=recmesd]").value || 1))), hora: r.querySelector("[name=recmesh]").value || "07:00" })),
       },
       perfis: q("input[name=perfil]:checked").map((x) => x.value),
       usuarios: q("input[name=usuario]").filter((x) => (x.disabled ? x.dataset.exp === "1" : x.checked)).map((x) => x.value),
@@ -15572,8 +15579,13 @@ export function iniciarPainelLegado(window, document, fetch) {
       });
     } else if (x.name === "usuario") x.dataset.exp = x.checked ? 1 : 0;
     else if (x.name === "freq") {
-      sec.querySelector(".relrecdias").hidden = !(x.value === "semanal" || x.value === "quinzenal");
+      sec.querySelector(".relrecdiaria").hidden = x.value !== "diaria";
+      sec.querySelector(".relrecsem").hidden = !(x.value === "semanal" || x.value === "quinzenal");
       sec.querySelector(".relrecmes").hidden = x.value !== "mensal";
+    } else if (x.name === "recdia") {
+      const h = sec.querySelector(`[name=recdiah][data-dia="${x.value}"]`);
+      if (h) h.disabled = !x.checked;
+      x.closest("label").classList.toggle("on", x.checked);
     }
     else if (x.name === "todosProj") sec.querySelectorAll("input[name=proj]").forEach((p) => ((p.disabled = x.checked), x.checked && (p.checked = true)));
     relQuem(sec);
@@ -15610,6 +15622,20 @@ export function iniciarPainelLegado(window, document, fetch) {
           if (fr) fr.srcdoc = h;
         })
         .catch(() => {});
+    } else if ((b = t.closest("[data-relmesadd]"))) {
+      // recorrência mensal: mais um dia do mês (copia a última linha)
+      const L = b.parentElement.querySelector(".relrecmesl");
+      const ult = L.querySelector(".relrecm:last-child");
+      if (ult) {
+        const n = ult.cloneNode(true);
+        n.querySelector("[name=recmesd]").value = Math.min(31, (+ult.querySelector("[name=recmesd]").value || 1) + 14);
+        L.appendChild(n);
+        n.querySelector("[name=recmesd]").focus();
+      }
+    } else if ((b = t.closest("[data-relmesrm]"))) {
+      const L = b.closest(".relrecmesl");
+      if (L.querySelectorAll(".relrecm").length > 1) b.closest(".relrecm").remove();
+      else toast("Deixe pelo menos um dia do mês (ou mude a recorrência).");
     } else if ((b = t.closest("[data-relagora]"))) {
       // envia já, a todos os destinatários SALVOS deste envio (a recorrência continua valendo)
       const NT2 = Object.fromEntries(CFGV.R.tiposNomes || []);
@@ -15648,7 +15674,8 @@ export function iniciarPainelLegado(window, document, fetch) {
     const v = relLerForm();
     const NT = Object.fromEntries(CFGV.R.tiposNomes || []);
     for (const [k, t] of Object.entries(v.tipos)) {
-      if (t.ativo && (t.recorrencia.freq === "semanal" || t.recorrencia.freq === "quinzenal") && !t.recorrencia.dias.length) return toast(`${NT[k]}: marque pelo menos um dia da semana.`);
+      if (t.ativo && (t.recorrencia.freq === "semanal" || t.recorrencia.freq === "quinzenal") && !t.recorrencia.semana.length) return toast(`${NT[k]}: marque pelo menos um dia da semana.`);
+      if (t.ativo && t.recorrencia.freq === "mensal" && !t.recorrencia.mes.length) return toast(`${NT[k]}: inclua pelo menos um dia do mês.`);
       if (k === "cronogramas" && t.projetos && !t.projetos.length && t.ativo) return toast("Cronogramas: escolha pelo menos um projeto.");
     }
     try {
@@ -15664,7 +15691,7 @@ export function iniciarPainelLegado(window, document, fetch) {
     const u = SESS().usuario;
     if (!u) return;
     const { f } = cfgDlg(`<h3><span class="cfgu"><span class="cfgav" aria-hidden="true">${esc(iniciais(u.nome))}</span>${esc(u.nome)}</span></h3><dl class="cfgdl"><dt>E-mail</dt><dd>${esc(u.email)}</dd><dt>Setor</dt><dd>${esc(u.setorNome || "–")}</dd><dt>Perfil</dt><dd>${esc(u.perfilNome || "–")}</dd></dl>
-      <p class="hint">Acesso, perfil e área vêm do Portal DGT (Usuários e acessos).</p><div class="actions"><button type="button" class="btn primary" data-cfgfechar>Fechar</button></div>`);
+      <p class="hint">O acesso é pelo login do Portal DGT: não há senha neste painel.</p><div class="actions"><button type="button" class="btn primary" data-cfgfechar>Fechar</button></div>`);
     f.querySelector("[data-cfgfechar]").focus();
   }
   async function sairPainel() {

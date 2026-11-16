@@ -65,3 +65,21 @@ export const IMPL_EMAIL = {
 };
 
 export const STATUS_EMAIL_PENDENTE = 'Pendente';
+
+// ------------------------------------------------------------
+// Histórico de atividades (um evento por linha; data = createdon)
+// ------------------------------------------------------------
+
+export const TABELA_IMPL_LOG = 'dgt_impllog';
+
+export const IMPL_LOG = {
+  id: 'dgt_impllogid',
+  acao: 'dgt_name',
+  usuarioId: 'dgt_usuarioid',
+  usuarioNome: 'dgt_usuarionome',
+  setor: 'dgt_setor',
+  categoria: 'dgt_categoria',
+  alvo: 'dgt_alvo',
+  detalhe: 'dgt_detalhe',
+  em: 'createdon'
+};

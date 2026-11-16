@@ -9364,30 +9364,66 @@ iframe.relframe {
   flex-wrap: wrap;
   gap: 8px 16px;
   align-items: flex-end;
-  margin: 8px 0 12px;
+  margin: 8px 0 6px;
 }
-.relrec label {
+.relrec label,
+.relrecm label {
   display: flex;
   flex-direction: column;
   gap: 3px;
   font-size: 12px;
   color: var(--muted, #5c6b7a);
 }
-.relrec .relrecdias {
+.relrecsem,
+.relrecmes {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  padding-bottom: 6px;
-}
-.relrec .relrecdias label {
-  flex-direction: row;
+  gap: 6px 8px;
   align-items: center;
-  gap: 5px;
+  margin: 0 0 12px;
+}
+.relrecsem[hidden],
+.relrecmes[hidden],
+.relrecdiaria[hidden] {
+  display: none;
+}
+.relrecleg {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--muted, #5c6b7a);
+}
+.relrecd {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   font-size: 13px;
   color: var(--ink);
 }
-.relrec input[type="number"] {
-  width: 80px;
+.relrecd.on {
+  border-color: var(--scrum);
+  background: var(--scrum-soft);
+}
+.relrecd input[type="time"]:disabled {
+  opacity: 0.45;
+}
+.relrecmesl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.relrecm {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.relrecm input[type="number"] {
+  width: 70px;
 }
 
 /* ==========================================================

@@ -6,6 +6,8 @@
                        (projeto > coleção > documento, em JSON)
     dgt_implemail      Fila de e-mails dos relatórios (enviados por um
                        fluxo do Power Automate)
+    dgt_impllog        Histórico de atividades do painel (acessos,
+                       alterações de dados, usuários, setores, perfis)
 
 .DESCRIPTION
   Pode ser executado mais de uma vez: o que já existe é mantido e só o
@@ -250,6 +252,7 @@ Write-Host "`n1) Tabelas" -ForegroundColor Cyan
 
 New-Tabela 'dgt_ImplRegistro' 'Registro de implantações' 'Registros de implantações' 'Dados do painel de gestão de implantações: um documento (JSON) por linha.'
 New-Tabela 'dgt_ImplEmail' 'E-mail de implantações' 'E-mails de implantações' 'Fila de e-mails dos relatórios do painel de implantações (enviados pelo Power Automate).'
+New-Tabela 'dgt_ImplLog' 'Atividade de implantações' 'Atividades de implantações' 'Histórico de atividades do painel de implantações (uma linha por evento; data = Criado em).'
 
 # ------------------------------------------------------------
 # 2) Colunas
@@ -273,6 +276,15 @@ New-Texto      $T 'dgt_Motivo'      'Motivo' 200
 New-Texto      $T 'dgt_Status'      'Status (Pendente / Enviado / Falha)' 30
 New-TextoLongo $T 'dgt_Erro'        'Erro do envio' 4000
 
+Write-Host "`n3b) Colunas de dgt_impllog (dgt_name = ação, ex.: dados.editar)" -ForegroundColor Cyan
+$T = 'dgt_impllog'
+New-Texto      $T 'dgt_UsuarioId'   'Usuário (id no painel)' 100
+New-Texto      $T 'dgt_UsuarioNome' 'Usuário' 200
+New-Texto      $T 'dgt_Setor'       'Setor' 100
+New-Texto      $T 'dgt_Categoria'   'Categoria' 30
+New-TextoLongo $T 'dgt_Alvo'        'Alvo (JSON)' 2000
+New-TextoLongo $T 'dgt_Detalhe'     'Detalhe' 2000
+
 # ------------------------------------------------------------
 # 3) Chave alternativa (impede duplicar documentos)
 # ------------------------------------------------------------
@@ -287,7 +299,7 @@ New-ChaveAlternativa 'dgt_implregistro' 'dgt_ImplRegistroChaveUnica' 'Chave úni
 Write-Host "`n5) Publicando as personalizações..." -ForegroundColor Cyan
 
 Invoke-Dv -Metodo 'POST' -Caminho 'PublishXml' -Corpo @{
-  ParameterXml = '<importexportxml><entities><entity>dgt_implregistro</entity><entity>dgt_implemail</entity></entities></importexportxml>'
+  ParameterXml = '<importexportxml><entities><entity>dgt_implregistro</entity><entity>dgt_implemail</entity><entity>dgt_impllog</entity></entities></importexportxml>'
 } | Out-Null
 
 Write-Host "`nConcluído." -ForegroundColor Green

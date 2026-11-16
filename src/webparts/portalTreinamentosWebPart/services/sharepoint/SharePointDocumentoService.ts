@@ -122,6 +122,12 @@ export class SharePointDocumentoService {
   private readonly biblioteca:
     string;
 
+  // Pasta já existente (server-relative, ex.: /sites/X/Shared Documents/A/B)
+  // usada como raiz no lugar da biblioteca. Com ela, a biblioteca não é
+  // procurada pelo título nem criada: só as subpastas abaixo dela são.
+  private readonly pastaRaiz:
+    string;
+
   public constructor(
     client:
       SPHttpClient,
@@ -130,7 +136,10 @@ export class SharePointDocumentoService {
       string,
 
     biblioteca =
-      'Documentos de Treinamentos'
+      'Documentos de Treinamentos',
+
+    pastaRaiz =
+      ''
   ) {
 
     this.client =
@@ -144,6 +153,9 @@ export class SharePointDocumentoService {
 
     this.biblioteca =
       biblioteca;
+
+    this.pastaRaiz =
+      pastaRaiz.trim().replace(/\/+$/, '');
   }
 
 
@@ -202,8 +214,46 @@ export class SharePointDocumentoService {
       );
     }
   }
+  // A pasta raiz configurada precisa existir (nunca é criada aqui).
+  private async verificarPastaRaiz():
+    Promise<string> {
+
+    const response =
+      await this.client.get(
+        `${this.siteUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${escaparOData(this.pastaRaiz)}')?$select=Exists,ServerRelativeUrl`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            Accept:
+              'application/json;odata=nometadata'
+          }
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        `Não foi possível acessar a pasta "${this.pastaRaiz}". SharePoint retornou ${response.status}.`
+      );
+    }
+
+    const dados =
+      (await response.json()) as { Exists?: boolean; ServerRelativeUrl?: string };
+
+    if (dados.Exists === false) {
+      throw new Error(
+        `A pasta "${this.pastaRaiz}" não existe no SharePoint. SharePoint retornou 404.`
+      );
+    }
+
+    return dados.ServerRelativeUrl || this.pastaRaiz;
+  }
+
   private async obterRootFolder():
     Promise<string> {
+
+    if (this.pastaRaiz) {
+      return this.verificarPastaRaiz();
+    }
 
     const titulo =
       escaparOData(

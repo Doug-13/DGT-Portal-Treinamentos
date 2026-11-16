@@ -1,4 +1,4 @@
-\xEF\xBB\xBF<#
+﻿<#
 .SYNOPSIS
   Cria no Dataverse as tabelas do módulo Fornecedores (fase 1, uso
   interno) e a Custom API dgt_ConsultarFornecedor:
@@ -341,6 +341,64 @@ function New-TextoSeguro {
   }
 }
 
+# Texto longo com SEGURANÇA DE CAMPO (quadro societário, dados bancários)
+function New-TextoLongoSeguro {
+  param([string] $Tabela, [string] $Schema, [string] $Nome, [int] $Tamanho)
+  New-Coluna $Tabela $Schema @{
+    '@odata.type' = 'Microsoft.Dynamics.CRM.MemoAttributeMetadata'
+    DisplayName   = Rotulo $Nome
+    MaxLength     = $Tamanho
+    Format        = 'TextArea'
+    IsSecured     = $true
+  }
+}
+
+# Numeração automática do Dataverse (ex.: FORN-2026-0012)
+function New-Protocolo {
+  param([string] $Tabela, [string] $Schema, [string] $Nome, [string] $Formato)
+  New-Coluna $Tabela $Schema @{
+    '@odata.type'    = 'Microsoft.Dynamics.CRM.StringAttributeMetadata'
+    DisplayName      = Rotulo $Nome
+    MaxLength        = 30
+    FormatName       = @{ Value = 'Text' }
+    AutoNumberFormat = $Formato
+  }
+}
+
+# Perfil de segurança de campo com permissões em colunas protegidas
+function Set-PerfilCampo {
+  param([string] $NomePerfil, [string] $Descricao, [string[]] $Colunas, [int] $Atualizar = 4)
+
+  $perfil = Invoke-Dv -Metodo 'GET' -Caminho "fieldsecurityprofiles?`$select=fieldsecurityprofileid&`$filter=name eq '$NomePerfil'"
+  if ($perfil.value.Count -gt 0) {
+    $idPerfil = $perfil.value[0].fieldsecurityprofileid
+    Write-Host "  = perfil '$NomePerfil' já existe"
+  }
+  else {
+    Write-Host "  + criando perfil '$NomePerfil'..." -ForegroundColor Green
+    Invoke-Dv -Metodo 'POST' -Caminho 'fieldsecurityprofiles' -Corpo @{ name = $NomePerfil; description = $Descricao } | Out-Null
+    $perfil = Invoke-Dv -Metodo 'GET' -Caminho "fieldsecurityprofiles?`$select=fieldsecurityprofileid&`$filter=name eq '$NomePerfil'"
+    $idPerfil = $perfil.value[0].fieldsecurityprofileid
+  }
+
+  foreach ($coluna in $Colunas) {
+    $permissao = Invoke-Dv -Metodo 'GET' -Caminho "fieldpermissions?`$select=fieldpermissionid&`$filter=_fieldsecurityprofileid_value eq $idPerfil and entityname eq 'dgt_fornecedor' and attributelogicalname eq '$coluna'"
+    if ($permissao.value.Count -gt 0) {
+      Write-Host "  = permissão de $coluna já existe"
+      continue
+    }
+    Write-Host "  + permissão em $coluna" -ForegroundColor Green
+    Invoke-Dv -Metodo 'POST' -Caminho 'fieldpermissions' -Corpo @{
+      entityname                          = 'dgt_fornecedor'
+      attributelogicalname                = $coluna
+      canread                             = 4
+      cancreate                           = 4
+      canupdate                           = $Atualizar
+      'fieldsecurityprofileid@odata.bind' = "/fieldsecurityprofiles($idPerfil)"
+    } | Out-Null
+  }
+}
+
 # ------------------------------------------------------------
 # 1) Tabelas
 # ------------------------------------------------------------
@@ -386,6 +444,42 @@ New-Texto       $T 'dgt_ResultadoSancoes'     'Resultado das sanções (CEIS/CNE
 New-Texto       $T 'dgt_ResponsavelNome'      'Cadastrado por' 200
 New-SimNao      $T 'dgt_Ativo'                'Ativo' $true
 
+Write-Host "`n2b) Ficha de Cadastro SUP-CPL-01 (formulário do fornecedor) e homologação" -ForegroundColor Cyan
+New-Protocolo   $T 'dgt_Protocolo'            'Protocolo' 'FORN-{DATETIMEUTC:yyyy}-{SEQNUM:4}'
+New-Texto       $T 'dgt_Origem'               'Origem (Portal/Formulário)' 30
+New-Texto       $T 'dgt_TipoSolicitacao'      'Tipo de solicitação' 60
+New-DataHora    $T 'dgt_FichaRecebidaEm'      'Ficha recebida em'
+New-Texto       $T 'dgt_Cep'                  'CEP' 9
+New-Texto       $T 'dgt_Telefone'             'Telefone geral' 40
+New-Texto       $T 'dgt_Site'                 'Site' 200
+New-Texto       $T 'dgt_EmailPedidos'         'E-mail para pedidos / NF' 200
+New-Texto       $T 'dgt_PorteDeclarado'       'Porte declarado' 30
+New-Texto       $T 'dgt_CategoriaFornecimento' 'Categoria de fornecimento (ficha)' 300
+New-TextoLongo  $T 'dgt_DescricaoFornecimento' 'Produtos / serviços fornecidos' 4000
+New-Texto       $T 'dgt_ContatoIntegridade'   'Contato integridade / compliance' 500
+New-TextoLongoSeguro $T 'dgt_QuadroSocietario' 'Quadro societário (protegido)' 8000
+New-Texto       $T 'dgt_FaixaFaturamento'     'Faixa de faturamento (Simples)' 100
+New-Texto       $T 'dgt_AnexoSimples'         'Anexo do Simples' 200
+New-Texto       $T 'dgt_PrevisaoMudancaRegime' 'Previsão de mudança de regime' 50
+New-TextoLongoSeguro $T 'dgt_DadosBancarios'  'Dados bancários (protegido)' 2000
+New-SimNao      $T 'dgt_BancarioConferido'    'Dados bancários conferidos' $false
+New-TextoLongo  $T 'dgt_Questionario'         'Questionário de integridade (JSON)' 2000
+New-TextoLongo  $T 'dgt_Certificacoes'        'Certificações' 2000
+New-TextoLongo  $T 'dgt_DetalhamentoPositivas' 'Detalhamento das respostas positivas' 4000
+New-TextoLongo  $T 'dgt_Declaracoes'          'Declarações (JSON)' 1000
+New-Texto       $T 'dgt_ClassificacaoRisco'   'Classificação de risco' 20
+New-Texto       $T 'dgt_ResultadoHomologacao' 'Resultado da homologação' 50
+New-TextoLongo  $T 'dgt_Ressalvas'            'Ressalvas / mitigação / parecer' 4000
+New-SomenteData $T 'dgt_ValidadeCadastro'     'Validade do cadastro / próxima revisão'
+New-TextoLongo  $T 'dgt_Verificacoes'         'Verificações da homologação (JSON)' 4000
+New-Texto       $T 'dgt_ResponsavelSuprimentos' 'Responsável Suprimentos / data' 200
+New-Texto       $T 'dgt_ResponsavelCompliance' 'Compliance / Jurídico / data' 200
+New-DataHora    $T 'dgt_UltimaConsultaCertidoes' 'Última consulta de certidões'
+New-Texto       $T 'dgt_ResultadoCertidoes'   'Resultado das certidões' 50
+New-SomenteData $T 'dgt_VencimentoCertidoes'  'Próximo vencimento de certidão'
+New-Texto       $T 'dgt_AssinaturaStatus'     'Assinatura da ficha (Clicksign)' 50
+New-Texto       $T 'dgt_AssinaturaId'         'Envelope Clicksign' 100
+
 Write-Host "`n3) Colunas de dgt_tipodocumentofornecedor" -ForegroundColor Cyan
 $T = 'dgt_tipodocumentofornecedor'
 New-TextoLongo  $T 'dgt_Descricao'            'Descrição' 2000
@@ -396,6 +490,7 @@ New-Inteiro     $T 'dgt_ValidadeDias'         'Validade padrão (dias)'
 New-Texto       $T 'dgt_Visibilidade'         'Visibilidade (Interno/Externo)' 20
 New-Inteiro     $T 'dgt_Ordem'                'Ordem'
 New-SimNao      $T 'dgt_Ativo'                'Ativo' $true
+New-Texto       $T 'dgt_CodigoConsulta'       'Consulta automática (código da certidão)' 30
 
 Write-Host "`n4) Colunas de dgt_fornecedordocumento" -ForegroundColor Cyan
 $T = 'dgt_fornecedordocumento'
@@ -476,6 +571,20 @@ else {
 }
 
 # ------------------------------------------------------------
+# 8b) Perfis da ficha: quadro societário (com CPF) e dados bancários
+# ------------------------------------------------------------
+
+Write-Host "`n8b) Perfis de segurança de campo da ficha" -ForegroundColor Cyan
+
+Set-PerfilCampo 'DGT - Fornecedores - Quadro societário' `
+  'Ler e corrigir o quadro societário da ficha (nomes, CPF e participação). Somente Suprimentos / Compliance.' `
+  @('dgt_quadrosocietario')
+
+Set-PerfilCampo 'DGT - Fornecedores - Dados bancários' `
+  'Ler e corrigir os dados bancários da ficha. Somente Suprimentos / Financeiro.' `
+  @('dgt_dadosbancarios')
+
+# ------------------------------------------------------------
 # 9) Custom API dgt_ConsultarFornecedor (o plugin entra pelo PASSO)
 # ------------------------------------------------------------
 
@@ -531,8 +640,10 @@ Write-Host '       dgt_fornecedor, dgt_tipodocumentofornecedor, dgt_fornecedordo
 Write-Host '       dgt_fornecedorconsulta, dgt_fornecedorhistorico'
 Write-Host '       -> Criar, Ler, Gravar (Organização). NÃO conceda Excluir (a tela só desativa).'
 Write-Host '       dgt_fornecedorconsulta e dgt_fornecedorhistorico: Ler basta para quem só consulta.'
-Write-Host "  2. Perfil de segurança de campo '$NomePerfil': adicione as pessoas (ou a equipe) de Suprimentos."
+Write-Host "  2. Perfis de segurança de campo: '$NomePerfil' (Suprimentos),"
+Write-Host "     'DGT - Fornecedores - Quadro societário' (Suprimentos/Compliance) e"
+Write-Host "     'DGT - Fornecedores - Dados bancários' (Suprimentos/Financeiro)."
 Write-Host '  3. Plugin: compile, atualize o assembly e registre o PASSO do ConsultarFornecedorPlugin'
 Write-Host '     (Message dgt_ConsultarFornecedor · PostOperation · Síncrono) com a Configuração segura:'
-Write-Host '       { "cnpja": "<chave>", "transparencia": "<chave>" }'
+Write-Host '       { "cnpja": "<chave>", "transparencia": "<chave>", "infosimples": "<token>" }'
 Write-Host '  4. SharePoint: permissão de EDIÇÃO na biblioteca "Documentos de Fornecedores" para Suprimentos.'

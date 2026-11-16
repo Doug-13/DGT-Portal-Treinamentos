@@ -5,9 +5,16 @@ import {
 } from '../../services/fornecedores/FornecedoresService';
 
 import {
+  ANEXOS_SIMPLES,
   CATEGORIAS_FORNECEDOR,
+  CERTIDOES,
+  CodigoCertidao,
   CRITICIDADES,
   Criticidade,
+  FAIXAS_FATURAMENTO_SIMPLES,
+  PORTES_FICHA,
+  PREVISOES_MUDANCA_REGIME,
+  TIPOS_SOLICITACAO,
   IConsultaFornecedor,
   IDocumentoFornecedor,
   IFornecedor,
@@ -51,25 +58,33 @@ import {
   CampoContato
 } from './ListaFornecedoresView';
 
+import FichaFornecedorView from './FichaFornecedorView';
+import HomologacaoFornecedorView from './HomologacaoFornecedorView';
+
 // ============================================================
 // FORNECEDORES — DETALHE
 //
-// Seções: Dados · Documentos · Consultas · Histórico
+// Seções: Dados · Ficha · Documentos · Consultas · Homologação · Histórico
 // Status restritos (só administrador do módulo): Homologado, Suspenso,
-// Bloqueado e Descredenciado. "Em homologação" e "Com restrição"
-// qualquer pessoa com o módulo pode definir.
+// Bloqueado, Descredenciado e Reprovado. "Em homologação" e "Com
+// restrição" qualquer pessoa com o módulo pode definir.
 // ============================================================
 
-const STATUS_RESTRITOS: StatusFornecedor[] = ['Homologado', 'Suspenso', 'Bloqueado', 'Descredenciado'];
+const STATUS_RESTRITOS: StatusFornecedor[] = ['Homologado', 'Suspenso', 'Bloqueado', 'Descredenciado', 'Reprovado'];
 
-type Secao = 'dados' | 'documentos' | 'consultas' | 'historico';
+type Secao = 'dados' | 'ficha' | 'documentos' | 'consultas' | 'homologacao' | 'historico';
 
 const SECOES: Array<{ id: Secao; rotulo: string }> = [
   { id: 'dados', rotulo: 'Dados' },
+  { id: 'ficha', rotulo: 'Ficha' },
   { id: 'documentos', rotulo: 'Documentos' },
   { id: 'consultas', rotulo: 'Consultas' },
+  { id: 'homologacao', rotulo: 'Homologação' },
   { id: 'historico', rotulo: 'Histórico' }
 ];
+
+const opcoes = (lista: string[], atual: string): string[] =>
+  atual && lista.indexOf(atual) < 0 ? lista.concat([atual]) : lista;
 
 const dataBr = (iso: string): string => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
@@ -202,12 +217,73 @@ const EditarFornecedorModal: React.FC<{
           <label style={rotulo} htmlFor="ed-uf">UF</label>
           <input id="ed-uf" style={campo} maxLength={2} value={f.uf} onChange={e => mudar({ uf: e.target.value.toUpperCase() })} />
         </div>
+        <div>
+          <label style={rotulo} htmlFor="ed-cep">CEP</label>
+          <input id="ed-cep" style={campo} maxLength={9} value={f.cep} onChange={e => mudar({ cep: e.target.value })} />
+        </div>
       </div>
+
+      <div style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', margin: '16px 0 6px', color: COR.texto2 }}>Ficha SUP-CPL-01</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px 14px' }}>
+        <div>
+          <label style={rotulo} htmlFor="ed-solicitacao">Tipo de solicitação</label>
+          <select id="ed-solicitacao" style={campo} value={f.tipoSolicitacao} onChange={e => mudar({ tipoSolicitacao: e.target.value })}>
+            {opcoes([''].concat(TIPOS_SOLICITACAO), f.tipoSolicitacao).map(t => <option key={t} value={t}>{t || 'Não informado'}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="ed-telefone">Telefone geral</label>
+          <input id="ed-telefone" style={campo} value={f.telefone} onChange={e => mudar({ telefone: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="ed-site">Site</label>
+          <input id="ed-site" style={campo} value={f.site} onChange={e => mudar({ site: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="ed-emailnf">E-mail para pedidos / NF</label>
+          <input id="ed-emailnf" style={campo} value={f.emailPedidos} onChange={e => mudar({ emailPedidos: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="ed-porte">Porte declarado</label>
+          <select id="ed-porte" style={campo} value={f.porteDeclarado} onChange={e => mudar({ porteDeclarado: e.target.value })}>
+            {opcoes(PORTES_FICHA, f.porteDeclarado).map(p => <option key={p} value={p}>{p || 'Não informado'}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="ed-faixa">Faixa de faturamento (Simples)</label>
+          <select id="ed-faixa" style={campo} value={f.faixaFaturamento} onChange={e => mudar({ faixaFaturamento: e.target.value })}>
+            {opcoes(FAIXAS_FATURAMENTO_SIMPLES, f.faixaFaturamento).map(p => <option key={p} value={p}>{p || 'Não se aplica'}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="ed-anexo">Anexo do Simples</label>
+          <select id="ed-anexo" style={campo} value={f.anexoSimples} onChange={e => mudar({ anexoSimples: e.target.value })}>
+            {opcoes(ANEXOS_SIMPLES, f.anexoSimples).map(p => <option key={p} value={p}>{p || 'Não se aplica'}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="ed-mudanca">Mudança de regime prevista</label>
+          <select id="ed-mudanca" style={campo} value={f.previsaoMudancaRegime} onChange={e => mudar({ previsaoMudancaRegime: e.target.value })}>
+            {opcoes(PREVISOES_MUDANCA_REGIME, f.previsaoMudancaRegime).map(p => <option key={p} value={p}>{p || 'Não informado'}</option>)}
+          </select>
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={rotulo} htmlFor="ed-catficha">Categoria de fornecimento (declarada)</label>
+          <input id="ed-catficha" style={campo} value={f.categoriaFornecimento} onChange={e => mudar({ categoriaFornecimento: e.target.value })} />
+        </div>
+      </div>
+      <label style={rotulo} htmlFor="ed-descricao">Produtos e/ou serviços fornecidos</label>
+      <textarea id="ed-descricao" style={{ ...campo, resize: 'vertical' }} rows={2} value={f.descricaoFornecimento} onChange={e => mudar({ descricaoFornecimento: e.target.value })} />
+      <label style={rotulo} htmlFor="ed-cert">Certificações (ISO, Pró-Ética, outras)</label>
+      <textarea id="ed-cert" style={{ ...campo, resize: 'vertical' }} rows={2} value={f.certificacoes} onChange={e => mudar({ certificacoes: e.target.value })} />
+      <label style={rotulo} htmlFor="ed-detalhe">Detalhamento das respostas positivas</label>
+      <textarea id="ed-detalhe" style={{ ...campo, resize: 'vertical' }} rows={2} value={f.detalhamentoPositivas} onChange={e => mudar({ detalhamentoPositivas: e.target.value })} />
 
       <div style={{ marginTop: '14px' }}>
         <CampoContato titulo="Contato comercial" valor={f.contatoComercial} aoMudar={c => mudar({ contatoComercial: c })} />
         <CampoContato titulo="Contato fiscal / contábil" valor={f.contatoFiscal} aoMudar={c => mudar({ contatoFiscal: c })} />
         <CampoContato titulo="Contato financeiro / faturamento" valor={f.contatoFinanceiro} aoMudar={c => mudar({ contatoFinanceiro: c })} />
+        <CampoContato titulo="Contato integridade / compliance" valor={f.contatoIntegridade} aoMudar={c => mudar({ contatoIntegridade: c })} />
       </div>
 
       <label style={rotulo} htmlFor="ed-obs">Observações</label>
@@ -380,6 +456,29 @@ const DetalheFornecedorView: React.FC<{
 
   const situacao = calcularSituacao(fornecedor, tipos, documentos || []);
 
+  // Uma certidão por chamada: cada fonte pode levar quase 1 minuto e o
+  // Dataverse encerra o plugin em 2 minutos.
+  const consultarCertidoes = async (codigos: CodigoCertidao[]): Promise<void> => {
+    setErro('');
+    const partes: string[] = [];
+    try {
+      for (let i = 0; i < codigos.length; i++) {
+        const certidao = CERTIDOES.filter(c => c.codigo === codigos[i])[0];
+        setConsultando(`Emitindo ${certidao.rotulo} (${i + 1} de ${codigos.length})…`);
+        const r = await servico.consultar(fornecedor.id, [codigos[i]], usuarioNome);
+        const item = r.certidoes && r.certidoes[codigos[i]];
+        partes.push(`${certidao.rotulo}: ${item ? item.mensagem : 'sem resposta'}`);
+      }
+    } catch (e) {
+      setErro(String((e as Error)?.message || e));
+    } finally {
+      setConsultando('');
+      await carregarConsultas();
+      await carregarDocumentos();
+      await aoAlterar(partes.join(' · '));
+    }
+  };
+
   const consultarAgora = async (quais: Array<'cnpj' | 'sancoes'>): Promise<void> => {
     setConsultando(quais.length > 1 ? 'Consultando Receita e sanções…' : quais[0] === 'cnpj' ? 'Consultando a Receita…' : 'Consultando sanções…');
     setErro('');
@@ -408,13 +507,16 @@ const DetalheFornecedorView: React.FC<{
           <div style={{ fontSize: '19px', fontWeight: 700 }}>{fornecedor.razaoSocial}</div>
           <div style={{ fontSize: '13px', color: COR.texto2 }}>
             {fornecedor.cnpj ? formatarCnpj(fornecedor.cnpj) : 'CNPJ protegido (sem permissão de leitura)'}
+            {fornecedor.protocolo && ` · ${fornecedor.protocolo}`}
             {fornecedor.categoria && ` · ${fornecedor.categoria}`}
             {fornecedor.criticidade && ` · criticidade ${fornecedor.criticidade}`}
+            {fornecedor.classificacaoRisco && ` · risco ${fornecedor.classificacaoRisco.toLowerCase()}`}
           </div>
         </div>
         <Selo tom={fornecedor.status === 'Homologado' ? 'ciano' : STATUS_RESTRITOS.indexOf(fornecedor.status) >= 0 ? 'indigo' : 'azul'}>{fornecedor.status}</Selo>
         {!fornecedor.ativo && <Selo tom="cinza">inativo</Selo>}
         {fornecedor.resultadoSancoes === 'Com registro' && <Selo tom="indigo">! sanção vigente</Selo>}
+        {fornecedor.resultadoCertidoes === 'Com pendência' && <Selo tom="indigo">! certidão irregular</Selo>}
       </div>
 
       <div role="tablist" aria-label="Seções do fornecedor" style={{ display: 'flex', gap: '2px', borderBottom: `1px solid ${COR.cinzaClaro}`, marginBottom: '14px', overflowX: 'auto' }}>
@@ -548,9 +650,29 @@ const DetalheFornecedorView: React.FC<{
               Última: Receita {fornecedor.ultimaConsultaCnpj ? formatarDataHora(fornecedor.ultimaConsultaCnpj) : 'nunca'} · sanções {fornecedor.ultimaConsultaSancoes ? formatarDataHora(fornecedor.ultimaConsultaSancoes) : 'nunca'}
             </span>
           </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 10px' }}>
+            <button type="button" style={botao('principal', !!consultando)} disabled={!!consultando}
+              onClick={() => { consultarCertidoes(CERTIDOES.map(c => c.codigo)).catch(() => undefined); }}>
+              Emitir certidões
+            </button>
+            {CERTIDOES.map(c => (
+              <button key={c.codigo} type="button" style={botao('secundario', !!consultando)} disabled={!!consultando}
+                onClick={() => { consultarCertidoes([c.codigo]).catch(() => undefined); }}>
+                {c.rotulo}
+              </button>
+            ))}
+            <span style={{ fontSize: '12.5px', color: COR.texto2 }}>
+              Certidões: {fornecedor.resultadoCertidoes}
+              {fornecedor.vencimentoCertidoes ? ` · próxima a vencer em ${dataBr(fornecedor.vencimentoCertidoes)}` : ''}
+              {fornecedor.ultimaConsultaCertidoes ? ` · última ${formatarDataHora(fornecedor.ultimaConsultaCertidoes)}` : ''}
+            </span>
+          </div>
+
           <div style={ajuda}>
-            Automáticas: Receita (CNPJá) e, no Portal da Transparência, CEIS, CNEP, CEPIM e acordos de leniência (leniência é informativa e não altera o resultado de sanções).
-            A consulta consolidada do TCU (licitantes inidôneos e CNJ) ainda não é automática: emita no site do TCU e registre em Documentos.
+            Automáticas: Receita (CNPJá); no Portal da Transparência, CEIS, CNEP, CEPIM e acordos de leniência (leniência é informativa e não altera o resultado de sanções);
+            certidões pela Infosimples (CND Federal, FGTS, CNDT; estadual e municipal quando a UF/município tem rota configurada). Certidão regular entra sozinha em Documentos.
+            Cada certidão pode levar até 1 minuto. A consulta consolidada do TCU ainda não é automática: emita no site do TCU e registre em Documentos.
           </div>
 
           {!consultas && <div style={{ padding: '20px', color: COR.texto2 }}>Carregando consultas…</div>}
@@ -558,10 +680,10 @@ const DetalheFornecedorView: React.FC<{
           {consultas && consultas.length > 0 && (
             <div style={{ display: 'grid', gap: '10px', marginTop: '10px' }}>
               {consultas.map(c => (
-                <div key={c.id} style={{ ...painel, padding: '12px 16px', borderLeft: `4px solid ${/com registro|erro|situação:|em vigor/i.test(c.resultado) ? COR.indigo : COR.ciano}` }}>
+                <div key={c.id} style={{ ...painel, padding: '12px 16px', borderLeft: `4px solid ${/com registro|erro|situação:|em vigor|irregular|verificar/i.test(c.resultado) ? COR.indigo : COR.ciano}` }}>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <strong>{ROTULO_CONSULTA[c.tipo] || c.tipo}</strong>
-                    <Selo tom={/com registro|erro|situação:|em vigor/i.test(c.resultado) ? 'indigo' : 'ciano'}>{c.resultado}</Selo>
+                    <Selo tom={/com registro|erro|situação:|em vigor|irregular|verificar/i.test(c.resultado) ? 'indigo' : /sem cobertura|não configurada/i.test(c.resultado) ? 'cinza' : 'ciano'}>{c.resultado}</Selo>
                     <span style={{ fontSize: '12.5px', color: COR.texto2 }}>{formatarDataHora(c.quando)} · {c.executadoPor || '—'} · {c.fonte}</span>
                   </div>
                   {c.resumo && <div style={{ fontSize: '13.5px', marginTop: '6px', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{c.resumo}</div>}
@@ -570,6 +692,32 @@ const DetalheFornecedorView: React.FC<{
             </div>
           )}
         </div>
+      )}
+
+      {/* ---------------- Ficha ---------------- */}
+      {secao === 'ficha' && (
+        <FichaFornecedorView
+          servico={servico}
+          fornecedor={fornecedor}
+          usuarioNome={usuarioNome}
+          aoAlterar={async aviso => { setHistorico(undefined); await aoAlterar(aviso); }}
+        />
+      )}
+
+      {/* ---------------- Homologação ---------------- */}
+      {secao === 'homologacao' && (
+        documentos
+          ? (
+            <HomologacaoFornecedorView
+              servico={servico}
+              fornecedor={fornecedor}
+              situacao={situacao}
+              administra={administra}
+              usuarioNome={usuarioNome}
+              aoAlterar={async aviso => { setHistorico(undefined); await aoAlterar(aviso); }}
+            />
+          )
+          : <div style={{ padding: '20px', color: COR.texto2 }}>Carregando…</div>
       )}
 
       {/* ---------------- Histórico ---------------- */}

@@ -15,10 +15,14 @@ import {
 // IMPLANTAÇÕES — Assistente IA
 //
 // Antes: servidor Python (tools/assistente.py) com chave própria
-// (ANTHROPIC_API_KEY). Agora usa a MESMA chave e o mesmo caminho da
-// IA de Licitações:
+// (ANTHROPIC_API_KEY). Agora usa a chave central do portal
+// (Indicadores › Administrar IA) e o mesmo caminho da IA de Licitações:
 //
 //   Portal ──► Custom API dgt_AnalisarLicitacaoIa ──► plugin ──► Claude
+//
+// O pedido vai com funcionalidade "implantacoes": o consumo e o limite
+// mensal ficam na área de Implantações (padrão: área de sigla IMP), não
+// na de Licitações (docs/ia-administracao.md).
 //
 // Esse plugin recebe um texto e devolve um texto (não tem
 // "ferramentas"). Por isso as três consultas do assistente
@@ -483,6 +487,9 @@ export class AssistenteImplantacoes {
 
       const resposta =
         await this.dataverse.analisarLicitacaoIa({
+          // Consumo e limite da IA na área de Implantações
+          // (Indicadores › Administrar IA › Áreas).
+          funcionalidade: 'implantacoes',
           sistema: SISTEMA,
           mensagem,
           modelo: MODELO,
