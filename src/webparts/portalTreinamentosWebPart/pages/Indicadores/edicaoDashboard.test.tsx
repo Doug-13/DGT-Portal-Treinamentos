@@ -135,3 +135,27 @@ describe('Editar visual (✎)', () => {
     expect(erros).toMatch(/altura/);
   });
 });
+
+describe('Filtros da tela', () => {
+  it('filtro por campo recalcula os visuais e "Limpar filtros" volta ao total', async () => {
+    const comFiltro = { ...definicao, filtros: { ano: true, area: true, campos: ['concluido'] } };
+    await act(async () => {
+      ReactDOM.render(<DashboardPortalView dashboardId="d1" definicao={comFiltro} dataverseService={{} as DataverseService} areas={[]} />, raiz);
+    });
+    const texto = (): string => (raiz.textContent || '').replace(/\s+/g, ' ');
+    // Total de atribuições: soma de (2+i) e (10+i) para i = 0..11 = 276.
+    expect(texto()).toMatch(/Atribuídos\s*276/);
+    const rotulo = Array.prototype.slice.call(raiz.querySelectorAll('label')).filter((l: HTMLLabelElement) => /^Concluído/.test(l.textContent || ''))[0] as HTMLLabelElement;
+    const select = rotulo.querySelector('select') as HTMLSelectElement;
+    expect(Array.prototype.slice.call(select.options).map((o: HTMLOptionElement) => o.value)).toEqual(['', 'Não', 'Sim']);
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value') as PropertyDescriptor;
+      (setter.set as (v: string) => void).call(select, 'Sim');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    // Só os concluídos: soma de (2+i) = 90.
+    expect(texto()).toMatch(/Atribuídos\s*90/);
+    await clicar(botao('Limpar filtros'));
+    expect(texto()).toMatch(/Atribuídos\s*276/);
+  });
+});

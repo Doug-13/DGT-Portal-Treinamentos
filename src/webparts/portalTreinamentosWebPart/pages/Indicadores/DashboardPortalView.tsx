@@ -19,6 +19,7 @@ import {
   farolDe,
   fontesUsadas,
   anoInicialDoDashboard,
+  aplicarFiltrosTela,
   ordenarGrupos,
   paginasDoDashboard
 } from '../../services/dashboards/dashboardModelo';
@@ -161,6 +162,8 @@ const Cartao: React.FC<{ item: IItemCartao; linhas: Linha[] }> = ({ item, linhas
 };
 
 const ALTURA_GRAFICO: { [altura: string]: number } = { baixa: 220, media: 280, alta: 380 };
+
+const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 const Grafico: React.FC<{ item: IItemGrafico; linhas: Linha[] }> = ({ item, linhas }) => {
   const filtradas = aplicarFiltro(linhas, item.filtro);
@@ -334,6 +337,10 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
   const anoAtual = new Date().getFullYear();
   const [ano, setAno] = React.useState<number>(() => anoInicialDoDashboard(props.definicao));
   const [area, setArea] = React.useState('');
+  // Filtros da tela (período e campos): só na consulta, não no salvo.
+  const [mesInicio, setMesInicio] = React.useState(1);
+  const [mesFim, setMesFim] = React.useState(12);
+  const [valoresCampo, setValoresCampo] = React.useState<{ [campo: string]: string }>({});
   const [dados, setDados] = React.useState<{ [fonte: string]: Linha[] }>({});
   const [carregando, setCarregando] = React.useState(true);
   const [erro, setErro] = React.useState('');
@@ -373,8 +380,39 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.definicao, props.dataverseService, ano, area, (props.areasPermitidas || []).join(',')]);
 
+  const filtrosDef = definicao.filtros || {};
+  const camposFiltro = (filtrosDef.campos || []).slice(0, 4);
+  const dadosFiltrados = React.useMemo(
+    () => aplicarFiltrosTela(dados, { mesInicio, mesFim, campos: valoresCampo }, CATALOGO_DASHBOARD),
+    [dados, mesInicio, mesFim, valoresCampo]
+  );
+  const filtroAtivo = mesInicio > 1 || mesFim < 12 || Object.keys(valoresCampo).some(campo => !!valoresCampo[campo]);
+
+  // Opções de cada campo: valores que existem nos dados carregados.
+  const opcoesCampo = (campo: string): string[] => {
+    const vistos: string[] = [];
+    Object.keys(dados).forEach(fonteId => (dados[fonteId] || []).forEach(linha => {
+      const valor = linha[campo];
+      const texto = valor === undefined || valor === null ? '' : String(valor);
+      if (texto && vistos.indexOf(texto) < 0) {
+        vistos.push(texto);
+      }
+    }));
+    return vistos.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  };
+
+  const rotuloCampo = (campo: string): string => {
+    for (const fonte of CATALOGO_DASHBOARD) {
+      const encontrado = fonte.campos.filter(c => c.chave === campo)[0];
+      if (encontrado) {
+        return encontrado.rotulo.replace(/\s*\(.*\)$/, '');
+      }
+    }
+    return campo;
+  };
+
   const renderItem = (item: ItemDashboard, chave: string, secao: number, indice: number): React.ReactNode => {
-    const linhas = dados[item.fonte] || [];
+    const linhas = dadosFiltrados[item.fonte] || [];
     if (item.tipo === 'cartao') {
       return <Cartao key={chave} item={item} linhas={linhas} />;
     }
@@ -434,6 +472,40 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
               {areasSelecionaveis.map(item => <option key={item.id} value={item.id}>{item.nome}</option>)}
             </select>
           </label>
+        )}
+        {filtrosDef.periodo && (
+          <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            Período
+            <select aria-label="Mês inicial" value={mesInicio} onChange={e => { const v = Number(e.target.value); setMesInicio(v); if (v > mesFim) { setMesFim(v); } }} style={{ padding: '6px 8px', borderRadius: '8px', border: 0, fontSize: '13px' }}>
+              {MESES.map((nome, i) => <option key={nome} value={i + 1}>{nome}</option>)}
+            </select>
+            a
+            <select aria-label="Mês final" value={mesFim} onChange={e => { const v = Number(e.target.value); setMesFim(v); if (v < mesInicio) { setMesInicio(v); } }} style={{ padding: '6px 8px', borderRadius: '8px', border: 0, fontSize: '13px' }}>
+              {MESES.map((nome, i) => <option key={nome} value={i + 1}>{nome}</option>)}
+            </select>
+          </label>
+        )}
+        {camposFiltro.map(campo => (
+          <label key={campo} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {rotuloCampo(campo)}
+            <select
+              value={valoresCampo[campo] || ''}
+              onChange={e => setValoresCampo({ ...valoresCampo, [campo]: e.target.value })}
+              style={{ padding: '6px 8px', borderRadius: '8px', border: 0, fontSize: '13px', maxWidth: '200px' }}
+            >
+              <option value="">Todos</option>
+              {opcoesCampo(campo).map(valor => <option key={valor} value={valor}>{valor}</option>)}
+            </select>
+          </label>
+        ))}
+        {filtroAtivo && (
+          <button
+            type="button"
+            onClick={() => { setMesInicio(1); setMesFim(12); setValoresCampo({}); }}
+            style={{ border: '1px solid rgba(255,255,255,.35)', background: 'transparent', color: '#FFFFFF', borderRadius: '8px', padding: '6px 10px', fontSize: '12px', cursor: 'pointer' }}
+          >
+            Limpar filtros
+          </button>
         )}
         <button
           type="button"
@@ -561,7 +633,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
           <AssistenteDashboard
             dashboardId={props.dashboardId}
             definicao={definicao}
-            dados={dados}
+            dados={dadosFiltrados}
             dataverseService={props.dataverseService}
             ano={filtros.ano !== false ? ano : undefined}
             areaNome={area ? (props.areas.filter(item => item.id === area)[0] || { nome: area }).nome : undefined}

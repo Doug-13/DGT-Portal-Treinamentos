@@ -224,25 +224,73 @@ const fonteOrcamentoPlanilhas: IFonte = {
 // Documentos
 // ------------------------------------------------------------
 
+// Dados extras de documentos e revisões (colunas que o cadastro não
+// traz): lidos uma vez por painel e compartilhados pelas fontes.
+const cacheDocsExtras = new WeakMap<IContextoFonte, Promise<{ processoDoDocumento: { [id: string]: string }; revisoes: IDataverseRecord[] }>>();
+
+const extrasDocumentos = (contexto: IContextoFonte): Promise<{ processoDoDocumento: { [id: string]: string }; revisoes: IDataverseRecord[] }> => {
+  let promessa = cacheDocsExtras.get(contexto);
+  if (!promessa) {
+    promessa = Promise.all([
+      contexto.dataverse.listarRegistros('dgt_documento', '$select=dgt_documentoid,_dgt_processonegocio_value'),
+      contexto.dataverse.listarRegistros(
+        'dgt_documentorevisao',
+        '$select=dgt_documentorevisaoid,dgt_revisao,dgt_status,createdon,dgt_datarevisao,dgt_dataaprovacao,dgt_datavigencia,' +
+        'dgt_etapaatual,dgt_situacaofluxo,dgt_motivoalteracao,dgt_requerretreinamento,_dgt_documento_value,_dgt_responsavel_value,_dgt_aprovadopor_value' +
+        '&$filter=dgt_ativa ne false'
+      )
+    ]).then(([documentos, revisoes]) => {
+      const processoDoDocumento: { [id: string]: string } = {};
+      documentos.forEach(registro => { processoDoDocumento[guid(registro.dgt_documentoid)] = formatado(registro, '_dgt_processonegocio_value'); });
+      return { processoDoDocumento, revisoes };
+    });
+    cacheDocsExtras.set(contexto, promessa);
+  }
+  return promessa;
+};
+
+const dataIso = (valor: unknown): string => {
+  const data = new Date(String(valor || ''));
+  return valor && !isNaN(data.getTime()) ? data.toISOString().substring(0, 10) : '';
+};
+
+const mesDeData = (valor: unknown): number | undefined => {
+  const data = new Date(String(valor || ''));
+  return valor && !isNaN(data.getTime()) ? data.getMonth() + 1 : undefined;
+};
+
+const diasEntre = (inicio: unknown, fim: unknown): number | undefined => {
+  const a = new Date(String(inicio || '')).getTime();
+  const b = new Date(String(fim || '')).getTime();
+  return inicio && fim && !isNaN(a) && !isNaN(b) ? Math.max(0, Math.round((b - a) / 86400000)) : undefined;
+};
+
 const fonteDocumentos: IFonte = {
   id: 'documentos.documentos',
   nome: 'Documentos — cadastro e prazos de revisão',
-  descricao: 'Uma linha por documento ativo: área, tipo, status, revisão atual e prazo da próxima revisão periódica.',
+  descricao: 'Uma linha por documento ativo (todos os anos): área, processo, tipo, status, revisão atual, cadastro e prazo da próxima revisão periódica.',
   campos: [
     { chave: 'area', rotulo: 'Área', tipo: 'texto' },
     { chave: 'codigo', rotulo: 'Código', tipo: 'texto' },
     { chave: 'titulo', rotulo: 'Título', tipo: 'texto' },
     { chave: 'tipo', rotulo: 'Tipo', tipo: 'texto' },
+    { chave: 'processo', rotulo: 'Processo', tipo: 'texto' },
     { chave: 'status', rotulo: 'Status', tipo: 'texto' },
     { chave: 'revisao', rotulo: 'Revisão atual', tipo: 'texto' },
     { chave: 'responsavel', rotulo: 'Responsável', tipo: 'texto' },
+    { chave: 'criadoEm', rotulo: 'Data de cadastro', tipo: 'data' },
+    { chave: 'mes', rotulo: 'Mês do prazo da próxima revisão', tipo: 'mes' },
+    { chave: 'mesCadastro', rotulo: 'Mês de cadastro', tipo: 'mes' },
     { chave: 'prazoRevisao', rotulo: 'Prazo da próxima revisão', tipo: 'data' },
     { chave: 'situacaoPrazo', rotulo: 'Situação do prazo', tipo: 'texto', valores: ['Vencido', 'Vence em 30 dias', 'Em dia', 'Sem prazo'] },
     { chave: 'diasParaRevisao', rotulo: 'Dias até o prazo (negativo = vencido)', tipo: 'numero' },
     { chave: 'documentos', rotulo: 'Quantidade (1 por documento)', tipo: 'numero' }
   ],
   carregar: async contexto => {
-    const documentos = await new DocumentoService(contexto.dataverse).getDocumentos();
+    const [documentos, extras] = await Promise.all([
+      new DocumentoService(contexto.dataverse).getDocumentos(),
+      extrasDocumentos(contexto)
+    ]);
     return documentos
       .filter(documento => documento.ativo !== false && naArea(contexto, documento.areaId))
       .map(documento => {
@@ -252,9 +300,13 @@ const fonteDocumentos: IFonte = {
           codigo: documento.codigo,
           titulo: documento.titulo,
           tipo: documento.tipo,
+          processo: extras.processoDoDocumento[guid(documento.id)] || 'Sem processo',
           status: documento.status,
           revisao: documento.revisaoAtual || documento.revisao,
           responsavel: documento.responsavel || '',
+          criadoEm: documento.criadoEm || '',
+          mes: mesDeData(documento.prazoRevisao),
+          mesCadastro: mesDeData(documento.criadoEm),
           prazoRevisao: documento.prazoRevisao || '',
           situacaoPrazo: dias === undefined ? 'Sem prazo' : dias < 0 ? 'Vencido' : dias <= 30 ? 'Vence em 30 dias' : 'Em dia',
           diasParaRevisao: dias,
@@ -267,39 +319,126 @@ const fonteDocumentos: IFonte = {
 const fonteRevisoes: IFonte = {
   id: 'documentos.revisoes',
   nome: 'Documentos — revisões em andamento',
-  descricao: 'Uma linha por revisão ainda não vigente (em elaboração, revisão, aprovação…), com o documento, a área e há quantos dias está aberta.',
+  descricao: 'Uma linha por revisão ainda não vigente (em elaboração, revisão, aprovação…): documento, área, responsável, etapa atual do fluxo e há quantos dias está aberta.',
   campos: [
     { chave: 'area', rotulo: 'Área', tipo: 'texto' },
     { chave: 'codigo', rotulo: 'Código do documento', tipo: 'texto' },
     { chave: 'titulo', rotulo: 'Título do documento', tipo: 'texto' },
     { chave: 'tipo', rotulo: 'Tipo do documento', tipo: 'texto' },
+    { chave: 'processo', rotulo: 'Processo', tipo: 'texto' },
     { chave: 'revisao', rotulo: 'Revisão', tipo: 'texto' },
     { chave: 'status', rotulo: 'Status da revisão', tipo: 'texto' },
+    { chave: 'etapa', rotulo: 'Etapa atual do fluxo', tipo: 'texto' },
+    { chave: 'situacaoFluxo', rotulo: 'Situação do fluxo', tipo: 'texto' },
     { chave: 'responsavel', rotulo: 'Responsável', tipo: 'texto' },
+    { chave: 'motivo', rotulo: 'Motivo da alteração', tipo: 'texto' },
+    { chave: 'retreinamento', rotulo: 'Exige retreinamento', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'dataAbertura', rotulo: 'Data de abertura', tipo: 'data' },
+    { chave: 'mes', rotulo: 'Mês de abertura', tipo: 'mes' },
     { chave: 'diasEmAberto', rotulo: 'Dias em aberto', tipo: 'numero' },
     { chave: 'revisoes', rotulo: 'Quantidade (1 por revisão)', tipo: 'numero' }
   ],
   carregar: async contexto => {
-    const [documentos, revisoes] = await Promise.all([
+    const [documentos, revisoes, extras] = await Promise.all([
       new DocumentoService(contexto.dataverse).getDocumentos(),
-      contexto.dataverse.getDocumentoRevisoesEmAndamento()
+      contexto.dataverse.getDocumentoRevisoesEmAndamento(),
+      extrasDocumentos(contexto)
     ]);
     const porId: { [id: string]: typeof documentos[0] } = {};
     documentos.forEach(documento => { porId[guid(documento.id)] = documento; });
+    const detalhe: { [id: string]: IDataverseRecord } = {};
+    extras.revisoes.forEach(registro => { detalhe[guid(registro.dgt_documentorevisaoid)] = registro; });
     return revisoes
-      .map(revisao => ({ revisao, documento: porId[guid(revisao._dgt_documento_value)] }))
+      .map(revisao => ({ revisao, documento: porId[guid(revisao._dgt_documento_value)], extra: detalhe[guid(revisao.dgt_documentorevisaoid)] || {} }))
       .filter(item => !!item.documento && naArea(contexto, item.documento.areaId))
-      .map(({ revisao, documento }) => {
+      .map(({ revisao, documento, extra }) => {
         const criada = diasAte(String(revisao.createdon || ''));
         return {
           area: documento.area || '',
           codigo: documento.codigo,
           titulo: documento.titulo,
           tipo: documento.tipo,
+          processo: extras.processoDoDocumento[guid(documento.id)] || 'Sem processo',
           revisao: String(revisao.dgt_revisao || ''),
           status: formatado(revisao, 'dgt_status') || 'Em elaboração',
+          etapa: String(extra.dgt_etapaatual || '') || 'Sem etapa',
+          situacaoFluxo: String(extra.dgt_situacaofluxo || ''),
           responsavel: formatado(revisao, '_dgt_responsavel_value'),
+          motivo: String(revisao.dgt_motivoalteracao || ''),
+          retreinamento: extra.dgt_requerretreinamento === true ? 'Sim' : 'Não',
+          dataAbertura: dataIso(revisao.createdon),
+          mes: mesDeData(revisao.createdon),
           diasEmAberto: criada === undefined ? 0 : -criada,
+          revisoes: 1
+        };
+      });
+  }
+};
+
+// Todas as revisões abertas no ano (andamento, vigentes, substituídas…):
+// ciclo de revisão, aprovações e retreinamentos.
+const fonteHistoricoRevisoes: IFonte = {
+  id: 'documentos.historicoRevisoes',
+  nome: 'Documentos — histórico de revisões do ano',
+  descricao: 'Uma linha por revisão aberta no ano (em andamento, vigente, substituída…): datas de abertura, aprovação e vigência, dias até aprovar, aprovador, motivo e retreinamento.',
+  campos: [
+    { chave: 'area', rotulo: 'Área', tipo: 'texto' },
+    { chave: 'codigo', rotulo: 'Código do documento', tipo: 'texto' },
+    { chave: 'titulo', rotulo: 'Título do documento', tipo: 'texto' },
+    { chave: 'tipo', rotulo: 'Tipo do documento', tipo: 'texto' },
+    { chave: 'processo', rotulo: 'Processo', tipo: 'texto' },
+    { chave: 'revisao', rotulo: 'Revisão', tipo: 'texto' },
+    { chave: 'status', rotulo: 'Status da revisão', tipo: 'texto' },
+    { chave: 'etapa', rotulo: 'Etapa atual do fluxo', tipo: 'texto' },
+    { chave: 'aprovada', rotulo: 'Aprovada', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'responsavel', rotulo: 'Responsável', tipo: 'texto' },
+    { chave: 'aprovador', rotulo: 'Aprovado por', tipo: 'texto' },
+    { chave: 'motivo', rotulo: 'Motivo da alteração', tipo: 'texto' },
+    { chave: 'retreinamento', rotulo: 'Exige retreinamento', tipo: 'texto', valores: ['Sim', 'Não'] },
+    { chave: 'dataAbertura', rotulo: 'Data de abertura', tipo: 'data' },
+    { chave: 'dataAprovacao', rotulo: 'Data da aprovação', tipo: 'data' },
+    { chave: 'dataVigencia', rotulo: 'Data de vigência', tipo: 'data' },
+    { chave: 'mes', rotulo: 'Mês de abertura', tipo: 'mes' },
+    { chave: 'mesAprovacao', rotulo: 'Mês da aprovação', tipo: 'mes' },
+    { chave: 'diasAteAprovar', rotulo: 'Dias da abertura até a aprovação', tipo: 'numero' },
+    { chave: 'revisoes', rotulo: 'Quantidade (1 por revisão)', tipo: 'numero' }
+  ],
+  carregar: async contexto => {
+    const [documentos, extras] = await Promise.all([
+      new DocumentoService(contexto.dataverse).getDocumentos(),
+      extrasDocumentos(contexto)
+    ]);
+    const porId: { [id: string]: typeof documentos[0] } = {};
+    documentos.forEach(documento => { porId[guid(documento.id)] = documento; });
+    return extras.revisoes
+      .filter(revisao => {
+        const data = new Date(String(revisao.createdon || ''));
+        return !isNaN(data.getTime()) && data.getFullYear() === contexto.ano;
+      })
+      .map(revisao => ({ revisao, documento: porId[guid(revisao._dgt_documento_value)] }))
+      .filter(item => !!item.documento && naArea(contexto, item.documento.areaId))
+      .map(({ revisao, documento }) => {
+        const aprovada = !!revisao.dgt_dataaprovacao;
+        return {
+          area: documento.area || '',
+          codigo: documento.codigo,
+          titulo: documento.titulo,
+          tipo: documento.tipo,
+          processo: extras.processoDoDocumento[guid(documento.id)] || 'Sem processo',
+          revisao: String(revisao.dgt_revisao || ''),
+          status: formatado(revisao, 'dgt_status') || 'Em elaboração',
+          etapa: String(revisao.dgt_etapaatual || '') || (aprovada ? 'Concluída' : 'Sem etapa'),
+          aprovada: aprovada ? 'Sim' : 'Não',
+          responsavel: formatado(revisao, '_dgt_responsavel_value'),
+          aprovador: formatado(revisao, '_dgt_aprovadopor_value'),
+          motivo: String(revisao.dgt_motivoalteracao || ''),
+          retreinamento: revisao.dgt_requerretreinamento === true ? 'Sim' : 'Não',
+          dataAbertura: dataIso(revisao.createdon),
+          dataAprovacao: dataIso(revisao.dgt_dataaprovacao),
+          dataVigencia: dataIso(revisao.dgt_datavigencia),
+          mes: mesDeData(revisao.createdon),
+          mesAprovacao: mesDeData(revisao.dgt_dataaprovacao),
+          diasAteAprovar: diasEntre(revisao.createdon, revisao.dgt_dataaprovacao),
           revisoes: 1
         };
       });
@@ -959,6 +1098,7 @@ export const FONTES_DASHBOARD: IFonte[] = [
   fonteOrcamentoPlanilhas,
   fonteDocumentos,
   fonteRevisoes,
+  fonteHistoricoRevisoes,
   fonteConsumoIa,
   fonteTreinamentosAtribuicoes,
   fonteTreinamentosTrilhas,

@@ -4,6 +4,7 @@ import {
   agrupar,
   aplicarFiltro,
   anoInicialDoDashboard,
+  aplicarFiltrosTela,
   farolDe,
   ordenarGrupos,
   paginasDoDashboard,
@@ -116,5 +117,31 @@ describe('Dashboards do portal', () => {
     expect(anoInicialDoDashboard(proximo, marco)).toBe(2027);
     const invalido = { ...EXEMPLOS_DASHBOARD.treinamentos, filtros: { ano: true, anoPadrao: 'ontem' } };
     expect(validarDashboard(JSON.stringify(invalido), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/anoPadrao/);
+  });
+
+  it('filtros da tela: período só nas fontes com mês; campo só nas fontes que têm o campo', () => {
+    const dados = {
+      'treinamentos.atribuicoes': [{ mes: 1, status: 'A', atribuicoes: 1 }, { mes: 6, status: 'B', atribuicoes: 1 }, { status: 'A', atribuicoes: 1 }],
+      'documentos.documentos': [{ mes: 2, status: 'A', documentos: 1 }, { mes: 11, status: 'B', documentos: 1 }],
+      'orcamento.planilhas': [{ situacao: 'X', planilhas: 1 }]
+    };
+    const r = aplicarFiltrosTela(dados, { mesInicio: 1, mesFim: 3, campos: { status: 'A' } }, CATALOGO_DASHBOARD);
+    // Período parcial: sai a linha de junho e a sem mês; status A mantém só as "A".
+    expect(r['treinamentos.atribuicoes']).toEqual([{ mes: 1, status: 'A', atribuicoes: 1 }]);
+    expect(r['documentos.documentos']).toEqual([{ mes: 2, status: 'A', documentos: 1 }]);
+    // Fonte sem "status" e sem "mes": não é afetada.
+    expect(r['orcamento.planilhas']).toHaveLength(1);
+    // Sem filtros: tudo igual.
+    expect(aplicarFiltrosTela(dados, {}, CATALOGO_DASHBOARD)['treinamentos.atribuicoes']).toHaveLength(3);
+  });
+
+  it('filtros.campos: só campos de texto de fontes usadas, no máximo 4', () => {
+    const base = EXEMPLOS_DASHBOARD.treinamentos;
+    const ok = { ...base, filtros: { ano: true, periodo: true, campos: ['status', 'origem'] } };
+    expect(validarDashboard(JSON.stringify(ok), CATALOGO_DASHBOARD).erros).toEqual([]);
+    const numerico = { ...base, filtros: { campos: ['nota'] } };
+    expect(validarDashboard(JSON.stringify(numerico), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/"nota" não é um campo de texto/);
+    const demais = { ...base, filtros: { campos: ['status', 'origem', 'trilha', 'usuario', 'area'] } };
+    expect(validarDashboard(JSON.stringify(demais), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/no máximo 4/);
   });
 });

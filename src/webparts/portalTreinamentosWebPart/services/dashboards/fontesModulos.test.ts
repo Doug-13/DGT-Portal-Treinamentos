@@ -62,7 +62,12 @@ const TABELAS: { [tabela: string]: Array<Record<string, unknown>> } = {
     }
   ],
   dgt_certificado: [{ _dgt_usuariotreinamento_value: 'ut-1', dgt_dataemissao: '2027-02-20T12:00:00Z', dgt_datavalidade: emDias(20) }],
-  dgt_documentorevisao: [{ dgt_documentorevisaoid: 'rev-1', _dgt_documento_value: 'doc-1' }, { dgt_documentorevisaoid: 'rev-2', _dgt_documento_value: 'doc-2' }],
+  dgt_documento: [{ dgt_documentoid: 'doc-1', '_dgt_processonegocio_value@OData.Community.Display.V1.FormattedValue': 'Compras' }],
+  dgt_documentorevisao: [
+    { dgt_documentorevisaoid: 'rev-1', _dgt_documento_value: 'doc-1', dgt_revisao: '03', createdon: '2027-02-01T12:00:00Z', dgt_dataaprovacao: '2027-02-11T12:00:00Z', dgt_requerretreinamento: true, '_dgt_aprovadopor_value@OData.Community.Display.V1.FormattedValue': 'Carla', dgt_etapaatual: '' },
+    { dgt_documentorevisaoid: 'rev-2', _dgt_documento_value: 'doc-2', dgt_revisao: '01', createdon: '2027-05-03T12:00:00Z', dgt_etapaatual: 'Aprovação' },
+    { dgt_documentorevisaoid: 'rev-3', _dgt_documento_value: 'doc-1', dgt_revisao: '02', createdon: '2026-08-01T12:00:00Z' }
+  ],
   dgt_tarefafluxo: [
     { _dgt_documentorevisao_value: 'rev-1', dgt_etapanome: 'Aprovação', dgt_prazo: emDias(-3), createdon: '2027-04-01T12:00:00Z' },
     { _dgt_documentorevisao_value: 'rev-2', dgt_etapanome: 'Revisão', createdon: '2027-04-01T12:00:00Z', dgt_concluidaem: '2027-04-04T12:00:00Z' }
@@ -175,5 +180,19 @@ describe('Fontes dos módulos da plataforma', () => {
         }
       }));
     }
+  });
+
+  it('documentos: processo e mês de cadastro; histórico de revisões do ano com dias até aprovar', async () => {
+    const documentos = await carregar('documentos.documentos');
+    expect(documentos.filter(l => l.codigo === 'PRO-POP-001')[0]).toMatchObject({ processo: 'Compras' });
+    expect(documentos.filter(l => l.codigo === 'CTL-IT-002')[0]).toMatchObject({ processo: 'Sem processo' });
+
+    const historico = await carregar('documentos.historicoRevisoes');
+    // rev-3 é de 2026: fora do ano 2027.
+    expect(historico.map(l => l.revisao).sort()).toEqual(['01', '03']);
+    expect(historico.filter(l => l.revisao === '03')[0]).toMatchObject({ aprovada: 'Sim', diasAteAprovar: 10, retreinamento: 'Sim', aprovador: 'Carla', mes: 2, mesAprovacao: 2, etapa: 'Concluída', processo: 'Compras' });
+    expect(historico.filter(l => l.revisao === '01')[0]).toMatchObject({ aprovada: 'Não', etapa: 'Aprovação', diasAteAprovar: undefined });
+    // Gestor de Controladoria só vê a revisão do documento da área dele.
+    expect((await carregar('documentos.historicoRevisoes', ['area-ctl'])).map(l => l.revisao)).toEqual(['01']);
   });
 });

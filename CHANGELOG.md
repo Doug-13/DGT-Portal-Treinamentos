@@ -18,6 +18,10 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Melhoria: catálogo de Kits atualizado para utilizar informações de valores e preços integradas.
 - Melhoria: identidade visual do portal centralizada com novos tokens de design para padronização das telas.
 - Melhoria: documentação técnica de IA e dashboards ampliada com orientações de configuração e uso.
+- Novo: fontes de dashboard "Documentos — histórico de revisões do ano", "distribuição por setor" e "distribuição por processo".
+- Melhoria: fontes de documentos com datas e meses (cadastro, prazo, revisão, aprovação, vigência), processo, estágio, etapa e situação do fluxo, faixas de prazo e de tempo em aberto.
+- Novo: filtros globais opcionais nos dashboards: período (De / Até) e situação do prazo.
+- Correção: a criação com IA deixa de responder que documentos e revisões não têm data ou filtro de período.
 
 ## [1.4.26] - 2026-11-13
 

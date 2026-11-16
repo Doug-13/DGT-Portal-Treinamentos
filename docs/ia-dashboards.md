@@ -113,3 +113,22 @@ e consideram "ativo" vazio como ativo, igual ao restante do portal.
 - ✎ em cada gráfico e tabela: título, tipo, nomes no eixo, valores, ordem, quantidade, altura e largura.
   Quem gerencia dashboards clica em **Salvar no dashboard**; os demais veem o ajuste só na tela.
 
+## Filtros da tela: período e campos
+
+```json
+"filtros": { "ano": true, "area": true, "periodo": true, "campos": ["status", "tipo", "responsavel"] }
+```
+
+- `periodo`: "de mês / até mês" no topo; filtra as fontes que têm `mes` (linhas sem mês saem num período parcial).
+- `campos` (até 4, só campos de texto das fontes do painel): listas com os valores existentes nos dados; filtram
+  todas as fontes que têm o campo. Fontes sem o campo não são afetadas.
+- Só na consulta (não alteram o salvo) e valem também para a IA do painel. "Limpar filtros" volta ao total.
+
+## Documentos: campos novos
+
+- `documentos.documentos`: `processo`, `criadoEm`, `mes` (mês do prazo da próxima revisão) e `mesCadastro`.
+- `documentos.revisoes` (em andamento): `processo`, `etapa`, `situacaoFluxo`, `motivo`, `retreinamento`,
+  `dataAbertura` e `mes` (mês de abertura). Responde "revisões pendentes por responsável/etapa".
+- `documentos.historicoRevisoes` (nova): todas as revisões abertas no ano, com `aprovada`, `aprovador`,
+  `dataAprovacao`, `dataVigencia`, `mesAprovacao` e `diasAteAprovar` (ciclo de revisão).
+

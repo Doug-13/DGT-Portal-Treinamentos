@@ -190,12 +190,56 @@ export interface IDefinicaoDashboard {
   // anoPadrao: ano em que o painel abre. "atual", "proximo" ou um ano
   // (ex.: 2026). Sem ele: painéis só de orçamento abrem no ano seguinte a
   // partir de julho (planejamento); os demais, no ano atual.
-  filtros?: { ano?: boolean; area?: boolean; anoPadrao?: 'atual' | 'proximo' | number };
+  // periodo: seletor "de mês / até mês" (vale para as fontes com "mes").
+  // campos: até 4 listas de seleção (ex.: status, tipo, responsável) que
+  // filtram todas as fontes que têm o campo.
+  filtros?: { ano?: boolean; area?: boolean; anoPadrao?: 'atual' | 'proximo' | number; periodo?: boolean; campos?: string[] };
   secoes: ISecaoDashboard[];
   assistente?: IAssistenteDashboard;
 }
 
 export const LIMITE_ESCOPO_ASSISTENTE = 2000;
+export const LIMITE_FILTROS_CAMPO = 4;
+
+// ------------------------------------------------------------
+// Filtros da tela (período e campos): aplicados sobre os dados já
+// carregados, antes de desenhar e antes da IA do painel.
+// ------------------------------------------------------------
+
+export interface IFiltrosTela {
+  mesInicio?: number;
+  mesFim?: number;
+  campos?: { [campo: string]: string };
+}
+
+export const aplicarFiltrosTela = (
+  dados: { [fonte: string]: Linha[] },
+  filtros: IFiltrosTela,
+  catalogo: IDescricaoFonte[]
+): { [fonte: string]: Linha[] } => {
+  const inicio = filtros.mesInicio || 1;
+  const fim = filtros.mesFim || 12;
+  const campos = filtros.campos || {};
+  const ativos = Object.keys(campos).filter(campo => campos[campo] !== undefined && campos[campo] !== '');
+  const resultado: { [fonte: string]: Linha[] } = {};
+  Object.keys(dados).forEach(fonteId => {
+    const fonte = catalogo.filter(item => item.id === fonteId)[0];
+    const temCampo = (campo: string): boolean => !!fonte && fonte.campos.some(c => c.chave === campo);
+    const filtrarMes = (inicio > 1 || fim < 12) && temCampo('mes');
+    const camposDaFonte = ativos.filter(temCampo);
+    resultado[fonteId] = (dados[fonteId] || []).filter(linha => {
+      if (filtrarMes) {
+        const mes = Number(linha.mes);
+        // Linha sem mês não entra num período parcial.
+        if (!mes || mes < inicio || mes > fim) {
+          return false;
+        }
+      }
+      return camposDaFonte.every(campo => String(linha[campo] === undefined || linha[campo] === null ? '' : linha[campo]) === campos[campo]);
+    });
+  });
+  return resultado;
+};
 export const LIMITE_PERGUNTAS_SUGERIDAS = 6;
 
 export type Linha = { [campo: string]: string | number | boolean | undefined };
@@ -315,6 +359,27 @@ export const validarDashboard = (
   if (anoPadrao !== undefined && anoPadrao !== 'atual' && anoPadrao !== 'proximo' &&
     !(typeof anoPadrao === 'number' && Math.floor(anoPadrao) === anoPadrao && anoPadrao >= 2000 && anoPadrao <= 2100)) {
     erros.push('filtros.anoPadrao deve ser "atual", "proximo" ou um ano (ex.: 2026).');
+  }
+
+  const camposFiltro = bruto.filtros ? bruto.filtros.campos : undefined;
+  if (camposFiltro !== undefined) {
+    if (!Array.isArray(camposFiltro) || camposFiltro.some(campo => typeof campo !== 'string' || !campo)) {
+      erros.push('filtros.campos deve ser uma lista de nomes de campo.');
+    } else {
+      if (camposFiltro.length > LIMITE_FILTROS_CAMPO) {
+        erros.push(`filtros.campos: no máximo ${LIMITE_FILTROS_CAMPO} campos.`);
+      }
+      const usadas = fontesUsadas(bruto).map(fonteDe).filter((f): f is IDescricaoFonte => !!f);
+      camposFiltro.forEach(campo => {
+        const campoTexto = usadas.some(fonte => fonte.campos.some(c => c.chave === campo && c.tipo === 'texto'));
+        if (!campoTexto) {
+          erros.push(`filtros.campos: "${campo}" não é um campo de texto de nenhuma fonte usada no painel.`);
+        }
+      });
+    }
+  }
+  if (bruto.filtros && bruto.filtros.periodo !== undefined && typeof bruto.filtros.periodo !== 'boolean') {
+    erros.push('filtros.periodo deve ser true ou false.');
   }
 
   bruto.secoes.forEach((secao, s) => {
