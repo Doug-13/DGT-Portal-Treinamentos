@@ -279,6 +279,14 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
     setEstado(undefined);
     setErro('');
     try {
+      // Fluxo alterado depois que o registro começou (e não atualizado
+      // na publicação): leva para a versão em uso, na mesma etapa. Se não
+      // der (ex.: sem permissão de gravação), abre como está.
+      try {
+        await fluxo.atualizarVersao(ambiente, registro, { id: contexto.usuarioId, nome: contexto.nome });
+      } catch (falhaAtualizacao) {
+        console.warn('Registro mantido na versão anterior do fluxo:', falhaAtualizacao);
+      }
       const [estadoLido, listaVinculos, listaUsuarios] = await Promise.all([
         fluxo.carregar(registro),
         fluxo.vinculos(),
@@ -294,7 +302,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
     } finally {
       setCarregandoRegistro(false);
     }
-  }, [fluxo, contexto]);
+  }, [fluxo, contexto, ambiente]);
 
   // Relê a lista e o registro aberto depois de uma ação.
   const recarregarRegistro = async (registroId: string): Promise<void> => {

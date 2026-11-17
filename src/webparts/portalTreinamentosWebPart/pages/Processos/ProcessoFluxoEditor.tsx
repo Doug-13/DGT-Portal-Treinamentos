@@ -134,8 +134,10 @@ export interface IProcessoFluxoEditorProps {
   dataverseService?: DataverseService;
 
   // Chamado depois de publicar uma versão (para oferecer a
-  // atualização das revisões em andamento).
-  onPublicado?: (versao: number) => void;
+  // atualização das revisões em andamento). Pode devolver mensagens
+  // (ex.: registros de ambiente levados para a nova versão), que são
+  // mostradas no editor.
+  onPublicado?: (versao: number) => void | Promise<string[] | void>;
 }
 
 const COR_AZUL = '#202A44';
@@ -381,23 +383,37 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     versoes.find(item => item.versao === versaoSelecionada) ||
     versaoPadrao;
 
+  const existeRascunho =
+    versoes.some(item => item.status === 'rascunho');
+
+  // EDIÇÃO DIRETA: sem rascunho, a versão publicada abre já editável.
+  // "Aplicar alterações" grava uma nova versão, publica e leva os
+  // registros em andamento dos ambientes para ela (mesma etapa). O
+  // rascunho continua disponível ("Criar rascunho") para mudanças
+  // grandes que precisam ser preparadas antes de valer.
+  const edicaoDireta =
+    podeEditar &&
+    !!definicaoSelecionada &&
+    definicaoSelecionada.status === 'publicado' &&
+    !existeRascunho;
+
   const editavel =
     podeEditar &&
     !!definicaoSelecionada &&
-    definicaoSelecionada.status === 'rascunho';
+    (definicaoSelecionada.status === 'rascunho' || edicaoDireta);
 
   // Ao trocar de versão (ou após salvar), recarrega o estado de edição.
   // (salvar o rascunho NÃO recarrega o editor: o estado em memória
   // já é o que foi salvo.)
   const assinatura =
     definicaoSelecionada
-      ? `${processo.id}|${definicaoSelecionada.versao}|${definicaoSelecionada.status}`
+      ? `${processo.id}|${definicaoSelecionada.versao}|${definicaoSelecionada.status}|${edicaoDireta ? 'direta' : ''}`
       : processo.id;
 
   React.useEffect(
     () => {
       setEdicao(
-        definicaoSelecionada && definicaoSelecionada.status === 'rascunho'
+        definicaoSelecionada && (definicaoSelecionada.status === 'rascunho' || edicaoDireta)
           ? estadoInicial(definicaoSelecionada)
           : undefined
       );
@@ -542,6 +558,28 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
     });
   };
 
+  // Depois de publicar: quem usa o fluxo (ex.: ambientes) é avisado e
+  // as mensagens que voltarem aparecem no editor.
+  const avisarPublicacao = async (
+    versao: number
+  ): Promise<void> => {
+    if (!onPublicado) {
+      return;
+    }
+    try {
+      const extras = await onPublicado(versao);
+      if (extras && extras.length > 0) {
+        setMensagens({ tipo: 'ok', titulo: `Versão ${versao} em uso.`, textos: extras });
+      }
+    } catch (erro) {
+      setMensagens({
+        tipo: 'erro',
+        titulo: `Versão ${versao} publicada, mas os registros em andamento não foram atualizados:`,
+        textos: [erro instanceof Error ? erro.message : String(erro)]
+      });
+    }
+  };
+
   const salvar = async (
     publicar: boolean
   ): Promise<void> => {
@@ -608,9 +646,114 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       setAlterado(false);
     }
 
-    if (ok && publicar && onPublicado) {
-      onPublicado(definicao.versao);
+    if (ok && publicar) {
+      await avisarPublicacao(definicao.versao);
     }
+  };
+
+  // EDIÇÃO DIRETA: valida, grava como nova versão e publica, num clique.
+  // Se algo falhar no meio, o rascunho criado é descartado e a versão
+  // publicada continua a mesma.
+  const aplicar = async (): Promise<void> => {
+
+    const definicao =
+      await montar();
+
+    if (!definicao) {
+      return;
+    }
+
+    const erros =
+      validarDefinicao(definicao, {
+        metadadosDoProcesso: id => {
+          const fonte = (fontesCopia || []).find(item => item.processo.id === id);
+          return fonte ? fonte.metadados : undefined;
+        }
+      });
+
+    setLigacoesCorrigiveis(ligacoesQueBarramBotoes(definicao).map(item => item.transicaoId));
+
+    if (erros.length > 0) {
+      setMensagens({
+        tipo: 'erro',
+        titulo: `Corrija ${erros.length} ponto(s) antes de aplicar:`,
+        textos: erros
+      });
+      return;
+    }
+
+    if (
+      !window.confirm(
+        'Aplicar as alterações agora? Elas passam a valer para os novos registros e os registros em andamento ' +
+        'dos ambientes que usam este fluxo continuam na mesma etapa, já com o desenho novo. ' +
+        'A versão anterior fica guardada no histórico de versões.'
+      )
+    ) {
+      return;
+    }
+
+    let versaoAplicada = 0;
+
+    const ok =
+      await executar(
+        async () => {
+          const nova = await catalogo.criarNovaVersao(processo.id);
+          if (!nova.ok || !nova.definicao) {
+            return nova;
+          }
+          versaoAplicada = nova.definicao.versao;
+          const desfazer = async (): Promise<void> => {
+            try {
+              await catalogo.descartarRascunho(processo.id);
+            } catch (erro) {
+              console.error(erro);
+            }
+          };
+          try {
+            const salvo =
+              await catalogo.salvarRascunho({
+                ...definicao,
+                versao: nova.definicao.versao,
+                status: 'rascunho',
+                registroId: nova.definicao.registroId,
+                publicadoEm: undefined
+              });
+            if (!salvo.ok) {
+              await desfazer();
+              return salvo;
+            }
+            const publicado = await catalogo.publicarRascunho(processo.id);
+            if (!publicado.ok) {
+              await desfazer();
+            }
+            return publicado;
+          } catch (erro) {
+            await desfazer();
+            throw erro;
+          }
+        },
+        'Alterações aplicadas.'
+      );
+
+    if (ok) {
+      setAlterado(false);
+      setVersaoSelecionada(undefined);
+      setMensagens({ tipo: 'ok', titulo: `Alterações aplicadas (versão ${versaoAplicada}).`, textos: [] });
+      await avisarPublicacao(versaoAplicada);
+    }
+  };
+
+  const desfazerAlteracoes = (): void => {
+    if (!definicaoSelecionada || !window.confirm('Desfazer as alterações não aplicadas?')) {
+      return;
+    }
+    setEdicao(estadoInicial(definicaoSelecionada));
+    setSelecionado(undefined);
+    setModal(undefined);
+    setAlterado(false);
+    setLigacoesCorrigiveis([]);
+    setMensagens(undefined);
+    setChaveEditor(chave => chave + 1);
   };
 
   const verificar = async (): Promise<void> => {
@@ -1332,7 +1475,9 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
           <span style={{ fontSize: '12.5px' }}>
             {
               editavel
-                ? 'Dê duplo clique em uma etapa, decisão ou ligação (ou use ⚙ no menu do elemento) para configurar responsáveis, botões, prazo, metadados e caminhos.'
+                ? (edicaoDireta
+                  ? 'Edição direta da versão em uso: altere e clique em “Aplicar alterações” — vale na hora para novos registros e para os registros em andamento (mesma etapa). Dê duplo clique em uma etapa, decisão ou ligação para configurar.'
+                  : 'Dê duplo clique em uma etapa, decisão ou ligação (ou use ⚙ no menu do elemento) para configurar responsáveis, botões, prazo, metadados e caminhos.')
                 : 'Versão somente leitura. Clique em uma etapa, decisão ou evento para ver a configuração.'
             }
           </span>
@@ -1395,7 +1540,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                       {
                         temRascunho
                           ? 'Esta versão não pode ser alterada. Selecione o rascunho para editar.'
-                          : 'Versões publicadas não são alteradas. Clique em “Criar nova versão” para editar o desenho.'
+                          : 'Versões antigas não são alteradas. Selecione a versão em uso para editar.'
                       }
                     </div>
                   )
@@ -1422,7 +1567,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
             rodape={
               editavel
                 ? undefined
-                : 'Configuração da versão publicada, somente para consulta. Para alterar, use “Criar nova versão”.'
+                : 'Configuração de uma versão antiga ou de outro rascunho, somente para consulta.'
             }
             rotuloFechar={editavel ? undefined : 'Fechar'}
             abas={abasDoModal}
@@ -1515,7 +1660,41 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
         podeEditar && (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {
-              editavel && edicao && (
+              edicaoDireta && edicao && (
+                <>
+                  <button
+                    type="button"
+                    disabled={processando || !alterado}
+                    onClick={() => { aplicar().catch((error: unknown) => console.error(error)); }}
+                    style={estiloBotao(true, processando || !alterado)}
+                    title="Grava uma nova versão, publica e atualiza os registros em andamento dos ambientes (mesma etapa)."
+                  >
+                    Aplicar alterações
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={processando}
+                    onClick={() => { verificar().catch((error: unknown) => console.error(error)); }}
+                    style={estiloBotao(false, processando)}
+                  >
+                    Verificar fluxo
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={processando || !alterado}
+                    onClick={desfazerAlteracoes}
+                    style={estiloBotao(false, processando || !alterado)}
+                  >
+                    Desfazer alterações
+                  </button>
+                </>
+              )
+            }
+
+            {
+              editavel && edicao && !edicaoDireta && (
                 <>
                   <button
                     type="button"
@@ -1684,15 +1863,23 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
                       return;
                     }
 
+                    if (
+                      alterado &&
+                      !window.confirm('Há alterações não aplicadas. Criar o rascunho a partir da versão publicada e descartá-las?')
+                    ) {
+                      return;
+                    }
+
                     executar(
                       () => catalogo.criarNovaVersao(processo.id),
-                      'Nova versão criada como rascunho, a partir da versão publicada.',
+                      'Rascunho criado a partir da versão publicada. Ele só vale depois de publicado.',
                       resultado => setVersaoSelecionada(resultado.definicao ? resultado.definicao.versao : undefined)
                     ).catch((error: unknown) => console.error(error));
                   }}
-                  style={estiloBotao(true, processando)}
+                  style={estiloBotao(!edicaoDireta, processando)}
+                  title="Para mudanças grandes: prepara uma nova versão sem afetar quem está usando o fluxo, até ser publicada."
                 >
-                  Criar nova versão
+                  Criar rascunho
                 </button>
               )
             }

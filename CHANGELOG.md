@@ -6,6 +6,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Melhoria: edição direta do fluxo — a versão em uso abre já editável; "Aplicar alterações" grava, publica e leva os registros em andamento dos ambientes para o desenho novo, na mesma etapa e sem reiniciar o prazo. O rascunho continua disponível ("Criar rascunho") para mudanças grandes.
 - Correção: subprocesso em registros de ambiente — antes era ignorado (...)
 
 ## [1.4.27] - 2026-11-16
