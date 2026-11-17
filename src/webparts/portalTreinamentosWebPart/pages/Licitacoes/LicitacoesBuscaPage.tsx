@@ -591,7 +591,8 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
 
   const salvarParecer = async (
     decisao: DecisaoParecer,
-    justificativa: string
+    justificativa: string,
+    urgente?: boolean
   ): Promise<void> => {
     if (!dialogo) {
       return;
@@ -621,6 +622,7 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
       acompanhamento.participar(dialogo.item, {
         justificativa,
         responsavel: contexto ? contexto.nome : '',
+        urgente: !!urgente,
         analiseIa: estadoIa.analise
           ? {
             recomendacao: estadoIa.analise.recomendacao === 'Participar'
@@ -865,13 +867,14 @@ const LicitacoesBuscaPage: React.FC<ILicitacoesBuscaPageProps> = ({
         <AcompanhamentoPainel
           acompanhamento={acompanhamento}
           ehAdministrador={ehAdministrador}
-          onCriarTarefaClickUp={(acomp, atualizar) => {
+          onCriarTarefaClickUp={(acomp, atualizar, urgente) => {
             const parecer = pareceres.atuais.find(p => p.chaveEdital === acomp.chaveEdital);
             const item = resultados.find(r => acompanhamento.obter(r) === acomp);
             const estadoIa = item ? ia.estadoDe(item) : undefined;
             acompanhamento.criarTarefaClickUp(acomp, item, {
               justificativa: parecer ? parecer.justificativa : '',
               responsavel: parecer ? parecer.responsavel : (contexto ? contexto.nome : ''),
+              urgente: !!urgente,
               analiseIa: estadoIa && estadoIa.analise
                 ? {
                   recomendacao: estadoIa.analise.recomendacao === 'Participar'

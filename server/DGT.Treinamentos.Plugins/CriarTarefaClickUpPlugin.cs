@@ -18,7 +18,9 @@ namespace DGT.Treinamentos.Plugins
     //
     // PayloadJson:
     //   { "chaveEdital": "...", "nome": "...", "descricao": "markdown",
-    //     "dataLimite": 1730000000000 (ms, opcional), "prioridade": 1..4 }
+    //     "dataLimite": 1730000000000 (ms, opcional), "prioridade": 1..4,
+    //     "urgente": false (botão Urgente: prazos encurtados, vencimento
+    //                       7 dias úteis antes do pregão, prioridade 1) }
     //
     // ResultadoJson:
     //   { "id": "...", "url": "https://app.clickup.com/t/...", "existente": false }
@@ -37,6 +39,7 @@ namespace DGT.Treinamentos.Plugins
     //     "tags": ["licitação"],               (somadas às do portal: modalidade, UF)
     //     "campos": {                          (opcional: campos personalizados da lista)
     //       "orgaoMunicipio": "...", "dataPregao": "...", "resumo": "...", "parecer": "...",
+    //       "prazoAnaliseInicial": "...", "prazoAnaliseTecnica": "...",
     //       "prazoImpugnacao": "...", "prazoChecklist": "...", "prazoProposta": "...",
     //       "orgao": "<id do campo>", "municipio": "...", "uf": "...",
     //       "modalidade": "...", "numero": "...", "valorEstimado": "...",
@@ -158,9 +161,21 @@ namespace DGT.Treinamentos.Plugins
 
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
 
+            // Botão "Urgente" do portal: prazos encurtados (ver CompletarValores).
+            var urgente = (bool?)payload["urgente"] == true;
+
             // Valores dos campos personalizados (o que faltar é completado).
             var valores = payload["campos"] as JObject ?? new JObject();
-            CompletarValores(valores, payload);
+            CompletarValores(valores, payload, urgente);
+
+            // Vencimento: o do portal; sem ele, Data Pregão (normal) ou
+            // 7 dias úteis antes dela (urgente).
+            var dataLimite = (long?)payload["dataLimite"];
+            if ((!dataLimite.HasValue || dataLimite.Value <= 0) && (long?)valores["dataPregao"] > 0)
+            {
+                var pregao = DateTimeOffset.FromUnixTimeMilliseconds((long)valores["dataPregao"]).ToOffset(TimeSpan.FromHours(-3));
+                dataLimite = (urgente ? SubtrairDiasUteis(pregao, DiasVencimentoUrgente) : pregao).ToUnixTimeMilliseconds();
+            }
 
             var existenteId = acompanhamento.GetAttributeValue<string>("dgt_clickuptarefaid");
             if (!string.IsNullOrEmpty(existenteId))
@@ -175,6 +190,8 @@ namespace DGT.Treinamentos.Plugins
                 if ((bool?)payload["atualizarCampos"] == true)
                 {
                     PreencherCampos(existenteId, valores, resultadoExistente, tracing);
+                    AtualizarVencimento(existenteId, dataLimite, urgente ? 1 : (int?)payload["prioridade"], resultadoExistente, tracing);
+                    GravarUrgente(sistema, acompanhamento.Id, urgente, tracing);
                 }
                 context.OutputParameters["ResultadoJson"] = resultadoExistente.ToString(Formatting.None);
                 return;
@@ -198,14 +215,13 @@ namespace DGT.Treinamentos.Plugins
                 corpo["status"] = _status;
             }
 
-            var dataLimite = (long?)payload["dataLimite"];
             if (dataLimite.HasValue && dataLimite.Value > 0)
             {
                 corpo["due_date"] = dataLimite.Value;
                 corpo["due_date_time"] = true;
             }
 
-            var prioridade = (int?)payload["prioridade"];
+            var prioridade = urgente ? 1 : (int?)payload["prioridade"];
             if (prioridade.HasValue && prioridade.Value >= 1 && prioridade.Value <= 4)
             {
                 corpo["priority"] = prioridade.Value;
@@ -273,6 +289,7 @@ namespace DGT.Treinamentos.Plugins
                 atualizacao["dgt_clickuptarefaid"] = id;
                 atualizacao["dgt_clickupurl"] = url;
                 sistema.Update(atualizacao);
+                GravarUrgente(sistema, acompanhamento.Id, urgente, tracing);
 
                 tracing.Trace("Tarefa {0} criada no ClickUp para o acompanhamento {1}.", id, acompanhamento.Id);
 
@@ -305,6 +322,7 @@ namespace DGT.Treinamentos.Plugins
 
                 // Datas com hora.
                 if (mapa.Name == "abertura" || mapa.Name == "encerramento" || mapa.Name == "dataPregao" ||
+                    mapa.Name == "prazoAnaliseInicial" || mapa.Name == "prazoAnaliseTecnica" ||
                     mapa.Name == "prazoImpugnacao" || mapa.Name == "prazoChecklist" || mapa.Name == "prazoProposta")
                 {
                     corpo["value_options"] = new JObject { ["time"] = true };
@@ -387,7 +405,63 @@ namespace DGT.Treinamentos.Plugins
             return new DateTime(ano, mes, diaMes);
         }
 
-        private static void CompletarValores(JObject v, JObject payload)
+        // Prazos em dias úteis antes da Data Pregão (mesma tabela de
+        // services/licitacoes/prazosClickUp.ts no portal).
+        //                       normal  urgente
+        //   Análise Inicial        7       6
+        //   Análise Técnica        6       5
+        //   Impugnação             4       4
+        //   Checklist Final        3       3
+        //   Proposta               2       2
+        //   Vencimento        Data Pregão  7
+        private const int DiasVencimentoUrgente = 7;
+
+        // Regrava vencimento (e prioridade) de uma tarefa existente.
+        private void AtualizarVencimento(string idTarefa, long? dataLimite, int? prioridade, JObject resultado, ITracingService tracing)
+        {
+            var corpo = new JObject();
+            if (dataLimite.HasValue && dataLimite.Value > 0)
+            {
+                corpo["due_date"] = dataLimite.Value;
+                corpo["due_date_time"] = true;
+            }
+            if (prioridade.HasValue && prioridade.Value >= 1 && prioridade.Value <= 4)
+            {
+                corpo["priority"] = prioridade.Value;
+            }
+            if (!corpo.HasValues)
+            {
+                return;
+            }
+            try
+            {
+                EnviarJson(HttpMethod.Put, $"https://api.clickup.com/api/v2/task/{idTarefa}", corpo);
+                resultado["vencimentoAtualizado"] = true;
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace("Vencimento da tarefa {0} não atualizado: {1}", idTarefa, ex.Message);
+                resultado["vencimentoAtualizado"] = false;
+            }
+        }
+
+        // Guarda no acompanhamento se a tarefa está no modo urgente
+        // (coluna dgt_clickupurgente; se ainda não existir, só registra).
+        private static void GravarUrgente(IOrganizationService sistema, Guid acompanhamentoId, bool urgente, ITracingService tracing)
+        {
+            try
+            {
+                var registro = new Entity(TabelaAcompanhamento, acompanhamentoId);
+                registro["dgt_clickupurgente"] = urgente;
+                sistema.Update(registro);
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace("dgt_clickupurgente não gravado (a coluna existe?): {0}", ex.Message);
+            }
+        }
+
+        private static void CompletarValores(JObject v, JObject payload, bool urgente)
         {
             string Texto(string chave) => ((string)v[chave] ?? string.Empty).Trim();
 
@@ -404,12 +478,14 @@ namespace DGT.Treinamentos.Plugins
                 v["dataPregao"] = encerramento.DeepClone();
             }
 
-            // Prazos internos: Data Pregão − 4 / 3 / 2 dias úteis
-            // (mesma regra de utils/diasUteis.ts no portal).
+            // Prazos internos: Data Pregão − 7 / 6 / 4 / 3 / 2 dias úteis
+            // (urgente: 6 / 5 / 4 / 3 / 2) — mesma regra do portal.
             var pregao = (long?)v["dataPregao"];
             if (pregao.HasValue && pregao.Value > 0)
             {
                 var data = DateTimeOffset.FromUnixTimeMilliseconds(pregao.Value).ToOffset(TimeSpan.FromHours(-3));
+                if (v["prazoAnaliseInicial"] == null || v["prazoAnaliseInicial"].Type == JTokenType.Null) { v["prazoAnaliseInicial"] = SubtrairDiasUteis(data, urgente ? 6 : 7).ToUnixTimeMilliseconds(); }
+                if (v["prazoAnaliseTecnica"] == null || v["prazoAnaliseTecnica"].Type == JTokenType.Null) { v["prazoAnaliseTecnica"] = SubtrairDiasUteis(data, urgente ? 5 : 6).ToUnixTimeMilliseconds(); }
                 if (v["prazoImpugnacao"] == null || v["prazoImpugnacao"].Type == JTokenType.Null) { v["prazoImpugnacao"] = SubtrairDiasUteis(data, 4).ToUnixTimeMilliseconds(); }
                 if (v["prazoChecklist"] == null || v["prazoChecklist"].Type == JTokenType.Null) { v["prazoChecklist"] = SubtrairDiasUteis(data, 3).ToUnixTimeMilliseconds(); }
                 if (v["prazoProposta"] == null || v["prazoProposta"].Type == JTokenType.Null) { v["prazoProposta"] = SubtrairDiasUteis(data, 2).ToUnixTimeMilliseconds(); }

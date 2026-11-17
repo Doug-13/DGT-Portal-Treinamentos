@@ -432,7 +432,9 @@ export interface IRegistrarParecerDialogProps {
   justificativaInicial?: string;
   parecerAtual?: ISituacaoParecer;
   onCancelar: () => void;
-  onSalvar: (decisao: DecisaoParecer, justificativa: string) => Promise<void>;
+  // urgente: botão "⚡ Urgente" (só com Participar) — tarefa do ClickUp
+  // com prazos encurtados.
+  onSalvar: (decisao: DecisaoParecer, justificativa: string, urgente?: boolean) => Promise<void>;
 }
 
 export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
@@ -448,6 +450,8 @@ export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
   const [justificativa, setJustificativa] = React.useState<string>('');
   const [salvando, setSalvando] = React.useState<boolean>(false);
   const [erro, setErro] = React.useState<string>('');
+  // "⚡ Urgente" (só no Participar): prazos encurtados na tarefa do ClickUp.
+  const [urgente, setUrgente] = React.useState<boolean>(false);
 
   const campoRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -457,6 +461,7 @@ export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
     setJustificativa(justificativaInicial || '');
     setErro('');
     setSalvando(false);
+    setUrgente(false);
     if (item) {
       window.setTimeout(() => {
         if (campoRef.current) {
@@ -494,7 +499,7 @@ export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
     }
     setSalvando(true);
     setErro('');
-    onSalvar(decisao, texto)
+    onSalvar(decisao, texto, decisao === 'Participar' && urgente)
       .catch(falha => {
         setErro((falha as Error).message || 'Não foi possível salvar o parecer.');
         setSalvando(false);
@@ -715,6 +720,30 @@ export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
             pela política da DGT (LGPD), CPF, CNPJ, senhas e dados bancários não podem
             ser gravados no portal. Identifique o órgão pelo nome.
           </p>
+        )}
+
+        {decisao === 'Participar' && (
+          <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              aria-pressed={urgente}
+              onClick={() => setUrgente(!urgente)}
+              disabled={salvando}
+              style={{
+                ...botaoBase,
+                background: urgente ? VERMELHO.forte : '#ffffff',
+                color: urgente ? '#ffffff' : VERMELHO.texto,
+                border: `1px solid ${VERMELHO.forte}`
+              }}
+            >
+              ⚡ Urgente{urgente ? ' ✓' : ''}
+            </button>
+            <span style={{ flex: '1 1 260px', fontSize: 11, color: COR.textoSecundario, lineHeight: 1.5 }}>
+              {urgente
+                ? 'Tarefa urgente no ClickUp: análise inicial 6 e técnica 5 dias úteis antes do pregão; vencimento da tarefa 7 dias úteis antes.'
+                : 'Prazos padrão no ClickUp: análise inicial 7 e técnica 6 dias úteis antes do pregão; vencimento na data do pregão.'}
+            </span>
+          </div>
         )}
 
         {erro && (

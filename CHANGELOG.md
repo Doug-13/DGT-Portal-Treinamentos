@@ -9,6 +9,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Novo: Fornecedores — homologação em kanban (Ficha recebida → Documentos pendentes → Em análise → Aguardando Jurídico → Homologado/Reprovado), um card por ciclo; ciclo concluído fica somente leitura e renovação abre um ciclo novo. A ficha recebida pelo formulário abre o ciclo sozinha. Aba Homologações com o quadro de todos os fornecedores.
 - Novo: Fornecedores — botão Colaboradores: colaboradores do prestador (nome, função, CPF protegido, observações) com ASO e NR aplicável, validade e versões.
 - Novo: Fornecedores — certidão CEAT (ações trabalhistas, TRT da sede) pela Infosimples; RS (TRT4) já configurado, demais TRTs por rota.
+- Novo: Licitações — tarefa do ClickUp com os prazos Análise Inicial (7 dias úteis antes do pregão) e Análise Técnica (6 dias úteis antes). Botão "⚡ Urgente" no parecer Participar e no Acompanhamento: análises 6 e 5 dias úteis antes, vencimento da tarefa 7 dias úteis antes e prioridade Urgente.
 - Correção: subprocesso em registros de ambiente — antes era ignorado (...)
 
 ## [1.4.27] - 2026-11-16

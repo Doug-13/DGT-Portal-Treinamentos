@@ -32,8 +32,9 @@ export interface IAcompanhamentoPainelProps {
   acompanhamento: IUseAcompanhamentoLicitacoes;
   ehAdministrador: boolean;
   // Cria a tarefa no ClickUp (ou, com atualizar = true, regrava os
-  // campos personalizados da tarefa que já existe).
-  onCriarTarefaClickUp?: (acompanhamento: IAcompanhamento, atualizar?: boolean) => void;
+  // campos personalizados da tarefa que já existe). urgente = modo
+  // "⚡ Urgente" (prazos encurtados; ver services/licitacoes/prazosClickUp.ts).
+  onCriarTarefaClickUp?: (acompanhamento: IAcompanhamento, atualizar?: boolean, urgente?: boolean) => void;
 }
 
 type Filtro = 'todos' | 'novidades';
@@ -148,6 +149,8 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
   const [selecionadoId, setSelecionadoId] = React.useState<string>('');
   const [filtro, setFiltro] = React.useState<Filtro>('todos');
   const [busca, setBusca] = React.useState<string>('');
+  // "⚡ Urgente" escolhido antes de criar a tarefa (edital sem tarefa).
+  const [urgenteNova, setUrgenteNova] = React.useState<boolean>(false);
 
   const lista = acompanhamento.acompanhamentos
     .filter(a => filtro === 'todos' || acompanhamento.naoLidas(a.id) > 0)
@@ -163,6 +166,10 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
 
   const selecionado: IAcompanhamento | undefined =
     acompanhamento.acompanhamentos.find(a => a.id === selecionadoId) || lista[0];
+
+  // Trocou de edital: o "Urgente" da tarefa nova volta ao normal.
+  const idSelecionado = selecionado ? selecionado.id : '';
+  React.useEffect(() => setUrgenteNova(false), [idSelecionado]);
 
   const linhaTempo = selecionado
     ? acompanhamento.alteracoes.filter(a => a.acompanhamentoId === selecionado.id)
@@ -365,10 +372,41 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
                           type="button"
                           style={{ ...botao(false, acompanhamento.processandoChave === selecionado.chaveEdital), background: 'transparent', color: '#ffffff', borderColor: 'rgba(255,255,255,.5)' }}
                           disabled={acompanhamento.processandoChave === selecionado.chaveEdital}
-                          onClick={() => onCriarTarefaClickUp(selecionado, true)}
-                          title="Grava de novo os campos personalizados (Órgão/Município, datas, valor, parecer, resumo…) na tarefa do ClickUp"
+                          onClick={() => onCriarTarefaClickUp(selecionado, true, selecionado.clickupUrgente)}
+                          title="Grava de novo os campos personalizados (Órgão/Município, datas, prazos, valor, parecer, resumo…) e o vencimento na tarefa do ClickUp, no modo atual (normal ou urgente)"
                         >
                           ↻ Atualizar campos
+                        </button>
+                      )}
+                      {onCriarTarefaClickUp && (
+                        <button
+                          type="button"
+                          aria-pressed={selecionado.clickupUrl ? selecionado.clickupUrgente : urgenteNova}
+                          style={{
+                            ...botao(false, acompanhamento.processandoChave === selecionado.chaveEdital),
+                            background: (selecionado.clickupUrl ? selecionado.clickupUrgente : urgenteNova) ? '#C0392B' : 'transparent',
+                            color: '#ffffff',
+                            borderColor: (selecionado.clickupUrl ? selecionado.clickupUrgente : urgenteNova) ? '#C0392B' : 'rgba(255,255,255,.5)'
+                          }}
+                          disabled={acompanhamento.processandoChave === selecionado.chaveEdital}
+                          onClick={() => {
+                            if (!selecionado.clickupUrl) {
+                              setUrgenteNova(!urgenteNova);
+                              return;
+                            }
+                            const novo = !selecionado.clickupUrgente;
+                            const texto = novo
+                              ? 'Marcar a tarefa como URGENTE?\n\nPrazo Análise Inicial e Técnica passam para 6 e 5 dias úteis antes do pregão, o vencimento da tarefa para 7 dias úteis antes e a prioridade para Urgente.'
+                              : 'Voltar a tarefa ao prazo NORMAL?\n\nPrazo Análise Inicial e Técnica voltam para 7 e 6 dias úteis antes do pregão e o vencimento volta para a data do pregão.';
+                            if (window.confirm(texto)) {
+                              onCriarTarefaClickUp(selecionado, true, novo);
+                            }
+                          }}
+                          title={selecionado.clickupUrl
+                            ? 'Liga/desliga o modo urgente da tarefa: recalcula os prazos e o vencimento no ClickUp'
+                            : 'Cria a tarefa no modo urgente: análises 6 e 5 dias úteis antes do pregão (em vez de 7 e 6) e vencimento 7 dias úteis antes'}
+                        >
+                          ⚡ Urgente{(selecionado.clickupUrl ? selecionado.clickupUrgente : urgenteNova) ? ' ✓' : ''}
                         </button>
                       )}
                       {!selecionado.clickupUrl
@@ -377,9 +415,9 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
                             type="button"
                             style={{ ...botao(true, acompanhamento.processandoChave === selecionado.chaveEdital), background: '#7B68EE' }}
                             disabled={acompanhamento.processandoChave === selecionado.chaveEdital}
-                            onClick={() => onCriarTarefaClickUp(selecionado)}
+                            onClick={() => onCriarTarefaClickUp(selecionado, false, urgenteNova)}
                           >
-                            + Criar tarefa no ClickUp
+                            + Criar tarefa no ClickUp{urgenteNova ? ' (urgente)' : ''}
                           </button>
                         )}
                       <button
