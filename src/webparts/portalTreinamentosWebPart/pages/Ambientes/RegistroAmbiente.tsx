@@ -123,6 +123,8 @@ export interface IRegistroAmbienteProps {
   dataverseService?: DataverseService;
   // Fluxo parado em "Assinatura digital": acompanhamento.
   assinatura?: IPainelAssinaturaProps;
+  // Fluxo parado num subprocesso (modo "aguardar"): registros filhos.
+  subprocesso?: IPainelSubprocessoAmbienteProps;
   // Configuração do ambiente: sequência de atividades no topo
   // (undefined = mostra, como nos ambientes antigos).
   mostrarSequencia?: boolean;
@@ -151,6 +153,68 @@ const ESCURO = {
 
 const rotuloInfo: React.CSSProperties = { fontSize: '11.5px', color: COR.texto2, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' };
 const valorInfo: React.CSSProperties = { fontSize: '13.5px', color: COR.azul, whiteSpace: 'pre-line', wordBreak: 'break-word' };
+
+// ------------------------------------------------------------
+// Subprocesso aguardando os registros filhos
+// ------------------------------------------------------------
+export interface IPainelSubprocessoAmbienteProps {
+  elementoNome: string;
+  filhos: Array<{ codigo: string; titulo: string; concluido?: boolean }>;
+  erros: string[];
+  processando: boolean;
+  podeLiberar: boolean;
+  onConferir: () => void;
+  onLiberar: (motivo: string) => void;
+}
+
+const PainelSubprocessoAmbiente: React.FC<IPainelSubprocessoAmbienteProps> = (props) => {
+  const pendentes = props.filhos.filter(item => !item.concluido).length;
+  return (
+    <div data-subprocesso-aguardando="sim" style={{ border: `1px solid ${COR.borda}`, borderRadius: '10px', padding: '12px 14px', background: '#FFFFFF', fontSize: '13px', color: COR.azul }}>
+      <strong style={{ display: 'block', fontSize: '14px', marginBottom: '4px' }}>
+        Aguardando registros — {props.elementoNome}
+      </strong>
+      <div style={{ color: COR.texto2, fontSize: '12.5px', marginBottom: '8px' }}>
+        {props.filhos.length > 0
+          ? `O fluxo segue quando os ${props.filhos.length} registro(s) criado(s) terminarem (concluídos ou cancelados). Faltam ${pendentes}.`
+          : 'Nenhum registro foi criado. Veja os erros abaixo.'}
+      </div>
+      {props.filhos.map(filho => (
+        <div key={filho.codigo} data-filho={filho.codigo} style={{ display: 'flex', gap: '8px', padding: '4px 0', borderTop: `1px solid ${COR.borda}` }}>
+          <span style={{ flex: 1 }}><strong>{filho.codigo}</strong> — {filho.titulo}</span>
+          <span style={{ fontWeight: 700, color: filho.concluido ? '#107C10' : '#B45309' }}>{filho.concluido ? '✓ terminado' : 'em andamento'}</span>
+        </div>
+      ))}
+      {props.erros.length > 0 && (
+        <div style={{ marginTop: '8px', background: '#FDE7E9', color: '#8A1C14', borderRadius: '6px', padding: '8px 10px', fontSize: '12.5px' }}>
+          {props.erros.map(item => <div key={item}>• {item}</div>)}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+        <button type="button" disabled={props.processando} onClick={props.onConferir} style={botao('principal', props.processando)}>
+          {props.processando ? 'Conferindo...' : 'Conferir agora'}
+        </button>
+        {props.podeLiberar && (
+          <button
+            type="button"
+            disabled={props.processando}
+            onClick={() => {
+              const motivo = window.prompt('Liberar o fluxo SEM esperar os registros. Informe o motivo (fica no histórico):', '');
+              if (motivo && motivo.trim().length >= 5) {
+                props.onLiberar(motivo.trim());
+              } else if (motivo !== null) {
+                window.alert('Informe um motivo com pelo menos 5 caracteres.');
+              }
+            }}
+            style={botao('secundario', props.processando)}
+          >
+            Liberar sem esperar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ------------------------------------------------------------
 // Menu ⋮ do Administrador do Sistema
@@ -662,6 +726,7 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
                 {instancia && instancia.status === 'concluido' ? 'Fluxo encerrado' : `Etapa: ${elementoAtual ? elementoAtual.nome : '—'}`}
               </strong>
               {props.assinatura && <div style={{ marginBottom: '10px' }}><PainelAssinatura {...props.assinatura} /></div>}
+              {props.subprocesso && <div style={{ marginBottom: '10px' }}><PainelSubprocessoAmbiente {...props.subprocesso} /></div>}
               {avisoExecucaoAdmin}
               <PainelFluxoOrcamento
                 {...propsEdicaoAdmin}
@@ -682,6 +747,10 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
           </div>
 
         </>
+      )}
+
+      {!props.carregando && estado && mostrarPainel && !duasColunas && props.subprocesso && (
+        <PainelSubprocessoAmbiente {...props.subprocesso} />
       )}
 
       {!props.carregando && estado && mostrarPainel && !duasColunas && props.assinatura && (

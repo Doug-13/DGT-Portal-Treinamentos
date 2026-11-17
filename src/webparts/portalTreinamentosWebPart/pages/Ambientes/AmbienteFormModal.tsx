@@ -406,7 +406,7 @@ const AmbienteFormModal: React.FC<IAmbienteFormModalProps> = (props) => {
                   </span>
                 )}
                 <span style={ajuda}>
-                  Fluxos desenhados para documentos também podem ser usados; etapas próprias de documentos (publicar, anexar arquivo, subprocesso)
+                  Fluxos desenhados para documentos também podem ser usados; etapas próprias de documentos (publicar, anexar arquivo)
                   são ignoradas no ambiente — a aba Configuração lista quais.
                 </span>
               </div>

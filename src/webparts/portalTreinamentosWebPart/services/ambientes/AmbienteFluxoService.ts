@@ -1,4 +1,11 @@
 import {
+  IDependenciasSubprocessoAmbiente,
+  ISolicitanteFilho,
+  avaliarFilhosAmbiente,
+  executarSubprocessosAmbiente
+} from './subprocessoAmbiente';
+
+import {
   executarScriptIsolado
 } from '../../components/fluxo/executarScriptIsolado';
 
@@ -28,7 +35,8 @@ import {
 
 import {
   IAmbiente,
-  IAmbienteRegistro
+  IAmbienteRegistro,
+  SituacaoRegistroAmbiente
 } from '../../models/Ambiente';
 
 import {
@@ -45,7 +53,6 @@ import {
 } from '../fluxo/persistenciaFluxo';
 
 import {
-  liberarSubprocessoNaInstancia,
   subprocessoAguardando,
   atorPodeExecutar,
   obterElementoAtual,
@@ -60,6 +67,7 @@ import {
 } from '../fluxo/ResolvedorResponsaveis';
 
 import {
+  AmbienteService,
   ehAdministradorSistema
 } from './AmbienteService';
 
@@ -359,17 +367,17 @@ export class AmbienteFluxoService {
       resolverResponsaveis: (responsaveis, valores) =>
         resolverResponsaveis(responsaveis, { ...dados, valores }, this.vinculosCache),
       rotuloRevisao: `${registro.codigo} — ${registro.titulo}`.substring(0, 200),
-      // Ambientes não publicam nem criam documentos: tarefas de sistema
-      // do desenho apenas seguem adiante. Um subprocesso em modo
-      // "aguardar" é liberado na hora (senão o registro pararia para
-      // sempre esperando documentos que nunca serão criados).
+      // Ambientes não publicam documentos: as demais tarefas de sistema
+      // do desenho apenas seguem adiante. O SUBPROCESSO cria registros
+      // no ambiente cujo fluxo foi escolhido (ex.: Auditoria → Não
+      // Conformidades), um por linha da tabela — ver subprocessoAmbiente.
       executarAcoesSistema: async (acoes, instancia) => {
         if (acoes.indexOf('criarSubprocessos') < 0) {
           return;
         }
         const definicao = await this.fluxo.definicaoDaInstancia(instancia);
-        if (definicao && subprocessoAguardando(definicao, instancia)) {
-          liberarSubprocessoNaInstancia(definicao, instancia, 'semDocumentos', { id: 'sistema', nome: 'Sistema' });
+        if (definicao) {
+          await executarSubprocessosAmbiente(definicao, instancia, registro, this.dependenciasSubprocesso());
         }
       }
     };
@@ -414,7 +422,13 @@ export class AmbienteFluxoService {
   public async iniciar(
     ambiente: IAmbiente,
     registro: IAmbienteRegistro,
-    contexto: IContextoAcesso
+    contexto: IContextoAcesso,
+    // Registro criado por subprocesso: valores herdados e origem.
+    extras?: {
+      valoresIniciais: Record<string, string>;
+      origemSubprocesso: { documentoId: string; codigo: string; titulo: string; elementoNome: string; linha?: number };
+      camposSomenteLeitura: string[];
+    }
   ): Promise<IResultadoAcaoAmbiente> {
 
     const disponibilidade = await this.verificar(ambiente);
@@ -436,7 +450,10 @@ export class AmbienteFluxoService {
             documentoId: registro.id,
             revisao: registro.codigo,
             ator: await this.ator(disponibilidade.definicao, registro, contexto),
-            simulado: false
+            simulado: false,
+            valoresIniciais: extras ? extras.valoresIniciais : undefined,
+            origemSubprocesso: extras ? extras.origemSubprocesso : undefined,
+            camposSomenteLeitura: extras ? extras.camposSomenteLeitura : undefined
           },
           this.contextoExecucao(ambiente, registro, { id: guid(contexto.usuarioId), nome: contexto.nome })
         );
@@ -566,6 +583,82 @@ export class AmbienteFluxoService {
       }
     }
     return { ok: true, erros: [], avisos };
+  }
+
+  // ----------------------------------------------------------
+  // Subprocesso entre ambientes
+  // ----------------------------------------------------------
+
+  private dependenciasSubprocesso(): IDependenciasSubprocessoAmbiente {
+    const ambientes = new AmbienteService(this.dataverse);
+    const contextoDe = (pessoa: ISolicitanteFilho): IContextoAcesso =>
+      ({ usuarioId: pessoa.id, nome: pessoa.nome, perfil: 'Funcionario' } as unknown as IContextoAcesso);
+    return {
+      ambienteDoFluxo: async fluxoId => {
+        const lista = await ambientes.listar();
+        return lista.ambientes.find(item => item.ativo && guid(item.processoId) === guid(fluxoId));
+      },
+      criarRegistro: (ambiente, dados, solicitante) => ambientes.criarRegistro(ambiente, dados, contextoDe(solicitante)),
+      iniciarFluxo: async (ambiente, registro, solicitante, extras) =>
+        (await this.iniciar(ambiente, registro, contextoDe(solicitante), extras)).erros
+    };
+  }
+
+  // Modo "aguardar": confere os registros filhos e retoma o pai quando
+  // todos terminaram. Com "motivo" (Administrador do Sistema), libera sem
+  // esperar.
+  public async conferirSubprocesso(
+    ambiente: IAmbiente,
+    registro: IAmbienteRegistro,
+    contexto: IContextoAcesso,
+    motivo?: string
+  ): Promise<IResultadoAcaoAmbiente> {
+    if (motivo !== undefined && !ehAdministradorSistema(contexto)) {
+      return { ok: false, erros: ['Somente o Administrador do Sistema pode liberar sem esperar.'], avisos: [] };
+    }
+    const estado = await this.carregar(registro);
+    if (!estado || !subprocessoAguardando(estado.definicao, estado.instancia)) {
+      return { ok: false, erros: [], avisos: [] };
+    }
+    let resultado;
+    try {
+      resultado = await this.fluxo.retomarSubprocesso(
+        registro.id,
+        await this.ator(estado.definicao, registro, contexto, estado.instancia),
+        async pedido => {
+          const ids = pedido.filhos.map(item => guid(item.documentoId)).filter(item => !!item);
+          const situacoes: Record<string, SituacaoRegistroAmbiente | undefined> = {};
+          if (ids.length > 0) {
+            const linhas = await this.dataverse.listarRegistros(
+              TABELAS_AMBIENTE.registro,
+              `$select=${REGISTRO.id},${REGISTRO.situacao}&$filter=${ids.map(id => `${REGISTRO.id} eq ${id}`).join(' or ')}`
+            );
+            linhas.forEach(linha => {
+              situacoes[guid(String(linha[REGISTRO.id]))] = String(linha[REGISTRO.situacao] || '') as SituacaoRegistroAmbiente;
+            });
+          }
+          pedido.filhos.forEach(filho => {
+            const situacao = situacoes[guid(filho.documentoId)];
+            if (situacao !== undefined) {
+              situacoes[filho.documentoId] = situacao;
+            }
+          });
+          return avaliarFilhosAmbiente(pedido, situacoes);
+        },
+        this.contextoExecucao(ambiente, registro, { id: guid(contexto.usuarioId), nome: contexto.nome }),
+        motivo
+      );
+    } catch (erro) {
+      return { ok: false, erros: [mensagem(erro)], avisos: [] };
+    }
+    if (!resultado.ok) {
+      return { ok: false, erros: resultado.erros, avisos: [] };
+    }
+    const depois = await this.carregar(registro);
+    if (depois) {
+      await this.sincronizar(registro, depois);
+    }
+    return { ok: true, erros: [], avisos: resultado.avisos || [] };
   }
 
   // Edição administrativa: salva os campos da etapa atual sem mudar a

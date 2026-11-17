@@ -39,7 +39,7 @@ export const avisosFluxoAmbiente = (
     // (String: o tipo "subprocesso" só existe quando a funcionalidade
     // de subprocesso está no código.)
     if (String(elemento.tipo) === 'subprocesso') {
-      avisos.push(`"${elemento.nome}": subprocesso cria documentos — não cria nada a partir de um ambiente (só fica registrado).`);
+      avisos.push(`"${elemento.nome}": no ambiente, o subprocesso cria REGISTROS do ambiente cujo fluxo foi escolhido (o fluxo precisa ser de um ambiente ativo; não cria documentos).`);
     }
 
     // "Anexo de arquivo" vale no ambiente para os anexos do registro,
