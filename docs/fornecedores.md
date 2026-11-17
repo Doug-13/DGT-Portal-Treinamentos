@@ -3,7 +3,8 @@
 Módulo para Suprimentos: cadastro mestre de fornecedores, documentos com
 validade, consultas automáticas (Receita via CNPJá, CEIS e CNEP via Portal da
 Transparência, certidões via Infosimples), Ficha de Cadastro SUP-CPL-01 recebida
-pelo Microsoft Forms e homologação (item 9). Base: escopo "Plataforma de
+pelo Microsoft Forms, homologação em kanban (item 9) e colaboradores do prestador
+(ASO e NR). Base: escopo "Plataforma de
 Homologação e Gestão de Fornecedores" (minuta 1.0, 06/11/2026) e Ficha de
 Cadastro de Fornecedor SUP-CPL-01 v1.0 (11/11/2026).
 
@@ -11,21 +12,23 @@ Cadastro de Fornecedor SUP-CPL-01 v1.0 (11/11/2026).
 
 1. O fornecedor responde o **Forms** (itens 1 a 6 e 8 da ficha) → o Power Automate
    chama `receberFicha` → cadastro em **Em homologação** com protocolo
-   `FORN-AAAA-NNNN`.
+   `FORN-AAAA-NNNN` e um card novo no kanban, coluna **Ficha recebida**.
 2. O fluxo responde ao fornecedor com o protocolo e a lista de documentos que ele
    precisa mandar por e-mail para **vaneska@dgt.com.br** (o Forms não aceita anexo
    de quem é externo). Ver seção 8.
 3. A analista revisa (aba **Ficha**) e roda as consultas (aba **Consultas**:
    Receita, sanções e certidões).
-4. Ficha consolidada assinada pelo fornecedor (Clicksign — próximo passo, ver seção 9).
-5. Jurídico aprova; o resultado é gravado na aba **Homologação** → status
-   **Homologado** (ou **Reprovado**).
-6. Começa a coleta dos documentos dos colaboradores do prestador. O contrato só sai
-   quando uma demanda fechar (Jurídico + Vaneska + comprador + prestador).
+4. Ficha consolidada **e Código de Conduta** assinados pelo fornecedor, no mesmo
+   envelope Clicksign (aguardando o token — ver seção 9).
+5. Jurídico aprova; o card é **concluído** no kanban (aba **Homologação**) →
+   status **Homologado** (ou **Reprovado**). Ver seção 7b.
+6. Colaboradores do prestador (botão **Colaboradores**): ASO e NR aplicável de cada
+   um (seção 7c). O contrato só sai quando uma demanda fechar (Jurídico + Vaneska +
+   comprador + prestador).
 
-**Fora desta fase:** portal do fornecedor (acesso externo), kanban com aprovações
-por alçada, IQF, integração com o CIGAM, documentos por colaborador terceirizado
-(ASO, NRs — aguardam validação do encarregado de dados) e consulta automática do TCU.
+**Fora desta fase:** portal do fornecedor (acesso externo), notificações do kanban
+(ex.: aviso ao Jurídico), aprovações por alçada, IQF, integração com o CIGAM,
+notificação de vencidos ao fornecedor e consulta automática do TCU.
 
 Ordem de implantação: **1. aprovação do CNPJ → 2. tabelas → 3. permissões →
 4. plugin → 5. tela → 6. fluxos (opcional)**.
@@ -62,6 +65,14 @@ protegidas, cada uma com seu perfil de segurança de campo:
 - Alteração bancária volta para "confirmação telefônica pendente" (ficha, item 5).
 - Registrar a base legal e o prazo de retenção com o encarregado de dados.
 
+**Colaboradores do prestador — CPF.** Mesmo padrão: o CPF fica **só** em
+`dgt_fornecedorcolaborador.dgt_cpf` (coluna protegida), perfil próprio
+`DGT - Fornecedores - CPF de colaboradores` (Suprimentos / SESMT), para que quem
+cuida dos colaboradores não precise ver os sócios. Sem e-mail e sem telefone do
+colaborador. O CPF não vai para observações, histórico ou e-mail; a tela mostra
+mascarado até clicar em Mostrar. Dados de saúde ficam só no arquivo do ASO.
+Validação de LGPD considerada feita pelo responsável do projeto (nov/2026).
+
 ## 2. Tabelas
 
 ```powershell
@@ -75,19 +86,23 @@ protegidas, cada uma com seu perfil de segurança de campo:
 | `dgt_fornecedordocumento` | Cada versão de documento (Vigente / Substituído), emissão, validade e link do arquivo |
 | `dgt_fornecedorconsulta` | Uma linha por consulta externa (CNPJ, CEIS, CNEP), com resultado e resumo |
 | `dgt_fornecedorhistorico` | Alterações do cadastro: ação, descrição, usuário |
+| `dgt_fornecedorhomologacao` | Ciclos de homologação (cards do kanban): etapa, item 9, resultado; concluído = somente leitura |
+| `dgt_fornecedorcolaborador` | Colaboradores do prestador: nome, função, CPF (protegido), observações, ativo |
+| `dgt_colaboradordocumento` | ASO e NR aplicável de cada colaborador (Vigente / Substituído), emissão, validade, arquivo |
 
 Nada é apagado pela tela. O script também cria o perfil de segurança de campo e a
 Custom API `dgt_ConsultarFornecedor` (exige `prvWritedgt_fornecedor`).
 
 ## 3. Permissões
 
-- Função de segurança de Suprimentos: Criar / Ler / Gravar (Organização) nas 5
+- Função de segurança de Suprimentos: Criar / Ler / Gravar (Organização) nas 8
   tabelas, **sem Excluir**.
-- Pessoas (ou equipe) de Suprimentos no perfil de campo `DGT - Fornecedores - CNPJ`.
+- Pessoas (ou equipe) de Suprimentos no perfil de campo `DGT - Fornecedores - CNPJ`;
+  quem cadastra colaboradores, no perfil `DGT - Fornecedores - CPF de colaboradores`.
 - Usuários e acessos: liberar o módulo **Fornecedores**; quem aprova homologação
   recebe "Administrador do módulo" (status Homologado, Suspenso, Bloqueado e
   Descredenciado e a aba Tipos de documento).
-- SharePoint: edição na biblioteca **Documentos de Fornecedores** (ver item 5).
+- SharePoint: edição na pasta **Contratos Fornecedores** do site de Suprimentos (ver item 5).
 
 ## 4. Plugin `ConsultarFornecedorPlugin`
 
@@ -97,7 +112,7 @@ Custom API `dgt_ConsultarFornecedor` (exige `prvWritedgt_fornecedor`).
    - **Configuração segura** (só aqui ficam as chaves):
      `{ "cnpja": "<chave do CNPJá>", "transparencia": "<chave da API de dados>", "infosimples": "<token da Infosimples>" }`
    - Configuração não segura (opcional):
-     `{ "cnpjaParametros": "maxAge=30", "diasEntreConsultas": 14, "limiteLote": 20, "infosimplesTimeout": 90, "diasRenovacaoCertidoes": 15, "rotasEstaduais": {}, "rotasMunicipais": {} }`
+     `{ "cnpjaParametros": "maxAge=30", "diasEntreConsultas": 14, "limiteLote": 20, "infosimplesTimeout": 90, "diasRenovacaoCertidoes": 15, "rotasEstaduais": {}, "rotasMunicipais": {}, "rotasTrt": { "RS": "tribunal/trt4/ceat" } }`
 
 ### Onde colocar o token da Infosimples
 
@@ -124,6 +139,7 @@ campo. Sem o token, as certidões aparecem como "Não configurada" e o resto fun
 | `cndt` | CNDT (TST) | `tst/cndt` |
 | `cnd_estadual` | CND Estadual | configurável por UF (`rotasEstaduais`) |
 | `cnd_municipal` | CND Municipal | configurável por município (`rotasMunicipais`) |
+| `ceat` | CEAT — ações trabalhistas (TRT da sede) | por UF ou cidade (`rotasTrt`); padrão `RS` → `tribunal/trt4/ceat` |
 
 - Certidão **regular** (negativa ou positiva com efeito de negativa) entra sozinha
   em **Documentos**, no tipo ligado à certidão (Tipos de documento › *Consulta
@@ -147,6 +163,18 @@ campo. Sem o token, as certidões aparecem como "Não configurada" e o resto fun
   e registre o PDF no SharePoint (Renovar → arquivo).
 - **Custo:** cada certidão emitida é cobrada pela Infosimples. O lote só pede as
   que faltam ou vencem em até `diasRenovacaoCertidoes` dias.
+- **CEAT (TRT):** `data[0].nada_consta` = true → regular (entra em Documentos);
+  false → irregular (Consultas + histórico, com varas e números dos processos). O
+  comprovante vem em `data[0].site_receipt`. A CEAT não traz validade: vale a do
+  tipo (sugestão: 30 dias). Fornecedor fora do RS fica "Sem cobertura" até o TRT
+  dele entrar em `rotasTrt` (`"SP/Campinas": "<rota do TRT15>"` para UF com mais
+  de um TRT; a cidade tem prioridade sobre a UF).
+  **Atenção ao custo:** a chamada é cobrada mesmo com parâmetro inválido (código
+  607). O plugin só chama a Infosimples com CNPJ de dígito válido (portal e lote).
+  No teste, a cobrança foi de R$ 0,26 por chamada (a documentação pública cita
+  R$ 0,04 de preço adicional): **confirmar com o financeiro/Infosimples** antes de
+  dimensionar o lote diário. **Pendente:** repetir o teste com um CNPJ de dígito
+  certamente correto para confirmar que o 607 foi erro de digitação.
 
 Ações (`PayloadJson`):
 
@@ -155,9 +183,9 @@ Ações (`PayloadJson`):
 | `previa` | `{ "acao": "previa", "cnpj": "..." }` | Confere duplicidade e devolve os dados da Receita. Não grava. |
 | `consultar` | `{ "acao": "consultar", "fornecedorId": "...", "consultas": ["cnpj","sancoes"] }` | Consulta e grava em `dgt_fornecedorconsulta` e no fornecedor |
 | `lote` | `{ "acao": "lote", "consultas": ["sancoes"], "limite": 20 }` | Fornecedores ativos sem consulta há mais de `diasEntreConsultas` dias |
-| `consultar` (certidão) | `{ "acao": "consultar", "fornecedorId": "...", "consultas": ["cnd_federal"] }` | Emite a certidão e registra o documento se regular (`"certidoes"` = as cinco) |
+| `consultar` (certidão) | `{ "acao": "consultar", "fornecedorId": "...", "consultas": ["cnd_federal"] }` | Emite a certidão e registra o documento se regular (`"certidoes"` = todas, inclusive `ceat`) |
 | `lote` (certidões) | `{ "acao": "lote", "consultas": ["certidoes"], "limite": 20 }` | Renova as que faltam ou vencem logo; para quando o tempo acaba (`haMais`) |
-| `receberFicha` | `{ "acao": "receberFicha", "ficha": { … } }` | Resposta do Forms (seção 8). Devolve `id`, `protocolo`, `novo`, `documentosPendentes` |
+| `receberFicha` | `{ "acao": "receberFicha", "ficha": { … } }` | Resposta do Forms (seção 8). Abre um ciclo no kanban se não houver um aberto. Devolve `id`, `protocolo`, `novo`, `documentosPendentes` |
 
 Do CNPJá só entram dados da **empresa** (sem sócios, telefones e e-mails).
 A ação `sancoes` consulta **CEIS, CNEP, CEPIM e acordos de leniência** (mesma
@@ -229,6 +257,48 @@ espalha a carga e cada fornecedor é consultado a cada ~2 semanas.
 - Questionário: "Sim" é destacado nas perguntas de risco e "Não" em 6.8
   (programa de integridade) e 6.9 (LGPD). Nada reprova automaticamente.
 
+## 7b. Kanban de homologação
+
+Colunas fixas: **Ficha recebida → Documentos pendentes → Em análise (Suprimentos)
+→ Aguardando Jurídico → Homologado / Reprovado**.
+
+- **Card = ciclo** (`dgt_fornecedorhomologacao`). Um fornecedor pode ter vários
+  ciclos ao longo do tempo (renovação, recontratação, atualização); só um aberto
+  por vez. O card guarda todos os campos do item 9 (checklist, risco, resultado,
+  validade, ressalvas, Suprimentos, Compliance/Jurídico, conferência bancária).
+- **Onde:** aba **Homologação** do fornecedor (quadro dos ciclos dele + card
+  aberto) e aba **Homologações** do módulo (todos os ciclos abertos e os
+  concluídos nos últimos 60 dias; clicar abre o fornecedor).
+- **Abrir ciclo:** automático quando a ficha chega pelo formulário; ou pelo botão
+  **Abrir ciclo** (motivo + coluna inicial).
+- **Mover:** manual nesta fase — botões ← / →, "Mover para…" ou arrastar o card.
+  Cada movimento fica no histórico. **Sem notificações** (o aviso ao Jurídico
+  entra quando as regras de cada coluna forem definidas).
+- **Concluir ciclo:** só com resultado Aprovado, Aprovado com ressalvas ou
+  Reprovado e as exigências de antes (risco e validade para aprovar; ressalvas
+  para "com ressalvas"/Reprovado). Grava o card e o cadastro (status, risco,
+  validade), e o card vira **somente leitura**.
+- **Homologação anterior ao kanban:** fornecedor já homologado sem ciclos mostra
+  o botão **Registrar a homologação atual como ciclo 1** (cria o ciclo 1 concluído
+  com os dados do cadastro).
+- Só o administrador do módulo move e grava; os demais veem o quadro.
+
+## 7c. Colaboradores do prestador
+
+Botão **Colaboradores** no detalhe do fornecedor.
+
+- Cadastro: nome, função/cargo, CPF (coluna protegida, dígito validado, sem
+  repetir no mesmo fornecedor) e observações. **Sem e-mail e sem telefone.**
+  Desativar em vez de apagar.
+- Documentos: **ASO** (obrigatório, com validade; sugestão de 1 ano a partir da
+  emissão) e **NR aplicável** (texto livre com a norma — NR-10, NR-35… —, com
+  validade). Nova versão do ASO, ou da mesma NR, deixa a anterior Substituída.
+- Pendência: ASO faltando ou vencido, ou alguma NR vencida.
+- Arquivos: pasta do fornecedor › `Colaboradores` › `Nome (8 primeiros
+  caracteres do id)` no site de Suprimentos, ou link do arquivo.
+- O histórico do fornecedor registra cadastro, alteração e documentos do
+  colaborador, nunca o CPF.
+
 ## 8. Ficha pelo Microsoft Forms + documentos por e-mail (opção A)
 
 O Forms coleta os dados; os **anexos** não (Forms não aceita upload de quem é
@@ -294,8 +364,8 @@ externo). Os documentos chegam por e-mail com o protocolo.
 1. Protocolo: `substring(triggerOutputs()?['body/subject'], indexOf(triggerOutputs()?['body/subject'], 'FORN-'), 14)`.
 2. Dataverse › *Listar linhas* `dgt_fornecedors`, filtro `dgt_protocolo eq '@{protocolo}'`.
    Sem linha: responder pedindo o protocolo correto e parar.
-3. Para cada anexo: SharePoint › *Criar arquivo* na biblioteca
-   **Documentos de Fornecedores**, pasta `Razão social (8 primeiros caracteres do id)`
+3. Para cada anexo: SharePoint › *Criar arquivo* no site de Suprimentos, pasta
+   `Documentos/General/03. CONTRATOS/Contratos/Contratos Fornecedores/Razão social (8 primeiros caracteres do id)`
    (mesmo padrão da tela).
 4. Dataverse › *Adicionar linha* em `dgt_fornecedorhistoricos`: ação
    "Documentos recebidos por e-mail", descrição com os nomes dos arquivos.
@@ -306,11 +376,25 @@ A conexão do Outlook do fluxo 2 é a da caixa vaneska@dgt.com.br (ou de quem ti
 acesso a ela). A leitura dos anexos por IA para sugerir o tipo de documento fica
 para uma próxima etapa.
 
-## 9. Assinatura da ficha (Clicksign) — próximo passo
+## 9. Assinatura da ficha e do Código de Conduta (Clicksign) — bloqueado pelo token
 
 O portal já tem a integração Clicksign via Power Automate (`docs/assinatura-digital.md`,
-tabela `dgt_assinatura`); o **token da Clicksign fica só no Power Automate**. A
-ficha consolidada (PDF) usará essa mesma estrutura. As colunas
-`dgt_assinaturastatus` e `dgt_assinaturaid` já foram criadas no fornecedor; a aba
-Homologação mostra a etapa como "integração aguardando o token".
+tabela `dgt_assinatura`); o **token da Clicksign fica só no Power Automate**.
+
+Desenho (a executar quando o token entrar no fluxo de assinatura):
+
+- **Um envelope só** por fornecedor/ciclo, com dois documentos: a **ficha
+  consolidada** (PDF gerado a partir do cadastro) e o **Código de Conduta da DGT**
+  (documento oficial já pronto, guardado no SharePoint de Suprimentos — o fluxo
+  anexa a versão vigente).
+- Signatário: representante legal informado na ficha (item 8); cópia para
+  Suprimentos.
+- O envelope é aberto com o card em **Em análise** ou **Aguardando Jurídico**
+  (ação manual nesta fase). O fluxo grava o andamento em
+  `dgt_fornecedor.dgt_assinaturastatus` ("Enviado", "Assinado", "Recusado") e o id
+  em `dgt_assinaturaid`. Assinado → o fluxo registra os dois PDFs em Documentos
+  (tipo "Ficha de Cadastro SUP-CPL-01 assinada" e um tipo "Código de Conduta
+  assinado", a criar).
+- O card mostra "Ficha e Código de Conduta assinados (Clicksign)" no andamento;
+  hoje aparece "integração aguardando o token".
 

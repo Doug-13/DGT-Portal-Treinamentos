@@ -1,10 +1,15 @@
 import {
   CodigoCertidao,
+  EtapaHomologacao,
+  ETAPAS_HOMOLOGACAO,
+  ICicloHomologacao,
+  IDadosHomologacao,
   IdVerificacao,
   IFornecedor,
   QUESTOES_INTEGRIDADE,
   ResultadoHomologacao,
-  StatusFornecedor
+  StatusFornecedor,
+  VERIFICACOES_HOMOLOGACAO
 } from './modeloFornecedores';
 
 import {
@@ -45,6 +50,71 @@ export const statusPeloResultado = (resultado: ResultadoHomologacao, atual: Stat
     : resultado === 'Reprovado'
       ? 'Reprovado'
       : atual;
+
+// ------------------------------------------------------------
+// Kanban (ciclos de homologação)
+// ------------------------------------------------------------
+
+export const resultadoConclusivo = (resultado: ResultadoHomologacao): boolean =>
+  resultado === 'Aprovado' || resultado === 'Aprovado com ressalvas' || resultado === 'Reprovado';
+
+// O que impede concluir o ciclo (vazio = pode concluir). Mesmas regras
+// que a aba Homologação já aplicava ao aprovar.
+export const validarConclusao = (d: IDadosHomologacao): string => {
+  const resultado = d.resultadoHomologacao || 'Pendente';
+  const aprovado = resultado === 'Aprovado' || resultado === 'Aprovado com ressalvas';
+  if (!resultadoConclusivo(resultado)) {
+    return 'Para concluir, defina o resultado: Aprovado, Aprovado com ressalvas ou Reprovado.';
+  }
+  if (aprovado && !d.classificacaoRisco) {
+    return 'Defina a classificação de risco antes de aprovar.';
+  }
+  if (aprovado && !d.validadeCadastro) {
+    return 'Informe a validade do cadastro / próxima revisão antes de aprovar.';
+  }
+  if ((resultado === 'Aprovado com ressalvas' || resultado === 'Reprovado') && !(d.ressalvas || '').trim()) {
+    return 'Descreva as ressalvas, medidas de mitigação ou a referência ao parecer.';
+  }
+  return '';
+};
+
+export const cicloEstaAberto = (c: ICicloHomologacao): boolean => !c.concluidoEm;
+
+export const cicloAberto = (ciclos: ICicloHomologacao[]): ICicloHomologacao | undefined =>
+  ciclos.filter(cicloEstaAberto).sort((a, b) => b.numero - a.numero)[0];
+
+export const proximoNumeroCiclo = (ciclos: ICicloHomologacao[]): number =>
+  ciclos.reduce((maior, c) => Math.max(maior, c.numero || 0), 0) + 1;
+
+export const etapaValida = (valor: string): EtapaHomologacao =>
+  (ETAPAS_HOMOLOGACAO.some(e => e.id === valor) ? valor : 'Ficha recebida') as EtapaHomologacao;
+
+// Coluna seguinte/anterior para os botões do card. "Concluído" não entra
+// pelos botões: exige o resultado (Concluir ciclo).
+export const etapaVizinha = (etapa: EtapaHomologacao, passo: 1 | -1): EtapaHomologacao | undefined => {
+  const i = ETAPAS_HOMOLOGACAO.map(e => e.id).indexOf(etapa) + passo;
+  const destino = i >= 0 && i < ETAPAS_HOMOLOGACAO.length ? ETAPAS_HOMOLOGACAO[i].id : undefined;
+  return destino === 'Concluído' ? undefined : destino;
+};
+
+export const verificacoesOk = (c: { verificacoes: ICicloHomologacao['verificacoes'] }): number =>
+  VERIFICACOES_HOMOLOGACAO.filter(v => {
+    const marcada = (c.verificacoes || {})[v.id];
+    return !!marcada && marcada.ok;
+  }).length;
+
+// Ciclo novo: parte do que já está no cadastro (homologações feitas antes
+// do kanban não se perdem).
+export const dadosIniciaisDoCiclo = (f: IFornecedor): IDadosHomologacao => ({
+  classificacaoRisco: f.classificacaoRisco,
+  resultadoHomologacao: 'Pendente',
+  ressalvas: '',
+  validadeCadastro: '',
+  verificacoes: {},
+  responsavelSuprimentos: '',
+  responsavelCompliance: '',
+  bancarioConferido: f.bancarioConferido
+});
 
 // Respostas que pedem análise: "Sim" nas perguntas de risco e "Não"
 // em 6.8 (programa de integridade) e 6.9 (LGPD).
@@ -121,7 +191,7 @@ export const sugerirVerificacoes = (
   return {
     receita,
     cnds: avaliarCertidoes(situacao, ['cnd_federal', 'fgts', 'cnd_estadual', 'cnd_municipal']),
-    cndt: avaliarCertidoes(situacao, ['cndt']),
+    cndt: avaliarCertidoes(situacao, ['cndt', 'ceat']),
     ceisCnep: sancoes,
     credito,
     financeira: { situacao: 'manual', texto: 'Área contábil (balanço / DRE).' },

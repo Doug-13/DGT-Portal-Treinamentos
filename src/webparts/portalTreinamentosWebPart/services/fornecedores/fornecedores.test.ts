@@ -20,10 +20,29 @@ import {
 } from './situacaoDocumental';
 
 import {
+  cicloAberto,
+  etapaValida,
+  etapaVizinha,
   pontosDeAtencao,
+  proximoNumeroCiclo,
   statusPeloResultado,
-  sugerirVerificacoes
+  sugerirVerificacoes,
+  validarConclusao,
+  verificacoesOk
 } from './homologacao';
+
+import {
+  chaveNorma,
+  cpfValido,
+  mascararCpf,
+  situacaoColaborador
+} from './colaboradores';
+
+import {
+  ICicloHomologacao,
+  IDadosHomologacao,
+  IDocumentoColaborador
+} from './modeloFornecedores';
 
 // ============================================================
 // TESTES — módulo Fornecedores
@@ -201,5 +220,162 @@ describe('homologacao (item 9 da ficha)', () => {
     });
     expect(sugerirVerificacoes(certo, calcularSituacao(certo, [], [], hoje)).bancario.situacao).toBe('ok');
     expect(sugerirVerificacoes(certo, calcularSituacao(certo, [], [], hoje)).cnds.situacao).toBe('pendente');
+  });
+
+  it('considera a CEAT junto com a CNDT', () => {
+    const tipos = [tipo('cndt', { codigoConsulta: 'cndt' }), tipo('ceat', { codigoConsulta: 'ceat' })];
+    const f = fornecedor('Serviço');
+    const soCndt = sugerirVerificacoes(f, calcularSituacao(f, tipos, [doc('cndt', '2027-03-01')], hoje));
+    expect(soCndt.cndt.situacao).toBe('pendente');   // falta a CEAT
+    const ambas = sugerirVerificacoes(f, calcularSituacao(f, tipos, [doc('cndt', '2027-03-01'), doc('ceat', '2026-12-31')], hoje));
+    expect(ambas.cndt.situacao).toBe('ok');
+  });
+});
+
+// ------------------------------------------------------------
+// Kanban (ciclos de homologação)
+// ------------------------------------------------------------
+
+const ciclo = (numero: number, extra: Partial<ICicloHomologacao> = {}): ICicloHomologacao => ({
+  id: `c${numero}`,
+  fornecedorId: 'f1',
+  numero,
+  motivo: 'Cadastro inicial',
+  etapa: 'Ficha recebida',
+  etapaDesde: '2026-11-01T10:00:00Z',
+  concluidoEm: '',
+  protocolo: '',
+  classificacaoRisco: '',
+  resultadoHomologacao: 'Pendente',
+  ressalvas: '',
+  validadeCadastro: '',
+  verificacoes: {},
+  responsavelSuprimentos: '',
+  responsavelCompliance: '',
+  bancarioConferido: false,
+  abertoPor: '',
+  criadoEm: '2026-11-01T10:00:00Z',
+  ...extra
+});
+
+const dados = (extra: Partial<IDadosHomologacao> = {}): IDadosHomologacao => ({
+  classificacaoRisco: '',
+  resultadoHomologacao: 'Pendente',
+  ressalvas: '',
+  validadeCadastro: '',
+  verificacoes: {},
+  responsavelSuprimentos: '',
+  responsavelCompliance: '',
+  bancarioConferido: false,
+  ...extra
+});
+
+describe('kanban de homologação', () => {
+
+  it('só conclui com resultado definido e as exigências de cada resultado', () => {
+    expect(validarConclusao(dados())).toMatch(/defina o resultado/);
+    expect(validarConclusao(dados({ resultadoHomologacao: 'Aprovado' }))).toMatch(/risco/);
+    expect(validarConclusao(dados({ resultadoHomologacao: 'Aprovado', classificacaoRisco: 'Baixo' }))).toMatch(/validade/);
+    expect(validarConclusao(dados({ resultadoHomologacao: 'Aprovado', classificacaoRisco: 'Baixo', validadeCadastro: '2027-11-01' }))).toBe('');
+    expect(validarConclusao(dados({ resultadoHomologacao: 'Aprovado com ressalvas', classificacaoRisco: 'Médio', validadeCadastro: '2027-11-01' }))).toMatch(/ressalvas/);
+    expect(validarConclusao(dados({ resultadoHomologacao: 'Reprovado' }))).toMatch(/ressalvas/);
+    expect(validarConclusao(dados({ resultadoHomologacao: 'Reprovado', ressalvas: 'Parecer jurídico 12/2026' }))).toBe('');
+  });
+
+  it('acha o ciclo aberto e numera o próximo; concluídos são histórico', () => {
+    const ciclos = [
+      ciclo(1, { etapa: 'Concluído', concluidoEm: '2025-11-01T00:00:00Z', resultadoHomologacao: 'Aprovado' }),
+      ciclo(2, { etapa: 'Em análise' })
+    ];
+    expect(cicloAberto(ciclos)!.numero).toBe(2);
+    expect(cicloAberto([ciclos[0]])).toBeUndefined();
+    expect(proximoNumeroCiclo(ciclos)).toBe(3);
+    expect(proximoNumeroCiclo([])).toBe(1);
+  });
+
+  it('move só entre colunas abertas pelos botões', () => {
+    expect(etapaVizinha('Ficha recebida', -1)).toBeUndefined();
+    expect(etapaVizinha('Ficha recebida', 1)).toBe('Documentos pendentes');
+    expect(etapaVizinha('Aguardando Jurídico', -1)).toBe('Em análise');
+    expect(etapaVizinha('Aguardando Jurídico', 1)).toBeUndefined();   // Concluído só por "Concluir ciclo"
+    expect(etapaValida('qualquer coisa')).toBe('Ficha recebida');
+  });
+
+  it('conta as verificações marcadas', () => {
+    expect(verificacoesOk(dados({
+      verificacoes: {
+        receita: { ok: true, data: '2026-11-10', responsavel: 'Analista' },
+        cnds: { ok: false, data: '', responsavel: '' },
+        cndt: { ok: true, data: '2026-11-10', responsavel: 'Analista' }
+      }
+    }))).toBe(2);
+  });
+});
+
+// ------------------------------------------------------------
+// Colaboradores do prestador. CPF SINTÉTICO: base inventada e
+// dígitos calculados aqui. Nenhum CPF real.
+// ------------------------------------------------------------
+
+const cpfSintetico = (base9: string): string => {
+  const dv = (base: string, peso: number): number => {
+    let soma = 0;
+    for (let i = 0; i < base.length; i++) { soma += Number(base.charAt(i)) * (peso - i); }
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  const d1 = dv(base9, 10);
+  return base9 + d1 + dv(base9 + d1, 11);
+};
+
+const docColaborador = (tipoDoc: 'ASO' | 'NR aplicável', norma: string, vencimento: string, extra: Partial<IDocumentoColaborador> = {}): IDocumentoColaborador => ({
+  id: `${tipoDoc}-${norma}-${vencimento}`,
+  colaboradorId: 'col1',
+  tipo: tipoDoc,
+  norma,
+  emissao: '2026-01-01',
+  vencimento,
+  arquivoUrl: '',
+  arquivoNome: '',
+  observacoes: '',
+  situacao: 'Vigente',
+  registradoPor: '',
+  criadoEm: '2026-01-01T00:00:00Z',
+  ...extra
+});
+
+describe('colaboradores', () => {
+
+  it('valida o dígito do CPF e mascara para exibição', () => {
+    const cpf = cpfSintetico('901234567');
+    expect(cpfValido(cpf)).toBe(true);
+    expect(cpfValido(cpf.substring(0, 10) + ((Number(cpf.charAt(10)) + 1) % 10))).toBe(false);
+    expect(cpfValido('11111111111')).toBe(false);
+    expect(cpfValido('123')).toBe(false);
+    expect(mascararCpf(cpf)).toBe(`***.***.${cpf.substring(6, 9)}-${cpf.substring(9)}`);
+  });
+
+  it('trata a mesma NR escrita de jeitos diferentes como uma só', () => {
+    expect(chaveNorma('NR 10')).toBe(chaveNorma('nr-10'));
+    expect(chaveNorma('NR10')).toBe('NR-10');
+  });
+
+  it('aponta ASO faltando ou vencido e NR vencida', () => {
+    expect(situacaoColaborador([], hoje).pendente).toBe(true);
+    expect(situacaoColaborador([], hoje).aso.estado).toBe('Faltando');
+
+    const emDia = situacaoColaborador([docColaborador('ASO', '', '2027-06-01'), docColaborador('NR aplicável', 'NR-35', '2027-06-01')], hoje);
+    expect(emDia.pendente).toBe(false);
+    expect(emDia.nrs.map(n => n.rotulo)).toEqual(['NR-35']);
+
+    const nrVencida = situacaoColaborador([docColaborador('ASO', '', '2027-06-01'), docColaborador('NR aplicável', 'NR-10', '2026-10-01')], hoje);
+    expect(nrVencida.pendente).toBe(true);
+
+    // Versão substituída não conta; vale a vigente mais recente.
+    const renovado = situacaoColaborador([
+      docColaborador('ASO', '', '2026-10-01', { situacao: 'Substituído' }),
+      docColaborador('ASO', '', '2027-10-01', { emissao: '2026-10-02' })
+    ], hoje);
+    expect(renovado.aso.estado).toBe('OK');
   });
 });

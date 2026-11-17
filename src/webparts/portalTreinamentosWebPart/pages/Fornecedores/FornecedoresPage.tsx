@@ -41,13 +41,14 @@ import {
 } from '../Kits/kitsComum';
 
 import ListaFornecedoresView from './ListaFornecedoresView';
-import DetalheFornecedorView from './DetalheFornecedorView';
+import DetalheFornecedorView, { Secao } from './DetalheFornecedorView';
+import QuadroHomologacoesView from './QuadroHomologacoesView';
 import TiposDocumentoView from './TiposDocumentoView';
 
 // ============================================================
 // FORNECEDORES — HOMOLOGAÇÃO E GESTÃO (fase 1, uso interno)
 //
-// Abas: Visão geral · Fornecedores · Tipos de documento
+// Abas: Visão geral · Fornecedores · Homologações (kanban) · Tipos de documento
 //
 // Quem vê: quem tem o módulo "fornecedores" liberado (Usuários e
 // acessos). Cadastrar fornecedor e registrar documento: qualquer um
@@ -65,11 +66,12 @@ export interface IFornecedoresPageProps {
   siteUrl?: string;
 }
 
-type AbaFornecedores = 'visao' | 'lista' | 'tipos';
+type AbaFornecedores = 'visao' | 'lista' | 'homologacoes' | 'tipos';
 
 const ABAS: Array<{ id: AbaFornecedores; rotulo: string }> = [
   { id: 'visao', rotulo: 'Visão geral' },
   { id: 'lista', rotulo: 'Fornecedores' },
+  { id: 'homologacoes', rotulo: 'Homologações' },
   { id: 'tipos', rotulo: 'Tipos de documento' }
 ];
 
@@ -177,6 +179,7 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
   const [mensagem, setMensagem] = React.useState('');
   const [aba, setAba] = React.useState<AbaFornecedores>('visao');
   const [aberto, setAberto] = React.useState<string | undefined>(undefined);
+  const [secaoInicial, setSecaoInicial] = React.useState<Secao | undefined>(undefined);
 
   const usuarioNome = contexto ? contexto.nome : 'Usuário';
   const administra = !!contexto && administraModulo(contexto.perfil, contexto.modulosAdministrados, 'fornecedores');
@@ -217,7 +220,8 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
     }));
   }, [dados]);
 
-  const abrirFornecedor = (id: string): void => {
+  const abrirFornecedor = (id: string, secao?: Secao): void => {
+    setSecaoInicial(secao);
     setAberto(id);
     setAba('lista');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -286,13 +290,25 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
 
           {aba === 'lista' && fornecedorAberto && (
             <DetalheFornecedorView
+              key={fornecedorAberto.id}
               servico={servico}
               fornecedor={fornecedorAberto}
               tipos={dados.tipos}
               administra={administra}
               usuarioNome={usuarioNome}
+              secaoInicial={secaoInicial}
               voltar={() => setAberto(undefined)}
               aoAlterar={async aviso => { await carregar(); if (aviso) { avisar(aviso); } }}
+            />
+          )}
+
+          {aba === 'homologacoes' && (
+            <QuadroHomologacoesView
+              servico={servico}
+              fornecedores={dados.fornecedores}
+              administra={administra}
+              usuarioNome={usuarioNome}
+              abrir={id => abrirFornecedor(id, 'homologacao')}
             />
           )}
 

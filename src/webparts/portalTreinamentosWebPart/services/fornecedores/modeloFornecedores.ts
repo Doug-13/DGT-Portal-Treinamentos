@@ -4,10 +4,10 @@
 // Escopo: "Plataforma de Homologação e Gestão de Fornecedores"
 // (Suprimentos, minuta 1.0 de 06/11/2026). Esta fase cobre o que a
 // equipe da DGT faz dentro do portal: cadastro mestre, documentos com
-// validade, consultas automáticas (CNPJá e CEIS/CNEP) e status.
-// O portal do fornecedor (acesso externo), o kanban de homologação
-// com aprovações e a integração com o CIGAM ficam para as próximas
-// fases.
+// validade, consultas e certidões automáticas, kanban de homologação
+// (ciclos, transição manual) e colaboradores do prestador (ASO e NR).
+// O portal do fornecedor (acesso externo), notificações do kanban e a
+// integração com o CIGAM ficam para as próximas fases.
 //
 // Os nomes das tabelas e colunas DEVEM ser iguais aos de
 // scripts/dataverse/criar-tabelas-fornecedores.ps1
@@ -18,7 +18,10 @@ export const TABELAS_FORN = {
   tipoDocumento: 'dgt_tipodocumentofornecedor',
   documento: 'dgt_fornecedordocumento',
   consulta: 'dgt_fornecedorconsulta',
-  historico: 'dgt_fornecedorhistorico'
+  historico: 'dgt_fornecedorhistorico',
+  ciclo: 'dgt_fornecedorhomologacao',
+  colaborador: 'dgt_fornecedorcolaborador',
+  colaboradorDocumento: 'dgt_colaboradordocumento'
 };
 
 // Custom API (plugin ConsultarFornecedorPlugin). As chaves do CNPJá e
@@ -221,7 +224,7 @@ export type IdVerificacao =
 export const VERIFICACOES_HOMOLOGACAO: Array<{ id: IdVerificacao; rotulo: string; fonte: string }> = [
   { id: 'receita', rotulo: 'Situação cadastral na Receita Federal', fonte: 'Automática (CNPJá)' },
   { id: 'cnds', rotulo: 'CNDs Federal, FGTS, Estadual e Municipal válidas', fonte: 'Automática (Infosimples; estadual e municipal conforme cobertura)' },
-  { id: 'cndt', rotulo: 'CNDT — Tribunal Superior do Trabalho', fonte: 'Automática (Infosimples)' },
+  { id: 'cndt', rotulo: 'CNDT (TST) e CEAT (TRT da sede)', fonte: 'Automática (Infosimples; CEAT conforme o TRT configurado)' },
   { id: 'ceisCnep', rotulo: 'Consulta CEIS e CNEP (Portal da Transparência)', fonte: 'Automática (com CEPIM e leniência)' },
   { id: 'credito', rotulo: 'Consulta a birôs de crédito (Serasa / SPC)', fonte: 'Manual — referência: pergunta 6.5' },
   { id: 'financeira', rotulo: 'Análise financeira (balanço / DRE) — área contábil', fonte: 'Manual' },
@@ -236,9 +239,21 @@ export interface IVerificacao {
   responsavel: string;
 }
 
+// Campos do item 9 que o card do kanban edita (administrador do módulo).
+export interface IDadosHomologacao {
+  classificacaoRisco: ClassificacaoRisco;
+  resultadoHomologacao: ResultadoHomologacao;
+  ressalvas: string;
+  validadeCadastro: string;
+  verificacoes: Partial<Record<IdVerificacao, IVerificacao>>;
+  responsavelSuprimentos: string;
+  responsavelCompliance: string;
+  bancarioConferido: boolean;
+}
+
 export type ResultadoCertidoes = 'Não consultado' | 'Regular' | 'Com pendência' | 'Verificar';
 
-export type CodigoCertidao = 'cnd_federal' | 'fgts' | 'cndt' | 'cnd_estadual' | 'cnd_municipal';
+export type CodigoCertidao = 'cnd_federal' | 'fgts' | 'cndt' | 'cnd_estadual' | 'cnd_municipal' | 'ceat';
 
 // Certidões emitidas pela Infosimples (plugin). "tipo" é o valor
 // gravado em dgt_fornecedorconsulta.dgt_tipo.
@@ -247,13 +262,104 @@ export const CERTIDOES: Array<{ codigo: CodigoCertidao; tipo: TipoConsulta; rotu
   { codigo: 'fgts', tipo: 'FGTS', rotulo: 'FGTS (CRF)' },
   { codigo: 'cndt', tipo: 'CNDT', rotulo: 'CNDT' },
   { codigo: 'cnd_estadual', tipo: 'CND_ESTADUAL', rotulo: 'CND Estadual' },
-  { codigo: 'cnd_municipal', tipo: 'CND_MUNICIPAL', rotulo: 'CND Municipal' }
+  { codigo: 'cnd_municipal', tipo: 'CND_MUNICIPAL', rotulo: 'CND Municipal' },
+  { codigo: 'ceat', tipo: 'CEAT', rotulo: 'CEAT (TRT)' }
 ];
 
 export interface IContatoFornecedor {
   nome: string;
   email: string;
   telefone: string;
+}
+
+// ------------------------------------------------------------
+// Kanban de homologação: um card = um ciclo (dgt_fornecedorhomologacao).
+// Ciclo concluído (Homologado/Reprovado) vira histórico somente leitura;
+// renovação ou recontratação abre um ciclo NOVO. As colunas são movidas
+// à mão nesta fase (sem notificações automáticas).
+// ------------------------------------------------------------
+
+export type EtapaHomologacao =
+  | 'Ficha recebida'
+  | 'Documentos pendentes'
+  | 'Em análise'
+  | 'Aguardando Jurídico'
+  | 'Concluído';
+
+export const ETAPAS_HOMOLOGACAO: Array<{ id: EtapaHomologacao; rotulo: string }> = [
+  { id: 'Ficha recebida', rotulo: 'Ficha recebida' },
+  { id: 'Documentos pendentes', rotulo: 'Documentos pendentes' },
+  { id: 'Em análise', rotulo: 'Em análise (Suprimentos)' },
+  { id: 'Aguardando Jurídico', rotulo: 'Aguardando Jurídico' },
+  { id: 'Concluído', rotulo: 'Homologado / Reprovado' }
+];
+
+export const MOTIVOS_CICLO: string[] = [
+  'Cadastro inicial',
+  'Atualização periódica',
+  'Alteração de dados cadastrais / bancários',
+  'Renovação da homologação',
+  'Recontratação'
+];
+
+export interface ICicloHomologacao {
+  id: string;
+  fornecedorId: string;
+  numero: number;
+  motivo: string;
+  etapa: EtapaHomologacao;
+  etapaDesde: string;
+  concluidoEm: string;        // vazio = ciclo aberto
+  protocolo: string;
+  classificacaoRisco: ClassificacaoRisco;
+  resultadoHomologacao: ResultadoHomologacao;
+  ressalvas: string;
+  validadeCadastro: string;   // yyyy-mm-dd
+  verificacoes: Partial<Record<IdVerificacao, IVerificacao>>;
+  responsavelSuprimentos: string;
+  responsavelCompliance: string;
+  bancarioConferido: boolean; // retrato na conclusão
+  abertoPor: string;
+  criadoEm: string;
+}
+
+// ------------------------------------------------------------
+// Colaboradores do prestador (dgt_fornecedorcolaborador). CPF só na
+// coluna protegida; sem e-mail e sem telefone.
+// ------------------------------------------------------------
+
+export interface IColaboradorFornecedor {
+  id: string;
+  fornecedorId: string;
+  nome: string;
+  funcao: string;
+  // Vazio para quem não está no perfil "DGT - Fornecedores - CPF de colaboradores".
+  cpf: string;
+  observacoes: string;
+  ativo: boolean;
+  criadoEm: string;
+}
+
+export type TipoDocumentoColaborador = 'ASO' | 'NR aplicável';
+
+export const TIPOS_DOCUMENTO_COLABORADOR: Array<{ tipo: TipoDocumentoColaborador; descricao: string; obrigatorio: boolean }> = [
+  { tipo: 'ASO', descricao: 'Atestado de Saúde Ocupacional. Obrigatório, com validade.', obrigatorio: true },
+  { tipo: 'NR aplicável', descricao: 'Treinamento/capacitação na NR que se aplica a este colaborador (informe qual), com validade.', obrigatorio: false }
+];
+
+export interface IDocumentoColaborador {
+  id: string;
+  colaboradorId: string;
+  tipo: TipoDocumentoColaborador;
+  norma: string;          // "NR aplicável": qual norma (ex.: NR-10)
+  emissao: string;        // yyyy-mm-dd
+  vencimento: string;     // yyyy-mm-dd
+  arquivoUrl: string;
+  arquivoNome: string;
+  observacoes: string;
+  situacao: SituacaoDocumento;
+  registradoPor: string;
+  criadoEm: string;
 }
 
 export interface IFornecedor {
@@ -369,7 +475,7 @@ export interface IDocumentoFornecedor {
 
 export type TipoConsulta =
   | 'CNPJ' | 'CEIS' | 'CNEP' | 'CEPIM' | 'LENIENCIA'
-  | 'CND_FEDERAL' | 'FGTS' | 'CNDT' | 'CND_ESTADUAL' | 'CND_MUNICIPAL';
+  | 'CND_FEDERAL' | 'FGTS' | 'CNDT' | 'CND_ESTADUAL' | 'CND_MUNICIPAL' | 'CEAT';
 
 export const ROTULO_CONSULTA: Record<TipoConsulta, string> = {
   CNPJ: 'Receita (CNPJ)',
@@ -381,7 +487,8 @@ export const ROTULO_CONSULTA: Record<TipoConsulta, string> = {
   FGTS: 'FGTS (CRF)',
   CNDT: 'CNDT (TST)',
   CND_ESTADUAL: 'CND Estadual',
-  CND_MUNICIPAL: 'CND Municipal'
+  CND_MUNICIPAL: 'CND Municipal',
+  CEAT: 'CEAT (ações trabalhistas — TRT)'
 };
 
 export interface IConsultaFornecedor {
@@ -461,6 +568,7 @@ export const TIPOS_SUGERIDOS: Array<Omit<ITipoDocumentoFornecedor, 'id' | 'ativo
   { nome: 'Certidão Negativa de Débitos federais (CND)', descricao: 'Certidão Conjunta Receita Federal / PGFN. Emitida automaticamente (Infosimples).', categorias: [], obrigatorio: true, exigeValidade: true, validadeDias: 180, visibilidade: 'Interno', ordem: 20, codigoConsulta: 'cnd_federal' },
   { nome: 'Certificado de Regularidade do FGTS (CRF)', descricao: 'Caixa Econômica Federal. Emitido automaticamente (Infosimples).', categorias: [], obrigatorio: true, exigeValidade: true, validadeDias: 30, visibilidade: 'Interno', ordem: 30, codigoConsulta: 'fgts' },
   { nome: 'Certidão Negativa de Débitos Trabalhistas (CNDT)', descricao: 'Tribunal Superior do Trabalho. Emitida automaticamente (Infosimples).', categorias: [], obrigatorio: true, exigeValidade: true, validadeDias: 180, visibilidade: 'Interno', ordem: 40, codigoConsulta: 'cndt' },
+  { nome: 'Certidão Eletrônica de Ações Trabalhistas (CEAT)', descricao: 'TRT da sede da empresa. Automática quando a UF tem rota configurada no plugin (RS = TRT4). Sem validade na fonte: 30 dias por padrão.', categorias: [], obrigatorio: false, exigeValidade: true, validadeDias: 30, visibilidade: 'Interno', ordem: 45, codigoConsulta: 'ceat' },
   { nome: 'Certidão de regularidade estadual', descricao: 'Da sede da empresa. Automática quando a UF tem rota configurada no plugin.', categorias: [], obrigatorio: true, exigeValidade: true, visibilidade: 'Interno', ordem: 50, codigoConsulta: 'cnd_estadual' },
   { nome: 'Certidão de regularidade municipal', descricao: 'Da sede da empresa. Automática quando o município tem rota configurada no plugin.', categorias: [], obrigatorio: true, exigeValidade: true, visibilidade: 'Interno', ordem: 60, codigoConsulta: 'cnd_municipal' },
   { nome: 'Comprovante dos dados bancários', descricao: 'Cabeçalho de extrato ou declaração do banco, em nome do CNPJ cadastrado.', categorias: [], obrigatorio: true, exigeValidade: false, visibilidade: 'Interno', ordem: 65 },

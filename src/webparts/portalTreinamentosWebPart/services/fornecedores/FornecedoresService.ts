@@ -23,6 +23,12 @@ import {
 import {
   API_CONSULTAR_FORNECEDOR,
   ClassificacaoRisco,
+  EtapaHomologacao,
+  ICicloHomologacao,
+  IColaboradorFornecedor,
+  IDadosHomologacao,
+  IDocumentoColaborador,
+  TipoDocumentoColaborador,
   CodigoCertidao,
   Criticidade,
   IDadosBancarios,
@@ -53,8 +59,18 @@ import {
 } from './modeloFornecedores';
 
 import {
-  statusPeloResultado
+  etapaValida,
+  proximoNumeroCiclo,
+  statusPeloResultado,
+  validarConclusao,
+  verificacoesOk
 } from './homologacao';
+
+import {
+  chaveDocumento,
+  cpfValido,
+  normalizarCpf
+} from './colaboradores';
 
 // ============================================================
 // FORNECEDORES — SERVIÇO (Dataverse + SharePoint)
@@ -168,7 +184,38 @@ const lerJson = <T>(valor: string): T | undefined => {
 const resultadoCertidoesValido = (valor: string): ResultadoCertidoes =>
   (['Regular', 'Com pendência', 'Verificar'].indexOf(valor) >= 0 ? valor : 'Não consultado') as ResultadoCertidoes;
 
-const CODIGOS_CERTIDAO: CodigoCertidao[] = ['cnd_federal', 'fgts', 'cndt', 'cnd_estadual', 'cnd_municipal'];
+const CODIGOS_CERTIDAO: CodigoCertidao[] = ['cnd_federal', 'fgts', 'cndt', 'cnd_estadual', 'cnd_municipal', 'ceat'];
+
+const COLUNAS_CICLO =
+  'dgt_fornecedorhomologacaoid,_dgt_fornecedor_value,dgt_numero,dgt_motivo,dgt_etapa,dgt_etapadesde,dgt_concluidoem,dgt_protocolo,' +
+  'dgt_classificacaorisco,dgt_resultadohomologacao,dgt_ressalvas,dgt_validadecadastro,dgt_verificacoes,' +
+  'dgt_responsavelsuprimentos,dgt_responsavelcompliance,dgt_bancarioconferido,dgt_responsavelnome,createdon';
+
+const COLUNAS_COLABORADOR =
+  'dgt_fornecedorcolaboradorid,_dgt_fornecedor_value,dgt_name,dgt_funcao,dgt_cpf,dgt_observacoes,dgt_ativo,createdon';
+
+const COLUNAS_DOC_COLABORADOR =
+  'dgt_colaboradordocumentoid,_dgt_colaborador_value,dgt_tipo,dgt_norma,dgt_dataemissao,dgt_datavencimento,' +
+  'dgt_arquivourl,dgt_arquivonome,dgt_observacoes,dgt_situacao,dgt_responsavelnome,createdon';
+
+// Novos dados do colaborador (o CPF só é enviado quando informado/alterado).
+export interface IDadosColaborador {
+  nome: string;
+  funcao: string;
+  cpf: string;
+  observacoes: string;
+  ativo: boolean;
+}
+
+export interface INovoDocumentoColaborador {
+  tipo: TipoDocumentoColaborador;
+  norma: string;
+  emissao: string;
+  vencimento: string;
+  observacoes: string;
+  arquivo?: File;
+  linkArquivo?: string;
+}
 
 // Colunas lidas do fornecedor (as protegidas voltam vazias para quem
 // não está no perfil de segurança de campo).
@@ -184,17 +231,6 @@ const COLUNAS_FORNECEDOR =
   'dgt_resultadohomologacao,dgt_ressalvas,dgt_validadecadastro,dgt_verificacoes,dgt_responsavelsuprimentos,' +
   'dgt_responsavelcompliance,dgt_ultimaconsultacertidoes,dgt_resultadocertidoes,dgt_vencimentocertidoes,dgt_assinaturastatus';
 
-// Dados do item 9 (uso interno) que o administrador do módulo grava.
-export interface IDadosHomologacao {
-  classificacaoRisco: ClassificacaoRisco;
-  resultadoHomologacao: ResultadoHomologacao;
-  ressalvas: string;
-  validadeCadastro: string;
-  verificacoes: Partial<Record<IdVerificacao, IVerificacao>>;
-  responsavelSuprimentos: string;
-  responsavelCompliance: string;
-  bancarioConferido: boolean;
-}
 
 
 // Campos do fornecedor que a tela edita (e o histórico compara).
@@ -618,61 +654,372 @@ export class FornecedoresService {
   }
 
   // ==========================================================
-  // GRAVAÇÃO — HOMOLOGAÇÃO (item 9; administrador do módulo)
+  // HOMOLOGAÇÃO — CICLOS (kanban; administrador do módulo grava)
+  //
+  // Um card = um ciclo (dgt_fornecedorhomologacao). Transição manual.
+  // Ao concluir, o resultado vai também para o cadastro do fornecedor
+  // (status, risco, validade...), que é o que lista e cabeçalho mostram.
+  // Ciclo concluído não muda mais: renovação abre um ciclo novo.
   // ==========================================================
 
-  public async salvarHomologacao(
+  // Sem fornecedorId: todos os ciclos abertos e os concluídos nos
+  // últimos "diasConcluidos" dias (quadro geral do módulo).
+  public async listarCiclos(fornecedorId?: string, diasConcluidos: number = 60): Promise<{ disponivel: boolean; ciclos: ICicloHomologacao[] }> {
+    let filtro: string;
+    if (fornecedorId) {
+      filtro = `_dgt_fornecedor_value eq ${guid(fornecedorId)}`;
+    } else {
+      const corte = new Date(Date.now() - diasConcluidos * 86400000).toISOString();
+      filtro = `(dgt_concluidoem eq null or dgt_concluidoem ge ${corte})`;
+    }
+    try {
+      const regs = await this.dataverse.listarRegistros(TABELAS_FORN.ciclo,
+        `$select=${COLUNAS_CICLO}&$filter=${filtro}&$orderby=dgt_numero desc`);
+      return { disponivel: true, ciclos: regs.map(r => this.lerCiclo(r)) };
+    } catch (erro) {
+      if (ehTabelaInexistente(erro)) {
+        return { disponivel: false, ciclos: [] };
+      }
+      throw new Error(mensagemErro(erro));
+    }
+  }
+
+  public async iniciarCiclo(
     fornecedor: IFornecedor,
-    dados: IDadosHomologacao,
+    ciclos: ICicloHomologacao[],
+    motivo: string,
+    etapa: EtapaHomologacao,
+    usuarioNome: string
+  ): Promise<void> {
+    if (ciclos.some(c => !c.concluidoEm)) {
+      throw new Error('Este fornecedor já tem um ciclo de homologação em aberto.');
+    }
+    if (!motivo.trim()) {
+      throw new Error('Escolha o motivo do ciclo.');
+    }
+    if (etapa === 'Concluído') {
+      throw new Error('O ciclo começa numa coluna aberta.');
+    }
+    const numero = proximoNumeroCiclo(ciclos);
+    await this.dataverse.criarRegistro(TABELAS_FORN.ciclo, {
+      dgt_name: limitar(`Ciclo ${numero} — ${motivo}`, 200),
+      'dgt_Fornecedor@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.fornecedor, fornecedor.id),
+      dgt_numero: numero,
+      dgt_motivo: limitar(motivo, 60),
+      dgt_etapa: etapa,
+      dgt_etapadesde: new Date().toISOString(),
+      dgt_protocolo: limitar(fornecedor.protocolo, 30),
+      dgt_classificacaorisco: fornecedor.classificacaoRisco || '',
+      dgt_resultadohomologacao: 'Pendente',
+      dgt_bancarioconferido: false,
+      dgt_responsavelnome: limitar(usuarioNome, 200)
+    });
+    await this.registrarHistorico(fornecedor.id, 'Homologação: ciclo aberto',
+      `Ciclo ${numero} (${motivo}) aberto na coluna "${etapa}".`, usuarioNome);
+  }
+
+  // Homologação feita antes do kanban (campos do cadastro) → ciclo 1
+  // concluído, para o histórico não começar vazio.
+  public async registrarCicloAnterior(fornecedor: IFornecedor, usuarioNome: string): Promise<void> {
+    const resultado = fornecedor.resultadoHomologacao;
+    if (resultado !== 'Aprovado' && resultado !== 'Aprovado com ressalvas' && resultado !== 'Reprovado') {
+      throw new Error('O cadastro não tem uma homologação concluída para registrar.');
+    }
+    await this.dataverse.criarRegistro(TABELAS_FORN.ciclo, {
+      dgt_name: 'Ciclo 1 — homologação anterior ao kanban',
+      'dgt_Fornecedor@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.fornecedor, fornecedor.id),
+      dgt_numero: 1,
+      dgt_motivo: 'Homologação anterior ao kanban',
+      dgt_etapa: 'Concluído',
+      dgt_etapadesde: new Date().toISOString(),
+      dgt_concluidoem: new Date().toISOString(),
+      dgt_protocolo: limitar(fornecedor.protocolo, 30),
+      dgt_classificacaorisco: fornecedor.classificacaoRisco || '',
+      dgt_resultadohomologacao: resultado,
+      dgt_ressalvas: limitar(fornecedor.ressalvas, 4000),
+      dgt_validadecadastro: fornecedor.validadeCadastro || null,
+      dgt_verificacoes: JSON.stringify(fornecedor.verificacoes || {}).substring(0, 4000),
+      dgt_responsavelsuprimentos: limitar(fornecedor.responsavelSuprimentos, 200),
+      dgt_responsavelcompliance: limitar(fornecedor.responsavelCompliance, 200),
+      dgt_bancarioconferido: fornecedor.bancarioConferido,
+      dgt_responsavelnome: limitar(usuarioNome, 200)
+    });
+    await this.registrarHistorico(fornecedor.id, 'Homologação: ciclo anterior registrado',
+      `A homologação que já estava no cadastro (${resultado}) virou o ciclo 1, concluído.`, usuarioNome);
+  }
+
+  public async moverCiclo(ciclo: ICicloHomologacao, destino: EtapaHomologacao, usuarioNome: string): Promise<void> {
+    if (ciclo.concluidoEm) {
+      throw new Error('Ciclo concluído é somente leitura. Abra um ciclo novo.');
+    }
+    if (destino === 'Concluído') {
+      throw new Error('Para ir a "Homologado / Reprovado", use Concluir ciclo (exige o resultado).');
+    }
+    if (destino === ciclo.etapa) {
+      return;
+    }
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.ciclo, ciclo.id, {
+      dgt_etapa: destino,
+      dgt_etapadesde: new Date().toISOString()
+    });
+    await this.registrarHistorico(ciclo.fornecedorId, 'Homologação: etapa',
+      `Ciclo ${ciclo.numero}: "${ciclo.etapa}" → "${destino}".`, usuarioNome);
+  }
+
+  private dadosDoCiclo(d: IDadosHomologacao): Record<string, unknown> {
+    return {
+      dgt_classificacaorisco: d.classificacaoRisco || '',
+      dgt_resultadohomologacao: d.resultadoHomologacao || 'Pendente',
+      dgt_ressalvas: limitar(d.ressalvas, 4000),
+      dgt_validadecadastro: d.validadeCadastro || null,
+      dgt_verificacoes: JSON.stringify(d.verificacoes || {}).substring(0, 4000),
+      dgt_responsavelsuprimentos: limitar(d.responsavelSuprimentos, 200),
+      dgt_responsavelcompliance: limitar(d.responsavelCompliance, 200)
+    };
+  }
+
+  // Grava o card sem concluir. A conferência bancária é do CADASTRO
+  // (volta a "não" quando os dados bancários mudam).
+  public async salvarCiclo(
+    ciclo: ICicloHomologacao,
+    fornecedor: IFornecedor,
+    d: IDadosHomologacao,
+    motivo: string,
+    usuarioNome: string
+  ): Promise<void> {
+    if (ciclo.concluidoEm) {
+      throw new Error('Ciclo concluído é somente leitura.');
+    }
+    if (!motivo.trim()) {
+      throw new Error('Informe o motivo / referência da alteração.');
+    }
+    verificarSensivel(d.ressalvas, d.responsavelSuprimentos, d.responsavelCompliance, motivo);
+
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.ciclo, ciclo.id, this.dadosDoCiclo(d));
+    if (d.bancarioConferido !== fornecedor.bancarioConferido) {
+      await this.dataverse.atualizarRegistro(TABELAS_FORN.fornecedor, fornecedor.id, { dgt_bancarioconferido: d.bancarioConferido });
+    }
+
+    const linhas: string[] = [];
+    if ((d.resultadoHomologacao || 'Pendente') !== ciclo.resultadoHomologacao) { linhas.push(`Resultado: "${ciclo.resultadoHomologacao}" → "${d.resultadoHomologacao || 'Pendente'}"`); }
+    if (d.classificacaoRisco !== ciclo.classificacaoRisco) { linhas.push(`Risco: "${ciclo.classificacaoRisco || '—'}" → "${d.classificacaoRisco || '—'}"`); }
+    if (d.validadeCadastro !== ciclo.validadeCadastro) { linhas.push(`Validade do cadastro: ${d.validadeCadastro || '—'}`); }
+    if (d.bancarioConferido !== fornecedor.bancarioConferido) { linhas.push(d.bancarioConferido ? 'Dados bancários conferidos (contato telefônico)' : 'Conferência bancária desmarcada'); }
+    linhas.push(`Verificações OK: ${verificacoesOk(d)} de 9`);
+
+    await this.registrarHistorico(fornecedor.id, 'Homologação atualizada',
+      `Ciclo ${ciclo.numero} (${ciclo.etapa})\n${linhas.join('\n')}\nMotivo: ${limitar(motivo, 1000)}`, usuarioNome);
+  }
+
+  // Leva o card para "Homologado / Reprovado" e fecha o ciclo.
+  public async concluirCiclo(
+    ciclo: ICicloHomologacao,
+    fornecedor: IFornecedor,
+    d: IDadosHomologacao,
     motivo: string,
     usuarioNome: string
   ): Promise<StatusFornecedor> {
-
-    const resultado: ResultadoHomologacao = dados.resultadoHomologacao || 'Pendente';
-    const aprovado = resultado === 'Aprovado' || resultado === 'Aprovado com ressalvas';
-
+    if (ciclo.concluidoEm) {
+      throw new Error('Este ciclo já foi concluído.');
+    }
     if (!motivo.trim()) {
       throw new Error('Informe o motivo / referência do parecer.');
     }
-    if (aprovado && !dados.classificacaoRisco) {
-      throw new Error('Defina a classificação de risco antes de aprovar.');
+    const problema = validarConclusao(d);
+    if (problema) {
+      throw new Error(problema);
     }
-    if (aprovado && !dados.validadeCadastro) {
-      throw new Error('Informe a validade do cadastro / próxima revisão antes de aprovar.');
-    }
-    if ((resultado === 'Aprovado com ressalvas' || resultado === 'Reprovado') && !dados.ressalvas.trim()) {
-      throw new Error('Descreva as ressalvas, medidas de mitigação ou a referência ao parecer.');
-    }
-    verificarSensivel(dados.ressalvas, dados.responsavelSuprimentos, dados.responsavelCompliance, motivo);
+    verificarSensivel(d.ressalvas, d.responsavelSuprimentos, d.responsavelCompliance, motivo);
 
+    const resultado = d.resultadoHomologacao;
     const status = statusPeloResultado(resultado, fornecedor.status);
+    const agora = new Date().toISOString();
+
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.ciclo, ciclo.id, {
+      ...this.dadosDoCiclo(d),
+      dgt_etapa: 'Concluído',
+      dgt_etapadesde: agora,
+      dgt_concluidoem: agora,
+      dgt_bancarioconferido: d.bancarioConferido
+    });
 
     await this.dataverse.atualizarRegistro(TABELAS_FORN.fornecedor, fornecedor.id, {
-      dgt_classificacaorisco: dados.classificacaoRisco || '',
+      dgt_classificacaorisco: d.classificacaoRisco || '',
       dgt_resultadohomologacao: resultado,
-      dgt_ressalvas: limitar(dados.ressalvas, 4000),
-      dgt_validadecadastro: dados.validadeCadastro || null,
-      dgt_verificacoes: JSON.stringify(dados.verificacoes || {}).substring(0, 4000),
-      dgt_responsavelsuprimentos: limitar(dados.responsavelSuprimentos, 200),
-      dgt_responsavelcompliance: limitar(dados.responsavelCompliance, 200),
-      dgt_bancarioconferido: dados.bancarioConferido,
+      dgt_ressalvas: limitar(d.ressalvas, 4000),
+      dgt_validadecadastro: d.validadeCadastro || null,
+      dgt_verificacoes: JSON.stringify(d.verificacoes || {}).substring(0, 4000),
+      dgt_responsavelsuprimentos: limitar(d.responsavelSuprimentos, 200),
+      dgt_responsavelcompliance: limitar(d.responsavelCompliance, 200),
+      dgt_bancarioconferido: d.bancarioConferido,
       dgt_status: status
     });
 
-    const linhas: string[] = [];
-    if (resultado !== fornecedor.resultadoHomologacao) { linhas.push(`Resultado: "${fornecedor.resultadoHomologacao || '—'}" → "${resultado}"`); }
-    if (dados.classificacaoRisco !== fornecedor.classificacaoRisco) { linhas.push(`Risco: "${fornecedor.classificacaoRisco || '—'}" → "${dados.classificacaoRisco || '—'}"`); }
-    if (dados.validadeCadastro !== fornecedor.validadeCadastro) { linhas.push(`Validade do cadastro: ${dados.validadeCadastro || '—'}`); }
-    if (dados.bancarioConferido !== fornecedor.bancarioConferido) { linhas.push(dados.bancarioConferido ? 'Dados bancários conferidos (contato telefônico)' : 'Conferência bancária desmarcada'); }
+    const linhas = [
+      `Ciclo ${ciclo.numero} (${ciclo.motivo}) concluído: ${resultado}`,
+      `Risco: ${d.classificacaoRisco || '—'} · validade do cadastro: ${d.validadeCadastro || '—'}`,
+      `Verificações OK: ${verificacoesOk(d)} de 9`
+    ];
     if (status !== fornecedor.status) { linhas.push(`Status: "${fornecedor.status}" → "${status}"`); }
-    const verificacoes = dados.verificacoes || {};
-    const marcadas = Object.keys(verificacoes).filter(k => (verificacoes as Record<string, IVerificacao>)[k].ok).length;
-    linhas.push(`Verificações OK: ${marcadas} de 9`);
-
-    await this.registrarHistorico(fornecedor.id, status !== fornecedor.status ? `Homologação: ${resultado}` : 'Homologação atualizada',
+    await this.registrarHistorico(fornecedor.id, `Homologação: ${resultado}`,
       `${linhas.join('\n')}\nMotivo: ${limitar(motivo, 1000)}`, usuarioNome);
 
     return status;
+  }
+
+  // ==========================================================
+  // COLABORADORES DO PRESTADOR (CPF em coluna protegida)
+  // ==========================================================
+
+  public async listarColaboradores(fornecedorId: string): Promise<{
+    disponivel: boolean;
+    colaboradores: IColaboradorFornecedor[];
+    documentos: IDocumentoColaborador[];
+  }> {
+    let colaboradores: IColaboradorFornecedor[];
+    try {
+      const regs = await this.dataverse.listarRegistros(TABELAS_FORN.colaborador,
+        `$select=${COLUNAS_COLABORADOR}&$filter=_dgt_fornecedor_value eq ${guid(fornecedorId)}&$orderby=dgt_name asc`);
+      colaboradores = regs.map(r => this.lerColaborador(r));
+    } catch (erro) {
+      if (ehTabelaInexistente(erro)) {
+        return { disponivel: false, colaboradores: [], documentos: [] };
+      }
+      throw new Error(mensagemErro(erro));
+    }
+
+    // Documentos de todos os colaboradores, em blocos (filtro OR por id).
+    const documentos: IDocumentoColaborador[] = [];
+    for (let i = 0; i < colaboradores.length; i += 20) {
+      const filtro = colaboradores.slice(i, i + 20).map(c => `_dgt_colaborador_value eq ${c.id}`).join(' or ');
+      const regs = await this.dataverse.listarRegistros(TABELAS_FORN.colaboradorDocumento,
+        `$select=${COLUNAS_DOC_COLABORADOR}&$filter=${filtro}&$orderby=createdon desc`);
+      regs.forEach(r => documentos.push(this.lerDocumentoColaborador(r)));
+    }
+    return { disponivel: true, colaboradores, documentos };
+  }
+
+  public async salvarColaborador(
+    fornecedor: IFornecedor,
+    dados: IDadosColaborador,
+    anterior: IColaboradorFornecedor | undefined,
+    outros: IColaboradorFornecedor[],
+    usuarioNome: string
+  ): Promise<void> {
+    const nome = limitar(dados.nome, 200);
+    if (!nome) {
+      throw new Error('Informe o nome do colaborador.');
+    }
+    const cpf = normalizarCpf(dados.cpf);
+    if (cpf && !cpfValido(cpf)) {
+      throw new Error('CPF inválido (confira os dígitos).');
+    }
+    if (cpf && outros.some(o => o.id !== (anterior ? anterior.id : '') && o.cpf === cpf)) {
+      throw new Error('Já existe um colaborador com este CPF neste fornecedor.');
+    }
+    // CPF só no campo próprio; nunca em texto livre.
+    verificarSensivel(dados.funcao, dados.observacoes);
+
+    const registro: Record<string, unknown> = {
+      dgt_name: nome,
+      dgt_funcao: limitar(dados.funcao, 120),
+      dgt_observacoes: limitar(dados.observacoes, 2000),
+      dgt_ativo: dados.ativo
+    };
+    // Quem não lê o CPF (perfil de segurança de campo) vê vazio: vazio
+    // não apaga o que está gravado.
+    const cpfMudou = !!cpf && (!anterior || cpf !== anterior.cpf);
+    if (cpfMudou) {
+      registro.dgt_cpf = cpf;
+    }
+
+    if (anterior) {
+      await this.dataverse.atualizarRegistro(TABELAS_FORN.colaborador, anterior.id, registro);
+      const mudancas: string[] = [];
+      if (nome !== anterior.nome) { mudancas.push(`Nome: "${anterior.nome}" → "${nome}"`); }
+      if (limitar(dados.funcao, 120) !== anterior.funcao) { mudancas.push(`Função: "${anterior.funcao || '—'}" → "${limitar(dados.funcao, 120) || '—'}"`); }
+      if (cpfMudou) { mudancas.push(anterior.cpf ? 'CPF alterado (valor na coluna protegida)' : 'CPF informado (valor na coluna protegida)'); }
+      if (limitar(dados.observacoes, 2000) !== anterior.observacoes) { mudancas.push('Observações alteradas'); }
+      if (dados.ativo !== anterior.ativo) { mudancas.push(dados.ativo ? 'Reativado' : 'Desativado'); }
+      if (mudancas.length > 0) {
+        await this.registrarHistorico(fornecedor.id, 'Colaborador alterado', `${nome}\n${mudancas.join('\n')}`, usuarioNome);
+      }
+      return;
+    }
+
+    await this.dataverse.criarRegistro(TABELAS_FORN.colaborador, {
+      ...registro,
+      'dgt_Fornecedor@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.fornecedor, fornecedor.id),
+      dgt_responsavelnome: limitar(usuarioNome, 200)
+    });
+    await this.registrarHistorico(fornecedor.id, 'Colaborador cadastrado',
+      `${nome}${dados.funcao ? ` (${limitar(dados.funcao, 120)})` : ''}${cpf ? ' — CPF na coluna protegida' : ' — sem CPF'}.`, usuarioNome);
+  }
+
+  public async registrarDocumentoColaborador(
+    fornecedor: IFornecedor,
+    colaborador: IColaboradorFornecedor,
+    dados: INovoDocumentoColaborador,
+    documentosDoColaborador: IDocumentoColaborador[],
+    usuarioNome: string
+  ): Promise<void> {
+    const norma = dados.tipo === 'NR aplicável' ? limitar(dados.norma, 120) : '';
+    if (dados.tipo === 'NR aplicável' && !norma) {
+      throw new Error('Informe qual NR se aplica a este colaborador (ex.: NR-10, NR-35).');
+    }
+    if (!dados.emissao) {
+      throw new Error('Informe a data de emissão.');
+    }
+    if (!dados.vencimento) {
+      throw new Error(`${dados.tipo} exige data de validade.`);
+    }
+    if (dados.vencimento < dados.emissao) {
+      throw new Error('A validade não pode ser anterior à emissão.');
+    }
+    if (!dados.arquivo && !(dados.linkArquivo || '').trim()) {
+      throw new Error('Anexe o arquivo (ou informe o link dele no SharePoint).');
+    }
+    if (dados.linkArquivo && !/^https:\/\//i.test(dados.linkArquivo.trim())) {
+      throw new Error('O link do arquivo precisa começar com https://');
+    }
+    verificarSensivel(norma, dados.observacoes);
+
+    const rotulo = norma ? `${dados.tipo} — ${norma}` : dados.tipo;
+    let arquivoUrl = (dados.linkArquivo || '').trim();
+    let arquivoNome = '';
+    if (dados.arquivo) {
+      const pastaColaborador = `${limitar(colaborador.nome, 80)} (${colaborador.id.substring(0, 8)})`;
+      const enviado = await this.enviarArquivo(
+        [this.pastaFornecedor(fornecedor), 'Colaboradores', pastaColaborador],
+        `${norma ? `NR ${norma.replace(/^NR[-\s]*/i, '')}` : 'ASO'} - ${dados.emissao}`,
+        dados.arquivo);
+      arquivoUrl = enviado.url;
+      arquivoNome = enviado.nome;
+    }
+
+    await this.dataverse.criarRegistro(TABELAS_FORN.colaboradorDocumento, {
+      dgt_name: limitar(rotulo, 200),
+      'dgt_Colaborador@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.colaborador, colaborador.id),
+      dgt_tipo: dados.tipo,
+      dgt_norma: norma,
+      dgt_dataemissao: dados.emissao,
+      dgt_datavencimento: dados.vencimento,
+      dgt_arquivourl: limitar(arquivoUrl, 2000),
+      dgt_arquivonome: limitar(arquivoNome, 255),
+      dgt_observacoes: limitar(dados.observacoes, 2000),
+      dgt_situacao: 'Vigente',
+      dgt_responsavelnome: limitar(usuarioNome, 200)
+    });
+
+    // Versão anterior do mesmo documento (ASO, ou a mesma NR) → Substituído.
+    const chave = chaveDocumento({ tipo: dados.tipo, norma });
+    const anteriores = documentosDoColaborador.filter(d => d.situacao === 'Vigente' && chaveDocumento(d) === chave);
+    for (const anterior of anteriores) {
+      await this.dataverse.atualizarRegistro(TABELAS_FORN.colaboradorDocumento, anterior.id, { dgt_situacao: 'Substituído' });
+    }
+
+    await this.registrarHistorico(fornecedor.id, anteriores.length > 0 ? 'Colaborador: documento renovado' : 'Colaborador: documento registrado',
+      `${colaborador.nome} — ${rotulo}: emissão ${dados.emissao}, validade ${dados.vencimento}.`, usuarioNome);
   }
 
   // ==========================================================
@@ -710,24 +1057,9 @@ export class FornecedoresService {
     let arquivoNome = '';
 
     if (dados.arquivo) {
-      if (!this.envio) {
-        throw new Error('O envio de arquivos não está disponível nesta página. Informe o link do arquivo.');
-      }
-      const extensao = /\.[^.]+$/.exec(dados.arquivo.name);
-      const pastaFornecedor = `${limitar(fornecedor.razaoSocial, 80)} (${fornecedor.id.substring(0, 8)})`;
-      const nome = `${limitar(tipo.nome, 80)} - ${dados.emissao}${extensao ? extensao[0] : ''}`;
-      try {
-        const enviado = await this.envio.enviarArquivoEmPasta([pastaFornecedor], nome, dados.arquivo);
-        arquivoUrl = enviado.arquivoUrl;
-        arquivoNome = enviado.nomeArquivo;
-      } catch (erro) {
-        const m = erro instanceof Error ? erro.message : String(erro);
-        throw new Error(
-          /\b(401|403|404)\b/.test(m)
-            ? 'Não foi possível gravar na pasta "Contratos Fornecedores" do site de Suprimentos ' +
-              '(sem permissão de edição ou pasta inexistente). Peça acesso a Suprimentos ou informe o link do arquivo.'
-            : m);
-      }
+      const enviado = await this.enviarArquivo([this.pastaFornecedor(fornecedor)], `${limitar(tipo.nome, 80)} - ${dados.emissao}`, dados.arquivo);
+      arquivoUrl = enviado.url;
+      arquivoNome = enviado.nome;
     }
 
     await this.dataverse.criarRegistro(TABELAS_FORN.documento, {
@@ -805,6 +1137,29 @@ export class FornecedoresService {
   // ==========================================================
   // AUXILIARES
   // ==========================================================
+
+  private pastaFornecedor(fornecedor: IFornecedor): string {
+    return `${limitar(fornecedor.razaoSocial, 80)} (${fornecedor.id.substring(0, 8)})`;
+  }
+
+  // Envia ao SharePoint de Suprimentos (permissão de quem anexa).
+  private async enviarArquivo(pastas: string[], nomeSemExtensao: string, arquivo: File): Promise<{ url: string; nome: string }> {
+    if (!this.envio) {
+      throw new Error('O envio de arquivos não está disponível nesta página. Informe o link do arquivo.');
+    }
+    const extensao = /\.[^.]+$/.exec(arquivo.name);
+    try {
+      const enviado = await this.envio.enviarArquivoEmPasta(pastas, `${nomeSemExtensao}${extensao ? extensao[0] : ''}`, arquivo);
+      return { url: enviado.arquivoUrl, nome: enviado.nomeArquivo };
+    } catch (erro) {
+      const m = erro instanceof Error ? erro.message : String(erro);
+      throw new Error(
+        /\b(401|403|404)\b/.test(m)
+          ? 'Não foi possível gravar na pasta "Contratos Fornecedores" do site de Suprimentos ' +
+            '(sem permissão de edição ou pasta inexistente). Peça acesso a Suprimentos ou informe o link do arquivo.'
+          : m);
+    }
+  }
 
   private async registrarHistorico(fornecedorId: string, acao: string, descricao: string, usuarioNome: string): Promise<void> {
     try {
@@ -885,6 +1240,61 @@ export class FornecedoresService {
       resultadoCertidoes: resultadoCertidoesValido(texto(r, 'dgt_resultadocertidoes')),
       vencimentoCertidoes: soData(texto(r, 'dgt_vencimentocertidoes')),
       assinaturaStatus: texto(r, 'dgt_assinaturastatus')
+    };
+  }
+
+  private lerCiclo(r: IDataverseRecord): ICicloHomologacao {
+    return {
+      id: guid(r.dgt_fornecedorhomologacaoid),
+      fornecedorId: guid(r._dgt_fornecedor_value),
+      numero: Number(r.dgt_numero) || 0,
+      motivo: texto(r, 'dgt_motivo'),
+      etapa: etapaValida(texto(r, 'dgt_etapa')),
+      etapaDesde: texto(r, 'dgt_etapadesde') || texto(r, 'createdon'),
+      concluidoEm: texto(r, 'dgt_concluidoem'),
+      protocolo: texto(r, 'dgt_protocolo'),
+      classificacaoRisco: (['Baixo', 'Médio', 'Alto'].indexOf(texto(r, 'dgt_classificacaorisco')) >= 0
+        ? texto(r, 'dgt_classificacaorisco') : '') as ClassificacaoRisco,
+      resultadoHomologacao: (RESULTADOS_HOMOLOGACAO.indexOf(texto(r, 'dgt_resultadohomologacao') as ResultadoHomologacao) >= 0
+        ? texto(r, 'dgt_resultadohomologacao') : 'Pendente') as ResultadoHomologacao,
+      ressalvas: texto(r, 'dgt_ressalvas'),
+      validadeCadastro: soData(texto(r, 'dgt_validadecadastro')),
+      verificacoes: lerJson<Partial<Record<IdVerificacao, IVerificacao>>>(texto(r, 'dgt_verificacoes')) || {},
+      responsavelSuprimentos: texto(r, 'dgt_responsavelsuprimentos'),
+      responsavelCompliance: texto(r, 'dgt_responsavelcompliance'),
+      bancarioConferido: r.dgt_bancarioconferido === true,
+      abertoPor: texto(r, 'dgt_responsavelnome'),
+      criadoEm: texto(r, 'createdon')
+    };
+  }
+
+  private lerColaborador(r: IDataverseRecord): IColaboradorFornecedor {
+    return {
+      id: guid(r.dgt_fornecedorcolaboradorid),
+      fornecedorId: guid(r._dgt_fornecedor_value),
+      nome: texto(r, 'dgt_name'),
+      funcao: texto(r, 'dgt_funcao'),
+      cpf: normalizarCpf(texto(r, 'dgt_cpf')),
+      observacoes: texto(r, 'dgt_observacoes'),
+      ativo: r.dgt_ativo !== false,
+      criadoEm: texto(r, 'createdon')
+    };
+  }
+
+  private lerDocumentoColaborador(r: IDataverseRecord): IDocumentoColaborador {
+    return {
+      id: guid(r.dgt_colaboradordocumentoid),
+      colaboradorId: guid(r._dgt_colaborador_value),
+      tipo: texto(r, 'dgt_tipo') === 'NR aplicável' ? 'NR aplicável' : 'ASO',
+      norma: texto(r, 'dgt_norma'),
+      emissao: soData(texto(r, 'dgt_dataemissao')),
+      vencimento: soData(texto(r, 'dgt_datavencimento')),
+      arquivoUrl: texto(r, 'dgt_arquivourl'),
+      arquivoNome: texto(r, 'dgt_arquivonome'),
+      observacoes: texto(r, 'dgt_observacoes'),
+      situacao: texto(r, 'dgt_situacao') === 'Substituído' ? 'Substituído' : 'Vigente',
+      registradoPor: texto(r, 'dgt_responsavelnome'),
+      criadoEm: texto(r, 'createdon')
     };
   }
 

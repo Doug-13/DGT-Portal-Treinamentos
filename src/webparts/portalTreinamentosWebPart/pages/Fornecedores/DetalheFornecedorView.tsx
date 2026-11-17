@@ -58,6 +58,7 @@ import {
   CampoContato
 } from './ListaFornecedoresView';
 
+import ColaboradoresFornecedorView from './ColaboradoresFornecedorView';
 import FichaFornecedorView from './FichaFornecedorView';
 import HomologacaoFornecedorView from './HomologacaoFornecedorView';
 
@@ -72,7 +73,7 @@ import HomologacaoFornecedorView from './HomologacaoFornecedorView';
 
 const STATUS_RESTRITOS: StatusFornecedor[] = ['Homologado', 'Suspenso', 'Bloqueado', 'Descredenciado', 'Reprovado'];
 
-type Secao = 'dados' | 'ficha' | 'documentos' | 'consultas' | 'homologacao' | 'historico';
+export type Secao = 'dados' | 'ficha' | 'documentos' | 'consultas' | 'homologacao' | 'historico';
 
 const SECOES: Array<{ id: Secao; rotulo: string }> = [
   { id: 'dados', rotulo: 'Dados' },
@@ -404,11 +405,13 @@ const DetalheFornecedorView: React.FC<{
   tipos: ITipoDocumentoFornecedor[];
   administra: boolean;
   usuarioNome: string;
+  secaoInicial?: Secao;
   voltar: () => void;
   aoAlterar: (aviso?: string) => Promise<void>;
-}> = ({ servico, fornecedor, tipos, administra, usuarioNome, voltar, aoAlterar }) => {
+}> = ({ servico, fornecedor, tipos, administra, usuarioNome, secaoInicial, voltar, aoAlterar }) => {
 
-  const [secao, setSecao] = React.useState<Secao>('dados');
+  const [secao, setSecao] = React.useState<Secao>(secaoInicial || 'dados');
+  const [verColaboradores, setVerColaboradores] = React.useState(false);
   const [documentos, setDocumentos] = React.useState<IDocumentoFornecedor[] | undefined>(undefined);
   const [consultas, setConsultas] = React.useState<IConsultaFornecedor[] | undefined>(undefined);
   const [historico, setHistorico] = React.useState<IHistoricoFornecedor[] | undefined>(undefined);
@@ -499,6 +502,18 @@ const DetalheFornecedorView: React.FC<{
 
   const outrosTipos = tipos.filter(t => t.ativo && !tipoSeAplica(t, fornecedor.categoria));
 
+  if (verColaboradores) {
+    return (
+      <ColaboradoresFornecedorView
+        servico={servico}
+        fornecedor={fornecedor}
+        usuarioNome={usuarioNome}
+        voltar={() => setVerColaboradores(false)}
+        aoAlterar={async () => { setHistorico(undefined); }}
+      />
+    );
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -517,6 +532,7 @@ const DetalheFornecedorView: React.FC<{
         {!fornecedor.ativo && <Selo tom="cinza">inativo</Selo>}
         {fornecedor.resultadoSancoes === 'Com registro' && <Selo tom="indigo">! sanção vigente</Selo>}
         {fornecedor.resultadoCertidoes === 'Com pendência' && <Selo tom="indigo">! certidão irregular</Selo>}
+        <button type="button" style={botao('secundario')} onClick={() => setVerColaboradores(true)}>Colaboradores</button>
       </div>
 
       <div role="tablist" aria-label="Seções do fornecedor" style={{ display: 'flex', gap: '2px', borderBottom: `1px solid ${COR.cinzaClaro}`, marginBottom: '14px', overflowX: 'auto' }}>
@@ -671,7 +687,7 @@ const DetalheFornecedorView: React.FC<{
 
           <div style={ajuda}>
             Automáticas: Receita (CNPJá); no Portal da Transparência, CEIS, CNEP, CEPIM e acordos de leniência (leniência é informativa e não altera o resultado de sanções);
-            certidões pela Infosimples (CND Federal, FGTS, CNDT; estadual e municipal quando a UF/município tem rota configurada). Certidão regular entra sozinha em Documentos.
+            certidões pela Infosimples (CND Federal, FGTS, CNDT; estadual, municipal e CEAT do TRT quando a UF/município tem rota configurada). Certidão regular entra sozinha em Documentos.
             Cada certidão pode levar até 1 minuto. A consulta consolidada do TCU ainda não é automática: emita no site do TCU e registre em Documentos.
           </div>
 
@@ -686,7 +702,7 @@ const DetalheFornecedorView: React.FC<{
                     <Selo tom={/com registro|erro|situação:|em vigor|irregular|verificar/i.test(c.resultado) ? 'indigo' : /sem cobertura|não configurada/i.test(c.resultado) ? 'cinza' : 'ciano'}>{c.resultado}</Selo>
                     <span style={{ fontSize: '12.5px', color: COR.texto2 }}>{formatarDataHora(c.quando)} · {c.executadoPor || '—'} · {c.fonte}</span>
                   </div>
-                  {c.resumo && <div style={{ fontSize: '13.5px', marginTop: '6px', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{c.resumo}</div>}
+                  {c.resumo && <div style={{ fontSize: '13.5px', marginTop: '6px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.5 }}>{c.resumo}</div>}
                 </div>
               ))}
             </div>

@@ -35,7 +35,8 @@ namespace DGT.Treinamentos.Plugins
     //
     //   Certidões (Infosimples) — em "consultas" de "consultar"/"lote":
     //     "cnd_federal" (Receita/PGFN), "fgts" (Caixa/CRF), "cndt" (TST),
-    //     "cnd_estadual", "cnd_municipal", ou "certidoes" (as cinco).
+    //     "cnd_estadual", "cnd_municipal", "ceat" (CEAT do TRT da sede)
+    //     ou "certidoes" (todas).
     //     Cada certidão leva de segundos a ~1 min na fonte; a chamada tem
     //     ~105 s no total (limite do Dataverse). O portal pede UMA por vez;
     //     o que não couber no tempo volta como "pulada".
@@ -49,6 +50,7 @@ namespace DGT.Treinamentos.Plugins
     //       Power Automate. Cria (ou atualiza, se o CNPJ já existe) o
     //       fornecedor em "Em homologação", completa com a Receita e
     //       devolve { id, protocolo, novo, documentosPendentes[] }.
+    //       Sem ciclo de homologação aberto, abre um (kanban: "Ficha recebida").
     //
     // ResultadoJson: ver cada ação (Responder*).
     //
@@ -69,7 +71,11 @@ namespace DGT.Treinamentos.Plugins
     //         "infosimplesTimeout": 90,           (segundos por certidão)
     //         "diasRenovacaoCertidoes": 15,
     //         "rotasEstaduais":  { "SC": "<rota>?inscricao_estadual={ie}" },
-    //         "rotasMunicipais": { "SC/FLORIANOPOLIS": "<rota>" } }
+    //         "rotasMunicipais": { "SC/FLORIANOPOLIS": "<rota>" },
+    //         "rotasTrt":        { "RS": "tribunal/trt4/ceat" } }
+    //   rotasTrt (CEAT): TRT da sede do fornecedor, por UF ("RS") ou por
+    //   cidade ("SP/CAMPINAS", para UF com mais de um TRT). Padrão: só RS
+    //   (TRT4, rota confirmada). UF sem rota: "Sem cobertura".
     //   Rotas estaduais/municipais: o caminho da consulta na Infosimples
     //   (depois de /consultas/), conforme o catálogo contratado. Depois do
     //   "?" vão parâmetros extras; {cnpj}, {ie} e {im} são trocados pelos
@@ -94,6 +100,7 @@ namespace DGT.Treinamentos.Plugins
         private const string TabelaTipo = "dgt_tipodocumentofornecedor";
         private const string TabelaDocumento = "dgt_fornecedordocumento";
         private const string TabelaHistorico = "dgt_fornecedorhistorico";
+        private const string TabelaCiclo = "dgt_fornecedorhomologacao";
 
         // Tempo total da chamada (o Dataverse encerra plugins síncronos em 2 min).
         private const int SegundosPorChamada = 105;
@@ -123,7 +130,8 @@ namespace DGT.Treinamentos.Plugins
             new Certidao("fgts", "FGTS", "Certificado de Regularidade do FGTS (CRF)", "caixa/regularidade"),
             new Certidao("cndt", "CNDT", "Certidão Negativa de Débitos Trabalhistas (CNDT)", "tst/cndt"),
             new Certidao("cnd_estadual", "CND_ESTADUAL", "CND Estadual", null),
-            new Certidao("cnd_municipal", "CND_MUNICIPAL", "CND Municipal", null)
+            new Certidao("cnd_municipal", "CND_MUNICIPAL", "CND Municipal", null),
+            new Certidao("ceat", "CEAT", "CEAT — ações trabalhistas (TRT da sede)", null)
         };
 
         private static readonly Regex Cpf =
@@ -145,6 +153,10 @@ namespace DGT.Treinamentos.Plugins
         private readonly int _diasRenovacaoCertidoes = 15;
         private readonly Dictionary<string, string> _rotasEstaduais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _rotasMunicipais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _rotasTrt = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["RS"] = "tribunal/trt4/ceat"
+        };
 
         public ConsultarFornecedorPlugin(string unsecureConfig, string secureConfig)
         {
@@ -182,6 +194,7 @@ namespace DGT.Treinamentos.Plugins
                     _diasRenovacaoCertidoes = Math.Max(1, (int?)config["diasRenovacaoCertidoes"] ?? _diasRenovacaoCertidoes);
                     LerRotas(config["rotasEstaduais"] as JObject, _rotasEstaduais);
                     LerRotas(config["rotasMunicipais"] as JObject, _rotasMunicipais);
+                    LerRotas(config["rotasTrt"] as JObject, _rotasTrt);
                 }
                 catch (JsonException)
                 {
@@ -858,8 +871,8 @@ namespace DGT.Treinamentos.Plugins
 
             if (string.IsNullOrWhiteSpace(rota))
             {
-                var onde = certidao.Codigo == "cnd_estadual"
-                    ? (uf.Length > 0 ? $"a UF {uf}" : "fornecedor sem UF no cadastro")
+                var onde = certidao.Codigo == "cnd_estadual" || certidao.Codigo == "ceat"
+                    ? (uf.Length > 0 ? (certidao.Codigo == "ceat" ? $"o TRT da UF {uf}" : $"a UF {uf}") : "fornecedor sem UF no cadastro")
                     : (cidade.Length > 0 ? $"{cidade}/{uf}" : "fornecedor sem cidade no cadastro");
                 var texto = $"Não há rota da Infosimples configurada para {onde}. Emita a certidão no site do órgão e registre em Documentos.";
                 RegistrarConsulta(sistema, fornecedor.Id, certidao.Tipo, "Sem cobertura", texto, Fonte, usuario);
@@ -909,6 +922,11 @@ namespace DGT.Treinamentos.Plugins
                 {
                     mensagem += " (verifique o token na Configuração segura do passo)";
                 }
+                else if (codigo == 605 || codigo == 615)
+                {
+                    // Site do órgão fora do ar ou lento: não é erro do cadastro.
+                    mensagem += " O site do órgão está indisponível agora: tente de novo mais tarde (o lote diário tenta de novo sozinho).";
+                }
                 erro = Limitar($"Infosimples ({codigo}): {mensagem}", 1000);
                 tracing.Trace("{0}: Infosimples respondeu código {1}.", certidao.Tipo, codigo);
                 RegistrarConsulta(sistema, fornecedor.Id, certidao.Tipo, "Erro", erro, Fonte, usuario);
@@ -919,6 +937,12 @@ namespace DGT.Treinamentos.Plugins
             var comprovante = (resposta["site_receipts"] as JArray)?
                 .Select(t => t.Type == JTokenType.String ? (string)t : string.Empty)
                 .FirstOrDefault(u => u.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
+            if (comprovante.Length == 0)
+            {
+                // Algumas rotas (ex.: CEAT) trazem o comprovante dentro de data[0].
+                var noDado = Texto(dado["site_receipt"], string.Empty);
+                if (noDado.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) { comprovante = noDado; }
+            }
 
             var analise = AnalisarCertidao(dado);
             var resultado = analise.Regular == true
@@ -931,6 +955,7 @@ namespace DGT.Treinamentos.Plugins
             resumo.AppendLine(analise.Validade.HasValue ? $"Validade: {analise.Validade.Value:dd/MM/yyyy}" : "Validade: não informada pela fonte");
             if (analise.Codigo.Length > 0) { resumo.AppendLine($"Código de controle: {analise.Codigo}"); }
             if (analise.Mensagem.Length > 0) { resumo.AppendLine(analise.Mensagem); }
+            if (analise.Processos.Length > 0) { resumo.AppendLine(analise.Processos); }
             if (analise.Regular == null) { resumo.AppendLine("Não foi possível identificar se a certidão é negativa: abra o comprovante e confira."); }
             if (comprovante.Length > 0) { resumo.AppendLine($"Comprovante: {comprovante}"); }
 
@@ -963,6 +988,7 @@ namespace DGT.Treinamentos.Plugins
             public DateTime? Validade;
             public string Codigo = string.Empty;
             public string Mensagem = string.Empty;
+            public string Processos = string.Empty;
         }
 
         // Os campos variam por fonte (PGFN, Caixa, TST, SEFAZ, prefeituras):
@@ -978,8 +1004,15 @@ namespace DGT.Treinamentos.Plugins
 
             var conseguiu = d["conseguiu_emitir_certidao_negativa"];
             var consta = d["consta"];
+            var nadaConsta = d["nada_consta"];   // CEAT (TRT): true = nenhuma ação trabalhista
 
-            if (chave.Contains("EFEITO"))
+            if (nadaConsta != null && nadaConsta.Type == JTokenType.Boolean)
+            {
+                a.Regular = (bool)nadaConsta;
+                if (a.Situacao.Length == 0) { a.Situacao = a.Regular == true ? "Nada consta" : "Constam ações trabalhistas"; }
+                a.Processos = ResumirProcessos(d["grupos_processos"] as JArray);
+            }
+            else if (chave.Contains("EFEITO"))
             {
                 a.Regular = true;
                 a.EfeitoNegativa = true;
@@ -999,6 +1032,30 @@ namespace DGT.Treinamentos.Plugins
             a.Codigo = Limitar(Mascarar(Juntar(" ", Texto(d["certidao_codigo"], string.Empty), Texto(d["crf"], string.Empty), Texto(d["codigo_controle"], string.Empty))), 120);
             a.Mensagem = Limitar(Mascarar(Juntar(" ", Texto(d["mensagem"], string.Empty), Texto(d["observacoes"], string.Empty))), 600);
             return a;
+        }
+
+        // CEAT: grupos_processos = [{ vara, processos: [...] }]. Só varas e
+        // números de processo (dados públicos), limitado para caber no resumo.
+        private static string ResumirProcessos(JArray grupos)
+        {
+            if (grupos == null || grupos.Count == 0) { return string.Empty; }
+            var linhas = new List<string>();
+            var total = 0;
+            foreach (var g in grupos.OfType<JObject>())
+            {
+                var processos = (g["processos"] as JArray)?
+                    .Select(p => p.Type == JTokenType.Object ? Texto(p["numero"], Texto(p["processo"], string.Empty)) : Texto(p, string.Empty))
+                    .Where(p => p.Length > 0)
+                    .ToList() ?? new List<string>();
+                total += processos.Count;
+                if (linhas.Count < 10)
+                {
+                    var lista = processos.Count > 0 ? string.Join(", ", processos.Take(5)) : "sem número";
+                    var mais = processos.Count > 5 ? $" (+{processos.Count - 5})" : string.Empty;
+                    linhas.Add($"- {Texto(g["vara"], "vara não informada")}: {lista}{mais}");
+                }
+            }
+            return Limitar(Mascarar($"Processos: {total}\n{string.Join("\n", linhas)}"), 1500);
         }
 
         private static DateTime? PrimeiraData(JObject d, params string[] campos)
@@ -1097,6 +1154,12 @@ namespace DGT.Treinamentos.Plugins
         {
             if (certidao.Rota != null) { return certidao.Rota; }
             string rota;
+            if (certidao.Codigo == "ceat")
+            {
+                // Cidade primeiro (UF com mais de um TRT), depois a UF.
+                if (uf.Length > 0 && cidade.Length > 0 && _rotasTrt.TryGetValue(ChaveMunicipio(uf, cidade), out rota)) { return rota; }
+                return uf.Length > 0 && _rotasTrt.TryGetValue(uf, out rota) ? rota : string.Empty;
+            }
             if (certidao.Codigo == "cnd_estadual")
             {
                 return uf.Length > 0 && _rotasEstaduais.TryGetValue(uf, out rota) ? rota : string.Empty;
@@ -1434,6 +1497,8 @@ namespace DGT.Treinamentos.Plugins
             var gravado = sistema.Retrieve(TabelaFornecedor, id, new ColumnSet("dgt_protocolo", "dgt_name", "dgt_categoria"));
             var categoria = gravado.GetAttributeValue<string>("dgt_categoria") ?? string.Empty;
 
+            AbrirCicloSeNecessario(sistema, tracing, id, tipoSolicitacao, gravado.GetAttributeValue<string>("dgt_protocolo") ?? string.Empty, usuario);
+
             return new JObject
             {
                 ["id"] = id.ToString(),
@@ -1443,6 +1508,41 @@ namespace DGT.Treinamentos.Plugins
                 ["dadosBancariosAlterados"] = !novo && bancoAlterado,
                 ["documentosPendentes"] = new JArray(DocumentosParaEnviar(sistema, categoria).Cast<object>().ToArray())
             };
+        }
+
+        // Kanban de homologação: a ficha que chega abre um ciclo novo na
+        // coluna "Ficha recebida" se o fornecedor não tem ciclo em aberto.
+        // As colunas seguintes são movidas à mão no portal. Sem a tabela
+        // (script ainda não rodado), só registra no rastreamento.
+        private static void AbrirCicloSeNecessario(IOrganizationService sistema, ITracingService tracing, Guid fornecedorId, string motivo, string protocolo, string usuario)
+        {
+            try
+            {
+                var consulta = new QueryExpression(TabelaCiclo) { ColumnSet = new ColumnSet("dgt_concluidoem", "dgt_numero") };
+                consulta.Criteria.AddCondition("dgt_fornecedor", ConditionOperator.Equal, fornecedorId);
+                var ciclos = sistema.RetrieveMultiple(consulta).Entities;
+                if (ciclos.Any(c => !c.GetAttributeValue<DateTime?>("dgt_concluidoem").HasValue)) { return; }
+
+                var numero = ciclos.Count == 0 ? 1 : ciclos.Max(c => c.GetAttributeValue<int?>("dgt_numero") ?? 0) + 1;
+                var ciclo = new Entity(TabelaCiclo);
+                ciclo["dgt_name"] = Limitar($"Ciclo {numero} — {motivo}", 200);
+                ciclo["dgt_fornecedor"] = new EntityReference(TabelaFornecedor, fornecedorId);
+                ciclo["dgt_numero"] = numero;
+                ciclo["dgt_motivo"] = Limitar(motivo, 60);
+                ciclo["dgt_etapa"] = "Ficha recebida";
+                ciclo["dgt_etapadesde"] = DateTime.UtcNow;
+                ciclo["dgt_protocolo"] = Limitar(protocolo, 30);
+                ciclo["dgt_resultadohomologacao"] = "Pendente";
+                ciclo["dgt_responsavelnome"] = Limitar(usuario, 200);
+                sistema.Create(ciclo);
+
+                RegistrarHistorico(sistema, fornecedorId, "Homologação: ciclo aberto",
+                    $"Ciclo {numero} ({motivo}) aberto na coluna \"Ficha recebida\" pela ficha {protocolo}.", usuario);
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace("Ficha: ciclo de homologação não aberto: {0}", ex.Message);
+            }
         }
 
         // Obrigatórios da categoria que o fornecedor precisa ENVIAR

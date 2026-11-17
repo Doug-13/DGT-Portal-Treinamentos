@@ -9,6 +9,9 @@
                                 Substituído) com emissão e validade
     dgt_fornecedorconsulta      Histórico das consultas CNPJá, CEIS e CNEP
     dgt_fornecedorhistorico     Histórico de alterações do cadastro
+    dgt_fornecedorhomologacao   Ciclos de homologação (cards do kanban)
+    dgt_fornecedorcolaborador   Colaboradores do prestador (CPF PROTEGIDO)
+    dgt_colaboradordocumento    Documentos do colaborador (ASO, NR aplicável)
 
 .DESCRIPTION
   Pode ser executado mais de uma vez: o que já existe é mantido e só o
@@ -367,7 +370,7 @@ function New-Protocolo {
 
 # Perfil de segurança de campo com permissões em colunas protegidas
 function Set-PerfilCampo {
-  param([string] $NomePerfil, [string] $Descricao, [string[]] $Colunas, [int] $Atualizar = 4)
+  param([string] $NomePerfil, [string] $Descricao, [string[]] $Colunas, [int] $Atualizar = 4, [string] $Tabela = 'dgt_fornecedor')
 
   $perfil = Invoke-Dv -Metodo 'GET' -Caminho "fieldsecurityprofiles?`$select=fieldsecurityprofileid&`$filter=name eq '$NomePerfil'"
   if ($perfil.value.Count -gt 0) {
@@ -382,14 +385,14 @@ function Set-PerfilCampo {
   }
 
   foreach ($coluna in $Colunas) {
-    $permissao = Invoke-Dv -Metodo 'GET' -Caminho "fieldpermissions?`$select=fieldpermissionid&`$filter=_fieldsecurityprofileid_value eq $idPerfil and entityname eq 'dgt_fornecedor' and attributelogicalname eq '$coluna'"
+    $permissao = Invoke-Dv -Metodo 'GET' -Caminho "fieldpermissions?`$select=fieldpermissionid&`$filter=_fieldsecurityprofileid_value eq $idPerfil and entityname eq '$Tabela' and attributelogicalname eq '$coluna'"
     if ($permissao.value.Count -gt 0) {
       Write-Host "  = permissão de $coluna já existe"
       continue
     }
     Write-Host "  + permissão em $coluna" -ForegroundColor Green
     Invoke-Dv -Metodo 'POST' -Caminho 'fieldpermissions' -Corpo @{
-      entityname                          = 'dgt_fornecedor'
+      entityname                          = $Tabela
       attributelogicalname                = $coluna
       canread                             = 4
       cancreate                           = 4
@@ -410,6 +413,9 @@ New-Tabela 'dgt_TipoDocumentoFornecedor' 'Tipo de documento de fornecedor' 'Tipo
 New-Tabela 'dgt_FornecedorDocumento' 'Documento de fornecedor' 'Documentos de fornecedor' 'Versão de um documento do fornecedor (Vigente ou Substituído).'
 New-Tabela 'dgt_FornecedorConsulta' 'Consulta de fornecedor' 'Consultas de fornecedor' 'Resultado de uma consulta externa (CNPJá, CEIS, CNEP).'
 New-Tabela 'dgt_FornecedorHistorico' 'Histórico de fornecedor' 'Históricos de fornecedor' 'Alterações do cadastro do fornecedor: quem, quando e o quê.'
+New-Tabela 'dgt_FornecedorHomologacao' 'Ciclo de homologação' 'Ciclos de homologação' 'Um ciclo de homologação do fornecedor (card do kanban). Concluído = somente leitura.'
+New-Tabela 'dgt_FornecedorColaborador' 'Colaborador de fornecedor' 'Colaboradores de fornecedor' 'Colaborador do prestador que atua para a DGT (CPF em coluna protegida, sem contatos).'
+New-Tabela 'dgt_ColaboradorDocumento' 'Documento de colaborador' 'Documentos de colaborador' 'ASO e NR aplicável do colaborador do prestador (Vigente ou Substituído).'
 
 # ------------------------------------------------------------
 # 2) Colunas
@@ -519,6 +525,47 @@ New-Lookup      $T 'dgt_Fornecedor'           'Fornecedor' 'dgt_fornecedor' 'dgt
 New-TextoLongo  $T 'dgt_Descricao'            'Descrição' 4000
 New-Texto       $T 'dgt_UsuarioNome'          'Usuário' 200
 
+Write-Host "`n6b) Colunas de dgt_fornecedorhomologacao (dgt_name = Ciclo N — motivo)" -ForegroundColor Cyan
+$T = 'dgt_fornecedorhomologacao'
+New-Lookup      $T 'dgt_Fornecedor'           'Fornecedor' 'dgt_fornecedor' 'dgt_fornecedor_dgt_fornecedorhomologacao'
+New-Inteiro     $T 'dgt_Numero'               'Número do ciclo'
+New-Texto       $T 'dgt_Motivo'               'Motivo (cadastro inicial, renovação...)' 60
+New-Texto       $T 'dgt_Etapa'                'Etapa (coluna do kanban)' 50
+New-DataHora    $T 'dgt_EtapaDesde'           'Na etapa desde'
+New-DataHora    $T 'dgt_ConcluidoEm'          'Concluído em'
+New-Texto       $T 'dgt_Protocolo'            'Protocolo da ficha' 30
+New-Texto       $T 'dgt_ClassificacaoRisco'   'Classificação de risco' 20
+New-Texto       $T 'dgt_ResultadoHomologacao' 'Resultado da homologação' 50
+New-TextoLongo  $T 'dgt_Ressalvas'            'Ressalvas / mitigação / parecer' 4000
+New-SomenteData $T 'dgt_ValidadeCadastro'     'Validade do cadastro / próxima revisão'
+New-TextoLongo  $T 'dgt_Verificacoes'         'Verificações do item 9 (JSON)' 4000
+New-Texto       $T 'dgt_ResponsavelSuprimentos' 'Responsável Suprimentos / data' 200
+New-Texto       $T 'dgt_ResponsavelCompliance' 'Compliance / Jurídico / data' 200
+New-SimNao      $T 'dgt_BancarioConferido'    'Dados bancários conferidos (na conclusão)' $false
+New-Texto       $T 'dgt_ResponsavelNome'      'Aberto por' 200
+
+Write-Host "`n6c) Colunas de dgt_fornecedorcolaborador (dgt_name = nome)" -ForegroundColor Cyan
+$T = 'dgt_fornecedorcolaborador'
+New-Lookup      $T 'dgt_Fornecedor'           'Fornecedor' 'dgt_fornecedor' 'dgt_fornecedor_dgt_fornecedorcolaborador'
+New-Texto       $T 'dgt_Funcao'               'Função / cargo' 120
+New-TextoSeguro $T 'dgt_Cpf'                  'CPF (protegido)' 11
+New-TextoLongo  $T 'dgt_Observacoes'          'Observações' 2000
+New-SimNao      $T 'dgt_Ativo'                'Ativo' $true
+New-Texto       $T 'dgt_ResponsavelNome'      'Cadastrado por' 200
+
+Write-Host "`n6d) Colunas de dgt_colaboradordocumento (dgt_name = tipo)" -ForegroundColor Cyan
+$T = 'dgt_colaboradordocumento'
+New-Lookup      $T 'dgt_Colaborador'          'Colaborador' 'dgt_fornecedorcolaborador' 'dgt_fornecedorcolaborador_dgt_colaboradordocumento'
+New-Texto       $T 'dgt_Tipo'                 'Tipo (ASO / NR aplicável)' 30
+New-Texto       $T 'dgt_Norma'                'Norma aplicável (ex.: NR-10)' 120
+New-SomenteData $T 'dgt_DataEmissao'          'Emissão'
+New-SomenteData $T 'dgt_DataVencimento'       'Validade'
+New-TextoLongo  $T 'dgt_ArquivoUrl'           'Endereço do arquivo' 2000
+New-Texto       $T 'dgt_ArquivoNome'          'Nome do arquivo' 255
+New-TextoLongo  $T 'dgt_Observacoes'          'Observações' 2000
+New-Texto       $T 'dgt_Situacao'             'Situação (Vigente/Substituído)' 20
+New-Texto       $T 'dgt_ResponsavelNome'      'Registrado por' 200
+
 # ------------------------------------------------------------
 # 7) Publicação
 # ------------------------------------------------------------
@@ -526,7 +573,7 @@ New-Texto       $T 'dgt_UsuarioNome'          'Usuário' 200
 Write-Host "`n7) Publicando..." -ForegroundColor Cyan
 
 Invoke-Dv -Metodo 'POST' -Caminho 'PublishXml' -Corpo @{
-  ParameterXml = '<importexportxml><entities><entity>dgt_fornecedor</entity><entity>dgt_tipodocumentofornecedor</entity><entity>dgt_fornecedordocumento</entity><entity>dgt_fornecedorconsulta</entity><entity>dgt_fornecedorhistorico</entity></entities></importexportxml>'
+  ParameterXml = '<importexportxml><entities><entity>dgt_fornecedor</entity><entity>dgt_tipodocumentofornecedor</entity><entity>dgt_fornecedordocumento</entity><entity>dgt_fornecedorconsulta</entity><entity>dgt_fornecedorhistorico</entity><entity>dgt_fornecedorhomologacao</entity><entity>dgt_fornecedorcolaborador</entity><entity>dgt_colaboradordocumento</entity></entities></importexportxml>'
 } | Out-Null
 
 # ------------------------------------------------------------
@@ -584,6 +631,12 @@ Set-PerfilCampo 'DGT - Fornecedores - Dados bancários' `
   'Ler e corrigir os dados bancários da ficha. Somente Suprimentos / Financeiro.' `
   @('dgt_dadosbancarios')
 
+# Mesmo padrão do quadro societário, em perfil próprio: quem cuida dos
+# colaboradores em campo (ex.: SESMT) não precisa ver os sócios.
+Set-PerfilCampo 'DGT - Fornecedores - CPF de colaboradores' `
+  'Ler, informar e corrigir o CPF dos colaboradores dos prestadores. Somente Suprimentos / SESMT.' `
+  @('dgt_cpf') -Tabela 'dgt_fornecedorcolaborador'
+
 # ------------------------------------------------------------
 # 9) Custom API dgt_ConsultarFornecedor (o plugin entra pelo PASSO)
 # ------------------------------------------------------------
@@ -637,12 +690,14 @@ Write-Host "`nConcluído." -ForegroundColor Green
 Write-Host 'Próximos passos:' -ForegroundColor Green
 Write-Host '  1. Funções de segurança (somente quem usa o módulo Fornecedores):'
 Write-Host '       dgt_fornecedor, dgt_tipodocumentofornecedor, dgt_fornecedordocumento,'
-Write-Host '       dgt_fornecedorconsulta, dgt_fornecedorhistorico'
+Write-Host '       dgt_fornecedorconsulta, dgt_fornecedorhistorico, dgt_fornecedorhomologacao,'
+Write-Host '       dgt_fornecedorcolaborador, dgt_colaboradordocumento'
 Write-Host '       -> Criar, Ler, Gravar (Organização). NÃO conceda Excluir (a tela só desativa).'
 Write-Host '       dgt_fornecedorconsulta e dgt_fornecedorhistorico: Ler basta para quem só consulta.'
 Write-Host "  2. Perfis de segurança de campo: '$NomePerfil' (Suprimentos),"
 Write-Host "     'DGT - Fornecedores - Quadro societário' (Suprimentos/Compliance) e"
-Write-Host "     'DGT - Fornecedores - Dados bancários' (Suprimentos/Financeiro)."
+Write-Host "     'DGT - Fornecedores - Dados bancários' (Suprimentos/Financeiro) e"
+Write-Host "     'DGT - Fornecedores - CPF de colaboradores' (Suprimentos/SESMT)."
 Write-Host '  3. Plugin: compile, atualize o assembly e registre o PASSO do ConsultarFornecedorPlugin'
 Write-Host '     (Message dgt_ConsultarFornecedor · PostOperation · Síncrono) com a Configuração segura:'
 Write-Host '       { "cnpja": "<chave>", "transparencia": "<chave>", "infosimples": "<token>" }'
