@@ -89,8 +89,13 @@ import {
 //
 // O estado do fluxo fica no próprio registro
 // (dgt_ambienteregistro.dgt_fluxoestado, JSON), igual ao Orçamento.
-// O registro "congela" a versão do fluxo com que começou: publicar uma
-// v2 só vale para registros novos.
+// Alterações no fluxo valem também para os registros EM ANDAMENTO:
+// ao publicar (ou "Aplicar alterações" no editor), cada registro em
+// andamento é levado para a versão publicada, na MESMA etapa e com o
+// prazo da etapa contado da data em que ela começou
+// (atualizarRegistrosDoProcesso). Quem não pôde ser levado (ex.: a
+// etapa atual foi removida do desenho) continua na versão em que
+// estava, e é tentado de novo ao abrir o registro (atualizarVersao).
 //
 // Para listas, filtros, avisos (Power Automate) e Power BI, o registro
 // também recebe: situação, etapa atual, prazo da etapa, responsáveis
@@ -203,6 +208,16 @@ export interface IResultadoAcaoAmbiente {
   ok: boolean;
   erros: string[];
   avisos: string[];
+}
+
+// Resultado da atualização dos registros em andamento para a versão
+// publicada do fluxo.
+export interface IResultadoAtualizacaoVersao {
+  atualizados: number;
+  // Registros que ficaram na versão anterior, com o motivo.
+  mantidos: Array<{ codigo: string; motivo: string }>;
+  // Texto pronto para mostrar ao usuário (vazio = nada a informar).
+  mensagens: string[];
 }
 
 export interface IPendenciaAmbiente {
@@ -400,6 +415,137 @@ export class AmbienteFluxoService {
     const definicao = await this.fluxo.definicaoDaInstancia(instancia);
 
     return definicao ? { instancia, definicao } : undefined;
+  }
+
+  // ----------------------------------------------------------
+  // Atualização para a versão publicada do fluxo
+  // ----------------------------------------------------------
+
+  // Leva o registro em andamento para a versão publicada do fluxo do
+  // processo, na mesma etapa (sem reiniciar o prazo dela). Nada muda se
+  // ele já estiver na versão publicada, se estiver concluído/cancelado
+  // ou se a etapa atual não existir na versão publicada (fica onde está).
+  public async atualizarVersao(
+    ambiente: IAmbiente,
+    registro: IAmbienteRegistro,
+    usuario: { id: string; nome: string }
+  ): Promise<{ status: 'atualizado' | 'semAlteracao' | 'mantido'; motivo: string }> {
+
+    if (registro.situacao === 'cancelado') {
+      return { status: 'semAlteracao', motivo: '' };
+    }
+
+    const instancia = await this.repositorio.obter(registro.id);
+
+    if (!instancia || instancia.status !== 'emAndamento') {
+      return { status: 'semAlteracao', motivo: '' };
+    }
+
+    const processoId = instancia.processoId || ambiente.processoId;
+
+    if (!processoId) {
+      return { status: 'semAlteracao', motivo: '' };
+    }
+
+    const publicada = await this.fluxo.definicaoPublicada(processoId);
+
+    if (
+      !publicada ||
+      publicada.id !== instancia.fluxoId ||
+      publicada.versao <= instancia.fluxoVersao
+    ) {
+      return { status: 'semAlteracao', motivo: '' };
+    }
+
+    await this.vinculos();
+
+    const ator = { id: guid(usuario.id), nome: usuario.nome || 'Sistema' };
+
+    const resultado =
+      await this.fluxo.transferirParaProcesso(
+        registro.id,
+        publicada,
+        {
+          tipo: 'versao',
+          processoId,
+          processoNome: instancia.processoNome || ambiente.processoNome || '',
+          ator: { ...ator, papeisTeste: [] },
+          justificativa: 'Atualização automática: o fluxo do ambiente foi alterado.',
+          manterPrazoEtapa: true
+        },
+        true,
+        this.contextoExecucao(ambiente, registro, ator)
+      );
+
+    if (!resultado.ok) {
+      return { status: 'mantido', motivo: resultado.erros.join(' ') };
+    }
+
+    const estado = await this.carregar(registro);
+
+    if (estado) {
+      await this.sincronizar(registro, estado);
+    }
+
+    return { status: 'atualizado', motivo: '' };
+  }
+
+  // Depois de publicar uma versão do fluxo: leva para ela os registros
+  // em andamento de TODOS os ambientes que usam o processo.
+  public async atualizarRegistrosDoProcesso(
+    processoId: string,
+    usuario: { id: string; nome: string }
+  ): Promise<IResultadoAtualizacaoVersao> {
+
+    const resultado: IResultadoAtualizacaoVersao = { atualizados: 0, mantidos: [], mensagens: [] };
+    const servico = new AmbienteService(this.dataverse);
+
+    let ambientes: IAmbiente[];
+
+    try {
+      const lista = await servico.listar();
+      ambientes = lista.ambientes.filter(item => guid(item.processoId) === guid(processoId));
+    } catch (erro) {
+      resultado.mensagens.push(`Não foi possível ler os ambientes que usam este fluxo: ${mensagem(erro)}`);
+      return resultado;
+    }
+
+    for (const ambiente of ambientes) {
+
+      let registros: IAmbienteRegistro[];
+
+      try {
+        registros = (await servico.listarRegistros(ambiente)).filter(item => item.situacao === 'emAndamento');
+      } catch (erro) {
+        resultado.mensagens.push(`${ambiente.nome}: não foi possível listar os registros (${mensagem(erro)}).`);
+        continue;
+      }
+
+      for (const registro of registros) {
+        try {
+          const item = await this.atualizarVersao(ambiente, registro, usuario);
+          if (item.status === 'atualizado') {
+            resultado.atualizados++;
+          } else if (item.status === 'mantido') {
+            resultado.mantidos.push({ codigo: registro.codigo, motivo: item.motivo });
+          }
+        } catch (erro) {
+          resultado.mantidos.push({ codigo: registro.codigo, motivo: mensagem(erro) });
+        }
+      }
+    }
+
+    if (resultado.atualizados > 0) {
+      resultado.mensagens.unshift(
+        `${resultado.atualizados} registro(s) em andamento de ambiente passaram para a nova versão, na mesma etapa.`
+      );
+    }
+
+    resultado.mantidos.forEach(item =>
+      resultado.mensagens.push(`${item.codigo} continua na versão anterior: ${item.motivo}`)
+    );
+
+    return resultado;
   }
 
   public async podeAgir(

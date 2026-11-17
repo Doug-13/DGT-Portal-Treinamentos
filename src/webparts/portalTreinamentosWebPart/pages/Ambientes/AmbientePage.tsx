@@ -44,6 +44,15 @@ import VisaoGeralAmbiente from './VisaoGeralAmbiente';
 import RegistroAmbiente from './RegistroAmbiente';
 
 import {
+  IReferenciaResolvida
+} from './DocumentosRelacionados';
+
+import {
+  consumirAberturaRegistro,
+  solicitarAberturaRegistro
+} from '../../services/ambientes/aberturaRegistro';
+
+import {
   AssinaturaService
 } from '../../services/assinatura/AssinaturaService';
 
@@ -125,6 +134,10 @@ export interface IAmbientePageProps {
   onAmbienteExcluido?: () => void;
   // Site do portal (anexos dos registros no SharePoint).
   siteUrl?: string;
+  // Documentos relacionados: abrir registro de OUTRO ambiente (troca o
+  // ambiente aberto) e abrir documento do controle documental.
+  onAbrirAmbiente?: (chave: string) => void;
+  abrirDocumentoPorId?: (documentoId: string) => Promise<boolean>;
 }
 
 type ModoAmbiente = 'inicio' | 'config';
@@ -168,6 +181,9 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
   const [excluirAberto, setExcluirAberto] = React.useState(false);
   const [visao, setVisao] = React.useState<Visao>({ tipo: 'lista' });
   const [registros, setRegistros] = React.useState<IAmbienteRegistro[]>([]);
+  // De qual ambiente é a lista em memória (ao trocar de ambiente, a
+  // lista anterior ainda aparece até a nova carregar).
+  const [registrosDoAmbiente, setRegistrosDoAmbiente] = React.useState('');
   const [pendencias, setPendencias] = React.useState<IPendenciaAmbiente[]>([]);
   const [disponibilidade, setDisponibilidade] = React.useState<IDisponibilidadeFluxoAmbiente | undefined>(undefined);
   const [carregando, setCarregando] = React.useState(true);
@@ -237,6 +253,7 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
         fluxo.verificar(ambiente)
       ]);
       setRegistros(lista);
+      setRegistrosDoAmbiente(ambiente.id);
       setDisponibilidade(disp);
       setPendencias(await fluxo.pendenciasDoUsuario(lista, contexto));
     } catch (falha) {
@@ -279,6 +296,14 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
     setEstado(undefined);
     setErro('');
     try {
+      // Fluxo alterado depois que o registro começou (e não atualizado
+      // na publicação): leva para a versão em uso, na mesma etapa. Se não
+      // der (ex.: sem permissão de gravação), abre como está.
+      try {
+        await fluxo.atualizarVersao(ambiente, registro, { id: contexto.usuarioId, nome: contexto.nome });
+      } catch (falhaAtualizacao) {
+        console.warn('Registro mantido na versão anterior do fluxo:', falhaAtualizacao);
+      }
       const [estadoLido, listaVinculos, listaUsuarios] = await Promise.all([
         fluxo.carregar(registro),
         fluxo.vinculos(),
@@ -294,7 +319,113 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
     } finally {
       setCarregandoRegistro(false);
     }
-  }, [fluxo, contexto]);
+  }, [fluxo, contexto, ambiente]);
+
+  // Registro pedido por um link de "Documentos relacionados" (deste ou
+  // de outro ambiente): abre assim que a lista deste ambiente carregar.
+  React.useEffect(() => {
+    if (carregando || registrosDoAmbiente !== ambiente.id) {
+      return;
+    }
+    const pedido = consumirAberturaRegistro(ambiente.chave);
+    if (!pedido) {
+      return;
+    }
+    const alvo = registros.filter(item => guid(item.id) === pedido)[0];
+    if (alvo) {
+      abrirRegistro(alvo).catch(() => undefined);
+    } else {
+      setErro('O registro relacionado não está disponível neste ambiente (sem acesso ou removido).');
+    }
+  }, [carregando, registrosDoAmbiente, registros, ambiente.id, ambiente.chave, abrirRegistro]);
+
+  // Documentos relacionados: situação atual de cada referência. Primeiro
+  // registros de ambiente (ex.: RNC criados pelo subprocesso); o que
+  // sobrar é procurado no controle documental.
+  const resolverReferencias = React.useCallback(async (ids: string[]): Promise<IReferenciaResolvida[]> => {
+    if (!servico || !dataverseService) {
+      return [];
+    }
+    const todos = props.ambientesTodos || [];
+    const resultado: IReferenciaResolvida[] =
+      (await servico.obterRegistrosPorId(ids)).map(item => {
+        const destino = todos.filter(amb => guid(amb.id) === guid(item.ambienteId))[0];
+        return {
+          tipo: 'registro',
+          id: guid(item.id),
+          codigo: item.codigo,
+          titulo: item.titulo,
+          ambienteNome: destino ? destino.nome : '',
+          ambienteChave: destino ? destino.chave : '',
+          mesmoAmbiente: guid(item.ambienteId) === guid(ambiente.id),
+          situacao: item.situacao,
+          etapaAtual: item.etapaAtual,
+          prazoEtapa: item.prazoEtapa,
+          concluidoEm: item.concluidoEm
+        };
+      });
+    const faltam = ids
+      .map(id => guid(id))
+      .filter(id => /^[0-9a-f-]{36}$/.test(id) && !resultado.some(item => item.id === id));
+    if (faltam.length > 0) {
+      try {
+        const documentos =
+          await dataverseService.listarRegistros(
+            'dgt_documento',
+            '$select=dgt_documentoid,dgt_codigo,dgt_titulo' +
+            `&$filter=${faltam.slice(0, 20).map(id => `dgt_documentoid eq ${id}`).join(' or ')}`
+          );
+        documentos.forEach(doc => resultado.push({
+          tipo: 'documento',
+          id: guid(doc.dgt_documentoid),
+          codigo: String(doc.dgt_codigo || ''),
+          titulo: String(doc.dgt_titulo || '')
+        }));
+      } catch (falha) {
+        console.warn('[Documentos relacionados] documentos não lidos:', falha);
+      }
+    }
+    return resultado;
+  }, [servico, dataverseService, props.ambientesTodos, ambiente.id]);
+
+  const abrirReferencia = (referencia: IReferenciaResolvida): void => {
+    setErro('');
+    if (referencia.tipo === 'registro') {
+      if (referencia.mesmoAmbiente) {
+        const alvo = registros.filter(item => guid(item.id) === referencia.id)[0];
+        if (alvo) {
+          abrirRegistro(alvo).catch(() => undefined);
+        } else {
+          solicitarAberturaRegistro(ambiente.chave, referencia.id);
+          carregar().catch(() => undefined);
+        }
+        return;
+      }
+      const destino = (props.ambientesTodos || []).filter(amb => amb.chave === referencia.ambienteChave)[0];
+      if (!destino || !props.onAbrirAmbiente) {
+        setErro(`Não foi possível abrir ${referencia.codigo}: o ambiente dele não está disponível.`);
+        return;
+      }
+      if (!ambienteLiberado(contexto, destino)) {
+        setErro(`Você não tem acesso ao ambiente ${destino.nome}, onde está ${referencia.codigo}.`);
+        return;
+      }
+      solicitarAberturaRegistro(destino.chave, referencia.id);
+      props.onAbrirAmbiente(destino.chave);
+      return;
+    }
+    if (!props.abrirDocumentoPorId) {
+      setErro(`Não foi possível abrir ${referencia.codigo}.`);
+      return;
+    }
+    props.abrirDocumentoPorId(referencia.id)
+      .then(abriu => {
+        if (!abriu) {
+          setErro(`${referencia.codigo || 'O documento'} não foi encontrado ou você não tem acesso a ele.`);
+        }
+      })
+      .catch(falha => setErro(`Não foi possível abrir ${referencia.codigo}: ${mensagem(falha)}`));
+  };
 
   // Relê a lista e o registro aberto depois de uma ação.
   const recarregarRegistro = async (registroId: string): Promise<void> => {
@@ -781,6 +912,8 @@ const AmbientePage: React.FC<IAmbientePageProps> = (props) => {
       estado={estado}
       carregando={carregandoRegistro}
       podeAgir={podeAgir}
+      onResolverReferencias={resolverReferencias}
+      onAbrirReferencia={abrirReferencia}
       anexos={
         servicoAnexos && ambiente.permiteAnexos && props.siteUrl
           ? {

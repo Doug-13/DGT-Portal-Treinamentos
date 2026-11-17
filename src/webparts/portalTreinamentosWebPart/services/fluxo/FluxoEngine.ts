@@ -26,6 +26,7 @@ import {
 } from '../../models/Fluxo';
 
 import {
+  colunasEditaveis,
   resumoTabela,
   validarTabela
 } from './valoresTabela';
@@ -302,9 +303,10 @@ export const validarAcao = (
       }
 
       if (campo.tipo === 'tabela') {
+        // Só as colunas editáveis NESTA etapa são exigidas/validadas.
         validarTabela(
           campo.rotulo,
-          campo.colunas || [],
+          colunasEditaveis(campo.colunas || [], campo.modoColunas),
           valor,
           obrigatorio
         ).forEach(erro => erros.push(erro));
@@ -1993,6 +1995,11 @@ export interface IDadosTransferenciaFluxo {
   // 'versao' = mesmo processo, versão mais nova do fluxo (atualização);
   // 'processo' (padrão) = outro processo.
   tipo?: 'processo' | 'versao';
+  // true = a pendência recriada na etapa mantém a data em que a etapa
+  // começou (o prazo é recalculado a partir dela, com o prazo da nova
+  // versão). Usado na atualização automática dos registros de ambiente,
+  // para uma alteração no desenho não reiniciar o prazo da etapa.
+  manterPrazoEtapa?: boolean;
 }
 
 export const ACAO_ATUALIZACAO_VERSAO = 'atualizacaoVersaoFluxo';
@@ -2203,9 +2210,27 @@ export const transferirInstancia = (
       }
     );
 
-  instancia.tarefas.push(
-    criarTarefa(atualDestino, agora)
-  );
+  const novaTarefa =
+    criarTarefa(atualDestino, agora);
+
+  if (dados.manterPrazoEtapa) {
+    const pendenteAnterior =
+      instanciaOriginal.tarefas.filter(
+        tarefa => {
+          const equivalente = mapa[tarefa.elementoId];
+          return tarefa.status === 'pendente' && !!equivalente && equivalente.id === atualDestino.id;
+        }
+      )[0];
+    if (pendenteAnterior && pendenteAnterior.criadaEm) {
+      novaTarefa.criadaEm = pendenteAnterior.criadaEm;
+      novaTarefa.prazo =
+        atualDestino.prazoDiasUteis
+          ? adicionarDiasUteis(pendenteAnterior.criadaEm, atualDestino.prazoDiasUteis)
+          : undefined;
+    }
+  }
+
+  instancia.tarefas.push(novaTarefa);
 
   const processoAnterior =
     instanciaOriginal.processoNome || 'processo anterior';

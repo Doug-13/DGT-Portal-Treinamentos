@@ -3612,6 +3612,8 @@ const PortalRouter:
             ambientesTodos={props.ambientes}
             siteUrl={props.siteUrl}
             onAmbienteExcluido={props.onAmbienteExcluido}
+            onAbrirAmbiente={props.onAbrirAmbiente}
+            abrirDocumentoPorId={props.abrirDocumentoPorId}
           />
         );
 

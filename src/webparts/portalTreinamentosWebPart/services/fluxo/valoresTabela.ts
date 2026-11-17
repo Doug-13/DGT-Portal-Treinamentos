@@ -1,5 +1,6 @@
 import {
-  IColunaTabela
+  IColunaTabela,
+  ModoColunaEtapa
 } from '../../models/Fluxo';
 
 import {
@@ -125,6 +126,42 @@ export const validarCelula = (
   }
 
   return undefined;
+};
+
+// ------------------------------------------------------------
+// Colunas por etapa (IFluxoCampo.modoColunas)
+// ------------------------------------------------------------
+
+// Colunas que aparecem na etapa (todas, menos as ocultas).
+export const colunasVisiveis = (
+  colunas: IColunaTabela[],
+  modoColunas?: Record<string, ModoColunaEtapa>
+): IColunaTabela[] =>
+  colunas.filter(coluna => !modoColunas || modoColunas[coluna.chave] !== 'oculta');
+
+// Colunas que podem ser alteradas (e validadas) na etapa.
+export const colunasEditaveis = (
+  colunas: IColunaTabela[],
+  modoColunas?: Record<string, ModoColunaEtapa>
+): IColunaTabela[] =>
+  colunas.filter(coluna => !modoColunas || !modoColunas[coluna.chave]);
+
+// Só os modos válidos de colunas que existem (o resto é descartado).
+export const limparModoColunas = (
+  colunas: IColunaTabela[],
+  modoColunas?: Record<string, unknown>
+): Record<string, ModoColunaEtapa> | undefined => {
+  if (!modoColunas) {
+    return undefined;
+  }
+  const limpo: Record<string, ModoColunaEtapa> = {};
+  Object.keys(modoColunas).forEach(chave => {
+    const modo = modoColunas[chave];
+    if ((modo === 'oculta' || modo === 'leitura') && colunas.some(coluna => coluna.chave === chave)) {
+      limpo[chave] = modo;
+    }
+  });
+  return Object.keys(limpo).length > 0 ? limpo : undefined;
 };
 
 export const validarTabela = (

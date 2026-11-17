@@ -1,7 +1,8 @@
 import * as React from 'react';
 
 import {
-  IColaborador
+  IColaborador,
+  ITreinamentoColaborador
 } from '../../models/Usuario';
 
 import {
@@ -86,6 +87,153 @@ const conformidadeDoGrupo = (
   return `${Math.round((concluidos / total) * 100)}%`;
 };
 
+// ------------------------------------------------------------
+// Datas do detalhe de treinamentos
+// Data só com dia ("2026-11-30") vira meio-dia local, para não
+// "voltar" um dia ao exibir.
+// ------------------------------------------------------------
+
+const lerData = (
+  valor?: string
+): Date | undefined => {
+
+  if (!valor) {
+    return undefined;
+  }
+
+  const data =
+    /^\d{4}-\d{2}-\d{2}$/.test(valor)
+      ? new Date(`${valor}T12:00:00`)
+      : new Date(valor);
+
+  return isNaN(data.getTime())
+    ? undefined
+    : data;
+};
+
+const formatarData = (
+  valor?: string
+): string => {
+
+  const data =
+    lerData(valor);
+
+  return data
+    ? data.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    : '-';
+};
+
+// Dias corridos de hoje até a data (negativo = já passou).
+const diasAte = (
+  valor?: string
+): number | undefined => {
+
+  const data =
+    lerData(valor);
+
+  if (!data) {
+    return undefined;
+  }
+
+  const hoje = new Date();
+
+  const inicio = (d: Date): number =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+  return Math.round((inicio(data) - inicio(hoje)) / 86400000);
+};
+
+// Ordem do detalhe: em aberto primeiro (prazo mais próximo no topo,
+// sem prazo no fim), depois os concluídos (mais recente primeiro).
+const ordenarTreinamentos = (
+  lista: ITreinamentoColaborador[]
+): ITreinamentoColaborador[] =>
+  lista
+    .slice()
+    .sort((a, b) => {
+
+      const aConcluido = a.situacao === 'concluido';
+      const bConcluido = b.situacao === 'concluido';
+
+      if (aConcluido !== bConcluido) {
+        return aConcluido ? 1 : -1;
+      }
+
+      if (aConcluido) {
+        return (b.dataConclusao || '').localeCompare(a.dataConclusao || '');
+      }
+
+      const pa = lerData(a.dataLimite);
+      const pb = lerData(b.dataLimite);
+
+      if (pa && pb) {
+        return pa.getTime() - pb.getTime();
+      }
+
+      if (pa || pb) {
+        return pa ? -1 : 1;
+      }
+
+      return a.nome.localeCompare(b.nome, 'pt-BR');
+    });
+
+// Cores do selo de status.
+const estiloStatus = (
+  item: ITreinamentoColaborador
+): { fundo: string; cor: string } => {
+
+  if (item.situacao === 'concluido') {
+    return { fundo: '#e7f6ef', cor: '#16825d' };
+  }
+
+  if (item.situacao === 'vencido' || item.status === 'Reprovado') {
+    return { fundo: '#fde7e9', cor: '#a4262c' };
+  }
+
+  if (item.status === 'Em andamento') {
+    return { fundo: '#e8f2ff', cor: '#0f6cbd' };
+  }
+
+  if (item.status === 'Bloqueado') {
+    return { fundo: '#F2F2F2', cor: '#5E6670' };
+  }
+
+  return { fundo: '#fff4e0', cor: '#b45309' };
+};
+
+// Texto do prazo para realização.
+const situacaoPrazo = (
+  item: ITreinamentoColaborador
+): { texto: string; cor: string } | undefined => {
+
+  if (item.situacao === 'concluido') {
+    return undefined;
+  }
+
+  const dias =
+    diasAte(item.dataLimite);
+
+  if (dias === undefined) {
+    return undefined;
+  }
+
+  if (dias < 0) {
+    return {
+      texto: `Prazo expirado há ${-dias} dia${dias === -1 ? '' : 's'}`,
+      cor: '#a4262c'
+    };
+  }
+
+  if (dias === 0) {
+    return { texto: 'Prazo termina hoje', cor: '#b45309' };
+  }
+
+  return {
+    texto: `Falta${dias === 1 ? '' : 'm'} ${dias} dia${dias === 1 ? '' : 's'}`,
+    cor: dias <= 7 ? '#b45309' : '#64748b'
+  };
+};
+
 interface IVinculoColaborador {
   areaId: string;
   sigla: string;
@@ -104,42 +252,100 @@ interface IGrupoArea {
 // COMPONENTES AUXILIARES
 // ============================================================
 
+// Paleta dos status (a mesma da aba Conformidade).
+const CORES = {
+  concluido: { cor: '#16825d', fundo: '#e7f6ef' },
+  pendente: { cor: '#b45309', fundo: '#fff4e0' },
+  vencido: { cor: '#a4262c', fundo: '#fde7e9' },
+  neutro: { cor: '#94a3b8' }
+};
+
+// Card do topo. Clicável: liga/desliga o filtro rápido do card.
+// Só o card selecionado ganha fundo colorido.
 const Indicador: React.FC<{
   titulo: string;
   valor: number;
+  cor?: string;
+  fundoAtivo?: string;
+  ativo?: boolean;
+  dica?: string;
+  onClick?: () => void;
 }> = ({
   titulo,
-  valor
+  valor,
+  cor = COR_AZUL,
+  fundoAtivo = '#EDF0F5',
+  ativo = false,
+  dica,
+  onClick
 }) => (
-  <div
+  <button
+    type="button"
+    onClick={onClick}
+    aria-pressed={ativo}
+    title={dica}
     style={{
+      display: 'block',
+      width: '100%',
       padding: '17px',
-      background: '#ffffff',
-      border: '1px solid #e5e7eb',
-      borderRadius: '12px'
+      textAlign: 'left',
+      font: 'inherit',
+      cursor: 'pointer',
+      background: ativo ? fundoAtivo : '#ffffff',
+      border: ativo ? `2px solid ${cor}` : '1px solid #e5e7eb',
+      borderLeft: `5px solid ${cor}`,
+      borderRadius: '12px',
+      boxShadow: ativo ? '0 2px 8px rgba(32, 42, 68, 0.12)' : 'none',
+      transition: 'background 0.15s, box-shadow 0.15s'
     }}
   >
     <span
       style={{
-        display: 'block',
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: '6px',
         color: '#64748b',
         fontSize: '13px'
       }}
     >
       {titulo}
+      {ativo && (
+        <span style={{ color: cor, fontWeight: 700, fontSize: '12px' }}>
+          Filtrando ✓
+        </span>
+      )}
     </span>
 
     <strong
       style={{
         display: 'block',
         marginTop: '5px',
-        color: '#0b1f3a',
+        color: cor,
         fontSize: '24px'
       }}
     >
       {valor}
     </strong>
-  </div>
+  </button>
+);
+
+// Número da tabela: colorido só quando há algo a mostrar; zero
+// fica cinza para não encher a tela de verde/laranja/vermelho.
+const NumeroStatus: React.FC<{
+  valor: number;
+  cor: string;
+}> = ({
+  valor,
+  cor
+}) => (
+  <span
+    style={{
+      color: valor > 0 ? cor : CORES.neutro.cor,
+      fontWeight: valor > 0 ? 700 : 400
+    }}
+  >
+    {valor}
+  </span>
 );
 
 const Cabecalho: React.FC<{
@@ -232,6 +438,29 @@ const EquipePage:
       soComConcluidos,
       setSoComConcluidos
     ] = React.useState(false);
+
+    const [
+      soComVencidos,
+      setSoComVencidos
+    ] = React.useState(false);
+
+    // Colaboradores com o detalhe de treinamentos aberto.
+    // Chave = grupo + colaborador (a mesma pessoa pode aparecer em
+    // mais de uma área e cada linha abre de forma independente).
+    const [
+      expandidos,
+      setExpandidos
+    ] = React.useState<Record<string, boolean>>({});
+
+    const alternarExpandido = (
+      chave: string
+    ): void =>
+      setExpandidos(
+        atual => ({
+          ...atual,
+          [chave]: !atual[chave]
+        })
+      );
 
     // ==========================================================
     // ÁREAS DE CADA COLABORADOR
@@ -434,6 +663,10 @@ const EquipePage:
                 return false;
               }
 
+              if (soComVencidos && (item.vencidos || 0) === 0) {
+                return false;
+              }
+
               if (!termo) {
                 return true;
               }
@@ -461,7 +694,8 @@ const EquipePage:
           vinculosPorColaborador,
           soComTreinamento,
           soComPendentes,
-          soComConcluidos
+          soComConcluidos,
+          soComVencidos
         ]
       );
 
@@ -549,7 +783,17 @@ const EquipePage:
       !!areaFiltro ||
       soComTreinamento ||
       soComPendentes ||
-      soComConcluidos;
+      soComConcluidos ||
+      soComVencidos;
+
+    // Filtros rápidos de status (usados pelo card "Colaboradores"
+    // para limpar tudo de uma vez).
+    const limparFiltrosRapidos = (): void => {
+      setSoComTreinamento(false);
+      setSoComPendentes(false);
+      setSoComConcluidos(false);
+      setSoComVencidos(false);
+    };
 
     // Quantos colaboradores cada filtro rápido mostraria (sobre a
     // equipe toda), para orientar a escolha.
@@ -561,6 +805,9 @@ const EquipePage:
 
     const contagemComConcluidos =
       colaboradores.filter(item => item.concluidos > 0).length;
+
+    const contagemComVencidos =
+      colaboradores.filter(item => (item.vencidos || 0) > 0).length;
 
     const filtroRapido = (
       rotulo: string,
@@ -640,6 +887,153 @@ const EquipePage:
     }
 
     // ==========================================================
+    // TREINAMENTOS DE UM COLABORADOR (detalhe ao clicar no nome)
+    // ==========================================================
+
+    const renderizarTreinamentos = (
+      item: IColaborador
+    ): React.ReactElement => {
+
+      const lista =
+        ordenarTreinamentos(item.treinamentos || []);
+
+      if (lista.length === 0) {
+        return (
+          <div style={{ padding: '12px 0', color: '#64748b', fontSize: '13px' }}>
+            Nenhum treinamento atribuído a este colaborador.
+          </div>
+        );
+      }
+
+      const th: React.CSSProperties = {
+        padding: '9px 10px',
+        textAlign: 'left',
+        fontSize: '11.5px',
+        color: '#5E6670',
+        fontWeight: 700,
+        whiteSpace: 'nowrap',
+        borderBottom: '1px solid #e5e7eb'
+      };
+
+      const td: React.CSSProperties = {
+        padding: '9px 10px',
+        fontSize: '12.5px',
+        color: '#334155',
+        borderBottom: '1px solid #edf0f4',
+        verticalAlign: 'top'
+      };
+
+      return (
+        <div
+          style={{
+            marginTop: '4px',
+            background: '#ffffff',
+            border: '1px solid #e5e7eb',
+            borderRadius: '10px',
+            overflowX: 'auto'
+          }}
+        >
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse'
+            }}
+          >
+            <caption
+              style={{
+                padding: '10px 10px 4px',
+                textAlign: 'left',
+                color: COR_AZUL,
+                fontSize: '12.5px',
+                fontWeight: 700
+              }}
+            >
+              Treinamentos de {item.nome} ({lista.length})
+            </caption>
+
+            <thead>
+              <tr>
+                <th style={th}>Treinamento</th>
+                <th style={th}>Status</th>
+                <th style={th}>Prazo para realização</th>
+                <th style={th}>Concluído em</th>
+                <th style={th}>Validade</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {
+                lista.map(
+                  treinamento => {
+
+                    const cores =
+                      estiloStatus(treinamento);
+
+                    const prazo =
+                      situacaoPrazo(treinamento);
+
+                    return (
+                      <tr key={treinamento.id || `${treinamento.treinamentoId}:${treinamento.nome}`}>
+
+                        <td style={td}>
+                          <span style={{ display: 'block', fontWeight: 600, color: '#1f2937' }}>
+                            {treinamento.nome}
+                          </span>
+                          {treinamento.trilha && (
+                            <span style={{ display: 'block', marginTop: '2px', color: '#64748b', fontSize: '11.5px' }}>
+                              Trilha: {treinamento.trilha}
+                            </span>
+                          )}
+                        </td>
+
+                        <td style={td}>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '3px 9px',
+                              borderRadius: '12px',
+                              background: cores.fundo,
+                              color: cores.cor,
+                              fontWeight: 700,
+                              fontSize: '11.5px',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {treinamento.status}
+                          </span>
+                        </td>
+
+                        <td style={td}>
+                          <span style={{ display: 'block', whiteSpace: 'nowrap' }}>
+                            {treinamento.dataLimite ? formatarData(treinamento.dataLimite) : 'Sem prazo definido'}
+                          </span>
+                          {prazo && (
+                            <span style={{ display: 'block', marginTop: '2px', color: prazo.cor, fontSize: '11.5px', fontWeight: 600 }}>
+                              {prazo.texto}
+                            </span>
+                          )}
+                        </td>
+
+                        <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                          {formatarData(treinamento.dataConclusao)}
+                        </td>
+
+                        <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                          {formatarData(treinamento.dataValidade)}
+                        </td>
+
+                      </tr>
+                    );
+                  }
+                )
+              }
+            </tbody>
+          </table>
+        </div>
+      );
+    };
+
+    // ==========================================================
     // LINHA DE UM COLABORADOR
     // ==========================================================
 
@@ -654,15 +1048,25 @@ const EquipePage:
       const vinculoDoGrupo =
         vinculos.find(vinculo => vinculo.areaId === chaveGrupo);
 
+      const chaveLinha =
+        `${chaveGrupo}:${String(item.id)}`;
+
+      const aberto =
+        !!expandidos[chaveLinha];
+
+      const idDetalhe =
+        `detalhe-treinamentos-${chaveLinha.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
       return (
+        <React.Fragment key={chaveLinha}>
         <tr
-          key={`${chaveGrupo}:${String(item.id)}`}
           style={{
-            borderTop: '1px solid #edf0f4'
+            borderTop: '1px solid #edf0f4',
+            background: aberto ? '#F7FCFD' : undefined
           }}
         >
 
-          {/* COLABORADOR */}
+          {/* COLABORADOR — clique abre os treinamentos */}
 
           <Celula>
 
@@ -672,7 +1076,42 @@ const EquipePage:
                 color: '#1f2937'
               }}
             >
-              {item.nome}
+              <button
+                type="button"
+                onClick={() => alternarExpandido(chaveLinha)}
+                aria-expanded={aberto}
+                aria-controls={idDetalhe}
+                title={aberto ? 'Ocultar treinamentos' : 'Ver treinamentos, status e prazos'}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: 0,
+                  border: 'none',
+                  background: 'transparent',
+                  color: COR_AZUL,
+                  font: 'inherit',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  textDecoration: aberto ? 'underline' : 'none',
+                  textUnderlineOffset: '3px'
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: 'inline-block',
+                    width: '10px',
+                    color: COR_CIANO,
+                    transition: 'transform 0.15s',
+                    transform: aberto ? 'rotate(90deg)' : 'none'
+                  }}
+                >
+                  ▸
+                </span>
+                {item.nome}
+              </button>
 
               {
                 // Perfil na área do grupo (ex.: Gestor).
@@ -755,25 +1194,19 @@ const EquipePage:
           {/* CONCLUÍDOS */}
 
           <Celula>
-            <span style={{ color: '#16825d', fontWeight: 700 }}>
-              {item.concluidos}
-            </span>
+            <NumeroStatus valor={item.concluidos} cor={CORES.concluido.cor} />
           </Celula>
 
           {/* PENDENTES */}
 
           <Celula>
-            <span style={{ color: '#b45309', fontWeight: 700 }}>
-              {item.pendentes}
-            </span>
+            <NumeroStatus valor={item.pendentes} cor={CORES.pendente.cor} />
           </Celula>
 
           {/* VENCIDOS */}
 
           <Celula>
-            <span style={{ color: '#a4262c', fontWeight: 700 }}>
-              {item.vencidos || 0}
-            </span>
+            <NumeroStatus valor={item.vencidos || 0} cor={CORES.vencido.cor} />
           </Celula>
 
           {/* TOTAL */}
@@ -800,6 +1233,22 @@ const EquipePage:
           </Celula>
 
         </tr>
+
+        {aberto && (
+          <tr id={idDetalhe}>
+            <td
+              colSpan={8}
+              style={{
+                padding: '0 14px 16px 30px',
+                background: '#F7FCFD',
+                borderBottom: `1px solid ${COR_CIANO}`
+              }}
+            >
+              {renderizarTreinamentos(item)}
+            </td>
+          </tr>
+        )}
+        </React.Fragment>
       );
     };
 
@@ -898,21 +1347,38 @@ const EquipePage:
           <Indicador
             titulo={filtrando ? 'Colaboradores (filtrados)' : 'Colaboradores'}
             valor={listaFiltrada.length}
+            dica="Limpar os filtros de status (concluídos, pendentes, vencidos)"
+            onClick={limparFiltrosRapidos}
           />
 
           <Indicador
             titulo="Concluídos"
             valor={totalConcluidos}
+            cor={CORES.concluido.cor}
+            fundoAtivo={CORES.concluido.fundo}
+            ativo={soComConcluidos}
+            dica={soComConcluidos ? 'Clique para remover o filtro' : 'Mostrar só quem tem treinamento concluído'}
+            onClick={() => setSoComConcluidos(atual => !atual)}
           />
 
           <Indicador
             titulo="Pendentes"
             valor={totalPendentes}
+            cor={CORES.pendente.cor}
+            fundoAtivo={CORES.pendente.fundo}
+            ativo={soComPendentes}
+            dica={soComPendentes ? 'Clique para remover o filtro' : 'Mostrar só quem tem treinamento pendente'}
+            onClick={() => setSoComPendentes(atual => !atual)}
           />
 
           <Indicador
             titulo="Vencidos"
             valor={totalVencidos}
+            cor={CORES.vencido.cor}
+            fundoAtivo={CORES.vencido.fundo}
+            ativo={soComVencidos}
+            dica={soComVencidos ? 'Clique para remover o filtro' : 'Mostrar só quem tem treinamento vencido'}
+            onClick={() => setSoComVencidos(atual => !atual)}
           />
         </div>
 
@@ -1000,6 +1466,7 @@ const EquipePage:
                         setSoComTreinamento(false);
                         setSoComPendentes(false);
                         setSoComConcluidos(false);
+                        setSoComVencidos(false);
                       }}
                       style={{
                         padding: '8px 12px',
@@ -1068,7 +1535,17 @@ const EquipePage:
           }
 
           {
-            [soComTreinamento, soComPendentes, soComConcluidos].filter(item => item).length > 1 && (
+            filtroRapido(
+              'Com vencidos',
+              contagemComVencidos,
+              soComVencidos,
+              () => setSoComVencidos(atual => !atual),
+              'Colaboradores com pelo menos um treinamento vencido (prazo ou validade expirados).'
+            )
+          }
+
+          {
+            [soComTreinamento, soComPendentes, soComConcluidos, soComVencidos].filter(item => item).length > 1 && (
               <span style={{ color: '#64748b', fontSize: '12px' }}>
                 (mostra quem atende a todos os marcados)
               </span>
