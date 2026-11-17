@@ -5,8 +5,37 @@ import {
 
 import {
   IColaborador,
+  ITreinamentoColaborador,
   IUsuario
 } from '../models/Usuario';
+
+import {
+  rotuloStatus
+} from './AtribuicoesTreinamentoService';
+
+import {
+  lerDataConformidade
+} from './ConformidadeService';
+
+// Prazo para realização (dgt_datalimite) já passou? Compara só o dia.
+const prazoExpirado = (
+  valor: string
+): boolean => {
+
+  const data =
+    lerDataConformidade(valor);
+
+  if (!data) {
+    return false;
+  }
+
+  const hoje = new Date();
+
+  return (
+    new Date(data.getFullYear(), data.getMonth(), data.getDate()).getTime() <
+    new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).getTime()
+  );
+};
 
 export class UsuarioService {
 
@@ -165,6 +194,116 @@ export class UsuarioService {
   }
 
   // ============================================================
+  // TREINAMENTO DE UMA ATRIBUIÇÃO (detalhe da equipe)
+  // A situação segue a MESMA regra dos totais de getEquipe,
+  // para o detalhe bater com os números da linha.
+  // ============================================================
+
+  private treinamentoDaAtribuicao(
+    item: IDataverseRecord
+  ): ITreinamentoColaborador {
+
+    const statusTexto =
+      this.texto(
+        item,
+        [
+          'dgt_status@OData.Community.Display.V1.FormattedValue',
+          'dgt_status'
+        ]
+      );
+
+    const statusNormalizado =
+      statusTexto
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(
+          /[\u0300-\u036f]/g,
+          ''
+        );
+
+    const dataLimite =
+      this.texto(item, 'dgt_datalimite');
+
+    const concluido =
+      statusNormalizado.includes('conclu') ||
+      statusNormalizado.includes('aprov') ||
+      !!this.texto(item, 'dgt_dataconclusao');
+
+    const reprovado =
+      statusNormalizado.includes('reprov');
+
+    // Mesma regra da Conformidade: prazo para realização expirado e
+    // treinamento não feito conta como VENCIDO (exceto Reprovado).
+    const vencidoPorPrazo =
+      !concluido &&
+      !reprovado &&
+      prazoExpirado(dataLimite);
+
+    const situacao: ITreinamentoColaborador['situacao'] =
+      concluido
+        ? 'concluido'
+        : statusNormalizado.includes('venc') || vencidoPorPrazo
+          ? 'vencido'
+          : 'pendente';
+
+    const liberado =
+      this.booleano(
+        item,
+        'dgt_liberado',
+        true
+      );
+
+    return {
+      id:
+        this.limparGuid(
+          this.texto(item, 'dgt_usuariotreinamentoid')
+        ),
+
+      treinamentoId:
+        this.limparGuid(
+          this.texto(item, '_dgt_treinamento_value')
+        ),
+
+      nome:
+        this.texto(
+          item,
+          '_dgt_treinamento_value@OData.Community.Display.V1.FormattedValue',
+          'Treinamento'
+        ),
+
+      status:
+        vencidoPorPrazo
+          ? 'Vencido'
+          : rotuloStatus(
+            Number(item.dgt_status),
+            statusTexto,
+            liberado,
+            true
+          ),
+
+      situacao,
+
+      trilha:
+        this.texto(
+          item,
+          '_dgt_trilha_value@OData.Community.Display.V1.FormattedValue'
+        ) || undefined,
+
+      dataAtribuicao:
+        this.texto(item, ['dgt_dataatribuicao', 'createdon']) || undefined,
+
+      dataLimite:
+        dataLimite || undefined,
+
+      dataConclusao:
+        this.texto(item, 'dgt_dataconclusao') || undefined,
+
+      dataValidade:
+        this.texto(item, 'dgt_datavalidade') || undefined
+    };
+  }
+
+  // ============================================================
   // EQUIPE
   // ============================================================
 
@@ -217,32 +356,24 @@ export class UsuarioService {
       let pendentes = 0;
       let vencidos = 0;
 
+      // Detalhe por treinamento (clique no nome em "Minha equipe").
+      const treinamentos: ITreinamentoColaborador[] = [];
+
+      // Totais a partir da mesma classificação do detalhe, para os
+      // números da linha baterem com a lista ao clicar no nome.
       atribuicoesUsuario.forEach(item => {
 
-        const status =
-          this.texto(
-            item,
-            [
-              'dgt_status@OData.Community.Display.V1.FormattedValue',
-              'dgt_status'
-            ]
-          )
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(
-              /[\u0300-\u036f]/g,
-              ''
-            );
+        const treinamento =
+          this.treinamentoDaAtribuicao(item);
 
-        if (
-          status.includes('conclu') ||
-          status.includes('aprov')
-        ) {
+        treinamentos.push(treinamento);
+
+        if (treinamento.situacao === 'concluido') {
           concluidos += 1;
           return;
         }
 
-        if (status.includes('venc')) {
+        if (treinamento.situacao === 'vencido') {
           vencidos += 1;
           return;
         }
@@ -288,7 +419,9 @@ export class UsuarioService {
         total,
 
         conformidade:
-          `${conformidadeNumero}%`
+          `${conformidadeNumero}%`,
+
+        treinamentos
       };
     });
   }

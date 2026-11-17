@@ -782,6 +782,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
             id={`fluxo-campo-${campo.chave}`}
             rotulo={campo.rotulo}
             colunas={campo.colunas || []}
+            modoColunas={campo.modoColunas}
             valor={valor}
             somenteLeitura={true}
           />
@@ -934,6 +935,7 @@ const FluxoRevisaoTab: React.FC<IFluxoRevisaoTabProps> = ({
             id={idCampo}
             rotulo={campo.rotulo}
             colunas={campo.colunas || []}
+            modoColunas={campo.modoColunas}
             valor={valor}
             desabilitado={desabilitado}
             dataverseService={dataverseService}

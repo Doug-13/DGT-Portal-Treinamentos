@@ -46,6 +46,9 @@ import PainelAssinatura, {
 import AnexosRegistro from './AnexosRegistro';
 
 import HistoricoRegistroAmbiente from './HistoricoRegistroAmbiente';
+import DocumentosRelacionados, {
+  IReferenciaResolvida
+} from './DocumentosRelacionados';
 
 import {
   AnexosAmbienteService,
@@ -128,6 +131,10 @@ export interface IRegistroAmbienteProps {
   // Configuração do ambiente: sequência de atividades no topo
   // (undefined = mostra, como nos ambientes antigos).
   mostrarSequencia?: boolean;
+  // Documentos relacionados: situação atual de cada referência e link
+  // para abri-la (registro de ambiente ou documento).
+  onResolverReferencias?: (ids: string[]) => Promise<IReferenciaResolvida[]>;
+  onAbrirReferencia?: (referencia: IReferenciaResolvida) => void;
   // Anexos do registro (ambiente com "Permitir anexar arquivos").
   anexos?: {
     servico: AnexosAmbienteService;
@@ -375,14 +382,28 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
   const indiceEtapa = elementoAtual ? etapas.findIndex(item => item.elemento.id === elementoAtual.id) : -1;
   const posicaoEtapa = indiceEtapa >= 0 ? `etapa ${indiceEtapa + 1} de ${etapas.length}` : '';
 
+  // Registro criado por subprocesso: o pai aparece primeiro, como
+  // "Originado por" (o pai lista este registro no campo de referências).
+  const origem = instancia ? instancia.origemSubprocesso : undefined;
+  const grupoOrigem =
+    origem && origem.documentoId
+      ? [{
+        chave: '__origem',
+        rotulo: `Originado por${origem.elementoNome ? ` — ${origem.elementoNome}${origem.linha ? `, linha ${origem.linha}` : ''}` : ''}`,
+        documentos: [{ id: origem.documentoId.replace(/[{}]/g, '').toLowerCase(), codigo: origem.codigo, titulo: origem.titulo }],
+        origem: true
+      }]
+      : [];
+
   // Campos do tipo documento preenchidos (referências do registro).
   const documentosRelacionados =
-    definicao && instancia
+    grupoOrigem.concat(definicao && instancia
       ? (definicao.metadados || [])
         .filter(meta => (meta.tipo === 'documento' || meta.tipo === 'documentos') && !!instancia.valores[meta.chave])
-        .map(meta => ({ rotulo: meta.rotulo, documentos: lerValorDocumentos(instancia.valores[meta.chave]) }))
+        .map(meta => ({ chave: meta.chave, rotulo: meta.rotulo, documentos: lerValorDocumentos(instancia.valores[meta.chave]) }))
         .filter(grupo => grupo.documentos.length > 0)
-      : [];
+        .map(grupo => ({ ...grupo, origem: false }))
+      : []);
 
   const concluidaPor = (elementoId: string): { nome: string; data: string } | undefined => {
     if (!instancia) {
@@ -692,17 +713,12 @@ const RegistroAmbiente: React.FC<IRegistroAmbienteProps> = (props) => {
 
               {/* Documentos relacionados */}
               {documentosRelacionados.length > 0 && (
-                <div style={{ ...cartao, marginBottom: 0 }}>
-                  <strong style={{ display: 'block', fontSize: '14px', color: COR.azul, marginBottom: '8px' }}>Documentos relacionados</strong>
-                  {documentosRelacionados.map(grupo => (
-                    <div key={grupo.rotulo} style={{ marginBottom: '8px' }}>
-                      <div style={rotuloInfo}>{grupo.rotulo}</div>
-                      {grupo.documentos.map(doc => (
-                        <div key={doc.id} style={valorInfo}><strong>{doc.codigo}</strong>{doc.titulo ? ` — ${doc.titulo}` : ''}</div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                <DocumentosRelacionados
+                  grupos={documentosRelacionados}
+                  codigoRegistro={registro.codigo}
+                  resolver={props.onResolverReferencias}
+                  onAbrir={props.onAbrirReferencia}
+                />
               )}
             </div>
 

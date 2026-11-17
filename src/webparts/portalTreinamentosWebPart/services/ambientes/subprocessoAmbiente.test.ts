@@ -2,7 +2,8 @@ import {
   IConfigSubprocesso,
   IFluxoDefinicao,
   IFluxoElemento,
-  IFluxoInstancia
+  IFluxoInstancia,
+  ISubprocessoSolicitado
 } from '../../models/Fluxo';
 
 import {
@@ -13,8 +14,13 @@ import {
 import {
   executarAcao,
   iniciarInstancia,
+  liberarSubprocesso,
   subprocessoAguardando
 } from '../fluxo/FluxoEngine';
+
+import {
+  herdarFilhosEmAndamento
+} from '../fluxo/subprocesso/regrasSubprocesso';
 
 import {
   IDependenciasSubprocessoAmbiente,
@@ -190,5 +196,101 @@ describe('Subprocesso Auditoria → Não Conformidades', () => {
     const servico = new AmbienteFluxoService({} as never);
     const r = await servico.conferirSubprocesso({} as never, registroPai, { perfil: 'Funcionario', usuarioId: 'u', nome: 'X' } as never, 'motivo qualquer');
     expect(r.erros).toEqual(['Somente o Administrador do Sistema pode liberar sem esperar.']);
+  });
+});
+
+// ============================================================
+// Nova passagem pelo MESMO subprocesso (o fluxo voltou a ele): as linhas
+// já viraram RNC e não são recriadas, mas o fluxo precisa continuar
+// esperando os RNC ainda em andamento — antes seguia na hora com
+// "nenhum documento criado — fluxo retomado" (caso AUD-2026-0002).
+// ============================================================
+
+describe('Subprocesso com aguardar — retorno ao mesmo subprocesso', () => {
+
+  // "Emitir relatório" ganha um botão que volta para "Emitir RNC".
+  const definicaoComRetorno = (): IFluxoDefinicao => {
+    const def = definicao();
+    const relatorio = def.elementos.filter(item => item.id === 'relatorio')[0];
+    relatorio.acoes = acoes.concat([{ chave: 'refazer', rotulo: 'Voltar ao RNC', resultado: 'refazer', principal: false, exigeComentario: false }]);
+    def.transicoes = def.transicoes
+      .map(item => (item.id === 't4' ? { ...item, tipoCondicao: 'resultado' as const, resultado: 'concluido' } : item))
+      .concat([{ id: 't5', origemId: 'relatorio', destinoId: 'emitir', tipoCondicao: 'resultado', resultado: 'refazer', padrao: false, excecao: true, pontos: [] }]);
+    return def;
+  };
+
+  const DUAS_NC = JSON.stringify([
+    { numero: '4', resultado: 'NC', responsavel: RESP },
+    { numero: '5', resultado: 'NC', responsavel: RESP }
+  ]);
+
+  it('não segue enquanto os RNC criados na passagem anterior estiverem em andamento', async () => {
+    const def = definicaoComRetorno();
+    let instancia = ateSubprocesso(def, DUAS_NC);
+    const { deps, criados } = dependencias();
+
+    // 1ª passagem: cria os 2 RNC e aguarda.
+    await executarSubprocessosAmbiente(def, instancia, registroPai, deps);
+    expect(criados).toHaveLength(2);
+    expect(instancia.elementoAtualId).toBe('emitir');
+
+    // Liberado sem esperar (ex.: administrador) e, no relatório, o fluxo
+    // volta ao subprocesso.
+    const liberado = liberarSubprocesso(def, instancia, 'administrador', { id: 'adm', nome: 'Admin' }, 'teste');
+    expect(liberado.erros).toEqual([]);
+    instancia = liberado.instancia as IFluxoInstancia;
+    expect(instancia.elementoAtualId).toBe('relatorio');
+    const volta = executarAcao(def, instancia, { acaoChave: 'refazer', comentario: '', valores: {}, ator });
+    expect(volta.erros).toEqual([]);
+    instancia = volta.instancia as IFluxoInstancia;
+    expect(instancia.elementoAtualId).toBe('emitir');
+
+    // 2ª passagem: nada novo a criar, mas os 2 RNC seguem abertos → espera.
+    await executarSubprocessosAmbiente(def, instancia, registroPai, deps);
+    expect(criados).toHaveLength(2);
+    expect(instancia.elementoAtualId).toBe('emitir');
+    const pedido = subprocessoAguardando(def, instancia);
+    if (!pedido) { throw new Error('o fluxo deveria estar aguardando'); }
+    expect(pedido.filhos.map(item => item.codigo)).toEqual(['NC-2026-0001', 'NC-2026-0002']);
+    expect(instancia.historico[0].acaoRotulo).toBe(
+      'Subprocesso: 2 linha(s) já tinham registro · aguardando também 2 registro(s) ainda em andamento: NC-2026-0001, NC-2026-0002'
+    );
+    expect(instancia.historico.some(item => item.acaoRotulo === 'Subprocesso: nenhum documento criado — fluxo retomado')).toBe(false);
+
+    // Só segue quando os dois terminam.
+    expect(avaliarFilhosAmbiente(pedido, { 'reg-nc-1': 'concluido', 'reg-nc-2': 'emAndamento' })).toBe(false);
+    expect(avaliarFilhosAmbiente(pedido, { 'reg-nc-2': 'concluido' })).toBe(true);
+  });
+
+  it('RNC anteriores já terminados não seguram o fluxo', async () => {
+    const def = definicaoComRetorno();
+    let instancia = ateSubprocesso(def, DUAS_NC);
+    const { deps } = dependencias();
+    await executarSubprocessosAmbiente(def, instancia, registroPai, deps);
+    const primeiro = subprocessoAguardando(def, instancia);
+    if (!primeiro) { throw new Error('sem pedido'); }
+    expect(avaliarFilhosAmbiente(primeiro, { 'reg-nc-1': 'concluido', 'reg-nc-2': 'cancelado' })).toBe(true);
+    instancia = liberarSubprocesso(def, instancia, 'concluidos', { id: 'sistema', nome: 'Sistema' }).instancia as IFluxoInstancia;
+    instancia = executarAcao(def, instancia, { acaoChave: 'refazer', comentario: '', valores: {}, ator }).instancia as IFluxoInstancia;
+
+    await executarSubprocessosAmbiente(def, instancia, registroPai, deps);
+
+    expect(instancia.elementoAtualId).toBe('relatorio');
+  });
+
+  it('pedido anterior que ainda aguardava passa a espera para o novo (sem pedido órfão)', () => {
+    const filho = (n: number, concluido = false): { documentoId: string; codigo: string; titulo: string; assinatura: string; criadoEm: string; concluido: boolean } =>
+      ({ documentoId: `reg-${n}`, codigo: `RNC-${n}`, titulo: `RNC ${n}`, assinatura: `l${n}`, criadoEm: '', concluido });
+    const antigo = { id: 'p1', elementoId: 'emitir', elementoNome: 'Emitir', solicitadoEm: '', status: 'concluido' as const, aguardando: true, filhos: [filho(1), filho(2, true)] };
+    const novo: ISubprocessoSolicitado = { id: 'p2', elementoId: 'emitir', elementoNome: 'Emitir', solicitadoEm: '', status: 'pendente', aguardando: true, filhos: [] };
+    const outroElemento = { id: 'p3', elementoId: 'outro', elementoNome: 'Outro', solicitadoEm: '', status: 'concluido' as const, aguardando: true, filhos: [filho(3)] };
+
+    const herdados = herdarFilhosEmAndamento([antigo, novo, outroElemento], novo, '2026-11-17T10:00:00.000Z');
+
+    expect(herdados.map(item => item.codigo)).toEqual(['RNC-1']);
+    expect(novo.filhos.map(item => item.codigo)).toEqual(['RNC-1']);
+    expect(antigo.aguardando).toBe(false);
+    expect((antigo as { assumidoPor?: string }).assumidoPor).toBe('p2');
+    expect(outroElemento.aguardando).toBe(true);
   });
 });

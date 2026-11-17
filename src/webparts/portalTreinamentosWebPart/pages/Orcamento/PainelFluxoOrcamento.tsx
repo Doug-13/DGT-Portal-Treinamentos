@@ -204,6 +204,7 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
           id={`orc-${item.chave}`}
           rotulo={item.rotulo}
           colunas={item.colunas || []}
+          modoColunas={item.modoColunas}
           valor={valor}
           somenteLeitura={somenteLeitura}
           desabilitado={props.processando}

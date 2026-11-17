@@ -26,6 +26,7 @@ import {
 } from '../../models/Fluxo';
 
 import {
+  colunasEditaveis,
   resumoTabela,
   validarTabela
 } from './valoresTabela';
@@ -302,9 +303,10 @@ export const validarAcao = (
       }
 
       if (campo.tipo === 'tabela') {
+        // Só as colunas editáveis NESTA etapa são exigidas/validadas.
         validarTabela(
           campo.rotulo,
-          campo.colunas || [],
+          colunasEditaveis(campo.colunas || [], campo.modoColunas),
           valor,
           obrigatorio
         ).forEach(erro => erros.push(erro));

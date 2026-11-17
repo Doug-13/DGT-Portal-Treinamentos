@@ -1,10 +1,12 @@
 import * as React from 'react';
 
 import {
-  IColunaTabela
+  IColunaTabela,
+  ModoColunaEtapa
 } from '../../models/Fluxo';
 
 import {
+  colunasVisiveis,
   formatarCelula,
   gravarLinhasTabela,
   LinhaTabela,
@@ -50,6 +52,11 @@ export interface ITabelaCampoFluxoProps {
   documentoAtualId?: string;
 
   onAbrirDocumento?: (documentoId: string) => void;
+
+  // Como cada coluna aparece NESTA etapa (IFluxoCampo.modoColunas):
+  // 'oculta' não aparece; 'leitura' aparece sem poder ser alterada.
+  // Valores de colunas ocultas são mantidos ao editar as linhas.
+  modoColunas?: Record<string, ModoColunaEtapa>;
 }
 
 const COR_AZUL = '#202A44';
@@ -83,7 +90,7 @@ const estiloCabecalho: React.CSSProperties = {
 const TabelaCampoFluxo: React.FC<ITabelaCampoFluxoProps> = ({
   id,
   rotulo,
-  colunas,
+  colunas: todasColunas,
   valor,
   somenteLeitura = false,
   desabilitado = false,
@@ -91,8 +98,19 @@ const TabelaCampoFluxo: React.FC<ITabelaCampoFluxoProps> = ({
   dataverseService,
   usuarios,
   documentoAtualId,
-  onAbrirDocumento
+  onAbrirDocumento,
+  modoColunas
 }) => {
+
+  // Colunas que esta etapa mostra (as ocultas não entram em lugar
+  // nenhum da tela; os valores delas seguem nas linhas).
+  const colunas =
+    colunasVisiveis(todasColunas, modoColunas);
+
+  const soLeitura = (
+    coluna: IColunaTabela
+  ): boolean =>
+    !!modoColunas && modoColunas[coluna.chave] === 'leitura';
 
   const linhas =
     lerLinhasTabela(valor);
@@ -180,6 +198,18 @@ const TabelaCampoFluxo: React.FC<ITabelaCampoFluxoProps> = ({
 
     const rotuloCelula =
       `${coluna.rotulo}, linha ${indice + 1}`;
+
+    // Coluna só de leitura nesta etapa: mostra o valor, sem campo.
+    if (soLeitura(coluna)) {
+      return (
+        <div
+          aria-label={rotuloCelula}
+          style={{ padding: '6px 4px', fontSize: '13px', color: COR_AZUL, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+        >
+          {formatarCelula(coluna, atual) || '—'}
+        </div>
+      );
+    }
 
     const idCelula =
       `${id}-${coluna.chave}-${indice}`;
@@ -303,7 +333,7 @@ const TabelaCampoFluxo: React.FC<ITabelaCampoFluxoProps> = ({
                 colunas.map(
                   coluna => (
                     <th key={coluna.chave} style={estiloCabecalho}>
-                      {coluna.rotulo}{coluna.obrigatoria ? ' *' : ''}
+                      {coluna.rotulo}{coluna.obrigatoria && !soLeitura(coluna) ? ' *' : ''}
                     </th>
                   )
                 )
