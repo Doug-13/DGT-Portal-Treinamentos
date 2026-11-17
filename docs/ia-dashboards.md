@@ -132,3 +132,12 @@ e consideram "ativo" vazio como ativo, igual ao restante do portal.
 - `documentos.historicoRevisoes` (nova): todas as revisões abertas no ano, com `aprovada`, `aprovador`,
   `dataAprovacao`, `dataVigencia`, `mesAprovacao` e `diasAteAprovar` (ciclo de revisão).
 
+## Tamanho dos visuais
+
+- Os gráficos são desenhados no tamanho real do espaço (largura medida na tela): as letras têm sempre o
+  mesmo tamanho; muda o espaço entre as barras. Nomes do eixo: horizontais, inclinados (≥ 24 px por
+  categoria) ou verticais, conforme couberem. Valores zero não são escritos (aparecem ao passar o mouse).
+- Grade de 12 colunas: `larguraGrade` 3–12 (6 = meia linha) e `alturaPx` 160–800 (prioridade sobre
+  `largura`/`altura`, que continuam valendo). Em telas estreitas (< 900 px) cada visual ocupa a linha inteira.
+- Na tela: alça ◢ no canto de cada gráfico/tabela (arrastar) e deslizantes de Largura e Altura no ✎.
+

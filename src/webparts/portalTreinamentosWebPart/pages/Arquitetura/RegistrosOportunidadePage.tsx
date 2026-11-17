@@ -230,9 +230,13 @@ const PainelRo: React.FC<{
   const [validadeManual, setValidadeManual] = React.useState(!!dados.validade);
   const validade = validadeManual || !prazos
     ? form.validade
-    : sugerirValidade(form.dataCriacao, form.fabricante, prazos);
+    : sugerirValidade(form.dataAtualizacao, form.fabricante, prazos);
 
-  const alterar = <K extends keyof IRoEdicao>(c: K, v: IRoEdicao[K]): void => setForm(f => ({ ...f, [c]: v }));
+  const alterar = <K extends keyof IRoEdicao>(c: K, v: IRoEdicao[K]): void => {
+    // Mudou a data de atualização ou o fabricante: volta a calcular a validade automaticamente.
+    if (c === 'dataAtualizacao' || c === 'fabricante') setValidadeManual(false);
+    setForm(f => ({ ...f, [c]: v }));
+  };
 
   React.useEffect(() => {
     if (aba !== 'historico' || !form.id || historico) return;
@@ -404,7 +408,7 @@ const PainelRo: React.FC<{
             {!novo && (
               <button type="button" style={botao('secundario', salvando)} disabled={salvando}
                 title="Registra que o RO foi atualizado hoje junto ao fabricante"
-                onClick={() => { executar(() => servico.marcarAtualizado(form.id as string), 'RO marcado como atualizado hoje.').catch(() => undefined); }}>
+                onClick={() => { executar(() => servico.marcarAtualizado(form.id as string, form.fabricante, prazos), 'RO marcado como atualizado hoje.').catch(() => undefined); }}>
                 ↻ Atualizado hoje
               </button>
             )}
@@ -752,7 +756,7 @@ const RegistrosOportunidadePage: React.FC<IRegistrosOportunidadePageProps> = ({ 
       </div>}
       {rascunhoPrazos && <form onSubmit={salvarPrazos} style={{ marginBottom: 16, padding: 16, border: `1px solid ${COR.borda}`, borderRadius: 10 }}>
         <h3 style={{ marginTop: 0 }}>Validade por fabricante</h3>
-        <p>Informe o prazo em dias corridos após a criação do RO. Campos opcionais vazios usam o prazo padrão.</p>
+        <p>Informe o prazo em dias corridos após a última atualização do RO. Campos opcionais vazios usam o prazo padrão.</p>
         <fieldset disabled={salvandoPrazos} style={{ border: 0, margin: 0, padding: 0, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))' }}>
           {fabricantesPrazo.map(f => <label key={f}>
             <span style={rotulo}>{f || 'Demais fabricantes'}</span>

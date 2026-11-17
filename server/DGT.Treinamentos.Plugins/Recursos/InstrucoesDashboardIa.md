@@ -116,7 +116,10 @@ Responda SOMENTE com um objeto JSON (sem texto antes ou depois, sem markdown):
   `horizontal`, `inclinado` ou `vertical`.
 - `mostrarValores` (opcional): sem o campo, o portal escreve os valores sobre as barras quando há
   poucas (até ~20–30); `true` ou `false` força.
-- `altura` (opcional): `baixa`, `media` (padrão) ou `alta`.
+- `altura` (opcional): `baixa`, `media` (padrão) ou `alta`. Para ajuste fino, `alturaPx` (160 a 800).
+- `larguraGrade` (opcional, gráficos e tabelas): largura numa grade de 12 colunas, de 3 a 12
+  (3 = 25%, 4 = um terço, 6 = meia linha, 8 = dois terços, 12 = linha inteira). Tem prioridade sobre `largura`.
+  Ex.: dois gráficos lado a lado de tamanhos diferentes = 8 + 4.
 - O usuário também pode ajustar tudo isso na tela (✎ em cada visual) e, se gerencia dashboards, salvar.
 - `rosca`: uma série; até cerca de 6 fatias fica legível.
 

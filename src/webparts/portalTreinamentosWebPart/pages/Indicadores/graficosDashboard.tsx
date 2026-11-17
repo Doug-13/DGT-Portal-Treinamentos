@@ -16,7 +16,11 @@ import {
 //  - valores: escritos sobre as barras (e dentro dos segmentos
 //    empilhados que têm espaço) quando há poucas barras, ou sempre/
 //    nunca, conforme "mostrarValores";
-//  - nome completo e valor exato ao passar o mouse (<title>).
+//  - nome completo e valor exato ao passar o mouse (<title>);
+//  - desenhado no TAMANHO REAL do espaço (largura medida na tela): as
+//    letras ficam sempre do mesmo tamanho, o gráfico é que ganha ou
+//    perde espaço entre as barras (antes era esticado e as letras
+//    ficavam enormes em linha inteira e minúsculas em meia linha).
 // ============================================================
 
 export const PALETA = ['#21BADC', '#0B1E2D', '#1FA971', '#E6A400', '#D84C3E', '#6B7C8C', '#1596B4', '#8C3B4A', '#2E5A87', '#9AA9B8'];
@@ -37,9 +41,13 @@ export interface IGraficoProps {
   altura?: number;
   rotulos?: RotulosGrafico;
   mostrarValores?: boolean;
+  // Largura real disponível, em pixels (medida pela tela).
+  largura?: number;
 }
 
-const LARGURA = 640;
+const LARGURA_PADRAO = 640;
+
+const larguraDe = (largura?: number): number => Math.max(260, Math.round(largura || LARGURA_PADRAO));
 const FONTE = 10.5;
 const MARGEM = { topo: 18, direita: 14, esquerda: 76 };
 
@@ -113,7 +121,9 @@ export const layoutRotulos = (categorias: string[], larguraCategoria: number, mo
   } else if (modo === 'vertical') {
     angulo = -90;
   } else if (modo === 'auto' && maior > larguraCategoria - 6) {
-    angulo = categorias.length > 24 || larguraCategoria < 14 ? -90 : -40;
+    // Inclinado precisa de ~24 px por categoria para os nomes não se
+    // encostarem; com menos, ficam na vertical.
+    angulo = categorias.length > 24 || larguraCategoria < 24 ? -90 : -40;
   }
   if (angulo === 0) {
     const caberia = Math.max(4, Math.floor((larguraCategoria - 6) / (FONTE * 0.62)));
@@ -127,7 +137,7 @@ export const layoutRotulos = (categorias: string[], larguraCategoria: number, mo
 
 // Rótulos inclinados "crescem" para a esquerda: aumenta a margem para o
 // primeiro nome não passar da borda do gráfico.
-const margemEsquerda = (categorias: string[], modo: RotulosGrafico | undefined): { esquerda: number; larguraCategoria: number; layout: ILayoutRotulos } => {
+const margemEsquerda = (categorias: string[], modo: RotulosGrafico | undefined, LARGURA: number): { esquerda: number; larguraCategoria: number; layout: ILayoutRotulos } => {
   const n = Math.max(1, categorias.length);
   let esquerda = MARGEM.esquerda;
   let larguraCategoria = (LARGURA - esquerda - MARGEM.direita) / n;
@@ -179,7 +189,7 @@ const Legenda: React.FC<{ series: ISerieGrafico[] }> = ({ series }) =>
     </div>
   ) : null;
 
-const EixoY: React.FC<{ marcas: number[]; y: (v: number) => number; formatar: (v: number) => string; esquerda?: number }> = ({ marcas, y, formatar, esquerda = MARGEM.esquerda }) => (
+const EixoY: React.FC<{ marcas: number[]; y: (v: number) => number; formatar: (v: number) => string; esquerda?: number; LARGURA: number }> = ({ marcas, y, formatar, esquerda = MARGEM.esquerda, LARGURA }) => (
   <g>
     {marcas.map(marca => (
       <g key={marca}>
@@ -212,10 +222,11 @@ const limites = (series: ISerieGrafico[], n: number, empilhado?: boolean): { min
 // ------------------------------------------------------------
 
 export const GraficoBarras: React.FC<IGraficoProps & { empilhado?: boolean }> = (props) => {
+  const LARGURA = larguraDe(props.largura);
   const n = Math.max(1, props.categorias.length);
   const { minimo, maximo } = limites(props.series, n, props.empilhado);
   const { min, max, marcas } = escala(minimo, maximo);
-  const { esquerda, larguraCategoria, layout } = margemEsquerda(props.categorias, props.rotulos);
+  const { esquerda, larguraCategoria, layout } = margemEsquerda(props.categorias, props.rotulos, LARGURA);
   const area = (props.altura || 280) - MARGEM.topo - 52;
   const alturaSvg = MARGEM.topo + area + layout.base;
   const y = (v: number): number => MARGEM.topo + ((max - v) / (max - min)) * area;
@@ -227,8 +238,8 @@ export const GraficoBarras: React.FC<IGraficoProps & { empilhado?: boolean }> = 
 
   return (
     <div>
-      <svg viewBox={`0 0 ${LARGURA} ${alturaSvg}`} width="100%" role="img" style={{ display: 'block' }}>
-        <EixoY marcas={marcas} y={y} formatar={props.formatar} esquerda={esquerda} />
+      <svg viewBox={`0 0 ${LARGURA} ${alturaSvg}`} width={LARGURA} height={alturaSvg} role="img" style={{ display: 'block', maxWidth: '100%' }}>
+        <EixoY marcas={marcas} y={y} formatar={props.formatar} esquerda={esquerda} LARGURA={LARGURA} />
         {props.categorias.map((categoria, i) => {
           const centro = esquerda + larguraCategoria * i + larguraCategoria / 2;
           let acumuladoPositivo = 0;
@@ -267,7 +278,7 @@ export const GraficoBarras: React.FC<IGraficoProps & { empilhado?: boolean }> = 
                     {texto}
                   </text>
                 )}
-                {mostrar && !props.empilhado && (
+                {mostrar && !props.empilhado && valor !== 0 && (
                   <text
                     x={x + (larguraBarra - 1) / 2}
                     y={valor >= 0 ? topo - 4 : base + 11}
@@ -307,23 +318,27 @@ export const GraficoBarras: React.FC<IGraficoProps & { empilhado?: boolean }> = 
 // ------------------------------------------------------------
 
 export const GraficoBarrasHorizontais: React.FC<IGraficoProps & { empilhado?: boolean }> = (props) => {
+  const LARGURA = larguraDe(props.largura);
   const n = Math.max(1, props.categorias.length);
   const { minimo, maximo } = limites(props.series, n, props.empilhado);
   const { min, max, marcas } = escala(minimo, maximo);
   const maiorRotulo = props.categorias.reduce((m, c) => Math.max(m, larguraTexto(cortar(c, 34))), 0);
   const esquerda = Math.min(220, Math.max(60, Math.round(maiorRotulo + 14)));
   const grupos = props.empilhado ? 1 : props.series.length;
-  const linha = Math.max(24, 12 + grupos * 10);
+  // Altura de cada barra: nunca abaixo do legível; a altura escolhida
+  // (alturaPx) só aumenta o espaço entre as barras.
+  const linhaMinima = Math.max(24, 12 + grupos * 10);
+  const linha = Math.min(80, Math.max(linhaMinima, ((props.altura || 0) - 34) / n));
   const topo = 8;
   const alturaSvg = topo + linha * n + 26;
   const larguraUtil = LARGURA - esquerda - MARGEM.direita - 44;
   const x = (v: number): number => esquerda + ((v - min) / (max - min)) * larguraUtil;
-  const espessura = Math.max(6, (linha * 0.66) / grupos);
+  const espessura = Math.min(28, Math.max(6, (linha * 0.66) / grupos));
   const mostrar = props.mostrarValores !== undefined ? props.mostrarValores : n * grupos <= 40;
 
   return (
     <div>
-      <svg viewBox={`0 0 ${LARGURA} ${alturaSvg}`} width="100%" role="img" style={{ display: 'block' }}>
+      <svg viewBox={`0 0 ${LARGURA} ${alturaSvg}`} width={LARGURA} height={alturaSvg} role="img" style={{ display: 'block', maxWidth: '100%' }}>
         {marcas.map(marca => (
           <g key={marca}>
             <line x1={x(marca)} x2={x(marca)} y1={topo} y2={topo + linha * n} stroke={marca === 0 ? '#94A3B8' : '#EEF2F6'} />
@@ -368,7 +383,7 @@ export const GraficoBarrasHorizontais: React.FC<IGraficoProps & { empilhado?: bo
                     {texto}
                   </text>
                 )}
-                {mostrar && !props.empilhado && (
+                {mostrar && !props.empilhado && valor !== 0 && (
                   <text x={valor >= 0 ? fim + 4 : inicio - 4} y={yBarra + espessura / 2 + 3.5} textAnchor={valor >= 0 ? 'start' : 'end'} fontSize={10} fontWeight={700} fill="#334155" pointerEvents="none">
                     {texto}
                   </text>
@@ -403,10 +418,11 @@ export const GraficoBarrasHorizontais: React.FC<IGraficoProps & { empilhado?: bo
 // ------------------------------------------------------------
 
 export const GraficoLinhas: React.FC<IGraficoProps> = (props) => {
+  const LARGURA = larguraDe(props.largura);
   const n = Math.max(1, props.categorias.length);
   const todos = props.series.reduce((lista: number[], serie) => lista.concat(serie.valores.map(v => v || 0)), [0]);
   const { min, max, marcas } = escala(Math.min(...todos), Math.max(...todos));
-  const { esquerda, larguraCategoria: passo, layout } = margemEsquerda(props.categorias, props.rotulos);
+  const { esquerda, larguraCategoria: passo, layout } = margemEsquerda(props.categorias, props.rotulos, LARGURA);
   const area = (props.altura || 280) - MARGEM.topo - 52;
   const alturaSvg = MARGEM.topo + area + layout.base;
   const y = (v: number): number => MARGEM.topo + ((max - v) / (max - min)) * area;
@@ -415,8 +431,8 @@ export const GraficoLinhas: React.FC<IGraficoProps> = (props) => {
 
   return (
     <div>
-      <svg viewBox={`0 0 ${LARGURA} ${alturaSvg}`} width="100%" role="img" style={{ display: 'block' }}>
-        <EixoY marcas={marcas} y={y} formatar={props.formatar} esquerda={esquerda} />
+      <svg viewBox={`0 0 ${LARGURA} ${alturaSvg}`} width={LARGURA} height={alturaSvg} role="img" style={{ display: 'block', maxWidth: '100%' }}>
+        <EixoY marcas={marcas} y={y} formatar={props.formatar} esquerda={esquerda} LARGURA={LARGURA} />
         {props.series.map((serie, s) => (
           <g key={serie.nome}>
             <polyline
@@ -431,7 +447,7 @@ export const GraficoLinhas: React.FC<IGraficoProps> = (props) => {
                 <circle cx={x(i)} cy={y(serie.valores[i] || 0)} r={3.5} fill={PALETA[s % PALETA.length]}>
                   <title>{`${categoria} — ${serie.nome}: ${props.formatar(serie.valores[i] || 0)}`}</title>
                 </circle>
-                {mostrar && (
+                {mostrar && (serie.valores[i] || 0) !== 0 && (
                   <text x={x(i)} y={y(serie.valores[i] || 0) + (s === 0 ? -8 : 15)} textAnchor="middle" fontSize={9.5} fontWeight={700} fill={PALETA[s % PALETA.length]} pointerEvents="none">
                     {curto(serie.valores[i] || 0, props.formatar)}
                   </text>

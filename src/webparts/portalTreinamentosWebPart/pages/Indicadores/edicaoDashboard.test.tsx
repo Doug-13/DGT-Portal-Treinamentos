@@ -159,3 +159,47 @@ describe('Filtros da tela', () => {
     expect(texto()).toMatch(/Atribuídos\s*276/);
   });
 });
+
+describe('Tamanho dos visuais', () => {
+
+  const cartaoDoGrafico = (): HTMLElement =>
+    (raiz.querySelector('[aria-label="Redimensionar Execução por área"]') as HTMLElement).parentElement as HTMLElement;
+
+  it('deslizante de largura muda a grade na hora e vai para o JSON salvo', async () => {
+    const salvar = jest.fn(async () => undefined);
+    await renderizar(salvar);
+    expect(cartaoDoGrafico().style.gridColumn).toBe('span 6');
+    await clicar(botao(/Editar Execução por área/));
+    const deslizante = raiz.querySelector('input[aria-label="Largura do visual"]') as HTMLInputElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value') as PropertyDescriptor;
+      (setter.set as (v: string) => void).call(deslizante, '9');
+      deslizante.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(cartaoDoGrafico().style.gridColumn).toBe('span 9');
+    expect(raiz.textContent).toMatch(/Largura: 75% da linha/);
+    await clicar(botao('Salvar no dashboard'));
+    const salvo = (salvar.mock.calls[0] as unknown as [IDefinicaoDashboard])[0];
+    expect(salvo.secoes[0].itens[1]).toMatchObject({ larguraGrade: 9 });
+    expect(validarDashboard(JSON.stringify(salvo), CATALOGO_DASHBOARD).erros).toEqual([]);
+  });
+
+  it('arrastar a alça ◢ aumenta largura (encaixando na grade) e altura', async () => {
+    await renderizar();
+    const alca = raiz.querySelector('[aria-label="Redimensionar Execução por área"]') as HTMLElement;
+    const cartao = cartaoDoGrafico();
+    // Grade de 1200 px; o visual começa com meia linha (593 px).
+    Object.defineProperty(cartao.parentElement as HTMLElement, 'clientWidth', { configurable: true, value: 1200 });
+    cartao.getBoundingClientRect = () => ({ width: 593 } as DOMRect);
+    await act(async () => {
+      alca.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 600, clientY: 400 }));
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 900, clientY: 500 }));
+      window.dispatchEvent(new MouseEvent('pointerup', {}));
+    });
+    // +300 px ≈ 9 colunas de 12; altura 280 + 100 = 380 px.
+    expect(cartaoDoGrafico().style.gridColumn).toBe('span 9');
+    expect(raiz.textContent).toMatch(/Você ajustou visuais deste painel/);
+    await clicar(botao(/Editar Execução por área/));
+    expect(raiz.textContent).toMatch(/Altura: 380 px/);
+  });
+});

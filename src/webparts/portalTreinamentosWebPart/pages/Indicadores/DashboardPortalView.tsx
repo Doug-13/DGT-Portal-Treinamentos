@@ -20,6 +20,12 @@ import {
   fontesUsadas,
   anoInicialDoDashboard,
   aplicarFiltrosTela,
+  alturaDoGrafico,
+  colunasDoItem,
+  COLUNAS_MAX,
+  COLUNAS_MIN,
+  ALTURA_PX_MAX,
+  ALTURA_PX_MIN,
   ordenarGrupos,
   paginasDoDashboard
 } from '../../services/dashboards/dashboardModelo';
@@ -161,11 +167,34 @@ const Cartao: React.FC<{ item: IItemCartao; linhas: Linha[] }> = ({ item, linhas
   );
 };
 
-const ALTURA_GRAFICO: { [altura: string]: number } = { baixa: 220, media: 280, alta: 380 };
+// Largura real de um elemento (acompanha a janela e o redimensionamento
+// do visual). Sem medição disponível (ex.: testes), usa 640.
+const useLarguraDoElemento = (): [React.RefObject<HTMLDivElement>, number] => {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [largura, setLargura] = React.useState(0);
+  React.useEffect(() => {
+    const elemento = ref.current;
+    if (!elemento) {
+      return undefined;
+    }
+    const medir = (): void => setLargura(Math.round(elemento.clientWidth));
+    medir();
+    const Observador = (window as unknown as { ResizeObserver?: new (cb: () => void) => { observe: (e: Element) => void; disconnect: () => void } }).ResizeObserver;
+    if (Observador) {
+      const observador = new Observador(medir);
+      observador.observe(elemento);
+      return () => observador.disconnect();
+    }
+    window.addEventListener('resize', medir);
+    return () => window.removeEventListener('resize', medir);
+  }, []);
+  return [ref, largura || 640];
+};
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-const Grafico: React.FC<{ item: IItemGrafico; linhas: Linha[] }> = ({ item, linhas }) => {
+
+const GraficoMedido: React.FC<{ item: IItemGrafico; linhas: Linha[]; largura: number }> = ({ item, linhas, largura }) => {
   const filtradas = aplicarFiltro(linhas, item.filtro);
   const formatar = formatador(item.formato);
   const ehMes = campoDe(item.fonte, item.dimensao).tipo === 'mes';
@@ -200,7 +229,8 @@ const Grafico: React.FC<{ item: IItemGrafico; linhas: Linha[] }> = ({ item, linh
     categorias,
     series,
     formatar,
-    altura: ALTURA_GRAFICO[item.altura || 'media'],
+    altura: alturaDoGrafico(item),
+    largura,
     rotulos: item.rotulos,
     mostrarValores: item.mostrarValores
   };
@@ -215,6 +245,11 @@ const Grafico: React.FC<{ item: IItemGrafico; linhas: Linha[] }> = ({ item, linh
     return <GraficoBarrasHorizontais {...comuns} empilhado={!!item.serieDimensao} />;
   }
   return <GraficoBarras {...comuns} empilhado={item.grafico === 'barrasEmpilhadas'} />;
+};
+
+const Grafico: React.FC<{ item: IItemGrafico; linhas: Linha[] }> = ({ item, linhas }) => {
+  const [ref, largura] = useLarguraDoElemento();
+  return <div ref={ref} style={{ width: '100%', minWidth: 0 }}><GraficoMedido item={item} linhas={linhas} largura={largura} /></div>;
 };
 
 const Tabela: React.FC<{ item: IItemTabela; linhas: Linha[] }> = ({ item, linhas }) => {
@@ -411,6 +446,47 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
     return campo;
   };
 
+  // Redimensionar arrastando a alça ◢: largura encaixa na grade de 12
+  // colunas (3 a 12) e a altura do gráfico anda de 20 em 20 px.
+  const iniciarRedimensionamento = (evento: React.PointerEvent<HTMLElement>, item: IItemGrafico | IItemTabela, secao: number, indice: number): void => {
+    evento.preventDefault();
+    const cartao = evento.currentTarget.parentElement as HTMLElement;
+    const grade = cartao.parentElement as HTMLElement;
+    const larguraGrade = grade.clientWidth;
+    const espaco = 14;
+    const larguraColuna = (larguraGrade + espaco) / COLUNAS_MAX;
+    const larguraInicial = cartao.getBoundingClientRect().width;
+    const alturaInicial = item.tipo === 'grafico' ? alturaDoGrafico(item) : 0;
+    const x0 = evento.clientX;
+    const y0 = evento.clientY;
+    let ultimo = '';
+
+    const mover = (e: PointerEvent): void => {
+      const colunas = Math.max(COLUNAS_MIN, Math.min(COLUNAS_MAX, Math.round((larguraInicial + (e.clientX - x0) + espaco) / larguraColuna)));
+      const alturaPx = item.tipo === 'grafico'
+        ? Math.max(ALTURA_PX_MIN, Math.min(ALTURA_PX_MAX, Math.round((alturaInicial + (e.clientY - y0)) / 20) * 20))
+        : undefined;
+      const chave = `${colunas}|${alturaPx}`;
+      if (chave === ultimo) {
+        return;
+      }
+      ultimo = chave;
+      const novo: Record<string, unknown> = { ...item, larguraGrade: colunas };
+      delete novo.largura;
+      if (alturaPx !== undefined) {
+        novo.alturaPx = alturaPx;
+        delete novo.altura;
+      }
+      alterarItem(secao, indice, novo as unknown as ItemDashboard);
+    };
+    const soltar = (): void => {
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', soltar);
+    };
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', soltar);
+  };
+
   const renderItem = (item: ItemDashboard, chave: string, secao: number, indice: number): React.ReactNode => {
     const linhas = dadosFiltrados[item.fonte] || [];
     if (item.tipo === 'cartao') {
@@ -419,7 +495,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
     const emEdicao = editando === chave;
     const original = (props.definicao.secoes[secao] && props.definicao.secoes[secao].itens[indice]) || item;
     return (
-      <div key={chave} style={{ ...cartaoEstilo, gridColumn: (item.largura || 1) === 2 ? '1 / -1' : undefined }}>
+      <div key={chave} style={{ ...cartaoEstilo, position: 'relative', minWidth: 0, gridColumn: `span ${colunasDoItem(item)}` }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '10px' }}>
           <div style={{ flex: 1, fontSize: '14px', fontWeight: 700, color: COR.navy }}>{item.titulo}</div>
           <button
@@ -443,6 +519,16 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
           />
         )}
         {item.tipo === 'grafico' ? <Grafico item={item} linhas={linhas} /> : <Tabela item={item} linhas={linhas} />}
+        <span
+          className="dgt-editar-visual"
+          role="separator"
+          aria-label={`Redimensionar ${item.titulo}`}
+          title="Arraste para aumentar ou diminuir (largura e altura)"
+          onPointerDown={e => iniciarRedimensionamento(e, item, secao, indice)}
+          style={{ position: 'absolute', right: '4px', bottom: '4px', width: '16px', height: '16px', cursor: 'nwse-resize', color: COR.muted, fontSize: '13px', lineHeight: '16px', textAlign: 'center', userSelect: 'none', touchAction: 'none' }}
+        >
+          ◢
+        </span>
       </div>
     );
   };
@@ -451,6 +537,8 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
 
   return (
     <div style={{ fontFamily: "'Segoe UI', Barlow, Arial, sans-serif", color: COR.texto }}>
+      {/* Telas estreitas: cada visual ocupa a linha inteira. */}
+      <style>{'@media (max-width: 900px) { .dgt-grade-visuais > * { grid-column: 1 / -1 !important; } } @media print { .dgt-grade-visuais { display: block !important; } .dgt-grade-visuais > * { margin-bottom: 14px; } }'}</style>
       <div style={{ background: 'linear-gradient(120deg,#0B1E2D 0%,#0E2740 55%,#123553 100%)', color: '#FFFFFF', borderRadius: '14px', padding: '18px 22px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: '220px' }}>
           <div style={{ fontSize: '18px', fontWeight: 700 }}>{definicao.titulo}</div>
@@ -617,7 +705,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
                 </div>
               )}
               {outros.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '14px' }}>
+                <div className="dgt-grade-visuais" style={{ display: 'grid', gridTemplateColumns: `repeat(${COLUNAS_MAX}, minmax(0, 1fr))`, gap: '14px', alignItems: 'start' }}>
                   {outros.map(item => renderItem(item, `${s}-${secao.itens.indexOf(item)}`, s, secao.itens.indexOf(item)))}
                 </div>
               )}

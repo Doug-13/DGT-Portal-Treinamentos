@@ -86,8 +86,9 @@ export const PRAZOS_PADRAO: IPrazosRo = { '': 30, Intelbras: 26, NHS: 180 };
 
 const prazoValido = (dias: number): boolean => Number.isInteger(dias) && dias > 0 && dias <= 36500;
 
-export const sugerirValidade = (criacao: string, fabricante: string, prazos: IPrazosRo): string => {
-  const data = new Date(`${criacao}T00:00:00Z`);
+// A validade é contada a partir da ÚLTIMA ATUALIZAÇÃO do RO (não da criação).
+export const sugerirValidade = (dataAtualizacao: string, fabricante: string, prazos: IPrazosRo): string => {
+  const data = new Date(`${dataAtualizacao}T00:00:00Z`);
   if (isNaN(data.getTime())) return '';
   data.setUTCDate(data.getUTCDate() + (prazos[fabricante] ?? prazos[''] ?? PRAZOS_PADRAO['']));
   const resultado = data.toISOString().slice(0, 10);
@@ -260,8 +261,16 @@ export class RoService {
     }
   }
 
-  public async marcarAtualizado(id: string): Promise<void> {
-    await this.dataverse.atualizarRegistro(TABELA_RO, id, { [C.dataAtualizacao]: hojeIso() });
+  // Marca o RO como atualizado hoje e, quando os prazos estão disponíveis,
+  // recalcula a validade a partir da nova data de atualização.
+  public async marcarAtualizado(id: string, fabricante?: string, prazos?: IPrazosRo): Promise<void> {
+    const hoje = hojeIso();
+    const registro: { [campo: string]: unknown } = { [C.dataAtualizacao]: hoje };
+    if (prazos) {
+      const validade = sugerirValidade(hoje, fabricante ?? '', prazos);
+      if (validade) registro[C.validade] = validade;
+    }
+    await this.dataverse.atualizarRegistro(TABELA_RO, id, registro);
   }
 
   public async definirAtivo(id: string, ativo: boolean): Promise<void> {

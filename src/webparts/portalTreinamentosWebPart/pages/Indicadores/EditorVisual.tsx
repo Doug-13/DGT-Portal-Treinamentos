@@ -1,19 +1,25 @@
 import * as React from 'react';
 
 import {
+  ALTURA_PX_MAX,
+  ALTURA_PX_MIN,
   AlturaGrafico,
+  COLUNAS_MAX,
+  COLUNAS_MIN,
   IItemGrafico,
   IItemTabela,
   RotulosGrafico,
-  TipoGrafico
+  TipoGrafico,
+  alturaDoGrafico,
+  colunasDoItem
 } from '../../services/dashboards/dashboardModelo';
 
 // ============================================================
 // EDITOR DE VISUAL (ícone ✎ em cada gráfico e tabela)
 //
 // Ajusta o visual na hora, sem gerar outro JSON: tipo de gráfico,
-// rótulos, valores, ordem, quantidade de itens, altura, largura e
-// título. Quem pode gerenciar dashboards salva no dashboard; os
+// rótulos, valores, ordem, quantidade de itens, altura e largura
+// (deslizantes; também dá para arrastar a alça ◢ do visual) e título. Quem pode gerenciar dashboards salva no dashboard; os
 // demais veem o ajuste só enquanto estiverem na tela.
 // ============================================================
 
@@ -39,12 +45,6 @@ const ROTULOS: Array<{ valor: RotulosGrafico; rotulo: string }> = [
   { valor: 'vertical', rotulo: 'Vertical' }
 ];
 
-const ALTURAS: Array<{ valor: AlturaGrafico; rotulo: string }> = [
-  { valor: 'baixa', rotulo: 'Baixa' },
-  { valor: 'media', rotulo: 'Média' },
-  { valor: 'alta', rotulo: 'Alta' }
-];
-
 const ORDENS: Array<{ valor: string; rotulo: string }> = [
   { valor: '', rotulo: 'Padrão do painel' },
   { valor: 'valor desc', rotulo: 'Maior valor primeiro' },
@@ -66,6 +66,8 @@ interface IMudancas {
   limite?: number;
   altura?: AlturaGrafico;
   largura?: 1 | 2;
+  larguraGrade?: number;
+  alturaPx?: number;
 }
 
 const EditorVisual: React.FC<IEditorVisualProps> = ({ item, original, onAlterar, onFechar }) => {
@@ -160,21 +162,32 @@ const EditorVisual: React.FC<IEditorVisualProps> = ({ item, original, onAlterar,
           />
         </label>
 
-        {grafico && grafico.grafico !== 'rosca' && grafico.grafico !== 'barrasHorizontais' && (
-          <label style={{ ...campo, flex: '0 1 120px', minWidth: '110px' }}>
-            Altura
-            <select style={entrada} value={grafico.altura || 'media'} onChange={e => alterar({ altura: e.target.value === 'media' ? undefined : e.target.value as AlturaGrafico })}>
-              {ALTURAS.map(opcao => <option key={opcao.valor} value={opcao.valor}>{opcao.rotulo}</option>)}
-            </select>
+        {grafico && grafico.grafico !== 'rosca' && (
+          <label style={{ ...campo, flex: '1 1 200px' }}>
+            Altura: {alturaDoGrafico(grafico)} px
+            <input
+              type="range"
+              aria-label="Altura do gráfico"
+              min={ALTURA_PX_MIN}
+              max={ALTURA_PX_MAX}
+              step={20}
+              value={alturaDoGrafico(grafico)}
+              onChange={e => alterar({ alturaPx: Number(e.target.value), altura: undefined })}
+            />
           </label>
         )}
 
-        <label style={{ ...campo, flex: '0 1 150px' }}>
-          Largura
-          <select style={entrada} value={item.largura === 2 ? '2' : '1'} onChange={e => alterar({ largura: e.target.value === '2' ? 2 : undefined })}>
-            <option value="1">Meia linha</option>
-            <option value="2">Linha inteira</option>
-          </select>
+        <label style={{ ...campo, flex: '1 1 200px' }}>
+          Largura: {Math.round((colunasDoItem(item) / COLUNAS_MAX) * 100)}% da linha
+          <input
+            type="range"
+            aria-label="Largura do visual"
+            min={COLUNAS_MIN}
+            max={COLUNAS_MAX}
+            step={1}
+            value={colunasDoItem(item)}
+            onChange={e => alterar({ larguraGrade: Number(e.target.value), largura: undefined })}
+          />
         </label>
       </div>
 

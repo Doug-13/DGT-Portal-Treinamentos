@@ -3,7 +3,9 @@ import {
   agregar,
   agrupar,
   aplicarFiltro,
+  alturaDoGrafico,
   anoInicialDoDashboard,
+  colunasDoItem,
   aplicarFiltrosTela,
   farolDe,
   ordenarGrupos,
@@ -143,5 +145,23 @@ describe('Dashboards do portal', () => {
     expect(validarDashboard(JSON.stringify(numerico), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/"nota" não é um campo de texto/);
     const demais = { ...base, filtros: { campos: ['status', 'origem', 'trilha', 'usuario', 'area'] } };
     expect(validarDashboard(JSON.stringify(demais), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/no máximo 4/);
+  });
+
+  it('tamanho contínuo: larguraGrade (3–12) e alturaPx (160–800) têm prioridade; antigos continuam valendo', () => {
+    expect(colunasDoItem({})).toBe(6);
+    expect(colunasDoItem({ largura: 2 })).toBe(12);
+    expect(colunasDoItem({ largura: 2, larguraGrade: 8 })).toBe(8);
+    expect(alturaDoGrafico({})).toBe(280);
+    expect(alturaDoGrafico({ altura: 'alta' })).toBe(380);
+    expect(alturaDoGrafico({ altura: 'alta', alturaPx: 520 })).toBe(520);
+    const base = EXEMPLOS_DASHBOARD.treinamentos;
+    const grafico = base.secoes[0].itens.filter(item => item.tipo === 'grafico')[0];
+    const comTamanho = (extra: Record<string, unknown>): string => JSON.stringify({
+      ...base,
+      secoes: base.secoes.map((secao, i) => (i !== 0 ? secao : { ...secao, itens: secao.itens.map(item => (item === grafico ? { ...item, ...extra } : item)) }))
+    });
+    expect(validarDashboard(comTamanho({ larguraGrade: 9, alturaPx: 420 }), CATALOGO_DASHBOARD).erros).toEqual([]);
+    expect(validarDashboard(comTamanho({ larguraGrade: 2 }), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/larguraGrade/);
+    expect(validarDashboard(comTamanho({ alturaPx: 1200 }), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/alturaPx/);
   });
 });

@@ -25,7 +25,8 @@
 //  grafico { tipo, grafico: barras|barrasEmpilhadas|barrasHorizontais|linhas|rosca,
 //            titulo, fonte, dimensao, series: [{ medida, agregacao?, rotulo? }],
 //            serieDimensao?, filtro?, formato?, ordenar?, limite?, largura?,
-//            rotulos?: auto|horizontal|inclinado|vertical, mostrarValores?, altura?: baixa|media|alta }
+//            rotulos?: auto|horizontal|inclinado|vertical, mostrarValores?, altura?: baixa|media|alta,
+//            larguraGrade?: 3..12 (grade de 12; 6 = meia linha, 12 = inteira), alturaPx?: 160..800 }
 //  tabela  { tipo, titulo, fonte, dimensoes: [campo], medidas: [{ medida,
 //            agregacao?, rotulo? }] | colunas: [campo], filtro?, formato?,
 //            ordenar?, limite?, largura? }
@@ -75,6 +76,25 @@ export type RotulosGrafico = 'auto' | 'horizontal' | 'inclinado' | 'vertical';
 export type AlturaGrafico = 'baixa' | 'media' | 'alta';
 
 export const ROTULOS_GRAFICO: RotulosGrafico[] = ['auto', 'horizontal', 'inclinado', 'vertical'];
+
+export const COLUNAS_MIN = 3;
+export const COLUNAS_MAX = 12;
+export const ALTURA_PX_MIN = 160;
+export const ALTURA_PX_MAX = 800;
+
+const ALTURA_POR_NOME: { [nome: string]: number } = { baixa: 220, media: 280, alta: 380 };
+
+// Colunas ocupadas na grade de 12 (gráficos e tabelas).
+export const colunasDoItem = (item: { larguraGrade?: number; largura?: 1 | 2 }): number =>
+  item.larguraGrade && item.larguraGrade >= COLUNAS_MIN && item.larguraGrade <= COLUNAS_MAX
+    ? Math.round(item.larguraGrade)
+    : item.largura === 2 ? COLUNAS_MAX : 6;
+
+// Altura da área do gráfico, em pixels.
+export const alturaDoGrafico = (item: { alturaPx?: number; altura?: AlturaGrafico }): number =>
+  item.alturaPx && item.alturaPx >= ALTURA_PX_MIN && item.alturaPx <= ALTURA_PX_MAX
+    ? Math.round(item.alturaPx)
+    : ALTURA_POR_NOME[item.altura || 'media'];
 export const ALTURAS_GRAFICO: AlturaGrafico[] = ['baixa', 'media', 'alta'];
 
 export type Filtro = { [campo: string]: string | number | boolean | Array<string | number | boolean> };
@@ -117,6 +137,9 @@ export interface IItemGrafico {
   // true/false força; sem o campo, o portal decide pela quantidade de barras.
   mostrarValores?: boolean;
   altura?: AlturaGrafico;
+  // Tamanho contínuo (tem prioridade sobre largura/altura).
+  larguraGrade?: number;
+  alturaPx?: number;
 }
 
 export interface IItemTabela {
@@ -131,6 +154,8 @@ export interface IItemTabela {
   ordenar?: string;
   limite?: number;
   largura?: 1 | 2;
+  // Largura contínua numa grade de 12 (3 a 12); prioridade sobre largura.
+  larguraGrade?: number;
 }
 
 export type ItemDashboard = IItemCartao | IItemGrafico | IItemTabela;
@@ -409,6 +434,10 @@ export const validarDashboard = (
         erros.push(`${onde}: formato inválido. Use: ${FORMATOS.join(', ')}.`);
       }
       validarFiltro(onde, fonte, item.filtro);
+      const larguraGrade = (item as { larguraGrade?: unknown }).larguraGrade;
+      if (larguraGrade !== undefined && !(typeof larguraGrade === 'number' && Math.floor(larguraGrade) === larguraGrade && larguraGrade >= COLUNAS_MIN && larguraGrade <= COLUNAS_MAX)) {
+        erros.push(`${onde}: "larguraGrade" deve ser um número inteiro de ${COLUNAS_MIN} a ${COLUNAS_MAX} (6 = meia linha, 12 = linha inteira).`);
+      }
       if (item.tipo === 'cartao') {
         validarMedida(onde, fonte, { medida: item.medida, agregacao: item.agregacao });
         if (item.comparar) {
@@ -435,6 +464,9 @@ export const validarDashboard = (
         }
         if (item.mostrarValores !== undefined && typeof item.mostrarValores !== 'boolean') {
           erros.push(`${onde}: "mostrarValores" deve ser true ou false.`);
+        }
+        if (item.alturaPx !== undefined && !(typeof item.alturaPx === 'number' && item.alturaPx >= ALTURA_PX_MIN && item.alturaPx <= ALTURA_PX_MAX)) {
+          erros.push(`${onde}: "alturaPx" deve ser um número de ${ALTURA_PX_MIN} a ${ALTURA_PX_MAX}.`);
         }
       } else if (item.tipo === 'tabela') {
         if (item.colunas && item.colunas.length > 0) {
