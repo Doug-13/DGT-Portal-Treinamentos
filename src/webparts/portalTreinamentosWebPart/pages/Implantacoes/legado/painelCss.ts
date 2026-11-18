@@ -4093,7 +4093,10 @@ table.crono tr.proj .tg {
   box-sizing: border-box;
   font: inherit;
   font-size: 14px;
-  padding: 10px 12px;
+  /* a regra geral "dialog textarea" (170px, monoespaçada) não vale aqui */
+  min-height: 0;
+  max-height: 140px;
+  padding: 8px 12px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--surface);

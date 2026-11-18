@@ -13794,8 +13794,47 @@ export function iniciarPainelLegado(window, document, fetch) {
     return `<section class="panel" id="iaBox"><div class="panel-h"><h2>Assistente IA</h2><span class="iabtns"><button type="button" class="ico iafixar" data-iafixar title="Fixar o assistente ao lado da tela" aria-label="Fixar o assistente" aria-pressed="false">${SIC.pino}</button><button type="button" class="ico iafechar" data-iafechar title="Fechar (Esc)" aria-label="Fechar o assistente">×</button></span><span class="note">Pergunte sobre os projetos; a resposta é montada com os dados do painel (Claude, Anthropic)</span></div>
       <div class="iasug">${IA_SUGESTOES.map((t) => `<button class="lg" data-iasug="${esc(t)}">${esc(t)}</button>`).join("")}</div>
       <div id="iaConv" class="iaconv"></div>
-      <div class="iain"><textarea id="iaTxt" rows="3" placeholder="Ex.: Quais pontos do 10792 estão atrasados e com qual responsável?" aria-label="Pergunta ao assistente"></textarea>
-      <div class="iaacts"><span class="mut">Ctrl+Enter envia</span><button class="btn ghost" data-ianova>Nova conversa</button><button class="btn primary" data-iaenviar>Perguntar</button></div></div></section>`;
+      <div class="iain"><textarea id="iaTxt" rows="2" placeholder="Ex.: Quais pontos do 10792 estão atrasados e com qual responsável?" aria-label="Pergunta ao assistente"></textarea>
+      <div class="iaacts"><span class="mut">Ctrl+Enter envia</span>${window.IA_ADMIN ? `<button class="btn ghost" data-iaconfig title="Definir como a IA responde (só administrador do módulo)">Configurar IA</button>` : ""}<button class="btn ghost" data-ianova>Nova conversa</button><button class="btn primary" data-iaenviar>Perguntar</button></div></div></section>`;
+  }
+  /* "Configurar IA": comportamento das respostas (só administrador do módulo; as regras fixas ficam no portal) */
+  async function iaConfigurar() {
+    let atual;
+    try {
+      const r = await fetch("api/assistente/config");
+      atual = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(atual.erro || "O servidor respondeu " + r.status);
+    } catch (e) {
+      toast((e && e.message) || String(e));
+      return;
+    }
+    const em = atual.padrao
+      ? "Em uso: comportamento padrão."
+      : `Em uso: versão ${atual.versao}${atual.responsavel ? " · " + esc(atual.responsavel) : ""}${atual.registradoEm ? " · " + fmtD(String(atual.registradoEm).substring(0, 10)) : ""}.`;
+    pmoDialog(`<h3>Configurar IA do assistente</h3>
+      <p class="hint">Defina como a IA responde: tom, tamanho e formato. As regras fixas continuam valendo (só dados do painel, nada inventado). ${em}</p>
+      ${atual.tabelaExiste === false ? `<p class="hint bad">A tabela "Prompt de IA" ainda não existe no Dataverse: não é possível salvar (vale o padrão).</p>` : ""}
+      <textarea name="comportamento" rows="12" maxlength="4000" aria-label="Comportamento da IA">${esc(atual.comportamento || "")}</textarea>`);
+    const f = $("#formPmo");
+    f.querySelector(".actions").innerHTML = `<button type="button" class="btn" data-pmclose>Cancelar</button><button type="button" class="btn" data-iacfgpadrao>Restaurar padrão</button><button type="submit" class="btn primary">Salvar</button>`;
+    const salvar = async (corpo) => {
+      try {
+        const r = await fetch("api/assistente/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.erro || "O servidor respondeu " + r.status);
+        $("#dlgPmo").close();
+        toast(`Configuração da IA salva (versão ${j.versao}). Vale a partir da próxima pergunta.`);
+      } catch (e) {
+        toast((e && e.message) || String(e));
+      }
+    };
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      salvar({ comportamento: f.elements.comportamento.value });
+    };
+    f.onclick = (e) => {
+      if (e.target.closest("[data-iacfgpadrao]") && confirm("Voltar ao comportamento padrão (objetivo, para a diretoria)?")) salvar({ restaurar: true });
+    };
   }
   function iaAtualizar() {
     const c = document.getElementById("iaConv");
@@ -13993,6 +14032,7 @@ export function iniciarPainelLegado(window, document, fetch) {
     let b;
     if ((b = e.target.closest("[data-iasug]"))) iaEnviar(b.dataset.iasug);
     else if (e.target.closest("[data-iaenviar]")) iaEnviar((document.getElementById("iaTxt") || {}).value);
+    else if (e.target.closest("[data-iaconfig]")) iaConfigurar();
     else if (e.target.closest("[data-ianova]")) {
       IA.conversa = [];
       iaAtualizar();

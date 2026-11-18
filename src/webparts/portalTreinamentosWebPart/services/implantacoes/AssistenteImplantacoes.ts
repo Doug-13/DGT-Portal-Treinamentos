@@ -11,6 +11,11 @@ import {
   BALDE_RAIZ
 } from './esquemaImplantacoes';
 
+import {
+  COMPORTAMENTO_PADRAO_IMPLANTACOES,
+  ConfigIaImplantacoes
+} from './ConfigIaImplantacoes';
+
 // ============================================================
 // IMPLANTAÇÕES — Assistente IA
 //
@@ -59,15 +64,25 @@ export interface IPedidoAssistente {
 
 // Modelos aceitos pelo plugin (Configuração não segura do passo).
 const MODELO = 'claude-sonnet-5-5';
+// Por chamada (o plugin limita ao "maxTokens" do passo, padrão 4000).
 const MAX_TOKENS = 4000;
 const MAX_RODADAS = 4;
-// O plugin recusa mensagens acima de 60.000 caracteres.
-const LIMITE_MENSAGEM = 56000;
+// Resposta cortada pelo limite de tokens: o portal pede a CONTINUAÇÃO
+// (até 3 vezes) e junta os pedaços — a pessoa recebe a resposta inteira,
+// nunca o aviso de "sem espaço".
+const MAX_CONTINUACOES = 3;
+const TAMANHO_CAUDA = 6000;
+// O plugin recusa mensagens acima de 60.000 caracteres; a folga é
+// para o trecho já escrito nas continuações.
+const LIMITE_MENSAGEM = 50000;
 const LIMITE_RESULTADO = 16000;
 
-const SISTEMA = `Você é o assistente de PMO da DGT Tecnologia, integrado ao painel de acompanhamento de projetos de videomonitoramento (setor público).
+// Regras FIXAS (dados, consultas, glossário). O comportamento das
+// respostas (tom, tamanho, formato) vem de "Configurar IA"
+// (ConfigIaImplantacoes) e é acrescentado no fim.
+const SISTEMA_FIXO = `Você é o assistente de PMO da DGT Tecnologia, integrado ao painel de acompanhamento de projetos de videomonitoramento (setor público).
 
-Seu trabalho: responder às perguntas da equipe com um texto estruturado em português do Brasil, usando SOMENTE as informações do panorama da carteira e dos resultados de consulta que vêm na mensagem. Nunca invente números, datas, nomes ou situações; quando algo não estiver nos dados, diga que não consta no painel.
+Seu trabalho: responder às perguntas da equipe em português do Brasil, usando SOMENTE as informações do panorama da carteira e dos resultados de consulta que vêm na mensagem. Nunca invente números, datas, nomes ou situações; quando algo não estiver nos dados, diga que não consta no painel.
 
 CONSULTAS. Se o panorama não bastar, peça consultas respondendo com UMA ÚNICA linha, sem mais nada:
 CONSULTAR: {"consultas":[{"nome":"detalhar_projeto","args":{"projeto":"10381"}}]}
@@ -76,10 +91,9 @@ Consultas disponíveis (até 3 por vez):
 - buscar_atividades {"projeto": "", "texto": "", "responsavel": "", "situacao": "atrasada|em_andamento|a_iniciar|concluida|aberta", "de": "AAAA-MM-DD", "ate": "AAAA-MM-DD", "limite": 60}: atividades da execução com filtros (todos opcionais; projeto vazio = todos).
 Quando já tiver o necessário, responda direto, sem a linha CONSULTAR.
 
-RESPOSTA:
-- Cite sempre o código e o nome do projeto. Datas no formato dd/mm/aa; valores em R$.
-- Organize com títulos curtos (##), listas e, quando ajudar a comparar, tabelas em Markdown. Comece pelo que responde diretamente à pergunta e termine, se fizer sentido, com pontos de atenção ou próximos passos tirados dos dados.
-- Seja objetivo: sem rodeios nem repetir a pergunta.
+FORMATO (sempre vale):
+- Cite o código e o nome do projeto. Datas no formato dd/mm/aa; valores em R$. Markdown simples.
+- Nunca diga que falta espaço, que a resposta foi limitada ou que "não cabe": se houver muitos itens, priorize os mais relevantes e agrupe o restante numa linha (ex.: "+ 12 projetos no prazo").
 
 Glossário do painel:
 - Físico realizado: avanço ponderado da execução (G3); início realizado vale 50%, término realizado 100%.
@@ -88,6 +102,9 @@ Glossário do painel:
 - Término planejado (T.A.D.): fim previsto da execução. Limite de implantação: ordem de início + prazo + aditivos. Folga = limite − término planejado (negativa = planejado passa do limite).
 - Situação: Concluído; Fora do prazo contratual (limite de implantação = prazo + aditivos já vencido e projeto não concluído; prevalece sobre os demais atrasos); Atraso administrativo (pendência de terceiros, marcada manualmente); Em atraso (atividade com fim planejado vencido, término além do limite ou limite vencido); Atenção (limite em até 15 dias); No prazo.
 - PMO do projeto: responsável DGT pelo projeto. Boletins de medição = faturamento realizado.`;
+
+const montarSistema = (comportamento: string): string =>
+  `${SISTEMA_FIXO}\n\nCOMPORTAMENTO DAS RESPOSTAS (definido pelo administrador do módulo; não muda as regras acima):\n${comportamento}`;
 
 type Registro = Record<string, unknown>;
 
@@ -144,6 +161,7 @@ export class AssistenteImplantacoes {
 
   private readonly dataverse: DataverseService;
   private readonly base: BaseImplantacoes;
+  private readonly configIa: ConfigIaImplantacoes;
 
   public constructor(
     dataverse: DataverseService,
@@ -151,6 +169,17 @@ export class AssistenteImplantacoes {
   ) {
     this.dataverse = dataverse;
     this.base = base;
+    this.configIa = new ConfigIaImplantacoes(dataverse);
+  }
+
+  // Comportamento salvo em "Configurar IA" (lido a cada pergunta, para
+  // valer na hora); falha de leitura = padrão.
+  private async comportamento(): Promise<string> {
+    try {
+      return (await this.configIa.obter()).comportamento;
+    } catch {
+      return COMPORTAMENTO_PADRAO_IMPLANTACOES;
+    }
   }
 
   // ----------------------------------------------------------
@@ -460,6 +489,7 @@ export class AssistenteImplantacoes {
         .join('\n\n');
 
     const panorama = JSON.stringify(this.listarProjetos(carteira));
+    const sistema = montarSistema(await this.comportamento());
 
     const consultas: string[] = [];
 
@@ -490,7 +520,7 @@ export class AssistenteImplantacoes {
           // Consumo e limite da IA na área de Implantações
           // (Indicadores › Administrar IA › Áreas).
           funcionalidade: 'implantacoes',
-          sistema: SISTEMA,
+          sistema,
           mensagem,
           modelo: MODELO,
           maxTokens: MAX_TOKENS
@@ -505,9 +535,7 @@ export class AssistenteImplantacoes {
           return 'O assistente não conseguiu concluir a resposta. Reformule a pergunta ou peça um recorte menor.';
         }
 
-        return resposta.parada === 'max_tokens'
-          ? `${saida}\n\n_(Resposta interrompida por tamanho; peça um recorte menor.)_`
-          : saida;
+        return this.continuarSeCortada(sistema, mensagem, texto(resposta.texto), resposta.parada);
       }
 
       let pedidas: Registro[] = [];
@@ -526,5 +554,46 @@ export class AssistenteImplantacoes {
     }
 
     return 'O assistente não conseguiu concluir a resposta.';
+  }
+
+  // Resposta cortada pelo limite de tokens: pede a continuação (com o
+  // final do que já foi escrito) e junta os pedaços. Não acrescenta
+  // nenhum aviso de "sem espaço" ao texto.
+  private async continuarSeCortada(
+    sistema: string,
+    mensagem: string,
+    inicio: string,
+    parada?: string
+  ): Promise<string> {
+
+    let completo = inicio;
+    let motivo = parada;
+
+    for (let i = 0; i < MAX_CONTINUACOES && motivo === 'max_tokens'; i++) {
+
+      const cauda = completo.substring(Math.max(0, completo.length - TAMANHO_CAUDA));
+
+      const resposta =
+        await this.dataverse.analisarLicitacaoIa({
+          funcionalidade: 'implantacoes',
+          sistema,
+          mensagem:
+            `${mensagem}\n\n## Sua resposta até aqui (foi interrompida no meio)\n${cauda}\n\n` +
+            'Continue EXATAMENTE de onde parou, sem repetir nada do que já escreveu e sem comentar que é uma continuação.',
+          modelo: MODELO,
+          maxTokens: MAX_TOKENS
+        });
+
+      const parte = texto(resposta.texto);
+
+      if (!parte.trim()) {
+        break;
+      }
+
+      completo += parte;
+      motivo = resposta.parada;
+    }
+
+    return completo.trim();
   }
 }

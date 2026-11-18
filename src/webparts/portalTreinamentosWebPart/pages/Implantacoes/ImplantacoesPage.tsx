@@ -20,9 +20,14 @@ import {
   ISessaoPainel,
   SituacaoAcesso,
   completarAcessos,
+  ehAdministradorImplantacoes,
   montarSessao,
   podeNoPainel
 } from '../../services/implantacoes/permissoesImplantacoes';
+
+import {
+  ConfigIaImplantacoes
+} from '../../services/implantacoes/ConfigIaImplantacoes';
 
 import {
   HistoricoImplantacoes
@@ -95,6 +100,8 @@ interface IJanelaPainel {
   __lerPlanilha?: (arquivo: File) => Promise<string[][]>;
   SESSAO?: unknown;
   PODE?: (recurso: string, acao?: string) => boolean;
+  // Mostra "Configurar IA" no assistente (administrador do módulo).
+  IA_ADMIN?: boolean;
   LOCAL_HOST?: unknown;
   __sync?: { txt: string; erro: boolean };
   __avisoPerm?: (mensagem: string) => void;
@@ -290,6 +297,8 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
 
     janela.SESSAO = sessao;
     janela.PODE = (recurso: string, acao?: string) => podeNoPainel(sessao.perms, recurso, acao);
+    const administraIa = ehAdministradorImplantacoes(contexto);
+    janela.IA_ADMIN = administraIa;
 
     janela.LOCAL_HOST = {
       use: async (recurso: string): Promise<unknown> => {
@@ -355,7 +364,12 @@ const ImplantacoesPage: React.FC<IImplantacoesPageProps> = ({ dataverseService, 
       iniciarPainelLegado(
         janela,
         documento,
-        criarPonteApi(janela, dataverseService, dados, sessao, [relatorio.rota, admin.rota])
+        criarPonteApi(janela, dataverseService, dados, sessao, [
+          relatorio.rota,
+          admin.rota,
+          // "Configurar IA" do assistente (só administrador do módulo).
+          new ConfigIaImplantacoes(dataverseService).rota(administraIa, contexto.nome || '')
+        ])
       );
     } catch (erro) {
       document.removeEventListener('fullscreenchange', atualizarBotaoTela);

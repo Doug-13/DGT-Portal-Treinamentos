@@ -9,7 +9,14 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Novo: Fornecedores — homologação em kanban (Ficha recebida → Documentos pendentes → Em análise → Aguardando Jurídico → Homologado/Reprovado), um card por ciclo; ciclo concluído fica somente leitura e renovação abre um ciclo novo. A ficha recebida pelo formulário abre o ciclo sozinha. Aba Homologações com o quadro de todos os fornecedores.
 - Novo: Fornecedores — botão Colaboradores: colaboradores do prestador (nome, função, CPF protegido, observações) com ASO e NR aplicável, validade e versões.
 - Novo: Fornecedores — certidão CEAT (ações trabalhistas, TRT da sede) pela Infosimples; RS (TRT4) já configurado, demais TRTs por rota.
-- Novo: Licitações — tarefa do ClickUp com os prazos Análise Inicial (7 dias úteis antes do pregão) e Análise Técnica (6 dias úteis antes). Botão "⚡ Urgente" no parecer Participar e no Acompanhamento: análises 6 e 5 dias úteis antes, vencimento da tarefa 7 dias úteis antes e prioridade Urgente.
+- Novo: Licitações — tarefa do ClickUp com os prazos Análise Inicial (7 dias úteis antes do pregão) e Análise Técnica (6 dias úteis antes). Botão "⚡ Urgente" no parecer Participar e no Acompanhamento: define só a prioridade Urgente.
+- Melhoria: Licitações — prazos SLA do ClickUp com piso (data de acionamento + 1 dia útil) e teto (pregão − 1 dia útil); Impugnação respeita o limite legal (3 dias úteis antes do pregão) e, fora dele, fica vazia com a etiqueta "impugnacao-fora-do-prazo". Prazos às 18:00 (Brasília). Data de acionamento gravada uma vez na criação; o "Atualizar campos" recalcula a partir dela, nunca de hoje. Feriados extras (municipais, pontos facultativos) configuráveis no plugin, somados aos nacionais. Edital sem encerramento: tarefa com a etiqueta "sem-data-pregao".
+- Melhoria: Licitações — todos os campos personalizados vão no mesmo POST de criação da tarefa (a automação de criação do ClickUp já os encontra preenchidos).
+- Atenção (deploy): o plugin do ClickUp NÃO grava mais o vencimento (due_date), nem na criação nem no "Atualizar campos". O vencimento passa a depender das automações do ClickUp, que precisam estar ajustadas no deploy.
+- Limitação conhecida: o encerramento do PNCP é interpretado como horário de Brasília; editais de MT (e outros fusos) podem ter 1h de diferença na Data Pregão. Os prazos (dias de calendário, às 18:00) não são afetados.
+- Novo: Implantações — botão "Configurar IA" no Assistente (só administrador do módulo): define o comportamento das respostas, com versões. Padrão novo: respostas objetivas para a diretoria (resposta direta + até 5 tópicos, sem reproduzir gráficos e listas que o painel já mostra).
+- Correção: Implantações — o Assistente não corta mais a resposta com o aviso "Resposta interrompida por tamanho": quando o limite é atingido, o portal pede a continuação e entrega o texto inteiro.
+- Correção: Implantações — caixa de pergunta do Assistente com tamanho normal (antes herdava a altura mínima de 170px dos diálogos).
 - Correção: subprocesso em registros de ambiente — antes era ignorado (...)
 
 ## [1.4.27] - 2026-11-16
