@@ -6,6 +6,8 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.28] - 2026-11-17
+
 - Novo: Fornecedores — homologação em kanban (Ficha recebida → Documentos pendentes → Em análise → Aguardando Jurídico → Homologado/Reprovado), um card por ciclo; ciclo concluído fica somente leitura e renovação abre um ciclo novo. A ficha recebida pelo formulário abre o ciclo sozinha. Aba Homologações com o quadro de todos os fornecedores.
 - Novo: Fornecedores — botão Colaboradores: colaboradores do prestador (nome, função, CPF protegido, observações) com ASO e NR aplicável, validade e versões.
 - Novo: Fornecedores — certidão CEAT (ações trabalhistas, TRT da sede) pela Infosimples; RS (TRT4) já configurado, demais TRTs por rota.
@@ -43,7 +45,6 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Novo: Implantações — e-mails com horário por dia da semana e vários dias no mês; tecla F para tela cheia.
 - Melhoria: o assistente IA do Implantações registra o consumo na área de Implantações (Administrar IA).
 
-
 ## [1.4.26] - 2026-11-13
 
 - Melhoria: ajustes e correções internas.
@@ -53,7 +54,6 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Melhoria: ajustes e correções internas.
 
 ## [1.4.24] - 2026-11-13
-
 
 - Melhoria: botão Tela cheia no cabeçalho do portal e banner dos ambientes exibido somente na visão geral.
 
