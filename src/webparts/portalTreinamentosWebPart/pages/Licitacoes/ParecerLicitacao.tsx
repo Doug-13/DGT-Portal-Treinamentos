@@ -433,7 +433,7 @@ export interface IRegistrarParecerDialogProps {
   parecerAtual?: ISituacaoParecer;
   onCancelar: () => void;
   // urgente: botão "⚡ Urgente" (só com Participar) — tarefa do ClickUp
-  // com prazos encurtados.
+  // com prioridade Urgente (não altera datas).
   onSalvar: (decisao: DecisaoParecer, justificativa: string, urgente?: boolean) => Promise<void>;
 }
 
@@ -450,7 +450,7 @@ export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
   const [justificativa, setJustificativa] = React.useState<string>('');
   const [salvando, setSalvando] = React.useState<boolean>(false);
   const [erro, setErro] = React.useState<string>('');
-  // "⚡ Urgente" (só no Participar): prazos encurtados na tarefa do ClickUp.
+  // "⚡ Urgente" (só no Participar): prioridade Urgente na tarefa do ClickUp.
   const [urgente, setUrgente] = React.useState<boolean>(false);
 
   const campoRef = React.useRef<HTMLTextAreaElement>(null);
@@ -740,8 +740,8 @@ export const RegistrarParecerDialog: React.FC<IRegistrarParecerDialogProps> = ({
             </button>
             <span style={{ flex: '1 1 260px', fontSize: 11, color: COR.textoSecundario, lineHeight: 1.5 }}>
               {urgente
-                ? 'Tarefa urgente no ClickUp: análise inicial 6 e técnica 5 dias úteis antes do pregão; vencimento da tarefa 7 dias úteis antes.'
-                : 'Prazos padrão no ClickUp: análise inicial 7 e técnica 6 dias úteis antes do pregão; vencimento na data do pregão.'}
+                ? 'A tarefa no ClickUp será criada com prioridade Urgente. Os prazos não mudam.'
+                : 'Marque para criar a tarefa no ClickUp com prioridade Urgente.'}
             </span>
           </div>
         )}

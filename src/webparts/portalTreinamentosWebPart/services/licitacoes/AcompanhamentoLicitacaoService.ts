@@ -18,7 +18,6 @@ import {
   carregarItensEdital
 } from '../PncpEditalService';
 
-import { calcularPrazosClickUp } from './prazosClickUp';
 
 import {
   IAlteracaoDetectada,
@@ -105,7 +104,7 @@ export interface IAcompanhamento {
   // Tarefa de acompanhamento no ClickUp (criada ao "Participar").
   clickupTarefaId: string;
   clickupUrl: string;
-  // Tarefa criada/atualizada no modo urgente (dgt_clickupurgente).
+  // Tarefa com prioridade Urgente pelo botão (dgt_clickupurgente).
   clickupUrgente: boolean;
   // Pasta do edital no SharePoint (site DGT - Comercial).
   pastaUrl: string;
@@ -123,8 +122,7 @@ export interface IResultadoTarefaClickUp {
 export interface IContextoTarefaClickUp {
   justificativa: string;
   responsavel: string;
-  // Botão "Urgente": análises 5/6 dias úteis antes do pregão (em vez
-  // de 6/7) e vencimento da tarefa 7 dias úteis antes.
+  // Botão "Urgente": prioridade Urgente no ClickUp (não altera datas).
   urgente?: boolean;
   analiseIa?: {
     recomendacao: string;
@@ -457,7 +455,7 @@ export class AcompanhamentoLicitacaoService {
       ? Math.ceil((encerramento.getTime() - Date.now()) / 86400000)
       : undefined;
 
-    // Modo urgente: prazos encurtados (ver prazosClickUp.ts).
+    // Botão "Urgente": SÓ a prioridade (não altera datas).
     const urgente = contexto.urgente === true;
 
     // 1 = urgente, 2 = alta, 3 = normal (prioridades do ClickUp)
@@ -501,7 +499,7 @@ export class AcompanhamentoLicitacaoService {
     const linhas: string[] = [
       `> **${item.modalidade || 'Edital'} ${numero}** · ${orgao} · ${item.local || ''}`,
       `> ⏰ **Encerramento das propostas: ${data(item.encerramento)}**${prazoTexto}`,
-      urgente ? '> ⚡ **URGENTE** — prazos internos encurtados (análises 6 e 5 dias úteis antes; vencimento 7 dias úteis antes).' : '',
+      urgente ? '> ⚡ **URGENTE** — prioridade Urgente.' : '',
       '',
       '## Resumo',
       `| | |`,
@@ -620,17 +618,12 @@ export class AcompanhamentoLicitacaoService {
       `Parecer DGT: Participar — ${(limpo(contexto.justificativa) || '—').substring(0, 600)}`
     ].filter(l => l.length > 0).join('\n');
 
-    // Prazos internos (dias úteis antes da Data Pregão): ver prazosClickUp.ts.
-    const prazos = calcularPrazosClickUp(prazoValido ? encerramento : undefined, urgente);
-
+    // Datas (Data Pregão, Abertura, Encerramento, prazos SLA e Data de
+    // acionamento) são calculadas SÓ no plugin, a partir do texto do PNCP
+    // (encerramentoPncp / aberturaPncp, horário de Brasília). Ver
+    // server/DGT.Treinamentos.Plugins/PrazosLicitacao.cs.
     const campos: Record<string, unknown> = {
       orgaoMunicipio: `${orgao} — ${item.local || municipio}`,
-      dataPregao: prazos ? prazos.dataPregao : null,
-      prazoAnaliseInicial: prazos ? prazos.prazoAnaliseInicial : null,
-      prazoAnaliseTecnica: prazos ? prazos.prazoAnaliseTecnica : null,
-      prazoImpugnacao: prazos ? prazos.prazoImpugnacao : null,
-      prazoChecklist: prazos ? prazos.prazoChecklist : null,
-      prazoProposta: prazos ? prazos.prazoProposta : null,
       resumo,
       orgao,
       municipio,
@@ -638,8 +631,6 @@ export class AcompanhamentoLicitacaoService {
       modalidade: item.modalidade || '',
       numero,
       valorEstimado: item.valor === undefined ? null : Math.round(item.valor * 100) / 100,
-      abertura: item.abertura && !isNaN(new Date(item.abertura).getTime()) ? new Date(item.abertura).getTime() : null,
-      encerramento: prazoValido && encerramento ? encerramento.getTime() : null,
       compatibilidade: contexto.analiseIa ? contexto.analiseIa.compatibilidade : null,
       // score < 0 = tarefa criada pela aba Acompanhamento, sem a busca:
       // a aderência fica em branco (e não 0).
@@ -660,8 +651,10 @@ export class AcompanhamentoLicitacaoService {
       // Padrão das tarefas do ClickUp: "Edital de Serafina Corrêa — Nº 51/2026"
       nome: `Edital de ${municipio}${numero ? ` — Nº ${numero}` : ''}`.substring(0, 250),
       descricao: juntarMarkdown(linhas),
-      // Vencimento: Data Pregão (normal) ou 7 dias úteis antes (urgente).
-      dataLimite: prazos ? prazos.vencimento : null,
+      // Texto do PNCP, sem conversão (o plugin interpreta em Brasília).
+      // Sem vencimento: o due_date é das automações do ClickUp.
+      encerramentoPncp: item.encerramento || null,
+      aberturaPncp: item.abertura || null,
       prioridade,
       tags,
       campos,

@@ -4,7 +4,7 @@
   uma tarefa de acompanhamento no ClickUp.
 
   Cria:
-    dgt_licitacaoacompanhamento.dgt_clickuptarefaid / dgt_clickupurl / dgt_clickupurgente
+    dgt_licitacaoacompanhamento.dgt_clickuptarefaid / dgt_clickupurl / dgt_clickupurgente / dgt_clickupacionamento
     Custom API dgt_CriarTarefaClickUp (plugin CriarTarefaClickUpPlugin)
 
 .EXAMPLE
@@ -364,9 +364,11 @@ $T = 'dgt_licitacaoacompanhamento'
 
 New-Texto $T 'dgt_ClickUpTarefaId' 'Tarefa no ClickUp (id)' 100
 New-Texto $T 'dgt_ClickUpUrl'      'Tarefa no ClickUp (link)' 500
-# Botão "⚡ Urgente": prazos encurtados (análises 6/5 dias úteis antes do
-# pregão, vencimento 7 dias úteis antes). Guardado para o "Atualizar campos".
+# Botão "⚡ Urgente": só a prioridade. Guardado para o "Atualizar campos".
 New-SimNao $T 'dgt_ClickUpUrgente' 'Tarefa no ClickUp: urgente'
+# Data de acionamento (criação da tarefa): gravada UMA vez; o "Atualizar
+# campos" recalcula os prazos a partir dela (nunca de hoje).
+New-DataHora $T 'dgt_ClickUpAcionamento' 'Tarefa no ClickUp: data de acionamento'
 
 # ------------------------------------------------------------
 # 2) Custom API

@@ -32,8 +32,8 @@ export interface IAcompanhamentoPainelProps {
   acompanhamento: IUseAcompanhamentoLicitacoes;
   ehAdministrador: boolean;
   // Cria a tarefa no ClickUp (ou, com atualizar = true, regrava os
-  // campos personalizados da tarefa que já existe). urgente = modo
-  // "⚡ Urgente" (prazos encurtados; ver services/licitacoes/prazosClickUp.ts).
+  // campos personalizados da tarefa que já existe). urgente = botão
+  // "⚡ Urgente" (só a prioridade no ClickUp; não altera datas).
   onCriarTarefaClickUp?: (acompanhamento: IAcompanhamento, atualizar?: boolean, urgente?: boolean) => void;
 }
 
@@ -373,7 +373,7 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
                           style={{ ...botao(false, acompanhamento.processandoChave === selecionado.chaveEdital), background: 'transparent', color: '#ffffff', borderColor: 'rgba(255,255,255,.5)' }}
                           disabled={acompanhamento.processandoChave === selecionado.chaveEdital}
                           onClick={() => onCriarTarefaClickUp(selecionado, true, selecionado.clickupUrgente)}
-                          title="Grava de novo os campos personalizados (Órgão/Município, datas, prazos, valor, parecer, resumo…) e o vencimento na tarefa do ClickUp, no modo atual (normal ou urgente)"
+                          title="Grava de novo os campos personalizados (Órgão/Município, datas, prazos, valor, parecer, resumo…) na tarefa do ClickUp. Os prazos são recalculados a partir da data de acionamento da tarefa."
                         >
                           ↻ Atualizar campos
                         </button>
@@ -396,15 +396,15 @@ const AcompanhamentoPainel: React.FC<IAcompanhamentoPainelProps> = ({
                             }
                             const novo = !selecionado.clickupUrgente;
                             const texto = novo
-                              ? 'Marcar a tarefa como URGENTE?\n\nPrazo Análise Inicial e Técnica passam para 6 e 5 dias úteis antes do pregão, o vencimento da tarefa para 7 dias úteis antes e a prioridade para Urgente.'
-                              : 'Voltar a tarefa ao prazo NORMAL?\n\nPrazo Análise Inicial e Técnica voltam para 7 e 6 dias úteis antes do pregão e o vencimento volta para a data do pregão.';
+                              ? 'Marcar a tarefa como URGENTE?\n\nA prioridade no ClickUp passa para Urgente. Os prazos não mudam.'
+                              : 'Tirar a marcação de URGENTE?\n\nA prioridade volta a ser calculada pela proximidade do pregão. Os prazos não mudam.';
                             if (window.confirm(texto)) {
                               onCriarTarefaClickUp(selecionado, true, novo);
                             }
                           }}
                           title={selecionado.clickupUrl
-                            ? 'Liga/desliga o modo urgente da tarefa: recalcula os prazos e o vencimento no ClickUp'
-                            : 'Cria a tarefa no modo urgente: análises 6 e 5 dias úteis antes do pregão (em vez de 7 e 6) e vencimento 7 dias úteis antes'}
+                            ? 'Liga/desliga a prioridade Urgente da tarefa no ClickUp (não altera datas)'
+                            : 'Cria a tarefa com prioridade Urgente (não altera datas)'}
                         >
                           ⚡ Urgente{(selecionado.clickupUrl ? selecionado.clickupUrgente : urgenteNova) ? ' ✓' : ''}
                         </button>
