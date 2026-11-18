@@ -2884,19 +2884,51 @@ export class DataverseService {
         'dgt_treinamentoarea'
       );
 
-    return this.get(
-      `${entitySet}?$select=` +
-      [
-        'dgt_treinamentoareaid',
-        'dgt_name',
-        'dgt_prazodias',
-        'dgt_ativo',
-        '_dgt_treinamento_value',
-        '_dgt_area_value',
-        'createdon'
-      ].join(',') +
-      '&$orderby=createdon desc'
-    );
+    const colunas = [
+      'dgt_treinamentoareaid',
+      'dgt_name',
+      'dgt_prazodias',
+      'dgt_ativo',
+      '_dgt_treinamento_value',
+      '_dgt_area_value',
+      'createdon'
+    ];
+
+    const consultar = (lista: string[]): Promise<IDataverseRecord[]> =>
+      this.get(
+        `${entitySet}?$select=${lista.join(',')}&$orderby=createdon desc`
+      );
+
+    // dgt_usuariosexcluidos (pessoas que a regra NÃO atribui) é criada
+    // pelo script criar-coluna-excecoes-regra-area.ps1. Enquanto ela
+    // não existir no ambiente, a listagem continua funcionando sem ela.
+    if (this.colunaExcecoesRegraArea !== false) {
+      try {
+        const registros =
+          await consultar([...colunas, 'dgt_usuariosexcluidos']);
+        this.colunaExcecoesRegraArea = true;
+        return registros;
+      } catch (erro) {
+        console.warn(
+          '[DataverseService] dgt_treinamentoarea.dgt_usuariosexcluidos indisponível; listando regras sem exceções.',
+          erro
+        );
+        this.colunaExcecoesRegraArea = false;
+      }
+    }
+
+    return consultar(colunas);
+  }
+
+  // undefined = ainda não verificado.
+  private colunaExcecoesRegraArea: boolean | undefined;
+
+  // A coluna de exceções da regra por área existe no ambiente?
+  public async suportaExcecoesRegraArea(): Promise<boolean> {
+    if (this.colunaExcecoesRegraArea === undefined) {
+      await this.getTreinamentoAreas();
+    }
+    return this.colunaExcecoesRegraArea === true;
   }
 
   public async criarTreinamentoArea(

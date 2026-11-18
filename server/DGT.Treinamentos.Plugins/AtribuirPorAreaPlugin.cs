@@ -14,6 +14,11 @@ namespace DGT.Treinamentos.Plugins
     // Tabela de regras: dgt_treinamentoarea
     //   dgt_treinamento (lookup)  dgt_area (lookup)
     //   dgt_prazodias (inteiro, opcional)  dgt_ativo (sim/não)
+    //   dgt_usuariosexcluidos (texto longo, opcional): ids de
+    //     dgt_usuario separados por ';' que a regra NÃO atribui —
+    //     nem na criação/reativação, nem se a pessoa sair e voltar
+    //     para a área. Coluna criada pelo script
+    //     scripts/dataverse/criar-coluna-excecoes-regra-area.ps1.
     //
     // Quando uma regra "Treinamento X → Área Y" está ativa, TODOS os
     // membros ativos da área recebem o treinamento, inclusive quem
@@ -153,6 +158,9 @@ namespace DGT.Treinamentos.Plugins
 
             var prazo = regra.GetAttributeValue<int?>("dgt_prazodias");
 
+            var excluidos =
+                Excecoes(regra);
+
             var consulta =
                 new QueryExpression(TabelaVinculo)
                 {
@@ -168,6 +176,7 @@ namespace DGT.Treinamentos.Plugins
                     .Select(v => v.GetAttributeValue<EntityReference>("dgt_usuario"))
                     .Where(u => u != null)
                     .Select(u => u.Id)
+                    .Where(id => !excluidos.Contains(id))
                     .Distinct();
 
             foreach (var usuarioId in usuarios)
@@ -207,7 +216,7 @@ namespace DGT.Treinamentos.Plugins
             var consulta =
                 new QueryExpression(TabelaRegra)
                 {
-                    ColumnSet = new ColumnSet("dgt_treinamento", "dgt_prazodias")
+                    ColumnSet = ColunasDaRegra(sistema)
                 };
 
             consulta.Criteria.AddCondition("dgt_area", ConditionOperator.Equal, area.Id);
@@ -218,6 +227,12 @@ namespace DGT.Treinamentos.Plugins
                 var treinamento = regra.GetAttributeValue<EntityReference>("dgt_treinamento");
 
                 if (treinamento == null)
+                {
+                    continue;
+                }
+
+                // Pessoa marcada como exceção nesta regra.
+                if (Excecoes(regra).Contains(usuario.Id))
                 {
                     continue;
                 }
@@ -269,6 +284,65 @@ namespace DGT.Treinamentos.Plugins
             requisicao["PayloadJson"] = payload;
 
             sistema.Execute(requisicao);
+        }
+
+        // ============================================================
+        // EXCEÇÕES DA REGRA
+        // ============================================================
+
+        private const string ColunaExcecoes = "dgt_usuariosexcluidos";
+
+        private static HashSet<Guid> Excecoes(
+            Entity regra)
+        {
+            var resultado = new HashSet<Guid>();
+
+            var texto =
+                regra.Contains(ColunaExcecoes)
+                    ? regra.GetAttributeValue<string>(ColunaExcecoes)
+                    : null;
+
+            if (string.IsNullOrWhiteSpace(texto))
+            {
+                return resultado;
+            }
+
+            foreach (var parte in texto.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                Guid id;
+
+                if (Guid.TryParse(parte.Trim().Trim('{', '}'), out id))
+                {
+                    resultado.Add(id);
+                }
+            }
+
+            return resultado;
+        }
+
+        // Colunas lidas das regras quando uma pessoa entra na área.
+        // Se a coluna de exceções ainda não existir no ambiente, segue
+        // sem ela (comportamento anterior), em vez de falhar.
+        private static ColumnSet ColunasDaRegra(
+            IOrganizationService sistema)
+        {
+            try
+            {
+                var metadados =
+                    new OrganizationRequest("RetrieveAttribute");
+
+                metadados["EntityLogicalName"] = TabelaRegra;
+                metadados["LogicalName"] = ColunaExcecoes;
+                metadados["RetrieveAsIfPublished"] = false;
+
+                sistema.Execute(metadados);
+
+                return new ColumnSet("dgt_treinamento", "dgt_prazodias", ColunaExcecoes);
+            }
+            catch
+            {
+                return new ColumnSet("dgt_treinamento", "dgt_prazodias");
+            }
         }
 
         private sealed class Par

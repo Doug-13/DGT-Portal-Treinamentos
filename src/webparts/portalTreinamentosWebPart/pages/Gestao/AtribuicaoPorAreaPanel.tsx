@@ -19,6 +19,12 @@ import {
 //
 // O treinamento fica atribuído a todos os membros ativos das áreas
 // selecionadas, e também a quem entrar nessas áreas depois.
+//
+// Ao marcar as áreas, a tela lista as pessoas que vão receber. Quem
+// for removido da lista vira EXCEÇÃO da regra (dgt_usuariosexcluidos)
+// e não recebe o treinamento por essa regra, nem se sair e voltar
+// para a área. Quem está em mais de uma área marcada aparece uma vez
+// e, ao ser removido, fica fora de todas elas.
 // ============================================================
 
 export interface IAtribuicaoPorAreaPanelProps {
@@ -89,6 +95,22 @@ const guid = (
     .trim()
     .toLowerCase();
 
+interface IPessoaDaSelecao {
+  usuarioId: string;
+  nome: string;
+  email: string;
+  // Rótulos (sigla ou nome) das áreas marcadas de que a pessoa é membro.
+  areas: string[];
+}
+
+const normalizar = (
+  valor: string
+): string =>
+  (valor || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
 const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
   props
 ) => {
@@ -96,6 +118,10 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
   const [treinamentoId, setTreinamentoId] = React.useState('');
   const [areasMarcadas, setAreasMarcadas] = React.useState<Record<string, boolean>>({});
   const [prazo, setPrazo] = React.useState('');
+
+  // Pessoas removidas da atribuição (id do usuário normalizado).
+  const [excluidos, setExcluidos] = React.useState<Record<string, boolean>>({});
+  const [pesquisaPessoas, setPesquisaPessoas] = React.useState('');
 
   const [regras, setRegras] = React.useState<IRegraAtribuicaoArea[]>([]);
   const [carregando, setCarregando] = React.useState(true);
@@ -175,8 +201,92 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
   const selecionadas =
     Object.keys(areasMarcadas).filter(id => areasMarcadas[id]);
 
+  // Pessoas (membros ativos) das áreas marcadas, sem repetição.
+  const pessoas: IPessoaDaSelecao[] =
+    React.useMemo(
+      () => {
+        const marcadas: Record<string, string> = {};
+
+        props.areas.forEach(area => {
+          if (areasMarcadas[area.id]) {
+            marcadas[guid(area.id)] = area.sigla || area.nome;
+          }
+        });
+
+        const mapa: Record<string, IPessoaDaSelecao> = {};
+
+        props.usuariosAreas
+          .filter(v => v.ativo && marcadas[guid(v.areaId)] !== undefined)
+          .forEach(v => {
+            const id = guid(v.usuarioId);
+            const rotulo = marcadas[guid(v.areaId)];
+
+            mapa[id] = mapa[id] || {
+              usuarioId: id,
+              nome: v.usuarioNome || v.usuarioEmail || 'Usuário',
+              email: v.usuarioEmail || '',
+              areas: []
+            };
+
+            if (mapa[id].areas.indexOf(rotulo) < 0) {
+              mapa[id].areas.push(rotulo);
+            }
+          });
+
+        return Object.keys(mapa)
+          .map(id => mapa[id])
+          .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      },
+      [props.areas, props.usuariosAreas, areasMarcadas]
+    );
+
+  // Membros de cada área marcada (o service guarda em cada regra só
+  // as exceções que são da área dela).
+  const usuariosPorArea =
+    React.useMemo(
+      () => {
+        const mapa: Record<string, string[]> = {};
+
+        props.usuariosAreas
+          .filter(v => v.ativo && areasMarcadas[v.areaId])
+          .forEach(v => {
+            mapa[v.areaId] = mapa[v.areaId] || [];
+            mapa[v.areaId].push(guid(v.usuarioId));
+          });
+
+        return mapa;
+      },
+      [props.usuariosAreas, areasMarcadas]
+    );
+
+  const idsExcluidos =
+    pessoas
+      .filter(p => excluidos[p.usuarioId])
+      .map(p => p.usuarioId);
+
   const pessoasAlcancadas =
-    selecionadas.reduce((total, id) => total + (membrosPorArea[guid(id)] || 0), 0);
+    pessoas.length - idsExcluidos.length;
+
+  const pessoasVisiveis =
+    pesquisaPessoas.trim()
+      ? pessoas.filter(p =>
+        normalizar(`${p.nome} ${p.email} ${p.areas.join(' ')}`)
+          .indexOf(normalizar(pesquisaPessoas.trim())) >= 0)
+      : pessoas;
+
+  const alternarPessoa = (
+    usuarioId: string
+  ): void =>
+    setExcluidos(atual => ({ ...atual, [usuarioId]: !atual[usuarioId] }));
+
+  // Nomes para mostrar as exceções de uma regra já salva.
+  const nomeDoUsuario = (
+    usuarioId: string
+  ): string => {
+    const vinculo =
+      props.usuariosAreas.find(v => guid(v.usuarioId) === guid(usuarioId));
+    return vinculo ? (vinculo.usuarioNome || vinculo.usuarioEmail) : 'Usuário fora das áreas';
+  };
 
   const salvar = async (): Promise<void> => {
     setErro('');
@@ -199,7 +309,9 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
               ? `${treinamento.codigo} - ${treinamento.nome}`
               : 'Treinamento',
             areaIds: selecionadas,
-            prazoDias: prazoNumero
+            prazoDias: prazoNumero,
+            usuariosExcluidos: idsExcluidos,
+            usuariosPorArea
           },
           regras
         );
@@ -212,10 +324,15 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
       setSucesso(
         `${partes.join(', ')}. As atribuições estão sendo criadas em segundo plano ` +
         'e aparecem para os colaboradores em alguns instantes. Quem entrar nessas áreas ' +
-        'depois também receberá o treinamento.'
+        'depois também receberá o treinamento.' +
+        (idsExcluidos.length
+          ? ` ${idsExcluidos.length} pessoa(s) removida(s) da lista não receberão o treinamento por esta regra.`
+          : '')
       );
 
       setAreasMarcadas({});
+      setExcluidos({});
+      setPesquisaPessoas('');
       await carregar();
 
     } catch (e) {
@@ -375,7 +492,7 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
         <select
           value={treinamentoId}
           disabled={salvando}
-          onChange={e => { setTreinamentoId(e.target.value); setAreasMarcadas({}); setSucesso(''); }}
+          onChange={e => { setTreinamentoId(e.target.value); setAreasMarcadas({}); setExcluidos({}); setPesquisaPessoas(''); setSucesso(''); }}
           style={{ ...input, marginTop: '6px', marginBottom: '16px' }}
         >
           <option value="">Selecione</option>
@@ -433,6 +550,145 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
           })}
         </div>
 
+        {pessoas.length > 0 && (
+          <div
+            style={{
+              marginBottom: '18px',
+              border: `1px solid ${C.borda}`,
+              borderRadius: '10px',
+              overflow: 'hidden'
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '10px',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                background: C.fundo,
+                borderBottom: `1px solid ${C.borda}`
+              }}
+            >
+              <div>
+                <strong style={{ fontSize: '14px', color: C.azulEscuro }}>
+                  Quem vai receber: {pessoasAlcancadas} de {pessoas.length} pessoa(s)
+                </strong>
+                <span style={{ display: 'block', marginTop: '2px', color: C.secundario, fontSize: '12px' }}>
+                  Remova quem não deve receber este treinamento.
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="search"
+                  value={pesquisaPessoas}
+                  onChange={e => setPesquisaPessoas(e.target.value)}
+                  placeholder="Pesquisar pessoa..."
+                  aria-label="Pesquisar pessoa na lista"
+                  style={{ ...input, width: '220px', padding: '7px 10px', fontSize: '13px' }}
+                />
+
+                {idsExcluidos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setExcluidos({})}
+                    disabled={salvando}
+                    style={btn}
+                  >
+                    Incluir todos de volta
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={{ maxHeight: '340px', overflowY: 'auto' }}>
+              {pessoasVisiveis.length === 0 && (
+                <div style={{ padding: '14px', color: C.secundario, fontSize: '13px' }}>
+                  Nenhuma pessoa encontrada.
+                </div>
+              )}
+
+              {pessoasVisiveis.map(pessoa => {
+                const removida = !!excluidos[pessoa.usuarioId];
+
+                return (
+                  <div
+                    key={pessoa.usuarioId}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '9px 14px',
+                      borderTop: `1px solid ${C.borda}`,
+                      background: removida ? C.fundo : C.branco
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0, opacity: removida ? 0.6 : 1 }}>
+                      <span
+                        style={{
+                          display: 'block',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          color: C.texto,
+                          textDecoration: removida ? 'line-through' : 'none'
+                        }}
+                      >
+                        {pessoa.nome}
+                      </span>
+                      <span style={{ display: 'block', fontSize: '12px', color: C.secundario }}>
+                        {pessoa.email}
+                        {pessoa.email && pessoa.areas.length ? ' · ' : ''}
+                        {pessoa.areas.join(', ')}
+                      </span>
+                    </div>
+
+                    {removida && (
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: C.secundario }}>
+                        Não vai receber
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => alternarPessoa(pessoa.usuarioId)}
+                      disabled={salvando}
+                      aria-pressed={removida}
+                      title={removida ? 'Incluir de volta na atribuição' : 'Remover desta atribuição'}
+                      style={{
+                        ...btn,
+                        padding: '6px 12px',
+                        color: removida ? C.verde : C.vermelho,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {removida ? 'Incluir de volta' : 'Remover'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {idsExcluidos.length > 0 && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderTop: `1px solid ${C.borda}`,
+                  background: C.azulClaro,
+                  color: C.texto,
+                  fontSize: '12px',
+                  lineHeight: 1.5
+                }}
+              >
+                As {idsExcluidos.length} pessoa(s) removida(s) ficam como exceção da regra: não recebem
+                este treinamento por estas áreas, nem se saírem e voltarem para elas. Se precisarem dele
+                depois, atribua individualmente (modo Por pessoa).
+              </div>
+            )}
+          </div>
+        )}
+
         <label style={{ fontWeight: 600, fontSize: '14px' }}>Prazo para conclusão (dias)</label>
         <input
           type="number"
@@ -450,7 +706,7 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
 
         <button
           type="button"
-          disabled={salvando || !treinamentoId || selecionadas.length === 0}
+          disabled={salvando || !treinamentoId || selecionadas.length === 0 || pessoasAlcancadas === 0 && pessoas.length > 0}
           onClick={() => { void salvar(); }}
           style={{
             ...btnPrimario,
@@ -461,7 +717,8 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
           {salvando
             ? 'Salvando...'
             : selecionadas.length
-              ? `Atribuir a ${selecionadas.length} área(s) · ${pessoasAlcancadas} pessoa(s) hoje`
+              ? `Atribuir a ${selecionadas.length} área(s) · ${pessoasAlcancadas} pessoa(s) hoje` +
+                (idsExcluidos.length ? ` (${idsExcluidos.length} removida(s))` : '')
               : 'Atribuir às áreas selecionadas'}
         </button>
       </div>
@@ -489,6 +746,7 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
                   {!treinamentoId && <th style={{ padding: '8px 10px' }}>Treinamento</th>}
                   <th style={{ padding: '8px 10px' }}>Área</th>
                   <th style={{ padding: '8px 10px' }}>Prazo</th>
+                  <th style={{ padding: '8px 10px' }}>Exceções</th>
                   <th style={{ padding: '8px 10px' }}>Status</th>
                   <th style={{ padding: '8px 10px' }}>Ações</th>
                 </tr>
@@ -499,6 +757,14 @@ const AtribuicaoPorAreaPanel: React.FC<IAtribuicaoPorAreaPanelProps> = (
                     {!treinamentoId && <td style={{ padding: '8px 10px' }}>{regra.treinamentoNome}</td>}
                     <td style={{ padding: '8px 10px' }}>{regra.areaNome}</td>
                     <td style={{ padding: '8px 10px' }}>{regra.prazoDias ? `${regra.prazoDias} dias` : '—'}</td>
+                    <td
+                      style={{ padding: '8px 10px', color: regra.usuariosExcluidos.length ? C.texto : C.secundario }}
+                      title={regra.usuariosExcluidos.map(nomeDoUsuario).join('\n')}
+                    >
+                      {regra.usuariosExcluidos.length
+                        ? `${regra.usuariosExcluidos.length} pessoa(s) fora`
+                        : '—'}
+                    </td>
                     <td style={{ padding: '8px 10px' }}>
                       <span
                         style={{

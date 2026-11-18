@@ -28,6 +28,12 @@ import {
 //   • atribuições que a pessoa recebeu por outro caminho (individual,
 //     trilha, outra regra) não são tocadas.
 // Reativar a regra faz o plugin atribuir de novo aos membros da área.
+//
+// EXCEÇÕES (dgt_usuariosexcluidos)
+//   Ids dos usuários (separados por ';') que a regra NÃO atribui,
+//   nem agora nem se saírem e voltarem para a área. O plugin
+//   AtribuirPorAreaPlugin lê esta coluna. Criada pelo script
+//   scripts/dataverse/criar-coluna-excecoes-regra-area.ps1.
 // ============================================================
 
 export interface IRegraAtribuicaoArea {
@@ -39,6 +45,8 @@ export interface IRegraAtribuicaoArea {
   prazoDias?: number;
   ativo: boolean;
   criadoEm?: Date;
+  // Usuários que esta regra não atribui.
+  usuariosExcluidos: string[];
 }
 
 export interface INovaRegraAtribuicaoArea {
@@ -46,6 +54,10 @@ export interface INovaRegraAtribuicaoArea {
   treinamentoNome: string;
   areaIds: string[];
   prazoDias?: number;
+  // Pessoas desmarcadas na tela. Cada regra guarda só as que são
+  // membros da sua área (usuariosPorArea).
+  usuariosExcluidos?: string[];
+  usuariosPorArea?: Record<string, string[]>;
 }
 
 export interface IImpactoDesativacaoRegra {
@@ -94,6 +106,21 @@ const formatado = (
     registro,
     `${campo}@OData.Community.Display.V1.FormattedValue`
   );
+
+const SEPARADOR_EXCECOES = ';';
+
+export const lerExcecoes = (
+  valor: unknown
+): string[] =>
+  String(valor || '')
+    .split(SEPARADOR_EXCECOES)
+    .map(guid)
+    .filter((id, indice, lista) => !!id && lista.indexOf(id) === indice);
+
+const gravarExcecoes = (
+  ids: string[]
+): string =>
+  ids.map(guid).filter(id => !!id).join(SEPARADOR_EXCECOES);
 
 export class AtribuicaoAreaService {
 
@@ -164,7 +191,12 @@ export class AtribuicaoAreaService {
           criadoEm:
             criado
               ? new Date(criado)
-              : undefined
+              : undefined,
+
+          usuariosExcluidos:
+            lerExcecoes(
+              registro.dgt_usuariosexcluidos
+            )
         };
       }
     );
@@ -202,6 +234,44 @@ export class AtribuicaoAreaService {
       );
     }
 
+    const excluidos =
+      (dados.usuariosExcluidos || []).map(guid).filter(id => !!id);
+
+    // Sem a coluna no ambiente, a exceção não seria gravada e o
+    // plugin atribuiria a todos. Melhor parar com uma mensagem clara.
+    if (
+      excluidos.length > 0 &&
+      !(await this.dataverse.suportaExcecoesRegraArea())
+    ) {
+      throw new Error(
+        'Para remover pessoas da atribuição por área, o ambiente precisa da coluna ' +
+        '"Usuários excluídos" na regra por área (dgt_treinamentoarea.dgt_usuariosexcluidos). ' +
+        'Peça ao administrador para executar o script criar-coluna-excecoes-regra-area.ps1 ' +
+        'e publicar a nova versão do AtribuirPorAreaPlugin. Sem exceções, a atribuição funciona normalmente.'
+      );
+    }
+
+    // Exceções que valem para uma área: só quem é membro dela.
+    // Ids normalizados (minúsculas, sem chaves) dos dois lados.
+    const membrosPorArea: Record<string, string[]> = {};
+
+    Object.keys(dados.usuariosPorArea || {}).forEach(area => {
+      membrosPorArea[guid(area)] =
+        ((dados.usuariosPorArea || {})[area] || []).map(guid);
+    });
+
+    const excecoesDaArea = (
+      areaId: string
+    ): string[] => {
+      const membros =
+        membrosPorArea[guid(areaId)];
+
+      // Sem a lista de membros, a exceção vale para todas as áreas.
+      return membros
+        ? excluidos.filter(id => membros.indexOf(id) >= 0)
+        : excluidos;
+    };
+
     const resultado: IResultadoRegrasArea = {
       criadas: 0,
       reativadas: 0,
@@ -228,12 +298,28 @@ export class AtribuicaoAreaService {
         continue;
       }
 
+      const excecoes =
+        excecoesDaArea(areaId);
+
       if (existente) {
+
+        // Reativação: as exceções escolhidas agora substituem as
+        // antigas (a lista da tela é a fonte da verdade). A coluna é
+        // gravada também quando fica vazia, para limpar exceções
+        // antigas; só fica de fora se o ambiente não a tiver.
+        const gravarColuna =
+          excecoes.length > 0 ||
+          existente.usuariosExcluidos.length > 0;
 
         await this.dataverse
           .atualizarTreinamentoArea(
             existente.id,
             {
+              ...(
+                gravarColuna
+                  ? { dgt_usuariosexcluidos: gravarExcecoes(excecoes) }
+                  : {}
+              ),
               dgt_ativo: true,
               ...(
                 dados.prazoDias !== undefined
@@ -257,6 +343,14 @@ export class AtribuicaoAreaService {
 
             dgt_ativo:
               true,
+
+            // Gravado já na criação: o plugin assíncrono lê a regra
+            // com as exceções e não atribui a essas pessoas.
+            ...(
+              excecoes.length > 0
+                ? { dgt_usuariosexcluidos: gravarExcecoes(excecoes) }
+                : {}
+            ),
 
             ...(
               dados.prazoDias !== undefined
