@@ -91,7 +91,7 @@ const VisaoGeral: React.FC<{
   itens: IFornecedorComSituacao[];
   semTipos: boolean;
   administra: boolean;
-  abrir: (id: string) => void;
+  abrir: (id: string, secao?: Secao) => void;
   irParaTipos: () => void;
 }> = ({ itens, semTipos, administra, abrir, irParaTipos }) => {
 
@@ -100,11 +100,13 @@ const VisaoGeral: React.FC<{
   const emHomologacao = ativos.filter(i => i.fornecedor.status === 'Em homologação').length;
   const comSancao = ativos.filter(i => i.fornecedor.resultadoSancoes === 'Com registro');
   const comPendencia = ativos.filter(i => i.situacao.pendencias.length > 0);
+  const totalAConferir = itens.reduce((t, i) => t + (i.aConferir || 0), 0);
 
   const linhas = ativos
-    .filter(i => i.situacao.pendencias.length > 0 || i.fornecedor.resultadoSancoes === 'Com registro')
+    .filter(i => i.situacao.pendencias.length > 0 || i.fornecedor.resultadoSancoes === 'Com registro' || (i.aConferir || 0) > 0)
     .sort((a, b) =>
       (b.fornecedor.resultadoSancoes === 'Com registro' ? 1 : 0) - (a.fornecedor.resultadoSancoes === 'Com registro' ? 1 : 0) ||
+      (b.aConferir || 0) - (a.aConferir || 0) ||
       b.situacao.vencidos - a.situacao.vencidos ||
       b.situacao.faltando - a.situacao.faltando ||
       b.situacao.aVencer - a.situacao.aVencer);
@@ -125,6 +127,7 @@ const VisaoGeral: React.FC<{
         <Indicador titulo="Ativos" valor={ativos.length} detalhe={`${homologados} homologados · ${emHomologacao} em homologação`} />
         <Indicador titulo="Com pendência documental" valor={comPendencia.length} detalhe="faltando, vencido ou vencendo em até 30 dias" destaque />
         <Indicador titulo="Com sanção vigente" valor={comSancao.length} detalhe="CEIS, CNEP ou CEPIM na última consulta" destaque />
+        <Indicador titulo="Documentos a conferir" valor={totalAConferir} detalhe="recebidos por e-mail, aguardando tipo e datas" destaque={totalAConferir > 0} />
       </div>
 
       <div style={{ fontSize: '15px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.02em', margin: '6px 0 10px' }}>O que precisa de atenção</div>
@@ -142,11 +145,12 @@ const VisaoGeral: React.FC<{
                   <th style={celulaCabecalho}>Vencidos</th>
                   <th style={celulaCabecalho}>Faltando</th>
                   <th style={celulaCabecalho}>A vencer</th>
+                  <th style={celulaCabecalho}>A conferir</th>
                 </tr>
               </thead>
               <tbody>
                 {linhas.map(i => (
-                  <tr key={i.fornecedor.id} onClick={() => abrir(i.fornecedor.id)} style={{ cursor: 'pointer' }}>
+                  <tr key={i.fornecedor.id} onClick={() => abrir(i.fornecedor.id, (i.aConferir || 0) > 0 || i.situacao.pendencias.length > 0 ? 'documentos' : undefined)} style={{ cursor: 'pointer' }}>
                     <td style={{ ...celula, fontWeight: 600 }}>{i.fornecedor.razaoSocial}</td>
                     <td style={celula}>{i.fornecedor.status}</td>
                     <td style={celula}>
@@ -157,6 +161,7 @@ const VisaoGeral: React.FC<{
                     <td style={celula}>{i.situacao.vencidos || '—'}</td>
                     <td style={celula}>{i.situacao.faltando || '—'}</td>
                     <td style={celula}>{i.situacao.aVencer || '—'}</td>
+                    <td style={celula}>{i.aConferir ? <Selo tom="ciano">{i.aConferir}</Selo> : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -216,7 +221,8 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
     }
     return dados.fornecedores.map(f => ({
       fornecedor: f,
-      situacao: calcularSituacao(f, dados.tipos, dados.documentos.filter(d => d.fornecedorId === f.id))
+      situacao: calcularSituacao(f, dados.tipos, dados.documentos.filter(d => d.fornecedorId === f.id)),
+      aConferir: dados.aConferir.filter(d => d.fornecedorId === f.id).length
     }));
   }, [dados]);
 

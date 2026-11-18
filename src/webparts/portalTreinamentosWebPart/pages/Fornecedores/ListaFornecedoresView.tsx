@@ -57,14 +57,17 @@ const novoVazio = (): INovoFornecedor => ({
 
 export const resumoPendencias = (i: IFornecedorComSituacao): React.ReactNode => {
   const s = i.situacao;
+  const recebidos = i.aConferir
+    ? <Selo tom="ciano">{i.aConferir} a conferir</Selo>
+    : null;
   if (s.pendencias.length === 0) {
-    return <span style={{ color: COR.texto2 }}>em dia</span>;
+    return recebidos || <span style={{ color: COR.texto2 }}>em dia</span>;
   }
   const partes: string[] = [];
   if (s.vencidos) { partes.push(`${s.vencidos} vencido${s.vencidos > 1 ? 's' : ''}`); }
   if (s.faltando) { partes.push(`${s.faltando} faltando`); }
   if (s.aVencer) { partes.push(`${s.aVencer} a vencer`); }
-  return <Selo tom={s.vencidos || s.faltando ? 'indigo' : 'cinza'}>{partes.join(' · ')}</Selo>;
+  return <>{recebidos}{recebidos && ' '}<Selo tom={s.vencidos || s.faltando ? 'indigo' : 'cinza'}>{partes.join(' · ')}</Selo></>;
 };
 
 // ------------------------------------------------------------

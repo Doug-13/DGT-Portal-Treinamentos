@@ -359,22 +359,41 @@ externo). Os documentos chegam por e-mail com o protocolo.
 ### Fluxo 2 — Documentos recebidos (caixa vaneska@dgt.com.br)
 
 *Quando um novo e-mail chegar (V3)* na caixa, filtro de assunto `FORN-`,
-"Incluir anexos" = Sim:
+"Incluir anexos" = Sim, "Somente com anexos" = Sim:
 
-1. Protocolo: `substring(triggerOutputs()?['body/subject'], indexOf(triggerOutputs()?['body/subject'], 'FORN-'), 14)`.
-2. Dataverse › *Listar linhas* `dgt_fornecedors`, filtro `dgt_protocolo eq '@{protocolo}'`.
-   Sem linha: responder pedindo o protocolo correto e parar.
-3. Para cada anexo: SharePoint › *Criar arquivo* no site de Suprimentos, pasta
-   `Documentos/General/03. CONTRATOS/Contratos/Contratos Fornecedores/Razão social (8 primeiros caracteres do id)`
-   (mesmo padrão da tela).
-4. Dataverse › *Adicionar linha* em `dgt_fornecedorhistoricos`: ação
-   "Documentos recebidos por e-mail", descrição com os nomes dos arquivos.
-5. A analista registra cada documento na aba Documentos (Registrar/Renovar →
-   link do arquivo), conferindo emissão e validade.
+1. **Localizar o fornecedor** — Dataverse › *Executar uma ação não associada*
+   `dgt_ConsultarFornecedor`, `PayloadJson` =
+   `{"acao":"localizarProtocolo","assunto":"@{triggerOutputs()?['body/subject']}"}`
+   → *Analisar JSON* do `ResultadoJson`
+   (`{ encontrado, protocolo, fornecedorId, razaoSocial, pasta }`).
+   O servidor acha o protocolo em qualquer ponto do assunto ("RE:", "ENC:",
+   sequencial com mais de 4 dígitos) e também nos protocolos de ciclos antigos.
+2. *Condição* `encontrado` = false → *Responder ao e-mail (V3)* pedindo para
+   reenviar com o protocolo `FORN-AAAA-NNNN` no assunto, e parar.
+3. *Aplicar a cada* anexo **com `isInline` = false** (ignora logos e imagens da
+   assinatura): SharePoint › *Criar arquivo* no site de Suprimentos, pasta
+   `/Shared Documents/General/03. CONTRATOS/Contratos/Contratos Fornecedores/@{pasta}`
+   (o `pasta` vem do passo 1 — é o mesmo nome que o portal usa). Junte numa
+   variável de matriz `arquivos` um item `{"nome": nome do arquivo, "url": link do arquivo criado}`.
+4. **Registrar os arquivos** — *Executar uma ação não associada*
+   `dgt_ConsultarFornecedor`, `PayloadJson` =
+   `{"acao":"receberDocumentos","assunto":"@{triggerOutputs()?['body/subject']}","arquivos":@{variables('arquivos')}}`.
+   Cada arquivo vira um documento **"A conferir"** (sem tipo e sem datas) e o
+   histórico registra o recebimento. Um link já registrado não é repetido.
+   Devolve `{ registrados, ignorados }`.
+5. (Opcional) *Responder ao e-mail* confirmando o recebimento.
 
-A conexão do Outlook do fluxo 2 é a da caixa vaneska@dgt.com.br (ou de quem tiver
-acesso a ela). A leitura dos anexos por IA para sugerir o tipo de documento fica
-para uma próxima etapa.
+**No portal (opção A):** os arquivos aparecem na aba **Documentos** do fornecedor,
+no bloco **"Recebidos por e-mail — a conferir"** (e na Visão geral, coluna "A
+conferir"). Para cada um: **Conferir** (abre o arquivo; escolher o tipo, emissão e
+validade — a validade é sugerida pelo tipo) → vira **Vigente** e substitui a versão
+anterior do mesmo tipo; ou **Descartar** (com motivo — o arquivo continua no
+SharePoint, só sai da fila). "A conferir" e "Descartado" **não contam** como
+documento entregue.
+
+A conexão do Outlook do fluxo 2 é a da caixa de Suprimentos (ou de quem tiver
+acesso a ela). **Próxima etapa (C):** a IA lê cada arquivo recebido e já sugere o
+tipo, a emissão e a validade no "Conferir" (a analista só confirma).
 
 ## 9. Assinatura da ficha e do Código de Conduta (Clicksign) — bloqueado pelo token
 

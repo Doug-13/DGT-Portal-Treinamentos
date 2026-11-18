@@ -49,7 +49,9 @@ import {
   IResultadoConsulta,
   IResultadoPrevia,
   ITipoDocumentoFornecedor,
+  lerSituacaoDocumento,
   ResultadoSancoes,
+  SITUACAO_A_CONFERIR,
   STATUS_FORNECEDOR,
   StatusFornecedor,
   TABELAS_FORN,
@@ -333,16 +335,21 @@ export class FornecedoresService {
         this.dataverse.listarRegistros(TABELAS_FORN.documento,
           '$select=dgt_fornecedordocumentoid,dgt_name,_dgt_fornecedor_value,_dgt_tipodocumento_value,dgt_dataemissao,' +
           'dgt_datavencimento,dgt_arquivourl,dgt_arquivonome,dgt_observacoes,dgt_situacao,dgt_responsavelnome,createdon' +
-          "&$filter=dgt_situacao eq 'Vigente'")
+          "&$filter=dgt_situacao eq 'Vigente'"),
+        // Recebidos por e-mail (Fluxo 2) que ainda não foram conferidos.
+        this.dataverse.listarRegistros(TABELAS_FORN.documento,
+          '$select=dgt_fornecedordocumentoid,dgt_name,_dgt_fornecedor_value,_dgt_tipodocumento_value,dgt_dataemissao,' +
+          'dgt_datavencimento,dgt_arquivourl,dgt_arquivonome,dgt_observacoes,dgt_situacao,dgt_responsavelnome,createdon' +
+          `&$filter=dgt_situacao eq '${SITUACAO_A_CONFERIR}'`)
       ]);
     } catch (erro) {
       if (ehTabelaInexistente(erro)) {
-        return { disponivel: false, fornecedores: [], tipos: [], documentos: [] };
+        return { disponivel: false, fornecedores: [], tipos: [], documentos: [], aConferir: [] };
       }
       throw erro;
     }
 
-    const [regFornecedores, regTipos, regDocumentos] = registros;
+    const [regFornecedores, regTipos, regDocumentos, regAConferir] = registros;
 
     const tipos = regTipos.map(r => this.lerTipo(r))
       .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
@@ -355,7 +362,8 @@ export class FornecedoresService {
       fornecedores: regFornecedores.map(r => this.lerFornecedor(r))
         .sort((a, b) => a.razaoSocial.localeCompare(b.razaoSocial, 'pt-BR')),
       tipos,
-      documentos: regDocumentos.map(r => this.lerDocumento(r, nomeTipo))
+      documentos: regDocumentos.map(r => this.lerDocumento(r, nomeTipo)),
+      aConferir: regAConferir.map(r => this.lerDocumento(r, nomeTipo))
     };
   }
 
@@ -1087,6 +1095,89 @@ export class FornecedoresService {
       usuarioNome);
   }
 
+  // Documento recebido por e-mail ("A conferir"): a analista informa o
+  // tipo e as datas; o registro passa a Vigente e substitui a versão
+  // anterior do mesmo tipo. O arquivo já está na pasta do fornecedor.
+  public async conferirDocumento(
+    fornecedor: IFornecedor,
+    recebido: IDocumentoFornecedor,
+    dados: { tipo: ITipoDocumentoFornecedor; emissao: string; vencimento: string; observacoes: string },
+    vigentesDoTipo: IDocumentoFornecedor[],
+    usuarioNome: string
+  ): Promise<void> {
+
+    const tipo = dados.tipo;
+
+    if (recebido.situacao !== SITUACAO_A_CONFERIR) {
+      throw new Error('Este documento já foi conferido ou descartado. Atualize a tela.');
+    }
+    if (!tipo || !tipo.id) {
+      throw new Error('Escolha o tipo do documento.');
+    }
+    if (!dados.emissao) {
+      throw new Error('Informe a data de emissão do documento.');
+    }
+    if (tipo.exigeValidade && !dados.vencimento) {
+      throw new Error(`"${tipo.nome}" exige data de validade.`);
+    }
+    if (dados.vencimento && dados.vencimento < dados.emissao) {
+      throw new Error('A validade não pode ser anterior à emissão.');
+    }
+
+    verificarSensivel(dados.observacoes);
+
+    const observacoes = [recebido.observacoes, (dados.observacoes || '').trim()].filter(Boolean).join(' ');
+
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.documento, recebido.id, {
+      dgt_name: limitar(tipo.nome, 200),
+      'dgt_TipoDocumento@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.tipoDocumento, tipo.id),
+      dgt_dataemissao: dados.emissao,
+      dgt_datavencimento: dados.vencimento || null,
+      dgt_observacoes: limitar(observacoes, 4000),
+      dgt_situacao: 'Vigente',
+      dgt_responsavelnome: limitar(usuarioNome, 200)
+    });
+
+    for (const anterior of vigentesDoTipo.filter(d => d.id !== recebido.id)) {
+      await this.dataverse.atualizarRegistro(TABELAS_FORN.documento, anterior.id, { dgt_situacao: 'Substituído' });
+    }
+
+    await this.registrarHistorico(
+      fornecedor.id,
+      'Documento conferido',
+      `${tipo.nome} (arquivo recebido por e-mail: ${recebido.arquivoNome || recebido.titulo}): emissão ${dados.emissao}` +
+      `${dados.vencimento ? `, validade ${dados.vencimento}` : ', sem validade'}.`,
+      usuarioNome);
+  }
+
+  // Anexo que não é documento (logo, assinatura, arquivo errado). O
+  // arquivo continua na pasta do SharePoint; só sai da fila.
+  public async descartarDocumento(
+    fornecedor: IFornecedor,
+    recebido: IDocumentoFornecedor,
+    motivo: string,
+    usuarioNome: string
+  ): Promise<void> {
+    if (recebido.situacao !== SITUACAO_A_CONFERIR) {
+      throw new Error('Este documento já foi conferido ou descartado. Atualize a tela.');
+    }
+    const texto = (motivo || '').trim();
+    if (!texto) {
+      throw new Error('Informe o motivo do descarte.');
+    }
+    verificarSensivel(texto);
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.documento, recebido.id, {
+      dgt_situacao: 'Descartado',
+      dgt_observacoes: limitar(`${recebido.observacoes} Descartado: ${texto}`.trim(), 4000),
+      dgt_responsavelnome: limitar(usuarioNome, 200)
+    });
+    await this.registrarHistorico(
+      fornecedor.id,
+      'Documento descartado',
+      `${recebido.arquivoNome || recebido.titulo}: ${texto}`,
+      usuarioNome);
+  }
+
   // ==========================================================
   // GRAVAÇÃO — TIPOS DE DOCUMENTO (Administrador do módulo)
   // ==========================================================
@@ -1292,7 +1383,7 @@ export class FornecedoresService {
       arquivoUrl: texto(r, 'dgt_arquivourl'),
       arquivoNome: texto(r, 'dgt_arquivonome'),
       observacoes: texto(r, 'dgt_observacoes'),
-      situacao: texto(r, 'dgt_situacao') === 'Substituído' ? 'Substituído' : 'Vigente',
+      situacao: lerSituacaoDocumento(texto(r, 'dgt_situacao')),
       registradoPor: texto(r, 'dgt_responsavelnome'),
       criadoEm: texto(r, 'createdon')
     };
@@ -1329,7 +1420,7 @@ export class FornecedoresService {
       arquivoUrl: texto(r, 'dgt_arquivourl'),
       arquivoNome: texto(r, 'dgt_arquivonome'),
       observacoes: texto(r, 'dgt_observacoes'),
-      situacao: texto(r, 'dgt_situacao') === 'Substituído' ? 'Substituído' : 'Vigente',
+      situacao: lerSituacaoDocumento(texto(r, 'dgt_situacao')),
       registradoPor: texto(r, 'dgt_responsavelnome'),
       criadoEm: texto(r, 'createdon')
     };

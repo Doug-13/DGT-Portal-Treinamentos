@@ -455,7 +455,15 @@ export interface ITipoDocumentoFornecedor {
   codigoConsulta?: CodigoCertidao | '';
 }
 
-export type SituacaoDocumento = 'Vigente' | 'Substituído';
+// "A conferir": arquivo recebido por e-mail (Fluxo 2), ainda sem tipo e
+// datas — NÃO conta como documento válido até a analista conferir.
+// "Descartado": anexo que não era documento (logo, assinatura…).
+export type SituacaoDocumento = 'Vigente' | 'Substituído' | 'A conferir' | 'Descartado';
+
+export const SITUACAO_A_CONFERIR: SituacaoDocumento = 'A conferir';
+
+export const lerSituacaoDocumento = (valor: string): SituacaoDocumento =>
+  valor === 'Substituído' || valor === 'A conferir' || valor === 'Descartado' ? valor : 'Vigente';
 
 export interface IDocumentoFornecedor {
   id: string;
@@ -515,6 +523,7 @@ export interface IDadosFornecedores {
   fornecedores: IFornecedor[];
   tipos: ITipoDocumentoFornecedor[];
   documentos: IDocumentoFornecedor[];   // somente vigentes
+  aConferir: IDocumentoFornecedor[];    // recebidos por e-mail, ainda não conferidos
 }
 
 // Dados que a consulta prévia (CNPJá) devolve para preencher o cadastro.

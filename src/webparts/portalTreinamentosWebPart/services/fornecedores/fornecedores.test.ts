@@ -164,6 +164,17 @@ describe('situacaoDocumental', () => {
     expect(s.pendencias.length).toBe(0);
   });
 
+  it('documento recebido por e-mail ("A conferir") ou descartado não conta como entregue', () => {
+    const tipos = [tipo('cnd')];
+    const docs = [
+      doc('cnd', '2027-05-01', { situacao: 'A conferir' }),
+      doc('cnd', '2027-06-01', { situacao: 'Descartado' })
+    ];
+    const s = calcularSituacao(fornecedor('Serviço'), tipos, docs, hoje);
+    expect(s.faltando).toBe(1);
+    expect(s.itens[0].documento).toBeUndefined();
+  });
+
   it('sugere o vencimento pela validade padrão do tipo', () => {
     expect(sugerirVencimento('2026-11-10', 180)).toBe('2027-05-09');
     expect(sugerirVencimento('2026-11-10', undefined)).toBe('');

@@ -16,6 +16,7 @@
   <ItemGroup>
     <Compile Include="..\DGT.Treinamentos.Plugins\PrazosLicitacao.cs" Link="Regras\PrazosLicitacao.cs" />
     <Compile Include="..\DGT.Treinamentos.Plugins\TarefaLicitacaoClickUp.cs" Link="Regras\TarefaLicitacaoClickUp.cs" />
+    <Compile Include="..\DGT.Treinamentos.Plugins\DocumentosRecebidosFornecedor.cs" Link="Regras\DocumentosRecebidosFornecedor.cs" />
   </ItemGroup>
 
   <ItemGroup>

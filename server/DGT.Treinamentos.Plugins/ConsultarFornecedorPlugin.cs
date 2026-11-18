@@ -51,6 +51,16 @@ namespace DGT.Treinamentos.Plugins
     //       fornecedor em "Em homologação", completa com a Receita e
     //       devolve { id, protocolo, novo, documentosPendentes[] }.
     //       Sem ciclo de homologação aberto, abre um (kanban: "Ficha recebida").
+    //   { "acao": "localizarProtocolo", "assunto": "Re: [FORN-2026-0042] ..." }
+    //       (ou "protocolo"). Fluxo 2, ANTES de salvar os anexos: devolve
+    //       { encontrado, protocolo, fornecedorId, razaoSocial, pasta } —
+    //       "pasta" é o nome exato da subpasta do fornecedor no SharePoint.
+    //   { "acao": "receberDocumentos", "assunto": "...",
+    //     "arquivos": [ { "nome": "contrato.pdf", "url": "https://..." } ] }
+    //       Fluxo 2, DEPOIS de salvar: cada arquivo vira um documento
+    //       "A conferir" (sem tipo/datas; a analista confere no portal).
+    //       Não repete um link já registrado. Devolve
+    //       { encontrado, protocolo, fornecedorId, razaoSocial, pasta, registrados, ignorados }.
     //
     // ResultadoJson: ver cada ação (Responder*).
     //
@@ -261,8 +271,17 @@ namespace DGT.Treinamentos.Plugins
                     resultado = ReceberFicha(sistema, tracing, payload["ficha"] as JObject, usuario);
                     break;
 
+                case "localizarprotocolo":
+                    resultado = LocalizarProtocolo(sistema, Texto(payload["protocolo"], Texto(payload["assunto"], string.Empty)));
+                    break;
+
+                case "receberdocumentos":
+                    resultado = ReceberDocumentos(sistema, payload, usuario);
+                    break;
+
                 default:
-                    throw new InvalidPluginExecutionException("acao deve ser \"previa\", \"consultar\", \"lote\" ou \"receberFicha\".");
+                    throw new InvalidPluginExecutionException(
+                        "acao deve ser \"previa\", \"consultar\", \"lote\", \"receberFicha\", \"localizarProtocolo\" ou \"receberDocumentos\".");
             }
 
             context.OutputParameters["ResultadoJson"] = resultado.ToString(Formatting.None);
@@ -1505,9 +1524,116 @@ namespace DGT.Treinamentos.Plugins
                 ["protocolo"] = gravado.GetAttributeValue<string>("dgt_protocolo") ?? string.Empty,
                 ["novo"] = novo,
                 ["razaoSocial"] = gravado.GetAttributeValue<string>("dgt_name") ?? string.Empty,
+                ["pasta"] = DocumentosRecebidosFornecedor.NomePasta(gravado.GetAttributeValue<string>("dgt_name"), id),
                 ["dadosBancariosAlterados"] = !novo && bancoAlterado,
                 ["documentosPendentes"] = new JArray(DocumentosParaEnviar(sistema, categoria).Cast<object>().ToArray())
             };
+        }
+
+        // ------------------------------------------------------------
+        // Documentos recebidos por e-mail (Fluxo 2)
+        // ------------------------------------------------------------
+
+        // Fornecedor do protocolo (o atual do cadastro ou o de um ciclo antigo).
+        private static JObject LocalizarProtocolo(IOrganizationService sistema, string texto)
+        {
+            var protocolo = DocumentosRecebidosFornecedor.ExtrairProtocolo(texto);
+            var resposta = new JObject { ["encontrado"] = false, ["protocolo"] = protocolo };
+            if (protocolo.Length == 0)
+            {
+                resposta["motivo"] = "Nenhum protocolo FORN-AAAA-NNNN no texto.";
+                return resposta;
+            }
+
+            Entity fornecedor = null;
+            var consulta = new QueryExpression(TabelaFornecedor) { ColumnSet = new ColumnSet("dgt_name"), TopCount = 1 };
+            consulta.Criteria.AddCondition("dgt_protocolo", ConditionOperator.Equal, protocolo);
+            fornecedor = sistema.RetrieveMultiple(consulta).Entities.FirstOrDefault();
+
+            if (fornecedor == null)
+            {
+                try
+                {
+                    var porCiclo = new QueryExpression(TabelaCiclo) { ColumnSet = new ColumnSet("dgt_fornecedor"), TopCount = 1 };
+                    porCiclo.Criteria.AddCondition("dgt_protocolo", ConditionOperator.Equal, protocolo);
+                    var ciclo = sistema.RetrieveMultiple(porCiclo).Entities.FirstOrDefault();
+                    var referencia = ciclo?.GetAttributeValue<EntityReference>("dgt_fornecedor");
+                    if (referencia != null)
+                    {
+                        fornecedor = sistema.Retrieve(TabelaFornecedor, referencia.Id, new ColumnSet("dgt_name"));
+                    }
+                }
+                catch (Exception)
+                {
+                    // Tabela de ciclos ainda não criada: fica só o cadastro.
+                }
+            }
+
+            if (fornecedor == null)
+            {
+                resposta["motivo"] = "Protocolo não encontrado.";
+                return resposta;
+            }
+
+            var razao = fornecedor.GetAttributeValue<string>("dgt_name") ?? string.Empty;
+            resposta["encontrado"] = true;
+            resposta["fornecedorId"] = fornecedor.Id.ToString();
+            resposta["razaoSocial"] = razao;
+            resposta["pasta"] = DocumentosRecebidosFornecedor.NomePasta(razao, fornecedor.Id);
+            return resposta;
+        }
+
+        // Cada arquivo salvo pelo fluxo vira um documento "A conferir".
+        private static JObject ReceberDocumentos(IOrganizationService sistema, JObject payload, string usuario)
+        {
+            var resposta = LocalizarProtocolo(sistema, Texto(payload["protocolo"], Texto(payload["assunto"], string.Empty)));
+            if ((bool?)resposta["encontrado"] != true)
+            {
+                resposta["registrados"] = 0;
+                return resposta;
+            }
+
+            var fornecedorId = Guid.Parse((string)resposta["fornecedorId"]);
+            var protocolo = (string)resposta["protocolo"];
+
+            var recebidos = (payload["arquivos"] as JArray ?? new JArray()).OfType<JObject>()
+                .Select(a => new DocumentosRecebidosFornecedor.Arquivo { Nome = Texto(a["nome"], string.Empty), Url = Texto(a["url"], string.Empty) })
+                .ToList();
+
+            var consulta = new QueryExpression(TabelaDocumento) { ColumnSet = new ColumnSet("dgt_arquivourl") };
+            consulta.Criteria.AddCondition("dgt_fornecedor", ConditionOperator.Equal, fornecedorId);
+            var jaRegistradas = sistema.RetrieveMultiple(consulta).Entities
+                .Select(d => d.GetAttributeValue<string>("dgt_arquivourl") ?? string.Empty)
+                .Where(u => u.Length > 0)
+                .ToList();
+
+            var novos = DocumentosRecebidosFornecedor.FiltrarNovos(recebidos, jaRegistradas);
+            var agora = DateTime.UtcNow.AddHours(-3);
+
+            foreach (var arquivo in novos)
+            {
+                var nome = Mascarar(arquivo.Nome);
+                var documento = new Entity(TabelaDocumento);
+                documento["dgt_name"] = Limitar(nome, 200);
+                documento["dgt_fornecedor"] = new EntityReference(TabelaFornecedor, fornecedorId);
+                documento["dgt_arquivourl"] = Limitar(arquivo.Url, 2000);
+                documento["dgt_arquivonome"] = Limitar(nome, 255);
+                documento["dgt_observacoes"] = Limitar($"Recebido por e-mail (protocolo {protocolo}) em {agora:dd/MM/yyyy HH:mm}.", 4000);
+                documento["dgt_situacao"] = DocumentosRecebidosFornecedor.SituacaoAConferir;
+                documento["dgt_responsavelnome"] = Limitar($"E-mail ({protocolo})", 200);
+                sistema.Create(documento);
+            }
+
+            if (novos.Count > 0)
+            {
+                RegistrarHistorico(sistema, fornecedorId, "Documentos recebidos por e-mail",
+                    $"{novos.Count} arquivo(s) a conferir (protocolo {protocolo}): " +
+                    string.Join("; ", novos.Select(n => Mascarar(n.Nome))), usuario);
+            }
+
+            resposta["registrados"] = novos.Count;
+            resposta["ignorados"] = recebidos.Count - novos.Count;
+            return resposta;
         }
 
         // Kanban de homologação: a ficha que chega abre um ciclo novo na

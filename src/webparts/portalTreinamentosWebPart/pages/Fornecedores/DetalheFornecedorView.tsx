@@ -22,6 +22,7 @@ import {
   ITipoDocumentoFornecedor,
   REGIMES_TRIBUTARIOS,
   ROTULO_CONSULTA,
+  SITUACAO_A_CONFERIR,
   STATUS_FORNECEDOR,
   StatusFornecedor
 } from '../../services/fornecedores/modeloFornecedores';
@@ -399,6 +400,116 @@ const DocumentoModal: React.FC<{
   );
 };
 
+// ------------------------------------------------------------
+// Conferir documento recebido por e-mail ("A conferir")
+// ------------------------------------------------------------
+
+const ConferirDocumentoModal: React.FC<{
+  recebido: IDocumentoFornecedor;
+  tipos: ITipoDocumentoFornecedor[];
+  categoria: string;
+  fechar: () => void;
+  salvar: (dados: { tipo: ITipoDocumentoFornecedor; emissao: string; vencimento: string; observacoes: string }) => Promise<void>;
+}> = ({ recebido, tipos, categoria, fechar, salvar }) => {
+
+  const ativos = tipos.filter(t => t.ativo);
+  const daCategoria = ativos.filter(t => tipoSeAplica(t, categoria));
+  const outros = ativos.filter(t => !tipoSeAplica(t, categoria));
+
+  const [tipoId, setTipoId] = React.useState('');
+  const [emissao, setEmissao] = React.useState('');
+  const [vencimento, setVencimento] = React.useState('');
+  const [vencimentoManual, setVencimentoManual] = React.useState(false);
+  const [observacoes, setObservacoes] = React.useState('');
+  const [gravando, setGravando] = React.useState(false);
+  const [erro, setErro] = React.useState('');
+
+  const tipo = ativos.filter(t => t.id === tipoId)[0];
+
+  const atualizarSugestao = (novaEmissao: string, novoTipo?: ITipoDocumentoFornecedor): void => {
+    if (!vencimentoManual) {
+      setVencimento(novoTipo ? sugerirVencimento(novaEmissao, novoTipo.validadeDias) : '');
+    }
+  };
+
+  const confirmar = async (): Promise<void> => {
+    if (!tipo) {
+      setErro('Escolha o tipo do documento.');
+      return;
+    }
+    setGravando(true);
+    setErro('');
+    try {
+      await salvar({ tipo, emissao, vencimento, observacoes });
+    } catch (e) {
+      setErro(String((e as Error)?.message || e));
+      setGravando(false);
+    }
+  };
+
+  return (
+    <Modal
+      titulo="Conferir documento recebido"
+      subtitulo="Abra o arquivo, confira o que é e informe o tipo e as datas. O documento passa a valer e substitui a versão anterior do mesmo tipo."
+      aoFechar={() => { if (!gravando) { fechar(); } }}
+      largura={620}
+      rodape={(
+        <>
+          <button type="button" style={botao('secundario', gravando)} disabled={gravando} onClick={fechar}>Cancelar</button>
+          <button type="button" style={botao('principal', gravando)} disabled={gravando} onClick={() => { confirmar().catch(() => undefined); }}>
+            {gravando ? 'Gravando…' : 'Confirmar documento'}
+          </button>
+        </>
+      )}
+    >
+      {erro && <Aviso tipo="alerta">{erro}</Aviso>}
+      <div style={{ marginBottom: '12px', fontSize: '13.5px' }}>
+        <strong style={{ overflowWrap: 'anywhere' }}>{recebido.arquivoNome || recebido.titulo}</strong>
+        {recebido.arquivoUrl && <> · <a href={recebido.arquivoUrl} target="_blank" rel="noopener noreferrer" style={{ color: COR.azul }}>abrir o arquivo ↗</a></>}
+        {recebido.observacoes && <div style={ajuda}>{recebido.observacoes}</div>}
+      </div>
+
+      <div>
+        <label style={rotulo} htmlFor="conf-tipo">Tipo de documento</label>
+        <select id="conf-tipo" style={campo} value={tipoId} onChange={e => {
+          const novo = ativos.filter(t => t.id === e.target.value)[0];
+          setTipoId(e.target.value);
+          atualizarSugestao(emissao, novo);
+        }}>
+          <option value="">Escolha…</option>
+          {daCategoria.length > 0 && (
+            <optgroup label="Da categoria do fornecedor">
+              {daCategoria.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </optgroup>
+          )}
+          {outros.length > 0 && (
+            <optgroup label="Outras categorias">
+              {outros.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </optgroup>
+          )}
+        </select>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px 14px', marginTop: '10px' }}>
+        <div>
+          <label style={rotulo} htmlFor="conf-emissao">Emissão</label>
+          <input id="conf-emissao" type="date" style={campo} value={emissao} onChange={e => { setEmissao(e.target.value); atualizarSugestao(e.target.value, tipo); }} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="conf-validade">Validade{tipo && !tipo.exigeValidade ? ' (se houver)' : ''}</label>
+          <input id="conf-validade" type="date" style={campo} value={vencimento} onChange={e => { setVencimento(e.target.value); setVencimentoManual(true); }} />
+          {tipo && tipo.validadeDias && !vencimentoManual && <div style={ajuda}>Sugerida: emissão + {tipo.validadeDias} dias. Confira no documento.</div>}
+        </div>
+      </div>
+
+      <div style={{ marginTop: '10px' }}>
+        <label style={rotulo} htmlFor="conf-obs">Observações</label>
+        <textarea id="conf-obs" style={{ ...campo, resize: 'vertical' }} rows={2} value={observacoes} onChange={e => setObservacoes(e.target.value)} />
+      </div>
+    </Modal>
+  );
+};
+
 const DetalheFornecedorView: React.FC<{
   servico: FornecedoresService;
   fornecedor: IFornecedor;
@@ -420,6 +531,8 @@ const DetalheFornecedorView: React.FC<{
   const [editando, setEditando] = React.useState(false);
   const [registrar, setRegistrar] = React.useState<ITipoDocumentoFornecedor | undefined>(undefined);
   const [verAnteriores, setVerAnteriores] = React.useState(false);
+  const [conferir, setConferir] = React.useState<IDocumentoFornecedor | undefined>(undefined);
+  const [descartando, setDescartando] = React.useState('');
 
   const carregarDocumentos = React.useCallback(async (): Promise<void> => {
     try {
@@ -502,6 +615,30 @@ const DetalheFornecedorView: React.FC<{
 
   const outrosTipos = tipos.filter(t => t.ativo && !tipoSeAplica(t, fornecedor.categoria));
 
+  // Recebidos por e-mail (Fluxo 2), ainda sem tipo e datas.
+  const aConferir = (documentos || []).filter(d => d.situacao === SITUACAO_A_CONFERIR);
+
+  const descartar = async (recebido: IDocumentoFornecedor): Promise<void> => {
+    const motivo = window.prompt(
+      `Descartar "${recebido.arquivoNome || recebido.titulo}"?\n\nO arquivo continua na pasta do SharePoint; só sai da fila. ` +
+      'Informe o motivo (ex.: logo da assinatura do e-mail):',
+      'Não é documento do cadastro');
+    if (motivo === null) {
+      return;
+    }
+    setDescartando(recebido.id);
+    try {
+      await servico.descartarDocumento(fornecedor, recebido, motivo, usuarioNome);
+      setHistorico(undefined);
+      await carregarDocumentos();
+      await aoAlterar('Arquivo descartado da fila.');
+    } catch (e) {
+      setErro(String((e as Error)?.message || e));
+    } finally {
+      setDescartando('');
+    }
+  };
+
   if (verColaboradores) {
     return (
       <ColaboradoresFornecedorView
@@ -538,7 +675,9 @@ const DetalheFornecedorView: React.FC<{
       <div role="tablist" aria-label="Seções do fornecedor" style={{ display: 'flex', gap: '2px', borderBottom: `1px solid ${COR.cinzaClaro}`, marginBottom: '14px', overflowX: 'auto' }}>
         {SECOES.map(s => {
           const ativo = s.id === secao;
-          const contagem = s.id === 'documentos' && situacao.pendencias.length > 0 ? ` (${situacao.pendencias.length})` : '';
+          const contagem = s.id === 'documentos'
+            ? `${situacao.pendencias.length > 0 ? ` (${situacao.pendencias.length})` : ''}${aConferir.length > 0 ? ` · ${aConferir.length} a conferir` : ''}`
+            : '';
           return (
             <button key={s.id} type="button" role="tab" aria-selected={ativo} onClick={() => setSecao(s.id)}
               style={{ padding: '8px 14px', border: 0, borderBottom: `3px solid ${ativo ? COR.ciano : 'transparent'}`, marginBottom: '-1px', background: 'none', color: COR.azul, fontWeight: ativo ? 700 : 500, fontSize: '13.5px', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -578,6 +717,36 @@ const DetalheFornecedorView: React.FC<{
       {secao === 'documentos' && (
         <div>
           {!documentos && <div style={{ padding: '20px', color: COR.texto2 }}>Carregando documentos…</div>}
+          {aConferir.length > 0 && (
+            <div style={{ ...painel, marginBottom: '14px', borderLeft: `4px solid ${COR.ciano}` }}>
+              <div style={{ fontWeight: 700, marginBottom: '4px' }}>Recebidos por e-mail — a conferir ({aConferir.length})</div>
+              <div style={{ ...ajuda, marginBottom: '8px' }}>
+                Arquivos que o fornecedor enviou com o protocolo. Ainda não contam como documento: confira cada um (tipo e datas) ou descarte o que não for documento.
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  {aConferir.map(d => (
+                    <tr key={d.id}>
+                      <td style={celula}>
+                        <div style={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{d.arquivoNome || d.titulo}</div>
+                        <div style={{ fontSize: '12px', color: COR.texto2 }}>recebido em {formatarDataHora(d.criadoEm)}</div>
+                      </td>
+                      <td style={celula}>
+                        {d.arquivoUrl ? <a href={d.arquivoUrl} target="_blank" rel="noopener noreferrer" style={{ color: COR.azul }}>abrir</a> : '—'}
+                      </td>
+                      <td style={{ ...celula, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button type="button" style={botao('principal')} onClick={() => setConferir(d)}>Conferir</button>{' '}
+                        <button type="button" style={botao('discreto', descartando === d.id)} disabled={descartando === d.id}
+                          onClick={() => { descartar(d).catch(() => undefined); }}>
+                          {descartando === d.id ? 'Descartando…' : 'Descartar'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {documentos && situacao.itens.length === 0 && (
             <Aviso tipo="info">Nenhum tipo de documento se aplica à categoria “{fornecedor.categoria || 'sem categoria'}”. Configure em Tipos de documento.</Aviso>
           )}
@@ -767,6 +936,23 @@ const DetalheFornecedorView: React.FC<{
             setEditando(false);
             setHistorico(undefined);
             await aoAlterar('Cadastro atualizado.');
+          }}
+        />
+      )}
+
+      {conferir && (
+        <ConferirDocumentoModal
+          recebido={conferir}
+          tipos={tipos}
+          categoria={fornecedor.categoria}
+          fechar={() => setConferir(undefined)}
+          salvar={async dados => {
+            const vigentes = (documentos || []).filter(d => d.tipoId === dados.tipo.id && d.situacao === 'Vigente');
+            await servico.conferirDocumento(fornecedor, conferir, dados, vigentes, usuarioNome);
+            setConferir(undefined);
+            setHistorico(undefined);
+            await carregarDocumentos();
+            await aoAlterar(`${dados.tipo.nome}: conferido.`);
           }}
         />
       )}

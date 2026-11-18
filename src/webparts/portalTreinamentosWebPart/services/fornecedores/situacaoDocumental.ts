@@ -41,6 +41,8 @@ export interface ISituacaoDocumental {
 export interface IFornecedorComSituacao {
   fornecedor: IFornecedor;
   situacao: ISituacaoDocumental;
+  // Arquivos recebidos por e-mail ainda não conferidos (não contam como documento).
+  aConferir?: number;
 }
 
 // Data local (sem hora) a partir de yyyy-mm-dd.
