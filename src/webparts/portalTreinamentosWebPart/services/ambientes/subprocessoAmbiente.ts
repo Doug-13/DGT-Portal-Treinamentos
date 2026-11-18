@@ -22,6 +22,7 @@ import {
 import {
   PREFIXO_COLUNA,
   assinaturasCriadas,
+  herdarFilhosEmAndamento,
   juntarReferencias,
   linhasDoSubprocesso,
   montarTitulo,
@@ -180,6 +181,8 @@ const executarPedido = async (
 
   // ----- encerra o pedido (mesmo padrão dos documentos) -----
   pedido.filhos = pedido.filhos.concat(criados);
+  // Nova passagem: também espera os registros ainda abertos das anteriores.
+  const herdados = herdarFilhosEmAndamento(instancia.subprocessos, pedido, new Date().toISOString());
   pedido.ignorados = ignorados;
   pedido.erros = erros.length > 0 ? erros : undefined;
   pedido.status = erros.length === 0 ? 'concluido' : criados.length > 0 ? 'parcial' : 'erro';
@@ -200,6 +203,9 @@ const executarPedido = async (
   }
   if (ignorados > 0) {
     partes.push(`${ignorados} linha(s) já tinham registro`);
+  }
+  if (herdados.length > 0) {
+    partes.push(`aguardando também ${herdados.length} registro(s) ainda em andamento: ${herdados.map(item => item.codigo).join(', ')}`);
   }
   if (criados.length === 0 && ignorados === 0 && erros.length === 0) {
     partes.push(config && config.origem === 'tabela' && config.filtroLinhas
@@ -222,7 +228,8 @@ const executarPedido = async (
     revisao: instancia.revisao
   });
 
-  // "Aguardar" sem nada a esperar e sem erros: segue agora.
+  // "Aguardar" sem nada a esperar (nem criado agora, nem herdado de
+  // passagens anteriores ainda em andamento) e sem erros: segue agora.
   if (pedido.aguardando && pedido.filhos.length === 0 && erros.length === 0) {
     liberarSubprocessoNaInstancia(definicao, instancia, 'semDocumentos', { id: 'sistema', nome: 'Sistema' })
       .erros.forEach(erro => erros.push(erro));

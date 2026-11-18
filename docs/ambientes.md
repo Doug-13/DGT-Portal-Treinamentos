@@ -112,7 +112,7 @@ Envie o `.sppkg` ao Catálogo de Aplicativos e abra o portal com **Ctrl+F5**.
 | Chave do ambiente | Permanente (as liberações apontam para ela). Nome, ícone, ordem e liberação podem mudar. |
 | Fluxo do ambiente | Novo ou existente. Pode ser trocado em *Configuração → Trocar fluxo*: registros em andamento terminam no fluxo em que começaram; os novos seguem o novo fluxo. Um fluxo pode ser usado por vários ambientes. |
 | Fluxo feito para documentos | Pode ser usado. Etapas próprias de documentos (publicar, evento de revisão, anexar arquivo, editar documento, subprocesso) são ignoradas — o fluxo segue adiante — e a aba *Configuração* lista quais são. |
-| Versão do fluxo | O registro segue a versão publicada **quando começou**. Uma nova versão vale para os próximos registros. |
+| Versão do fluxo | Alterações no fluxo valem **na hora**, também para registros em andamento. No editor, a versão em uso abre editável: **Aplicar alterações** grava uma nova versão, publica e leva cada registro em andamento para ela, **na mesma etapa** e com o prazo contado de quando a etapa começou (fica no histórico do registro). Se a etapa atual de um registro foi removida, ele continua na versão anterior até concluir e o editor lista quais ficaram. Para mudanças grandes, **Criar rascunho** prepara uma versão sem afetar ninguém até ser publicada. |
 | Responsáveis | "Autor da revisão" = quem abriu o registro; "Gestor da área" = gestores da área informada no registro. Os demais tipos funcionam como em Documentos. |
 | Histórico | Nada é apagado: ambiente é desativado, registro é cancelado; o histórico do fluxo fica no registro. |
 | Códigos | `<PREFIXO>-<ANO>-<0001>`, sequencial por ambiente e ano. |

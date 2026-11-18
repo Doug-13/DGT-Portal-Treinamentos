@@ -56,6 +56,7 @@ import {
   IDadosPai,
   assinaturasCriadas,
   autorDoFilho,
+  herdarFilhosEmAndamento,
   juntarReferencias,
   linhasDoSubprocesso,
   montarTitulo,
@@ -230,6 +231,8 @@ export class SubprocessoService {
 
     const encerrar = (ignorados: number): IResultadoSubprocesso => {
       pedido.filhos = pedido.filhos.concat(criados);
+      // Nova passagem: também espera os documentos ainda abertos das anteriores.
+      const herdados = herdarFilhosEmAndamento(instancia.subprocessos, pedido, agora);
       pedido.ignorados = ignorados;
       pedido.erros = erros.length > 0 ? erros : undefined;
       pedido.status = erros.length === 0 ? 'concluido' : criados.length > 0 ? 'parcial' : 'erro';
@@ -252,6 +255,9 @@ export class SubprocessoService {
       }
       if (ignorados > 0) {
         partes.push(`${ignorados} linha(s) já tinham documento`);
+      }
+      if (herdados.length > 0) {
+        partes.push(`aguardando também ${herdados.length} documento(s) ainda em andamento: ${herdados.map(item => item.codigo).join(', ')}`);
       }
       if (criados.length === 0 && ignorados === 0 && erros.length === 0) {
         partes.push(
@@ -276,8 +282,9 @@ export class SubprocessoService {
         revisao: instancia.revisao
       });
 
-      // Modo "aguardar" sem nenhum documento criado (tabela vazia) e
-      // sem erros: não há o que esperar — o fluxo segue agora.
+      // Modo "aguardar" sem nenhum documento a esperar (nem criado agora,
+      // nem herdado de passagens anteriores ainda em andamento) e sem
+      // erros: o fluxo segue agora.
       if (pedido.aguardando && pedido.filhos.length === 0 && erros.length === 0) {
         const liberacao =
           liberarSubprocessoNaInstancia(definicao, instancia, 'semDocumentos', { id: 'sistema', nome: 'Sistema' });

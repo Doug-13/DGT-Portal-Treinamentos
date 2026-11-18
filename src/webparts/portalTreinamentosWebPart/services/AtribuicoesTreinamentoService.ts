@@ -115,7 +115,8 @@ const normalizar = (
     .trim();
 
 // Mesma regra usada no portal (PortalTreinamentos.tsx).
-const rotuloStatus = (
+// Exportada para a tela "Minha equipe" (UsuarioService.getEquipe).
+export const rotuloStatus = (
   statusValor: number,
   statusTexto: string,
   liberado: boolean,

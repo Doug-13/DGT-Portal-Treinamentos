@@ -519,7 +519,11 @@ const PainelUsuario: React.FC<IPainelUsuarioProps> = ({
 interface ISelecaoCadastro {
   marcado: boolean;
   perfil: PerfilAcesso;
+  areaId: string;
+  papelArea: PerfilArea;
 }
+
+const PAPEIS_AREA: PerfilArea[] = ['Membro', 'Gestor', 'Administrador da área', 'Editor'];
 
 const AdicionarUsuariosModal: React.FC<{
   pendentes: IUsuarioAmbiente[];
@@ -533,11 +537,14 @@ const AdicionarUsuariosModal: React.FC<{
 
   const [selecao, setSelecao] = React.useState<Record<string, ISelecaoCadastro>>(() => {
     const inicial: Record<string, ISelecaoCadastro> = {};
-    pendentes.forEach(p => { inicial[p.systemUserId] = { marcado: true, perfil: 'Funcionario' }; });
+    pendentes.forEach(p => { inicial[p.systemUserId] = { marcado: true, perfil: 'Funcionario', areaId: '', papelArea: 'Membro' }; });
     return inicial;
   });
+  // Área/papel "para todos": apenas preenche as linhas marcadas; o vínculo
+  // gravado é sempre o de cada linha (pode ser ajustado individualmente).
   const [areaId, setAreaId] = React.useState<string>('');
   const [papelArea, setPapelArea] = React.useState<PerfilArea>('Membro');
+  const areasAtivas = areas.filter(a => a.ativa);
   const [processando, setProcessando] = React.useState<boolean>(false);
   const [progresso, setProgresso] = React.useState<string>('');
   const [resultado, setResultado] = React.useState<{ ok: number; falhas: string[] } | undefined>(undefined);
@@ -546,6 +553,19 @@ const AdicionarUsuariosModal: React.FC<{
 
   const alterar = (id: string, parcial: Partial<ISelecaoCadastro>): void =>
     setSelecao(atual => ({ ...atual, [id]: { ...atual[id], ...parcial } }));
+
+  const aplicarAreaATodos = (novaArea: string, novoPapel: PerfilArea): void =>
+    setSelecao(atual => {
+      const proximo: Record<string, ISelecaoCadastro> = { ...atual };
+      Object.keys(proximo).forEach(id => {
+        if (proximo[id].marcado) {
+          proximo[id] = { ...proximo[id], areaId: novaArea, papelArea: novoPapel };
+        }
+      });
+      return proximo;
+    });
+
+  const totalComArea = marcados.filter(p => selecao[p.systemUserId].areaId).length;
 
   const cadastrar = async (): Promise<void> => {
     setProcessando(true);
@@ -556,12 +576,13 @@ const AdicionarUsuariosModal: React.FC<{
       const pessoa = marcados[i];
       setProgresso(`Cadastrando ${i + 1} de ${marcados.length}: ${pessoa.nome}…`);
       try {
-        const usuarioId = await cadastro.cadastrar(pessoa, selecao[pessoa.systemUserId].perfil);
-        if (areaId) {
+        const escolha = selecao[pessoa.systemUserId];
+        const usuarioId = await cadastro.cadastrar(pessoa, escolha.perfil);
+        if (escolha.areaId) {
           await servico.salvarVinculo(contexto, {
             usuarioId,
-            areaId,
-            perfil: papelArea,
+            areaId: escolha.areaId,
+            perfil: escolha.papelArea,
             ativo: true
           });
         }
@@ -589,7 +610,7 @@ const AdicionarUsuariosModal: React.FC<{
     >
       <div
         onClick={evento => evento.stopPropagation()}
-        style={{ width: 'min(860px, 100%)', maxHeight: '100%', overflowY: 'auto', background: '#FFFFFF', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,.3)', padding: '20px 22px', boxSizing: 'border-box' }}
+        style={{ width: 'min(1080px, 100%)', maxHeight: '100%', overflowY: 'auto', background: '#FFFFFF', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,.3)', padding: '20px 22px', boxSizing: 'border-box' }}
       >
         <h2 style={{ margin: 0, fontSize: '18px', color: COR_AZUL }}>Adicionar usuários ao portal</h2>
         <p style={{ margin: '4px 0 16px', fontSize: '13px', color: COR_TEXTO_2 }}>
@@ -601,7 +622,7 @@ const AdicionarUsuariosModal: React.FC<{
           ? (
             <div>
               <div style={{ padding: '12px 14px', borderRadius: '8px', background: '#E7F5EE', color: '#0B6B3A', fontSize: '13px', fontWeight: 700 }}>
-                ✓ {resultado.ok} usuário(s) cadastrado(s){areaId ? ' e vinculado(s) à área' : ''}.
+                ✓ {resultado.ok} usuário(s) cadastrado(s){totalComArea > 0 ? ` (${totalComArea} com vínculo de área)` : ''}.
               </div>
               {resultado.falhas.length > 0 && (
                 <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '8px', background: '#FDE7E9', color: '#B42318', fontSize: '12.5px' }}>
@@ -619,10 +640,10 @@ const AdicionarUsuariosModal: React.FC<{
           : (
             <>
               <div style={{ overflowX: 'auto', border: `1px solid ${COR_BORDA}`, borderRadius: '10px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '620px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>
                   <thead>
                     <tr>
-                      {['', 'Usuário', 'Situação', 'Perfil no portal'].map(coluna => (
+                      {['', 'Usuário', 'Situação', 'Perfil no portal', 'Área', 'Papel na área'].map(coluna => (
                         <th key={coluna} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '12px', color: COR_TEXTO_2, background: '#F8FAFC', borderBottom: `1px solid ${COR_BORDA}` }}>{coluna}</th>
                       ))}
                     </tr>
@@ -663,6 +684,33 @@ const AdicionarUsuariosModal: React.FC<{
                               ))}
                             </select>
                           </td>
+                          <td style={{ padding: '8px 10px', borderBottom: `1px solid ${COR_BORDA}` }}>
+                            <select
+                              aria-label={`Área de ${p.nome}`}
+                              value={atual.areaId}
+                              disabled={processando || !atual.marcado}
+                              onChange={evento => alterar(p.systemUserId, { areaId: evento.target.value })}
+                              style={{ ...campo, minWidth: '180px' }}
+                            >
+                              <option value="">Não vincular</option>
+                              {areasAtivas.map(area => (
+                                <option key={area.id} value={area.id}>{area.sigla ? `${area.sigla} · ` : ''}{area.nome}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td style={{ padding: '8px 10px', borderBottom: `1px solid ${COR_BORDA}` }}>
+                            <select
+                              aria-label={`Papel de ${p.nome} na área`}
+                              value={atual.papelArea}
+                              disabled={processando || !atual.marcado || !atual.areaId}
+                              onChange={evento => alterar(p.systemUserId, { papelArea: evento.target.value as PerfilArea })}
+                              style={campo}
+                            >
+                              {PAPEIS_AREA.map(papel => (
+                                <option key={papel} value={papel}>{papel}</option>
+                              ))}
+                            </select>
+                          </td>
                         </tr>
                       );
                     })}
@@ -672,38 +720,38 @@ const AdicionarUsuariosModal: React.FC<{
 
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginTop: '14px' }}>
                 <label style={{ fontSize: '12px', fontWeight: 700, color: COR_AZUL }}>
-                  Vincular à área (opcional)
+                  Aplicar área a todos os marcados (opcional)
                   <select
                     value={areaId}
                     disabled={processando}
-                    onChange={evento => setAreaId(evento.target.value)}
+                    onChange={evento => { setAreaId(evento.target.value); aplicarAreaATodos(evento.target.value, papelArea); }}
                     style={{ ...campo, display: 'block', marginTop: '4px', minWidth: '240px' }}
                   >
                     <option value="">Não vincular agora</option>
-                    {areas.filter(a => a.ativa).map(area => (
+                    {areasAtivas.map(area => (
                       <option key={area.id} value={area.id}>{area.sigla ? `${area.sigla} · ` : ''}{area.nome}</option>
                     ))}
                   </select>
                 </label>
                 {areaId && (
                   <label style={{ fontSize: '12px', fontWeight: 700, color: COR_AZUL }}>
-                    Papel na área
+                    Papel na área (todos)
                     <select
                       value={papelArea}
                       disabled={processando}
-                      onChange={evento => setPapelArea(evento.target.value as PerfilArea)}
+                      onChange={evento => { const papel = evento.target.value as PerfilArea; setPapelArea(papel); aplicarAreaATodos(areaId, papel); }}
                       style={{ ...campo, display: 'block', marginTop: '4px' }}
                     >
-                      {(['Membro', 'Gestor', 'Administrador da área', 'Editor'] as PerfilArea[]).map(papel => (
+                      {PAPEIS_AREA.map(papel => (
                         <option key={papel} value={papel}>{papel}</option>
                       ))}
                     </select>
                   </label>
                 )}
               </div>
-              {areaId && (
+              {totalComArea > 0 && (
                 <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: COR_TEXTO_2 }}>
-                  Ao vincular à área, os treinamentos e trilhas da área são atribuídos automaticamente.
+                  {totalComArea} usuário(s) serão vinculados à área escolhida na linha. Ao vincular à área, os treinamentos e trilhas da área são atribuídos automaticamente.
                 </p>
               )}
 

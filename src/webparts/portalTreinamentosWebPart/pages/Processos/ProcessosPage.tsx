@@ -68,6 +68,10 @@ import {
 import ImportarPacoteModal from './ImportarPacoteModal';
 
 import {
+  AmbienteFluxoService
+} from '../../services/ambientes/AmbienteFluxoService';
+
+import {
   PacoteProcessoService,
   baixarJson
 } from '../../services/pacoteProcesso/PacoteProcessoService';
@@ -605,10 +609,21 @@ const ProcessosPage: React.FC<IProcessosPageProps> = ({
                 areas={areasAtivas}
                 usuarios={usuarios}
                 gravandoMetadados={dados.gravandoMetadados}
-                onPublicado={() => {
+                onPublicado={async () => {
                   if (podeAtualizarDocumentos && vinculosProcesso.length > 0) {
                     setAtualizacaoVersao({ aposPublicar: true });
                   }
+                  // Ambientes que usam este fluxo: registros em andamento
+                  // passam para a versão publicada, na mesma etapa.
+                  if (!dataverseService || dados.catalogo.local) {
+                    return [];
+                  }
+                  const resultado =
+                    await new AmbienteFluxoService(dataverseService).atualizarRegistrosDoProcesso(
+                      processoSelecionado.id,
+                      { id: contexto ? contexto.usuarioId : '', nome: contexto ? contexto.nome : '' }
+                    );
+                  return resultado.mensagens;
                 }}
                 fontesCopia={
                   dados.processos.map(

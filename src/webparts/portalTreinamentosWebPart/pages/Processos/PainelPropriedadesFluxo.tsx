@@ -12,6 +12,7 @@ import {
   IFluxoCampo,
   IFluxoMetadado,
   IFluxoResponsavel,
+  ModoColunaEtapa,
   StatusDocumentoEtapa,
   TipoElementoFluxo,
   TipoResponsavelFluxo
@@ -306,6 +307,8 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
   // Aba Metadados: "Campos nesta etapa" começa recolhido; busca pelo nome.
   const [camposAbertos, setCamposAbertos] = React.useState(false);
   const [buscaCampo, setBuscaCampo] = React.useState('');
+  // Campo de tabela com a lista "Colunas nesta etapa" aberta.
+  const [colunasAbertas, setColunasAbertas] = React.useState('');
 
   const [nome, setNome] =
     React.useState<string>(selecionado ? selecionado.nome : '');
@@ -788,7 +791,9 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
       opcoes: metadado.opcoes,
       ajuda: metadado.ajuda,
       obrigatorio: false,
-      validarNosResultados: atual ? atual.validarNosResultados : undefined
+      validarNosResultados: atual ? atual.validarNosResultados : undefined,
+      // Colunas da tabela nesta etapa: mantidas ao trocar o modo do campo.
+      modoColunas: atual ? atual.modoColunas : undefined
     };
 
     // Condição atual (ou uma sugerida: o primeiro campo Sim/Não do
@@ -839,6 +844,114 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
           : { ...item, mostrarQuando: condicao };
       })
     });
+  };
+
+  // Modo de UMA coluna de tabela nesta etapa ('' = editável).
+  const alterarModoColuna = (
+    chaveCampo: string,
+    chaveColuna: string,
+    modo: '' | ModoColunaEtapa
+  ): void => {
+    alterar({
+      campos: config.campos.map(item => {
+        if (item.chave !== chaveCampo) {
+          return item;
+        }
+        const modos: Record<string, ModoColunaEtapa> = { ...(item.modoColunas || {}) };
+        if (modo) {
+          modos[chaveColuna] = modo;
+        } else {
+          delete modos[chaveColuna];
+        }
+        return { ...item, modoColunas: Object.keys(modos).length > 0 ? modos : undefined };
+      })
+    });
+  };
+
+  // "Colunas nesta etapa" de um campo de tabela: cada coluna editável,
+  // só de leitura ou oculta NESTA atividade (e, com isso, para os
+  // responsáveis desta atividade).
+  const blocoColunas = (
+    metadado: IFluxoMetadado,
+    campo: IFluxoCampo
+  ): React.ReactNode => {
+    const colunas = metadado.colunas || [];
+    if (colunas.length === 0) {
+      return null;
+    }
+    const modos = campo.modoColunas || {};
+    const campoSoLeitura = !!campo.somenteLeitura;
+    const ocultas = colunas.filter(coluna => modos[coluna.chave] === 'oculta').length;
+    const leitura = colunas.filter(coluna => modos[coluna.chave] === 'leitura').length;
+    const aberto = colunasAbertas === metadado.chave;
+    const obrigatoriasFora =
+      colunas.filter(coluna => coluna.obrigatoria && !!modos[coluna.chave]).map(coluna => coluna.rotulo);
+    const resumo =
+      `${colunas.length - ocultas} de ${colunas.length} visíveis` +
+      (leitura > 0 && !campoSoLeitura ? ` · ${leitura} só leitura` : '');
+
+    return (
+      <div style={{ background: '#F7F9FB', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '6px 8px', fontSize: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+          <span>
+            <strong>Colunas nesta etapa:</strong> {resumo}
+          </span>
+          <button
+            type="button"
+            aria-expanded={aberto}
+            aria-label={`Configurar as colunas de ${metadado.rotulo} nesta etapa`}
+            onClick={() => setColunasAbertas(aberto ? '' : metadado.chave)}
+            style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', color: '#0874CE', fontWeight: 700, fontSize: '11.5px' }}
+          >
+            {aberto ? 'fechar' : (editavel ? 'configurar' : 'ver')}
+          </button>
+        </div>
+
+        {aberto && (
+          <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {colunas.map(coluna => {
+              const modo = modos[coluna.chave] || '';
+              return (
+                <div key={coluna.chave} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 150px', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ opacity: modo === 'oculta' ? 0.55 : 1 }}>
+                    {coluna.rotulo}
+                    {coluna.obrigatoria && <span style={{ color: '#B42318' }} title="Coluna obrigatória"> *</span>}
+                  </span>
+                  <select
+                    aria-label={`Coluna ${coluna.rotulo} nesta etapa`}
+                    value={campoSoLeitura && modo === 'leitura' ? '' : modo}
+                    disabled={!editavel}
+                    onChange={evento => alterarModoColuna(metadado.chave, coluna.chave, evento.target.value as '' | ModoColunaEtapa)}
+                    style={{ ...estiloEntradaPainel, minHeight: '28px', fontSize: '12px' }}
+                  >
+                    <option value="">{campoSoLeitura ? 'Exibir' : 'Editável'}</option>
+                    {!campoSoLeitura && <option value="leitura">Somente leitura</option>}
+                    <option value="oculta">Não exibir</option>
+                  </select>
+                </div>
+              );
+            })}
+            {obrigatoriasFora.length > 0 && !campoSoLeitura && (
+              <div style={{ color: '#92400E', background: '#FFF7E6', borderRadius: '4px', padding: '4px 6px' }}>
+                Não são exigidas nesta etapa (ocultas ou só leitura): {obrigatoriasFora.join(', ')}.
+              </div>
+            )}
+            <div style={{ color: '#64748B' }}>
+              Colunas ocultas mantêm os valores já preenchidos; elas só não aparecem para quem atende esta etapa.
+            </div>
+            {editavel && Object.keys(modos).length > 0 && (
+              <button
+                type="button"
+                onClick={() => alterar({ campos: config.campos.map(item => (item.chave === metadado.chave ? { ...item, modoColunas: undefined } : item)) })}
+                style={{ alignSelf: 'flex-start', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', color: '#0874CE', fontWeight: 700, fontSize: '11.5px' }}
+              >
+                mostrar todas as colunas
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // ---------- Aba Metadados da atividade ----------
@@ -904,6 +1017,9 @@ const PainelPropriedadesFluxo: React.FC<IPainelPropriedadesFluxoProps> = ({
                         {modo === 'condicional' && <option value="condicional">Obrigatório (regra antiga desta etapa)</option>}
                       </select>
                     </div>
+
+                    {/* Tabela: colunas editáveis / só leitura / ocultas nesta etapa. */}
+                    {metadado.tipo === 'tabela' && campo && blocoColunas(metadado, campo)}
 
                     {/* Regra do processo: definida em Metadados do processo. */}
                     {regraProcesso && (

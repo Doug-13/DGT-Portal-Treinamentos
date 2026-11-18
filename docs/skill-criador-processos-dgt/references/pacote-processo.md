@@ -193,6 +193,12 @@ Todo fluxo tem **um** `inicio` e ao menos um `fim`.
 - **`campos`**: só a `chave` do metadado é obrigatória — rótulo, tipo, opções e colunas vêm dele.
   Opcionais: `obrigatorio`, `somenteLeitura`, `ajuda`, `mostrarQuando`, `obrigatorioQuando`
   (`{ campo, valor }`) e `validarNosResultados` (ex.: `["aprovado"]`: só exige ao aprovar).
+- **`modoColunas`** (campo `tabela`): como cada coluna aparece **nesta etapa** — `"oculta"` (não aparece;
+  o valor é mantido) ou `"leitura"` (aparece sem poder alterar). Coluna omitida = editável. Colunas ocultas ou
+  só de leitura não são exigidas na etapa. Ex.: o auditor preenche Resultado e Evidência; a coordenação vê tudo
+  e só preenche o Grau:
+  `{ "chave": "checklist", "modoColunas": { "grau": "oculta", "natureza": "oculta" } }` na etapa do auditor e
+  `{ "chave": "checklist", "modoColunas": { "numero": "leitura", "item": "leitura", "resultado": "leitura" } }` na da coordenação.
 - **`acoes`**: botões da etapa. Sem `acoes` = um botão **Concluir** (`resultado: "concluido"`).
   `resultado` é o que as transições testam. Extras: `principal`, `exigeComentario`,
   `dispensaCampos` (ex.: devolver sem preencher), `mensagemConfirmacao`.

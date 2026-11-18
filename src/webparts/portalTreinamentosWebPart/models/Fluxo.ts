@@ -253,6 +253,9 @@ export type TipoColunaTabela =
   | 'area';
 
 // Coluna de um metadado do tipo tabela.
+// Coluna de tabela numa etapa (ver IFluxoCampo.modoColunas).
+export type ModoColunaEtapa = 'oculta' | 'leitura';
+
 export interface IColunaTabela {
   chave: string;
 
@@ -317,6 +320,13 @@ export interface IFluxoCampo {
 
   // tipo = 'tabela'
   colunas?: IColunaTabela[];
+
+  // tipo = 'tabela': como cada coluna aparece NESTA etapa (chave da
+  // coluna → modo). Coluna ausente = editável (segue o modo do campo).
+  //   'oculta'  → não aparece nesta etapa (o valor é mantido)
+  //   'leitura' → aparece, mas não pode ser alterada nesta etapa
+  // Colunas ocultas ou só de leitura não são exigidas nesta etapa.
+  modoColunas?: Record<string, ModoColunaEtapa>;
 
   // tipo = 'avaliacao'
   avaliacao?: IConfigAvaliacao;
@@ -462,6 +472,9 @@ export interface ISubprocessoSolicitado {
   // 'concluidos' = todos os filhos concluíram; 'administrador' = liberado
   // sem esperar; 'semDocumentos' = nenhuma linha gerou documento.
   liberadoPor?: 'concluidos' | 'administrador' | 'semDocumentos';
+  // Uma nova passagem pelo mesmo subprocesso assumiu a espera (id do
+  // pedido novo, que passou a aguardar também os filhos deste).
+  assumidoPor?: string;
   erros?: string[];
   concluidoEm?: string;
 }

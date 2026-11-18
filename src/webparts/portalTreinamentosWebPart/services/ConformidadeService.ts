@@ -25,6 +25,11 @@ export interface IItemConformidade {
   conclusao: string;
   validade: string;
   diasParaVencer?: number;
+  // Prazo para realizar o treinamento (dgt_datalimite).
+  prazo: string;
+  // Dias até o prazo (negativo = expirado). Só para o que não
+  // foi concluído.
+  diasParaPrazo?: number;
   nota?: number;
   origem: string;
 }
@@ -111,6 +116,27 @@ const formatado = (
     ''
   );
 
+// Data só com dia ("2026-11-30", coluna Somente data do Dataverse)
+// vira meio-dia LOCAL. Com new Date() direto ela seria lida como
+// meia-noite UTC e, no Brasil, cairia no dia anterior.
+export const lerDataConformidade = (
+  valor?: string
+): Date | undefined => {
+
+  if (!valor) {
+    return undefined;
+  }
+
+  const data =
+    /^\d{4}-\d{2}-\d{2}$/.test(valor)
+      ? new Date(`${valor}T12:00:00`)
+      : new Date(valor);
+
+  return Number.isNaN(data.getTime())
+    ? undefined
+    : data;
+};
+
 const calcularDias = (
   valor: string
 ): number | undefined => {
@@ -120,7 +146,8 @@ const calcularDias = (
   }
 
   const data =
-    new Date(valor);
+    lerDataConformidade(valor) ||
+    new Date(NaN);
 
   if (
     Number.isNaN(
@@ -382,6 +409,44 @@ export class ConformidadeService {
               ''
             );
 
+          const prazo =
+            texto(
+              registro,
+              [
+                'dgt_datalimite'
+              ],
+              ''
+            );
+
+          const statusRegistro =
+            status(
+              registro
+            );
+
+          // Concluído (ou com certificado a vencer/vencido, que só
+          // existe depois da conclusão) não tem prazo em aberto.
+          const prazoEmAberto =
+            statusRegistro !== 'Concluído' &&
+            statusRegistro !== 'A vencer' &&
+            statusRegistro !== 'Vencido' &&
+            !texto(registro, ['dgt_dataconclusao'], '');
+
+          const diasParaPrazo =
+            prazoEmAberto
+              ? calcularDias(prazo)
+              : undefined;
+
+          // Prazo para realização expirado e treinamento não feito:
+          // conta como VENCIDO (Pendente, Em andamento ou Bloqueado).
+          // Reprovado continua Reprovado: é uma situação que pede
+          // ação diferente (refazer a avaliação).
+          const statusItem: StatusConformidade =
+            diasParaPrazo !== undefined &&
+            diasParaPrazo < 0 &&
+            statusRegistro !== 'Reprovado'
+              ? 'Vencido'
+              : statusRegistro;
+
           return {
             id:
               texto(
@@ -433,9 +498,11 @@ export class ConformidadeService {
               ),
 
             status:
-              status(
-                registro
-              ),
+              statusItem,
+
+            prazo,
+
+            diasParaPrazo,
 
             conclusao:
               texto(

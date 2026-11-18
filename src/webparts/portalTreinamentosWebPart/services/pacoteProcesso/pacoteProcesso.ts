@@ -42,6 +42,10 @@ import {
 } from '../fluxo/valorAvaliacao';
 
 import {
+  limparModoColunas
+} from '../fluxo/valoresTabela';
+
+import {
   validarConfigComponente
 } from '../fluxo/valorComponente';
 
@@ -110,6 +114,9 @@ export interface IPacoteCampoEtapa {
   somenteLeitura?: boolean;
   opcoes?: string[];
   colunas?: IColunaTabela[];
+  // Tabela: modo de cada coluna NESTA etapa ('oculta' | 'leitura');
+  // coluna ausente = editável.
+  modoColunas?: Record<string, string>;
   ajuda?: string;
   mostrarQuando?: { campo: string; valor: string };
   obrigatorioQuando?: { campo: string; valor: string };
@@ -663,6 +670,21 @@ export const interpretarPacote = (
           erros.push(`${onde} (${idOriginal}).campos[${c}]: o campo "${chave}" não está em "metadados". Declare-o lá primeiro.`);
           return;
         }
+        const colunasCampo = campo.colunas || meta.colunas || [];
+        if (campo.modoColunas !== undefined) {
+          if (tipoCampo !== 'tabela' || !campo.modoColunas || typeof campo.modoColunas !== 'object' || Array.isArray(campo.modoColunas)) {
+            erros.push(`${onde} (${idOriginal}).campos[${c}].modoColunas: só para campo tabela, no formato { "chaveDaColuna": "oculta" | "leitura" }.`);
+          } else {
+            Object.keys(campo.modoColunas).forEach(chaveColuna => {
+              const modoColuna = (campo.modoColunas as Record<string, string>)[chaveColuna];
+              if (!colunasCampo.some(coluna => coluna.chave === chaveColuna)) {
+                erros.push(`${onde} (${idOriginal}).campos[${c}].modoColunas: a coluna "${chaveColuna}" não existe na tabela "${chave}".`);
+              } else if (modoColuna !== 'oculta' && modoColuna !== 'leitura') {
+                erros.push(`${onde} (${idOriginal}).campos[${c}].modoColunas.${chaveColuna}: use "oculta" ou "leitura" (coluna editável: omita).`);
+              }
+            });
+          }
+        }
         const convertido: IFluxoCampo = {
           chave,
           rotulo: texto(campo.rotulo) || meta.rotulo,
@@ -671,6 +693,7 @@ export const interpretarPacote = (
           somenteLeitura: campo.somenteLeitura ? true : undefined,
           opcoes: campo.opcoes || meta.opcoes,
           colunas: campo.colunas || meta.colunas,
+          modoColunas: tipoCampo === 'tabela' ? limparModoColunas(colunasCampo, campo.modoColunas) : undefined,
           avaliacao: meta.avaliacao,
           componente: meta.componente,
           ajuda: texto(campo.ajuda) || meta.ajuda,
@@ -1029,6 +1052,7 @@ export const exportarPacote = (
           const meta = dados.metadados.find(m => m.chave === c.chave);
           if (!meta || meta.rotulo !== c.rotulo) { campo.rotulo = c.rotulo; }
           if (c.somenteLeitura) { campo.somenteLeitura = true; }
+          if (c.modoColunas && Object.keys(c.modoColunas).length > 0) { campo.modoColunas = { ...c.modoColunas }; }
           if (c.mostrarQuando) { campo.mostrarQuando = c.mostrarQuando; }
           if (c.obrigatorioQuando) { campo.obrigatorioQuando = c.obrigatorioQuando; }
           if (c.validarNosResultados) { campo.validarNosResultados = c.validarNosResultados; }

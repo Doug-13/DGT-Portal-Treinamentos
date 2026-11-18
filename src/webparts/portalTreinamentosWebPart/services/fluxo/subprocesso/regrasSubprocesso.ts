@@ -3,6 +3,7 @@ import {
   IConfigSubprocesso,
   IFluxoElemento,
   IFluxoMetadado,
+  ISubprocessoFilho,
   ISubprocessoSolicitado
 } from '../../../models/Fluxo';
 
@@ -205,6 +206,48 @@ export const assinaturasCriadas = (
   (pedidos || [])
     .filter(item => item.elementoId === elementoId)
     .reduce((lista: string[], item) => lista.concat(item.filhos.map(filho => filho.assinatura)), []);
+
+// Modo "aguardar" numa NOVA passagem pelo mesmo subprocesso (ex.: o
+// fluxo voltou a ele por um retorno): as linhas que já viraram
+// documento não são recriadas, mas os documentos delas podem continuar
+// em andamento. O pedido novo passa a esperar também por eles (cópias
+// dos filhos ainda não concluídos dos pedidos anteriores do MESMO
+// elemento), e um pedido anterior que ainda aguardava deixa de aguardar
+// — o novo assume a espera. Sem isso, o pedido novo ficava sem filhos
+// e o fluxo seguia na hora ("nenhum documento criado"), com os filhos
+// anteriores ainda abertos. ALTERA os pedidos recebidos.
+// Devolve os filhos herdados (para o histórico).
+export const herdarFilhosEmAndamento = (
+  pedidos: ISubprocessoSolicitado[] | undefined,
+  pedido: ISubprocessoSolicitado,
+  agora: string
+): ISubprocessoFilho[] => {
+  if (!pedido.aguardando) {
+    return [];
+  }
+  const herdados: ISubprocessoFilho[] = [];
+  (pedidos || [])
+    .filter(item => item !== pedido && item.id !== pedido.id && item.elementoId === pedido.elementoId)
+    .forEach(anterior => {
+      (anterior.filhos || [])
+        .filter(filho => !filho.concluido)
+        .forEach(filho => {
+          const jaTem =
+            pedido.filhos.some(item => item.documentoId === filho.documentoId) ||
+            herdados.some(item => item.documentoId === filho.documentoId);
+          if (!jaTem) {
+            herdados.push({ ...filho });
+          }
+        });
+      if (anterior.aguardando) {
+        anterior.aguardando = false;
+        anterior.liberadoEm = agora;
+        anterior.assumidoPor = pedido.id;
+      }
+    });
+  pedido.filhos = pedido.filhos.concat(herdados);
+  return herdados;
+};
 
 // ------------------------------------------------------------
 // Título e valores do documento filho

@@ -849,6 +849,35 @@ export class AmbienteService {
     return registros.map(item => this.converterRegistro(item));
   }
 
+  // Registros pelo id, de QUALQUER ambiente (ex.: referências de um
+  // registro a registros criados por subprocesso em outro ambiente).
+  // Só volta o que o usuário consegue LER (Security Role); os demais
+  // ids simplesmente não aparecem no resultado.
+  public async obterRegistrosPorId(
+    ids: string[]
+  ): Promise<IAmbienteRegistro[]> {
+    const unicos = ids
+      .map(id => String(id || '').replace(/[{}]/g, '').trim().toLowerCase())
+      .filter((id, indice, lista) => /^[0-9a-f-]{36}$/.test(id) && lista.indexOf(id) === indice);
+    const resultado: IAmbienteRegistro[] = [];
+    for (let inicio = 0; inicio < unicos.length; inicio += 20) {
+      const lote = unicos.slice(inicio, inicio + 20);
+      const registros =
+        await this.dataverse.listarRegistros(
+          TABELAS_AMBIENTE.registro,
+          `$select=${[
+            REGISTRO.id, REGISTRO.titulo, REGISTRO.codigo, REGISTRO.descricao,
+            REGISTRO.situacao, REGISTRO.etapaAtual, REGISTRO.prazoEtapa,
+            REGISTRO.concluidoEm, REGISTRO.criadoEm, REGISTRO.ambienteValor,
+            REGISTRO.areaValor, REGISTRO.solicitanteValor
+          ].join(',')}` +
+          `&$filter=${lote.map(id => `${REGISTRO.id} eq ${id}`).join(' or ')}`
+        );
+      registros.forEach(item => resultado.push(this.converterRegistro(item)));
+    }
+    return resultado;
+  }
+
   // Próximo código: <PREFIXO>-<ANO>-<0001>. O sequencial é por
   // ambiente e por ano.
   private async proximoCodigo(

@@ -17,6 +17,10 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Novo: Implantações — botão "Configurar IA" no Assistente (só administrador do módulo): define o comportamento das respostas, com versões. Padrão novo: respostas objetivas para a diretoria (resposta direta + até 5 tópicos, sem reproduzir gráficos e listas que o painel já mostra).
 - Correção: Implantações — o Assistente não corta mais a resposta com o aviso "Resposta interrompida por tamanho": quando o limite é atingido, o portal pede a continuação e entrega o texto inteiro.
 - Correção: Implantações — caixa de pergunta do Assistente com tamanho normal (antes herdava a altura mínima de 170px dos diálogos).
+- Novo: colunas de tabela por atividade — no campo de tabela de cada etapa, cada coluna pode ser editável, somente leitura ou não exibida (ex.: o auditor não vê o Grau da NC; a coordenação vê o Resultado só para leitura). Colunas ocultas mantêm os valores e não são exigidas na etapa. Também no pacote JSON (`modoColunas`).
+- Correção: subprocesso com "Aguardar todos serem concluídos" seguia na hora quando o fluxo voltava a ele e as linhas já tinham registro ("nenhum documento criado — fluxo retomado"), mesmo com os registros anteriores em andamento; agora a nova passagem espera também os registros/documentos ainda abertos (ambientes e documentos).
+- Melhoria: "Documentos relacionados" do registro em cartões clicáveis, com situação e etapa atual de cada referência; o link abre o registro (inclusive em outro ambiente, ex.: RNC em Não Conformidades) ou o documento.
+- Melhoria: edição direta do fluxo — a versão em uso abre já editável; "Aplicar alterações" grava, publica e leva os registros em andamento dos ambientes para o desenho novo, na mesma etapa e sem reiniciar o prazo. O rascunho continua disponível ("Criar rascunho") para mudanças grandes.
 - Correção: subprocesso em registros de ambiente — antes era ignorado (...)
 
 ## [1.4.27] - 2026-11-16
