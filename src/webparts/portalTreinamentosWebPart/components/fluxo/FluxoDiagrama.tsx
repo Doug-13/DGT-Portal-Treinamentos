@@ -342,6 +342,32 @@ const renderizarElemento = (
     );
   }
 
+  // Evento de notificação: círculo duplo com carta (evento de mensagem
+  // do BPMN), nome abaixo. Não para o fluxo.
+  if (elemento.tipo === 'eventoNotificacao') {
+
+    const atual =
+      status === 'atual';
+
+    const percorrido =
+      status === 'concluido';
+
+    const cx = x + largura / 2;
+    const cy = y + altura / 2;
+    const raio = largura / 2 - 1;
+
+    return (
+      <g key={elemento.id}>
+        <title>{`${titulo} · Envia notificação`}</title>
+        <circle cx={cx} cy={cy} r={raio} fill={percorrido ? COR_CIANO_CLARO : '#FFFFFF'} stroke={atual ? COR_CIANO : COR_AZUL} strokeWidth={1.6} />
+        <circle cx={cx} cy={cy} r={raio - 3} fill="none" stroke={atual ? COR_CIANO : COR_AZUL} strokeWidth={1.2} />
+        <rect x={cx - 8} y={cy - 5.5} width={16} height={11} rx={1} fill={COR_AZUL} />
+        <path d={`M${cx - 8} ${cy - 5}l8 6 8-6`} fill="none" stroke="#FFFFFF" strokeWidth={1.3} />
+        {rotuloExterno(elemento)}
+      </g>
+    );
+  }
+
   if (elemento.tipo === 'gateway') {
 
     const estilo =

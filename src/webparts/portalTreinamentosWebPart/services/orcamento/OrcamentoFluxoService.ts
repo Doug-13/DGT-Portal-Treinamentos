@@ -1,4 +1,8 @@
 import {
+  NotificacaoFluxoService
+} from '../notificacoes/NotificacaoFluxoService';
+
+import {
   DataverseService
 } from '../DataverseService';
 
@@ -266,7 +270,9 @@ export class OrcamentoFluxoService {
       new FluxoService(
         this.repositorio,
         persistencia.catalogo,
-        persistencia.metadados
+        persistencia.metadados,
+        // Notificações do fluxo (aba Notificações e evento com carta).
+        new NotificacaoFluxoService(dataverse, 'orcamento')
       );
   }
 

@@ -57,6 +57,10 @@ import {
   IFluxoRepositorio
 } from './FluxoRepositorioLocal';
 
+import {
+  IDespachanteNotificacoes
+} from './notificacaoFluxo';
+
 // ============================================================
 // SERVIÇO DO FLUXO DE REVISÃO
 //
@@ -98,14 +102,68 @@ export class FluxoService {
   private readonly metadados:
     IMetadadosRepositorio;
 
+  // Grava os pedidos de notificação (fila dgt_implemail). Ausente no
+  // modo de teste: as notificações ficam só no histórico do fluxo.
+  private readonly notificacoes?:
+    IDespachanteNotificacoes;
+
   public constructor(
     repositorio: IFluxoRepositorio,
     catalogo: IFluxoCatalogo,
-    metadados: IMetadadosRepositorio
+    metadados: IMetadadosRepositorio,
+    notificacoes?: IDespachanteNotificacoes
   ) {
     this.repositorio = repositorio;
     this.catalogo = catalogo;
     this.metadados = metadados;
+    this.notificacoes = notificacoes;
+  }
+
+  // ----------------------------------------------------------
+  // GRAVAÇÃO + NOTIFICAÇÕES
+  //
+  // Toda gravação de estado passa por aqui: retira da instância os
+  // pedidos de notificação anotados pelo motor (nunca são gravados no
+  // estado), grava o estado e só então registra os pedidos. Falha ao
+  // registrar uma notificação NÃO desfaz a ação: vira aviso na tela.
+  // ----------------------------------------------------------
+  private async gravar(
+    instancia: IFluxoInstancia,
+    contextoGravacao: IContextoGravacaoFluxo,
+    contexto?: IContextoExecucaoFluxo
+  ): Promise<string[]> {
+
+    const pedidos =
+      instancia.notificacoesSolicitadas || [];
+
+    delete instancia.notificacoesSolicitadas;
+
+    const avisos =
+      (await this.repositorio.salvar(instancia, contextoGravacao)) || [];
+
+    if (pedidos.length === 0 || !this.notificacoes || this.repositorio.local) {
+      return avisos;
+    }
+
+    try {
+      const avisosNotificacao =
+        await this.notificacoes.registrar(pedidos, {
+          origem: '',
+          alvoId: instancia.revisaoId,
+          registro: (contexto && contexto.rotuloRevisao) || contextoGravacao.rotuloRevisao || '',
+          revisao: instancia.revisao,
+          processo: instancia.processoNome || '',
+          valores: instancia.valores || {},
+          link: typeof window !== 'undefined' ? window.location.href.split('#')[0] : '',
+          resolverResponsaveis: contexto ? contexto.resolverResponsaveis : undefined
+        });
+      return avisos.concat(avisosNotificacao);
+    } catch (erro) {
+      console.error(erro);
+      return avisos.concat([
+        `A ação foi concluída, mas as notificações não foram registradas: ${erro instanceof Error ? erro.message : String(erro)}`
+      ]);
+    }
   }
 
   public get gravaApenasLocalmente(): boolean {
@@ -189,9 +247,10 @@ export class FluxoService {
     });
 
     const avisos =
-      await this.repositorio.salvar(
+      await this.gravar(
         instancia,
-        this.contextoGravacao(definicao, instancia, { rotuloRevisao: ajuste.rotuloRevisao } as IContextoExecucaoFluxo)
+        this.contextoGravacao(definicao, instancia, { rotuloRevisao: ajuste.rotuloRevisao } as IContextoExecucaoFluxo),
+        { rotuloRevisao: ajuste.rotuloRevisao } as IContextoExecucaoFluxo
       );
 
     return { instancia, avisos, alterados };
@@ -351,9 +410,10 @@ export class FluxoService {
       this.preencherResponsaveis(resultado.instancia, contexto);
 
       resultado.avisos =
-        await this.repositorio.salvar(
+        await this.gravar(
           resultado.instancia,
-          this.contextoGravacao(definicao, resultado.instancia, contexto)
+          this.contextoGravacao(definicao, resultado.instancia, contexto),
+          contexto
         );
     }
 
@@ -429,9 +489,10 @@ export class FluxoService {
       this.preencherResponsaveis(resultado.instancia, contexto);
 
       resultado.avisos =
-        await this.repositorio.salvar(
+        await this.gravar(
           resultado.instancia,
-          this.contextoGravacao(definicao, resultado.instancia, contexto)
+          this.contextoGravacao(definicao, resultado.instancia, contexto),
+          contexto
         );
     }
 
@@ -485,9 +546,10 @@ export class FluxoService {
       this.preencherResponsaveis(resultado.instancia, contexto);
 
       resultado.avisos =
-        await this.repositorio.salvar(
+        await this.gravar(
           resultado.instancia,
-          this.contextoGravacao(definicao, resultado.instancia, contexto)
+          this.contextoGravacao(definicao, resultado.instancia, contexto),
+          contexto
         );
     }
 
@@ -577,9 +639,10 @@ export class FluxoService {
       this.preencherResponsaveis(resultado.instancia, contexto);
 
       resultado.avisos =
-        await this.repositorio.salvar(
+        await this.gravar(
           resultado.instancia,
-          this.contextoGravacao(definicao, resultado.instancia, contexto)
+          this.contextoGravacao(definicao, resultado.instancia, contexto),
+          contexto
         );
     }
 
@@ -606,7 +669,7 @@ export class FluxoService {
     if (!resultado.ok || !resultado.instancia) {
       return resultado;
     }
-    const avisos = await this.repositorio.salvar(resultado.instancia, this.contextoGravacao(definicao, resultado.instancia, contexto));
+    const avisos = await this.gravar(resultado.instancia, this.contextoGravacao(definicao, resultado.instancia, contexto), contexto);
     return { ...resultado, avisos };
   }
 
@@ -658,7 +721,7 @@ export class FluxoService {
     }
 
     this.preencherResponsaveis(instancia, contexto);
-    const avisos = await this.repositorio.salvar(instancia, this.contextoGravacao(definicao, instancia, contexto));
+    const avisos = await this.gravar(instancia, this.contextoGravacao(definicao, instancia, contexto), contexto);
     return { ok: true, erros: [], acoesSistema: acoes, instancia, avisos };
   }
 
@@ -741,9 +804,10 @@ export class FluxoService {
       this.preencherResponsaveis(resultado.instancia, contexto);
 
       resultado.avisos =
-        await this.repositorio.salvar(
+        await this.gravar(
           resultado.instancia,
-          this.contextoGravacao(definicao, resultado.instancia, contexto)
+          this.contextoGravacao(definicao, resultado.instancia, contexto),
+          contexto
         );
     }
 
@@ -800,9 +864,10 @@ export class FluxoService {
       this.preencherResponsaveis(resultado.instancia, contexto);
 
       const avisosGravacao =
-        await this.repositorio.salvar(
+        await this.gravar(
           resultado.instancia,
-          this.contextoGravacao(destino, resultado.instancia, contexto)
+          this.contextoGravacao(destino, resultado.instancia, contexto),
+          contexto
         );
 
       resultado.avisos = resultado.avisos.concat(avisosGravacao || []);

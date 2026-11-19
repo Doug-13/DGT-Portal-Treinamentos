@@ -10,7 +10,8 @@ import {
 import {
   IBpmnConexao,
   IBpmnForma,
-  IBpmnSnapshot
+  IBpmnSnapshot,
+  TIPO_BPMN_EVENTO_NOTIFICACAO
 } from '../../../services/fluxo/bpmn/bpmnConversao';
 
 import {
@@ -203,6 +204,34 @@ const ICONE_SCRIPT =
   '<path d="M9 7.4v1.2M9 13.4v1.2M5.4 11h1.2M11.4 11h1.2M6.5 8.5l.8.8M10.7 12.7l.8.8M6.5 13.5l.8-.8M10.7 9.3l.8-.8" stroke="currentColor" stroke-width="1.2" />' +
   '</svg>';
 
+// Círculo com carta (Evento de notificação).
+const ICONE_NOTIFICACAO =
+  '<svg width="30" height="30" viewBox="0 0 26 26" aria-hidden="true">' +
+  '<circle cx="13" cy="13" r="11" fill="none" stroke="currentColor" stroke-width="1.8" />' +
+  '<rect x="7" y="9" width="12" height="8.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.5" />' +
+  '<path d="M7.3 9.4l5.7 4.5 5.7-4.5" fill="none" stroke="currentColor" stroke-width="1.5" />' +
+  '</svg>';
+
+// Evento intermediário com definição de mensagem = evento de notificação.
+const ehEventoNotificacao = (
+  elemento: any
+): boolean =>
+  !!elemento &&
+  elemento.type === 'bpmn:IntermediateThrowEvent' &&
+  !!elemento.businessObject &&
+  Array.isArray(elemento.businessObject.eventDefinitions) &&
+  elemento.businessObject.eventDefinitions.some(
+    (definicao: any) => definicao && definicao.$type === 'bpmn:MessageEventDefinition'
+  );
+
+// Tipo gravado no retrato do desenho (diferencia os dois eventos).
+const tipoDaForma = (
+  elemento: any
+): string =>
+  ehEventoNotificacao(elemento)
+    ? TIPO_BPMN_EVENTO_NOTIFICACAO
+    : elemento.type;
+
 function FiltroPaleta(this: any, palette: any, create: any, elementFactory: any): void {
   this._create = create;
   this._elementFactory = elementFactory;
@@ -219,6 +248,16 @@ FiltroPaleta.prototype.getPaletteEntries = function (this: any): (entradas: Reco
   const criarAssinatura = (evento: any): void => {
     const forma = elementFactory.createShape({ type: 'bpmn:ServiceTask' });
     forma.businessObject.name = 'Assinatura digital';
+    create.start(evento, forma);
+  };
+
+  // Evento de notificação: o bpmn-js desenha o círculo com a carta.
+  const criarNotificacao = (evento: any): void => {
+    const forma = elementFactory.createShape({
+      type: 'bpmn:IntermediateThrowEvent',
+      eventDefinitionType: 'bpmn:MessageEventDefinition'
+    });
+    forma.businessObject.name = 'Notificação';
     create.start(evento, forma);
   };
 
@@ -252,6 +291,18 @@ FiltroPaleta.prototype.getPaletteEntries = function (this: any): (entradas: Reco
         }
       }
     );
+
+    // Evento de notificação (círculo com carta). Duplo clique abre a
+    // configuração: destinatários, canais e texto.
+    filtradas['create.notificacao'] = {
+      group: 'event',
+      title: 'Notificação (envia e-mail, Teams ou aviso no portal ao passar)',
+      html: `<div class="entry" draggable="true" style="display:flex;align-items:center;justify-content:center;color:#202A44">${ICONE_NOTIFICACAO}</div>`,
+      action: {
+        dragstart: criarNotificacao,
+        click: criarNotificacao
+      }
+    };
 
     // Assinatura digital (tarefa de sistema "assinaturaDigital").
     filtradas['create.assinatura'] = {
@@ -428,7 +479,7 @@ const resumo = (
 
   return {
     id: elemento.id,
-    tipoBpmn: elemento.type,
+    tipoBpmn: tipoDaForma(elemento),
     nome: (elemento.businessObject && elemento.businessObject.name) || '',
     conexao: !!elemento.waypoints,
     origemId: elemento.source ? elemento.source.id : undefined,
@@ -509,7 +560,7 @@ export const criarModelerFluxo = (
 
           formas.push({
             id: elemento.id,
-            tipo: elemento.type,
+            tipo: tipoDaForma(elemento),
             nome,
             x: elemento.x,
             y: elemento.y,

@@ -3,6 +3,12 @@ import {
 } from '../assinaturaFluxo';
 
 import {
+  IConfigNotificacao,
+  configNotificacaoPadrao,
+  normalizarNotificacaoAtividade
+} from '../notificacaoFluxo';
+
+import {
   NOME_PADRAO_EVENTO_REVISAO
 } from '../../../utils/numeracaoRevisao';
 
@@ -59,8 +65,14 @@ export interface IBpmnSnapshot {
 // Configuração de negócio de uma etapa (o que não está no desenho).
 export type IConfigElemento = Pick<
   IFluxoElemento,
-  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo' | 'permiteEditarDocumento' | 'subprocesso' | 'script' | 'assinatura'
+  'subtitulo' | 'instrucoes' | 'prazoDiasUteis' | 'responsaveis' | 'acoes' | 'campos' | 'acaoSistema' | 'statusDocumento' | 'tipoRevisao' | 'retreinamentoAoPublicar' | 'removerArquivo' | 'anexoArquivo' | 'permiteEditarDocumento' | 'subprocesso' | 'script' | 'assinatura' | 'notificacoes'
 >;
+
+// Evento intermediário COM definição de mensagem (círculo com carta)
+// = evento de notificação. O bpmn-js informa o tipo
+// 'bpmn:IntermediateThrowEvent' para os dois eventos; o retrato do
+// desenho usa este tipo próprio para diferenciá-los.
+export const TIPO_BPMN_EVENTO_NOTIFICACAO = 'dgt:EventoNotificacao';
 
 // Configuração de negócio de uma ligação.
 export type IConfigTransicao = Pick<
@@ -83,6 +95,8 @@ const MAPA_TIPOS: Record<string, TipoElementoFluxo> = {
   'bpmn:ScriptTask': 'tarefaSistema',
   // Evento intermediário (círculo) = evento de revisão.
   'bpmn:IntermediateThrowEvent': 'eventoRevisao',
+  // Evento intermediário de mensagem (círculo com carta).
+  [TIPO_BPMN_EVENTO_NOTIFICACAO]: 'eventoNotificacao',
   // Chamada de processo (borda grossa) = subprocesso: cria
   // documentos que seguem outro fluxo.
   'bpmn:CallActivity': 'subprocesso'
@@ -127,6 +141,7 @@ const TIPO_BPMN_DO_FLUXO: Record<TipoElementoFluxo, string> = {
   gateway: 'bpmn:exclusiveGateway',
   tarefaSistema: 'bpmn:serviceTask',
   eventoRevisao: 'bpmn:intermediateThrowEvent',
+  eventoNotificacao: 'bpmn:intermediateThrowEvent',
   subprocesso: 'bpmn:callActivity'
 };
 
@@ -138,6 +153,7 @@ const TIPO_BPMN_EDITOR: Record<TipoElementoFluxo, string> = {
   gateway: 'bpmn:ExclusiveGateway',
   tarefaSistema: 'bpmn:ServiceTask',
   eventoRevisao: 'bpmn:IntermediateThrowEvent',
+  eventoNotificacao: TIPO_BPMN_EVENTO_NOTIFICACAO,
   subprocesso: 'bpmn:CallActivity'
 };
 
@@ -229,6 +245,15 @@ export const configPadraoElemento = (
     };
   }
 
+  if (tipo === 'eventoNotificacao') {
+    return {
+      responsaveis: [],
+      acoes: [],
+      campos: [],
+      notificacoes: [configNotificacaoPadrao('evento')]
+    };
+  }
+
   if (tipo === 'eventoRevisao') {
     return {
       tipoRevisao: 'revisao',
@@ -259,6 +284,30 @@ export const configInicialElemento = (
       : configPadraoElemento(tipo);
 
 
+// Notificações que ficam na definição: atividades (aba Notificações) e
+// eventos de notificação (sempre pelo menos uma).
+const notificacoesDoElemento = (
+  tipo: TipoElementoFluxo,
+  notificacoes?: IConfigNotificacao[]
+): IConfigNotificacao[] | undefined => {
+  if (tipo === 'eventoNotificacao') {
+    return notificacoes && notificacoes.length > 0
+      ? notificacoes.map(item => ({
+        ...item,
+        momento: 'aoChegar' as const,
+        incluirResponsaveisEtapa: false,
+        // Só e-mail e Teams (o aviso no portal saiu).
+        canais: item.canais.filter(canal => canal !== 'portal').length > 0
+          ? item.canais.filter(canal => canal !== 'portal')
+          : ['email' as const]
+      }))
+      : [configNotificacaoPadrao('evento')];
+  }
+  return tipo === 'tarefaHumana' && notificacoes && notificacoes.length > 0
+    ? notificacoes.map(normalizarNotificacaoAtividade)
+    : undefined;
+};
+
 export const configPadraoTransicao = (): IConfigTransicao => ({
   tipoCondicao: 'sempre',
   padrao: false,
@@ -283,7 +332,8 @@ export const configDoElemento = (
   permiteEditarDocumento: elemento.permiteEditarDocumento,
   subprocesso: elemento.subprocesso,
   script: elemento.script,
-  assinatura: elemento.assinatura
+  assinatura: elemento.assinatura,
+  notificacoes: elemento.notificacoes
 });
 
 export const configDaTransicao = (
@@ -370,6 +420,10 @@ export const definicaoParaBpmnXml = (
         `    <${tag} id="${escaparXml(elemento.id)}" name="${escaparXml(elemento.nome)}">`,
         ...entradas,
         ...saidas,
+        // Evento de notificação: círculo com carta (evento de mensagem).
+        ...(elemento.tipo === 'eventoNotificacao'
+          ? [`      <bpmn:messageEventDefinition id="${escaparXml(elemento.id)}_msg" />`]
+          : []),
         `    </${tag}>`
       );
 
@@ -611,7 +665,9 @@ export const montarDefinicao = (
                   ? NOME_PADRAO_EVENTO_REVISAO[config.tipoRevisao || 'revisao']
                   : tipo === 'subprocesso'
                     ? 'Subprocesso'
-                    : 'Etapa sem nome'),
+                    : tipo === 'eventoNotificacao'
+                      ? 'Notificação'
+                      : 'Etapa sem nome'),
           subtitulo: humana || tipo === 'tarefaSistema' || tipo === 'subprocesso' ? config.subtitulo : undefined,
           instrucoes: humana ? config.instrucoes : undefined,
           prazoDiasUteis: humana ? config.prazoDiasUteis : undefined,
@@ -634,6 +690,7 @@ export const montarDefinicao = (
             : undefined,
           anexoArquivo: humana && config.anexoArquivo && config.anexoArquivo !== 'nao' ? config.anexoArquivo : undefined,
           permiteEditarDocumento: humana && typeof config.permiteEditarDocumento === 'boolean' ? config.permiteEditarDocumento : undefined,
+          notificacoes: notificacoesDoElemento(tipo, config.notificacoes),
           posicao: mover({ x: forma.x, y: forma.y, largura: forma.largura, altura: forma.altura }),
           rotuloPosicao: forma.rotulo ? mover(forma.rotulo) : undefined
         };

@@ -52,6 +52,16 @@ export const PREFERENCIAS_PADRAO: IPreferenciasAvisos = {
 // recarrega na hora) e para o botão "Testar aviso".
 export const EVENTO_PREFERENCIAS = 'dgt-avisos-preferencias';
 export const EVENTO_TESTE = 'dgt-avisos-teste';
+// Disparado quando o histórico de avisos muda (sino do cabeçalho).
+export const EVENTO_HISTORICO = 'dgt-avisos-historico';
+
+const avisarHistorico = (): void => {
+  try {
+    window.dispatchEvent(new Event(EVENTO_HISTORICO));
+  } catch {
+    // Navegador antigo: o sino atualiza ao abrir.
+  }
+};
 
 const chave = (email: string, sufixo: string): string =>
   `dgt-portal-avisos:${(email || 'anonimo').trim().toLowerCase()}:${sufixo}`;
@@ -112,8 +122,19 @@ export const acrescentarHistorico = (email: string, avisos: IAviso[]): void => {
     return;
   }
   gravar(chave(email, 'historico'), avisos.concat(lerHistorico(email)).slice(0, 30));
+  avisarHistorico();
 };
 
 export const limparHistorico = (email: string): void => {
   gravar(chave(email, 'historico'), []);
+  avisarHistorico();
+};
+
+// Avisos já abertos/marcados como lidos no sino do cabeçalho.
+export const lerLidos = (email: string): string[] =>
+  ler<string[]>(chave(email, 'lidos'), []);
+
+export const gravarLidos = (email: string, ids: string[]): void => {
+  gravar(chave(email, 'lidos'), ids.slice(-200));
+  avisarHistorico();
 };

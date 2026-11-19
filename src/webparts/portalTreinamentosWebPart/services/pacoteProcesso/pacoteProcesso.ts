@@ -1,4 +1,8 @@
 import {
+  IConfigNotificacao
+} from '../fluxo/notificacaoFluxo';
+
+import {
   AcaoSistemaFluxo,
   AnexoArquivoEtapa,
   IColunaTabela,
@@ -147,6 +151,10 @@ export interface IPacoteElemento {
   };
   tipoRevisao?: string;
   removerArquivo?: boolean;
+  // tarefaHumana (aba Notificações) e eventoNotificacao (círculo com carta).
+  // Destinatários do tipo Área/Usuário levam o id do ambiente de origem:
+  // confira-os depois de importar em outro ambiente.
+  notificacoes?: IConfigNotificacao[];
   // subprocesso: "fluxo" = CÓDIGO do processo cujo fluxo os filhos seguem
   subprocesso?: Partial<IConfigSubprocesso> & { fluxo?: string; area?: string };
   posicao?: { x: number; y: number; largura?: number; altura?: number };
@@ -258,7 +266,7 @@ export interface IResultadoInterpretacao {
 
 const TIPOS_CAMPO: TipoCampoFluxo[] = ['avaliacao', 'componente', 'simNao', 'texto', 'textoLongo', 'numero', 'data', 'lista', 'tabela', 'usuario', 'documento', 'documentos', 'area'];
 const TIPOS_COLUNA: TipoColunaTabela[] = ['texto', 'textoLongo', 'numero', 'data', 'simNao', 'lista', 'usuario', 'documento', 'documentos', 'area'];
-const TIPOS_ELEMENTO: TipoElementoFluxo[] = ['inicio', 'fim', 'tarefaHumana', 'tarefaSistema', 'gateway', 'eventoRevisao', 'subprocesso'];
+const TIPOS_ELEMENTO: TipoElementoFluxo[] = ['inicio', 'fim', 'tarefaHumana', 'tarefaSistema', 'gateway', 'eventoRevisao', 'eventoNotificacao', 'subprocesso'];
 const TIPOS_RESPONSAVEL = ['autorRevisao', 'gestorArea', 'area', 'cargoArea', 'nivelHierarquico', 'usuario', 'campoUsuario'];
 const STATUS_DOCUMENTO: StatusDocumentoEtapa[] = ['Elaboração', 'Revisão', 'Aprovação', 'Vigente'];
 const ACOES_SISTEMA: AcaoSistemaFluxo[] = ['assinaturaDigital', 'executarScript', 'publicarComRetreinamento', 'publicarSemRetreinamento', 'novaRevisao', 'novaSubRevisao', 'proximaRevisao', 'removerArquivoRevisao'];
@@ -759,6 +767,10 @@ export const interpretarPacote = (
       }
     }
 
+    if ((tipo === 'tarefaHumana' || tipo === 'eventoNotificacao') && Array.isArray(item.notificacoes) && item.notificacoes.length > 0) {
+      elemento.notificacoes = item.notificacoes;
+    }
+
     if (tipo === 'eventoRevisao') {
       elemento.tipoRevisao = (texto(item.tipoRevisao) || 'revisao') as TipoEventoRevisao;
       elemento.removerArquivo = item.removerArquivo ? true : undefined;
@@ -1073,6 +1085,9 @@ export const exportarPacote = (
               ? { origem: 'usuario' as const, email: emailUsuario(sig.usuarioId), papel: sig.papel }
               : { origem: 'campo' as const, campo: sig.campo, papel: sig.papel })
         };
+      }
+      if (el.notificacoes && el.notificacoes.length > 0) {
+        saida.notificacoes = el.notificacoes;
       }
       if (el.tipo === 'eventoRevisao') {
         saida.tipoRevisao = el.tipoRevisao;
