@@ -6,6 +6,16 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: Fluxos — aba Notificações nas atividades: avisa os responsáveis da atividade por e-mail quando ela começa ou é concluída (opcional: só para certos botões, ex.: Reprovar). Caixa "Notificar também via Teams" envia também uma mensagem no chat do Teams de cada responsável. Assunto e mensagem aceitam marcadores ({registro}, {etapa}, {acao}, {comentario}, {prazo}, {link}, {campo:chave}...).
+- Novo: Fluxos — evento de notificação (círculo com carta) na paleta do editor: ao passar por ele, o fluxo envia a notificação configurada (autor, área, usuário, campo Usuário ou e-mails fixos; e-mail e/ou Teams) e segue sem parar. Duplo clique abre a configuração. Também no pacote JSON do processo (`notificacoes`).
+- Novo: sino de notificações no cabeçalho, com o número de avisos não lidos; abre a lista dos últimos avisos (fluxo, treinamentos, orçamento, licitações), leva ao destino e marca como lido.
+- Melhoria: as notificações usam a fila de e-mails existente (dgt_implemail, tipo "notificacaoFluxo"), uma linha por destinatário e sem duplicar; o fluxo de e-mail atual não muda. Falha ao registrar a notificação não desfaz a ação do fluxo (aviso na tela).
+- Atenção (deploy): dar Criar e Ler (nível Usuário) em "E-mails de implantações" (dgt_implemail) aos perfis Colaboradores, Gestores e Administradores, e criar o fluxo "DGT - Notificações Teams" (filtro dgt_status eq 'PendenteTeams'). Passo a passo em docs/notificacoes-fluxo.md.
+- Melhoria: RH e Pessoas — certificações, declarações e terceiros passam a gravar também o vínculo com os cadastros de fabricante e área (o texto continua igual). Lista de áreas vem do cadastro de áreas; aviso quando o fabricante digitado não está cadastrado.
+- Novo: RH e Pessoas — terceiro pode ser vinculado a um colaborador de fornecedor (campo opcional). O RH vê só nome, função e fornecedor; CPF, ASO e NR continuam apenas em Fornecedores.
+- Melhoria: Registros de Oportunidade — o fabricante passa a oferecer também os fabricantes do cadastro e grava o vínculo com o cadastro (validade e filtros não mudam).
+- Atenção (deploy): rodar scripts/dataverse/criar-colunas-alinhamento.ps1 e migrar-referencias-alinhamento.ps1 (ver docs/alinhamento-tabelas.md, fases 3 e 5). Sem as colunas, o portal funciona como antes.
+
 ## [1.4.28] - 2026-11-17
 
 - Novo: Fornecedores — homologação em kanban (Ficha recebida → Documentos pendentes → Em análise → Aguardando Jurídico → Homologado/Reprovado), um card por ciclo; ciclo concluído fica somente leitura e renovação abre um ciclo novo. A ficha recebida pelo formulário abre o ciclo sozinha. Aba Homologações com o quadro de todos os fornecedores.
