@@ -3,6 +3,10 @@ import {
   IDataverseRecord
 } from './DataverseService';
 
+import {
+  atribuicaoRemovida
+} from '../utils/atribuicaoRemovida';
+
 export type StatusConformidade =
   | 'Concluído'
   | 'Pendente'
@@ -388,9 +392,18 @@ export class ConformidadeService {
   public async carregar():
     Promise<IConformidadeDados> {
 
+    // Atribuições removidas (desatribuídas, regra por área
+    // desativada...) ficam fora: não têm prazo, não pendem e não
+    // vencem. Continuam no Dataverse só como histórico.
     const atribuicoes =
-      await this.dataverse
-        .getUsuarioTreinamentos();
+      (
+        await this.dataverse
+          .getUsuarioTreinamentos()
+      )
+        .filter(
+          registro =>
+            !atribuicaoRemovida(registro)
+        );
 
     const itens:
       IItemConformidade[] =

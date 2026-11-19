@@ -26,6 +26,7 @@ import {
   ILinhaImportada,
   IPessoaRef,
   ITerceiro,
+  ITerceiroEdicao,
   RhFabricantesService,
   STATUS_CERTIFICACAO,
   STATUS_MANUAIS,
@@ -86,6 +87,28 @@ const COR = {
   roxoClaro: '#F1EBFE',
   cinzaClaro: '#F1F5F9'
 };
+
+// Áreas sugeridas: o cadastro de áreas (dgt_area), quando legível;
+// senão, a lista usada até aqui.
+const AREAS_PADRAO = ['SUPORTE', 'SUPPLY', 'LPI', 'INTELIGÊNCIA', 'IMPLANTAÇÃO', 'PROJETOS', 'COMERCIAL'];
+
+const opcoesArea = (dados: IDadosFabricantes): string[] =>
+  dados.areas && dados.areas.length > 0 ? dados.areas.map(a => a.nome) : AREAS_PADRAO;
+
+// O texto digitado corresponde a um fabricante do cadastro?
+const fabricanteCadastrado = (dados: IDadosFabricantes, nome: string): boolean => {
+  const chave = normalizarNome(nome);
+  return !chave || dados.fabricantes.some(f => normalizarNome(f.nome) === chave);
+};
+
+const DicaFabricanteSemCadastro: React.FC<{ dados: IDadosFabricantes; nome: string }> = ({ dados, nome }) =>
+  fabricanteCadastrado(dados, nome)
+    ? null
+    : (
+      <div style={{ fontSize: '12px', color: COR.ambar, marginTop: '4px' }}>
+        Fabricante fora do cadastro. Ele será gravado assim mesmo; cadastre-o em Fabricantes para que fique vinculado.
+      </div>
+    );
 
 const ESTILO_STATUS: Record<StatusCertificacao, { cor: string; fundo: string; icone: string }> = {
   OK: { cor: COR.verde, fundo: COR.verdeClaro, icone: '✓' },
@@ -375,6 +398,7 @@ const FormCertificacao: React.FC<{
           <datalist id="lista-fabricantes">
             {(registro ? ['CFT/RS', 'CREA-RS', 'CREA-SC', 'CREA-MT', 'CFT/SC'] : dados.fabricantes.map(f => f.nome)).map(n => <option key={n} value={n} />)}
           </datalist>
+          {!registro && <DicaFabricanteSemCadastro dados={dados} nome={emissor} />}
         </div>
         <div>
           <label style={rotulo} htmlFor="cert-titulo">{registro ? 'Título profissional' : 'Certificação'}</label>
@@ -394,7 +418,7 @@ const FormCertificacao: React.FC<{
           <label style={rotulo} htmlFor="cert-area">Área</label>
           <input id="cert-area" style={campo} list="lista-areas" value={area} onChange={e => setArea(e.target.value)} placeholder="Ex.: SUPORTE, LPI" />
           <datalist id="lista-areas">
-            {['SUPORTE', 'SUPPLY', 'LPI', 'INTELIGÊNCIA', 'IMPLANTAÇÃO', 'PROJETOS', 'COMERCIAL'].map(a => <option key={a} value={a} />)}
+            {opcoesArea(dados).map(a => <option key={a} value={a} />)}
           </datalist>
         </div>
         <div>
@@ -436,10 +460,11 @@ const FormCertificacao: React.FC<{
 // ------------------------------------------------------------
 
 const FormTerceiro: React.FC<{
+  dados: IDadosFabricantes;
   item?: ITerceiro;
   aoFechar: () => void;
-  aoSalvar: (t: Omit<ITerceiro, 'id' | 'ativo'> & { id?: string }) => Promise<void>;
-}> = ({ item, aoFechar, aoSalvar }) => {
+  aoSalvar: (t: ITerceiroEdicao) => Promise<void>;
+}> = ({ dados, item, aoFechar, aoSalvar }) => {
 
   const [d, setD] = React.useState({
     nome: item ? item.nome : '',
@@ -448,8 +473,29 @@ const FormTerceiro: React.FC<{
     funcao: item ? item.funcao : '',
     email: item ? item.email : '',
     telefone: item ? item.telefone : '',
-    observacoes: item ? item.observacoes : ''
+    observacoes: item ? item.observacoes : '',
+    fornecedorColaboradorId: item && item.fornecedorColaboradorId ? item.fornecedorColaboradorId : '',
+    fornecedorId: item && item.fornecedorId ? item.fornecedorId : ''
   });
+
+  // Colaboradores de fornecedor já vinculados a OUTRO terceiro
+  const vinculadoA: Record<string, string> = {};
+  dados.terceiros
+    .filter(t => !!t.fornecedorColaboradorId && (!item || t.id !== item.id))
+    .forEach(t => { vinculadoA[t.fornecedorColaboradorId as string] = t.nome; });
+
+  const escolherColaborador = (id: string): void => {
+    const c = dados.colaboradoresFornecedor.filter(x => x.id === id)[0];
+    setD(atual => ({
+      ...atual,
+      fornecedorColaboradorId: id,
+      fornecedorId: c ? c.fornecedorId : '',
+      // Preenche só o que estiver vazio
+      nome: atual.nome || (c ? c.nome : ''),
+      empresa: atual.empresa || (c ? c.fornecedorNome : ''),
+      funcao: atual.funcao || (c ? c.funcao : '')
+    }));
+  };
   const [salvando, setSalvando] = React.useState(false);
   const [erro, setErro] = React.useState('');
   const mudar = (parcial: Partial<typeof d>): void => setD(atual => ({ ...atual, ...parcial }));
@@ -479,6 +525,22 @@ const FormTerceiro: React.FC<{
       )}
     >
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
+      {dados.vinculoFornecedorDisponivel && (
+        <div style={{ marginBottom: '12px' }}>
+          <label style={rotulo} htmlFor="ter-colab-forn">Colaborador de fornecedor (opcional)</label>
+          <select id="ter-colab-forn" style={campo} value={d.fornecedorColaboradorId} onChange={e => escolherColaborador(e.target.value)}>
+            <option value="">Não é colaborador de fornecedor cadastrado</option>
+            {dados.colaboradoresFornecedor.map(c => (
+              <option key={c.id} value={c.id} disabled={!!vinculadoA[c.id]}>
+                {c.nome}{c.fornecedorNome ? ` — ${c.fornecedorNome}` : ''}{vinculadoA[c.id] ? ` (já vinculado a ${vinculadoA[c.id]})` : ''}
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: '12px', color: COR.sec, marginTop: '4px' }}>
+            Liga este terceiro ao cadastro de Fornecedores, sem copiar documentos pessoais: ASO, NR e CPF continuam só em Fornecedores.
+          </div>
+        </div>
+      )}
       <div style={{ marginBottom: '12px' }}>
         <label style={rotulo} htmlFor="ter-nome">Nome completo</label>
         <input id="ter-nome" style={campo} value={d.nome} onChange={e => mudar({ nome: e.target.value })} />
@@ -494,7 +556,8 @@ const FormTerceiro: React.FC<{
         </div>
         <div>
           <label style={rotulo} htmlFor="ter-area">Área de atuação na DGT</label>
-          <input id="ter-area" style={campo} value={d.area} onChange={e => mudar({ area: e.target.value })} placeholder="Ex.: SUPORTE, IMPLANTAÇÃO" />
+          <input id="ter-area" style={campo} list="lista-areas-terceiro" value={d.area} onChange={e => mudar({ area: e.target.value })} placeholder="Ex.: SUPORTE, IMPLANTAÇÃO" />
+          <datalist id="lista-areas-terceiro">{opcoesArea(dados).map(a => <option key={a} value={a} />)}</datalist>
         </div>
       </Grade>
       <Grade>
@@ -644,6 +707,7 @@ const FormDeclaracao: React.FC<{
           <label style={rotulo} htmlFor="dec-fab">Fabricante</label>
           <input id="dec-fab" style={campo} list="lista-fab-dec" value={fabricante} onChange={e => setFabricante(e.target.value)} />
           <datalist id="lista-fab-dec">{dados.fabricantes.map(f => <option key={f.id} value={f.nome} />)}</datalist>
+          <DicaFabricanteSemCadastro dados={dados} nome={fabricante} />
         </div>
         <div>
           <label style={rotulo} htmlFor="dec-tipo">Tipo</label>
@@ -1117,6 +1181,13 @@ const FabricantesTerceirosAba: React.FC<IFabricantesTerceirosAbaProps> = ({ data
                         {[t.funcao, t.empresa, t.area].filter(Boolean).join(' · ') || 'Sem empresa/função informadas'}
                         {(t.email || t.telefone) && <> · {[t.email, t.telefone].filter(Boolean).join(' · ')}</>}
                       </div>
+                      {t.fornecedorColaboradorId && (
+                        <div style={{ marginTop: '4px' }}>
+                          <Selo cor={COR.azulBotao} fundo={COR.cinzaClaro} titulo="Vinculado ao cadastro de colaboradores de Fornecedores">
+                            Colaborador de fornecedor{t.fornecedorNome ? `: ${t.fornecedorNome}` : ''}
+                          </Selo>
+                        </div>
+                      )}
                     </div>
                     {pior ? <SeloStatus status={pior} /> : <Selo cor={COR.sec} fundo={COR.cinzaClaro}>Sem certificações</Selo>}
                     <button type="button" style={botao('secundario')} onClick={() => setTerceiroAberto(aberto ? '' : t.id)}>{aberto ? 'Fechar' : `Certificações (${certs.length})`}</button>
@@ -1248,6 +1319,7 @@ const FabricantesTerceirosAba: React.FC<IFabricantesTerceirosAbaProps> = ({ data
       )}
       {formTerceiro && (
         <FormTerceiro
+          dados={dados}
           item={formTerceiro.item}
           aoFechar={() => setFormTerceiro(undefined)}
           aoSalvar={t => executar(async () => { await servico.salvarTerceiro(t, responsavel); }, t.id ? 'Terceiro atualizado.' : 'Terceiro cadastrado. Agora ele aparece na escolha de pessoa das certificações.')}

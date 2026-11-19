@@ -12,6 +12,12 @@ import {
   RhCertificadosService
 } from './RhCertificadosService';
 
+import {
+  COLUNAS_ALINHAMENTO,
+  IItemCadastro,
+  ReferenciasCadastroService
+} from './cadastros/ReferenciasCadastroService';
+
 // ============================================================
 // RH E PESSOAS — FABRICANTES E TERCEIROS
 //
@@ -33,6 +39,15 @@ import {
 // Tabelas: scripts/dataverse/criar-tabelas-fabricantes-terceiros.ps1
 // Nada é apagado: "Remover" só desativa (dgt_ativo = Não).
 // LGPD: CPF, CNPJ, senhas e dados bancários são bloqueados.
+//
+// Alinhamento das tabelas (docs/alinhamento-tabelas.md):
+//   • Fase 3: área e fabricante continuam em texto e passam a ter
+//     também o lookup para dgt_area e dgt_fabricante (gravado depois
+//     do registro, sem afetar o salvamento — ReferenciasCadastroService).
+//   • Fase 5 (opção A): o terceiro pode ser VINCULADO a um colaborador
+//     de fornecedor (dgt_fornecedorcolaborador) e ao fornecedor. Os
+//     cadastros continuam separados: o CPF fica só em Fornecedores e
+//     nunca é lido aqui.
 // ============================================================
 
 export const TABELAS_FAB = {
@@ -84,7 +99,25 @@ export interface ITerceiro {
   telefone: string;
   observacoes: string;
   ativo: boolean;
+  // Vínculo com Fornecedores (opcional)
+  fornecedorColaboradorId?: string;
+  fornecedorColaboradorNome?: string;
+  fornecedorId?: string;
+  fornecedorNome?: string;
 }
+
+// Colaborador de fornecedor que pode ser vinculado a um terceiro.
+// Só nome, função e fornecedor: o CPF nunca é lido pelo RH.
+export interface IColaboradorFornecedorRef {
+  id: string;
+  nome: string;
+  funcao: string;
+  fornecedorId: string;
+  fornecedorNome: string;
+}
+
+export type ITerceiroEdicao =
+  Omit<ITerceiro, 'id' | 'ativo' | 'fornecedorColaboradorNome' | 'fornecedorNome'> & { id?: string };
 
 export interface IFabricante {
   id: string;
@@ -144,6 +177,12 @@ export interface IDadosFabricantes {
   certificacoes: ICertificacao[];
   declaracoes: IDeclaracao[];
   colaboradores: IPessoaRef[];
+  // Cadastro de áreas (vazio se o usuário não puder lê-lo)
+  areas: IItemCadastro[];
+  // Vínculo terceiro ↔ colaborador de fornecedor disponível
+  // (colunas criadas e leitura de dgt_fornecedorcolaborador permitida)
+  vinculoFornecedorDisponivel: boolean;
+  colaboradoresFornecedor: IColaboradorFornecedorRef[];
 }
 
 // ------------------------------------------------------------
@@ -218,10 +257,43 @@ export class RhFabricantesService {
 
   private readonly dataverse: DataverseService;
   private readonly certificados: RhCertificadosService;
+  private readonly referencias: ReferenciasCadastroService;
 
   public constructor(dataverse: DataverseService, certificados: RhCertificadosService) {
     this.dataverse = dataverse;
     this.certificados = certificados;
+    this.referencias = new ReferenciasCadastroService(dataverse);
+  }
+
+  // Vínculo terceiro ↔ colaborador de fornecedor: as duas colunas
+  // existem e o usuário consegue ler os colaboradores?
+  private async vinculoFornecedorDisponivel(): Promise<boolean> {
+    const [colColaborador, colFornecedor] = await Promise.all([
+      this.referencias.colunaDisponivel(TABELAS_FAB.terceiro, COLUNAS_ALINHAMENTO.fornecedorColaborador.coluna),
+      this.referencias.colunaDisponivel(TABELAS_FAB.terceiro, COLUNAS_ALINHAMENTO.fornecedor.coluna)
+    ]);
+    return colColaborador && colFornecedor;
+  }
+
+  // Colaboradores de fornecedor ativos (sem CPF). undefined = sem acesso.
+  private async lerColaboradoresFornecedor(): Promise<IColaboradorFornecedorRef[] | undefined> {
+    try {
+      const regs = await this.dataverse.listarRegistros(
+        'dgt_fornecedorcolaborador',
+        '$select=dgt_fornecedorcolaboradorid,dgt_name,dgt_funcao,_dgt_fornecedor_value&$filter=dgt_ativo eq true'
+      );
+      return regs
+        .map(r => ({
+          id: guid(r.dgt_fornecedorcolaboradorid),
+          nome: texto(r, 'dgt_name'),
+          funcao: texto(r, 'dgt_funcao'),
+          fornecedorId: guid(r._dgt_fornecedor_value),
+          fornecedorNome: texto(r, '_dgt_fornecedor_value@OData.Community.Display.V1.FormattedValue')
+        }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    } catch {
+      return undefined;
+    }
   }
 
   // ==========================================================
@@ -246,10 +318,33 @@ export class RhFabricantesService {
 
     let registros: IDataverseRecord[][];
 
+    // Vínculo com Fornecedores só entra no $select quando as colunas
+    // existem (antes do script de alinhamento a tela funciona como antes).
+    let vinculoDisponivel = false;
+    let colaboradoresFornecedor: IColaboradorFornecedorRef[] = [];
+    let areas: IItemCadastro[] = [];
+
+    try {
+      const [vinculo, listaColaboradores, listaAreas] = await Promise.all([
+        this.vinculoFornecedorDisponivel(),
+        this.lerColaboradoresFornecedor(),
+        this.referencias.areas()
+      ]);
+      vinculoDisponivel = vinculo && !!listaColaboradores;
+      colaboradoresFornecedor = listaColaboradores || [];
+      areas = listaAreas || [];
+    } catch {
+      vinculoDisponivel = false;
+    }
+
+    const selectTerceiro =
+      'dgt_terceiroid,dgt_name,dgt_empresa,dgt_area,dgt_funcao,dgt_email,dgt_telefone,dgt_observacoes,dgt_ativo' +
+      (vinculoDisponivel ? ',_dgt_fornecedorcolaborador_value,_dgt_fornecedor_value' : '');
+
     try {
       registros = await Promise.all([
         this.dataverse.listarRegistros(TABELAS_FAB.terceiro,
-          '$select=dgt_terceiroid,dgt_name,dgt_empresa,dgt_area,dgt_funcao,dgt_email,dgt_telefone,dgt_observacoes,dgt_ativo'),
+          `$select=${selectTerceiro}`),
         this.dataverse.listarRegistros(TABELAS_FAB.fabricante,
           '$select=dgt_fabricanteid,dgt_name,dgt_contatonome,dgt_contatotelefone,dgt_contatoemail,dgt_site,dgt_observacoes&$filter=dgt_ativo eq true'),
         this.dataverse.listarRegistros(TABELAS_FAB.certificacao,
@@ -262,7 +357,10 @@ export class RhFabricantesService {
       ]);
     } catch (erro) {
       if (ehTabelaInexistente(erro)) {
-        return { disponivel: false, terceiros: [], fabricantes: [], certificacoes: [], declaracoes: [], colaboradores };
+        return {
+          disponivel: false, terceiros: [], fabricantes: [], certificacoes: [], declaracoes: [], colaboradores,
+          areas, vinculoFornecedorDisponivel: false, colaboradoresFornecedor: []
+        };
       }
       throw erro;
     }
@@ -279,7 +377,11 @@ export class RhFabricantesService {
         email: texto(r, 'dgt_email'),
         telefone: texto(r, 'dgt_telefone'),
         observacoes: texto(r, 'dgt_observacoes'),
-        ativo: r.dgt_ativo !== false
+        ativo: r.dgt_ativo !== false,
+        fornecedorColaboradorId: guid(r._dgt_fornecedorcolaborador_value) || undefined,
+        fornecedorColaboradorNome: texto(r, '_dgt_fornecedorcolaborador_value@OData.Community.Display.V1.FormattedValue') || undefined,
+        fornecedorId: guid(r._dgt_fornecedor_value) || undefined,
+        fornecedorNome: texto(r, '_dgt_fornecedor_value@OData.Community.Display.V1.FormattedValue') || undefined
       }))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
@@ -347,14 +449,17 @@ export class RhFabricantesService {
       };
     });
 
-    return { disponivel: true, terceiros, fabricantes, certificacoes, declaracoes, colaboradores };
+    return {
+      disponivel: true, terceiros, fabricantes, certificacoes, declaracoes, colaboradores,
+      areas, vinculoFornecedorDisponivel: vinculoDisponivel, colaboradoresFornecedor
+    };
   }
 
   // ==========================================================
   // TERCEIROS
   // ==========================================================
 
-  public async salvarTerceiro(t: Omit<ITerceiro, 'id' | 'ativo'> & { id?: string }, responsavel: string): Promise<string> {
+  public async salvarTerceiro(t: ITerceiroEdicao, responsavel: string): Promise<string> {
     if (!t.nome.trim()) {
       throw new Error('Informe o nome do terceiro.');
     }
@@ -366,6 +471,20 @@ export class RhFabricantesService {
     }
     verificarSensivel(t.nome, t.empresa, t.area, t.funcao, t.email, t.observacoes);
 
+    // Um colaborador de fornecedor só pode estar vinculado a um terceiro.
+    const vinculoDisponivel = await this.vinculoFornecedorDisponivel();
+    if (vinculoDisponivel && t.fornecedorColaboradorId) {
+      const outros = await this.dataverse.listarRegistros(
+        TABELAS_FAB.terceiro,
+        `$select=dgt_terceiroid,dgt_name&$filter=_dgt_fornecedorcolaborador_value eq ${guid(t.fornecedorColaboradorId)}` +
+        (t.id ? ` and dgt_terceiroid ne ${guid(t.id)}` : '') +
+        '&$top=1'
+      );
+      if (outros.length > 0) {
+        throw new Error(`Este colaborador de fornecedor já está vinculado ao terceiro "${texto(outros[0], 'dgt_name')}".`);
+      }
+    }
+
     const dados = {
       dgt_name: limitar(t.nome, 200),
       dgt_empresa: limitar(t.empresa, 200),
@@ -376,15 +495,31 @@ export class RhFabricantesService {
       dgt_observacoes: limitar(t.observacoes, 4000)
     };
 
+    let id: string;
+    const novo = !t.id;
+
     if (t.id) {
       await this.dataverse.atualizarRegistro(TABELAS_FAB.terceiro, t.id, dados);
-      return t.id;
+      id = t.id;
+    } else {
+      id = guid(await this.dataverse.criarRegistro(TABELAS_FAB.terceiro, {
+        ...dados,
+        dgt_responsavelnome: limitar(responsavel, 200),
+        dgt_ativo: true
+      }));
     }
-    return guid(await this.dataverse.criarRegistro(TABELAS_FAB.terceiro, {
-      ...dados,
-      dgt_responsavelnome: limitar(responsavel, 200),
-      dgt_ativo: true
-    }));
+
+    // Vínculos (não afetam o salvamento acima)
+    await this.referencias.vincularArea(TABELAS_FAB.terceiro, id, COLUNAS_ALINHAMENTO.areaCadastro, t.area, novo);
+
+    if (vinculoDisponivel) {
+      await this.referencias.aplicarLookup(TABELAS_FAB.terceiro, id, COLUNAS_ALINHAMENTO.fornecedorColaborador,
+        'dgt_fornecedorcolaborador', t.fornecedorColaboradorId || undefined, novo);
+      await this.referencias.aplicarLookup(TABELAS_FAB.terceiro, id, COLUNAS_ALINHAMENTO.fornecedor,
+        'dgt_fornecedor', t.fornecedorColaboradorId ? (t.fornecedorId || undefined) : undefined, novo);
+    }
+
+    return id;
   }
 
   public async definirTerceiroAtivo(id: string, ativo: boolean): Promise<void> {
@@ -413,6 +548,9 @@ export class RhFabricantesService {
       dgt_observacoes: limitar(f.observacoes, 4000)
     };
 
+    // O cadastro mudou: as próximas correspondências por nome releem a lista.
+    this.referencias.limparCache();
+
     if (f.id) {
       await this.dataverse.atualizarRegistro(TABELAS_FAB.fabricante, f.id, dados);
       return f.id;
@@ -421,6 +559,7 @@ export class RhFabricantesService {
   }
 
   public async removerFabricante(id: string): Promise<void> {
+    this.referencias.limparCache();
     await this.dataverse.atualizarRegistro(TABELAS_FAB.fabricante, id, { dgt_ativo: false });
   }
 
@@ -492,14 +631,27 @@ export class RhFabricantesService {
       ...(arquivo ? { dgt_arquivourl: arquivo.url, dgt_arquivonome: limitar(arquivo.nome, 255) } : {})
     };
 
+    let id: string;
+
     if (c.id) {
       await this.dataverse.atualizarRegistro(TABELAS_FAB.certificacao, c.id, dados);
+      id = c.id;
     } else {
-      await this.dataverse.criarRegistro(TABELAS_FAB.certificacao, {
+      id = guid(await this.dataverse.criarRegistro(TABELAS_FAB.certificacao, {
         ...dados,
         dgt_responsavelnome: limitar(responsavel, 200),
         dgt_ativo: true
-      });
+      }));
+    }
+
+    // Vínculos (não afetam o salvamento acima). No registro profissional
+    // o emissor é um órgão (CREA, CFT), não um fabricante.
+    const novo = !c.id;
+    await this.referencias.vincularArea(TABELAS_FAB.certificacao, id, COLUNAS_ALINHAMENTO.areaCadastro, c.area, novo);
+    if (c.categoria === 'Certificação de fabricante') {
+      await this.referencias.vincularFabricante(TABELAS_FAB.certificacao, id, COLUNAS_ALINHAMENTO.fabricanteCadastro, c.emissor, novo);
+    } else {
+      await this.referencias.aplicarLookup(TABELAS_FAB.certificacao, id, COLUNAS_ALINHAMENTO.fabricanteCadastro, 'dgt_fabricante', undefined, novo);
     }
   }
 
@@ -554,15 +706,21 @@ export class RhFabricantesService {
       ...(arquivo ? { dgt_arquivourl: arquivo.url, dgt_arquivonome: limitar(arquivo.nome, 255) } : {})
     };
 
+    let id: string;
+
     if (d.id) {
       await this.dataverse.atualizarRegistro(TABELAS_FAB.declaracao, d.id, dados);
+      id = d.id;
     } else {
-      await this.dataverse.criarRegistro(TABELAS_FAB.declaracao, {
+      id = guid(await this.dataverse.criarRegistro(TABELAS_FAB.declaracao, {
         ...dados,
         dgt_responsavelnome: limitar(responsavel, 200),
         dgt_ativo: true
-      });
+      }));
     }
+
+    // Vínculo com o cadastro de fabricantes (não afeta o salvamento acima)
+    await this.referencias.vincularFabricante(TABELAS_FAB.declaracao, id, COLUNAS_ALINHAMENTO.fabricanteCadastro, d.fabricante, !d.id);
   }
 
   public async removerDeclaracao(id: string): Promise<void> {

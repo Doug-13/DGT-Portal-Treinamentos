@@ -3,12 +3,23 @@ import {
   IDataverseRecord
 } from '../DataverseService';
 
+import {
+  COLUNAS_ALINHAMENTO,
+  ReferenciasCadastroService,
+  normalizarChave
+} from '../cadastros/ReferenciasCadastroService';
+
 // ============================================================
 // REGISTROS DE OPORTUNIDADE (RO) — Arquitetura de Soluções
 //
 // Tabela existente dgt_bom_ro, ampliada por scripts/dataverse/atualizar-registros-oportunidade.ps1.
 // Uma linha por RO, de todos os fabricantes (antes: uma aba por
 // fabricante na planilha de controle de Pré-vendas).
+//
+// Alinhamento das tabelas (fase 3): o fabricante continua em texto
+// (dgt_bom_fabricante, usado nos filtros e nos prazos de validade) e
+// passa a ter também o lookup dgt_bom_FabricanteCadastro para o
+// cadastro dgt_fabricante, gravado depois do RO (ReferenciasCadastroService).
 // ============================================================
 
 export const TABELA_RO = 'dgt_bom_ro';
@@ -159,9 +170,27 @@ export const hojeIso = (): string => {
 export class RoService {
 
   private readonly dataverse: DataverseService;
+  private readonly referencias: ReferenciasCadastroService;
 
   public constructor(dataverse: DataverseService) {
     this.dataverse = dataverse;
+    this.referencias = new ReferenciasCadastroService(dataverse);
+  }
+
+  // Opções de fabricante da tela: a lista fixa + os fabricantes do
+  // cadastro (quando o usuário pode lê-lo), sem repetir nomes.
+  public async opcoesFabricante(): Promise<string[]> {
+    const opcoes = FABRICANTES.slice();
+    const chaves = opcoes.map(normalizarChave);
+    const cadastro = await this.referencias.fabricantes();
+    (cadastro || []).forEach(f => {
+      const chave = normalizarChave(f.nome);
+      if (chaves.indexOf(chave) < 0) {
+        chaves.push(chave);
+        opcoes.push(f.nome);
+      }
+    });
+    return opcoes;
   }
 
   public async listarPrazos(): Promise<{ prazos: IPrazosRo; etag: string }> {
@@ -254,11 +283,17 @@ export class RoService {
       [C.ativo]: dados.ativo
     };
 
+    let id: string;
+
     if (dados.id) {
       await this.dataverse.atualizarRegistro(TABELA_RO, dados.id, registro);
+      id = dados.id;
     } else {
-      await this.dataverse.criarRegistro(TABELA_RO, registro);
+      id = await this.dataverse.criarRegistro(TABELA_RO, registro);
     }
+
+    // Vínculo com o cadastro de fabricantes (não afeta o salvamento acima)
+    await this.referencias.vincularFabricante(TABELA_RO, id, COLUNAS_ALINHAMENTO.roFabricanteCadastro, dados.fabricante, !dados.id);
   }
 
   // Marca o RO como atualizado hoje e, quando os prazos estão disponíveis,
