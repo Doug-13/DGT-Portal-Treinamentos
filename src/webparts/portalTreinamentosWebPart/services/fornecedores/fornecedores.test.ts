@@ -22,7 +22,6 @@ import {
 import {
   cicloAberto,
   etapaValida,
-  etapaVizinha,
   pontosDeAtencao,
   proximoNumeroCiclo,
   statusPeloResultado,
@@ -266,6 +265,10 @@ const ciclo = (numero: number, extra: Partial<ICicloHomologacao> = {}): ICicloHo
   bancarioConferido: false,
   abertoPor: '',
   criadoEm: '2026-11-01T10:00:00Z',
+  fluxoIniciado: false,
+  etapaAtual: '',
+  prazoEtapa: '',
+  responsaveisEtapa: '',
   ...extra
 });
 
@@ -304,11 +307,7 @@ describe('kanban de homologação', () => {
     expect(proximoNumeroCiclo([])).toBe(1);
   });
 
-  it('move só entre colunas abertas pelos botões', () => {
-    expect(etapaVizinha('Ficha recebida', -1)).toBeUndefined();
-    expect(etapaVizinha('Ficha recebida', 1)).toBe('Documentos pendentes');
-    expect(etapaVizinha('Aguardando Jurídico', -1)).toBe('Em análise');
-    expect(etapaVizinha('Aguardando Jurídico', 1)).toBeUndefined();   // Concluído só por "Concluir ciclo"
+  it('coluna gravada desconhecida volta para a primeira', () => {
     expect(etapaValida('qualquer coisa')).toBe('Ficha recebida');
   });
 

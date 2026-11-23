@@ -3,8 +3,8 @@
 Módulo para Suprimentos: cadastro mestre de fornecedores, documentos com
 validade, consultas automáticas (Receita via CNPJá, CEIS e CNEP via Portal da
 Transparência, certidões via Infosimples), Ficha de Cadastro SUP-CPL-01 recebida
-pelo Microsoft Forms, homologação em kanban (item 9) e colaboradores do prestador
-(ASO e NR). Base: escopo "Plataforma de
+pelo Microsoft Forms, homologação no motor de fluxos (processo **SUP-HOM**, item 9),
+contratos e colaboradores do prestador (ASO e NR). Base: escopo "Plataforma de
 Homologação e Gestão de Fornecedores" (minuta 1.0, 06/11/2026) e Ficha de
 Cadastro de Fornecedor SUP-CPL-01 v1.0 (11/11/2026).
 
@@ -12,7 +12,7 @@ Cadastro de Fornecedor SUP-CPL-01 v1.0 (11/11/2026).
 
 1. O fornecedor responde o **Forms** (itens 1 a 6 e 8 da ficha) → o Power Automate
    chama `receberFicha` → cadastro em **Em homologação** com protocolo
-   `FORN-AAAA-NNNN` e um card novo no kanban, coluna **Ficha recebida**.
+   `FORN-AAAA-NNNN` e um ciclo novo na etapa **Ficha recebida** (área Suprimentos).
 2. O fluxo responde ao fornecedor com o protocolo e a lista de documentos que ele
    precisa mandar por e-mail para **vaneska@dgt.com.br** (o Forms não aceita anexo
    de quem é externo). Ver seção 8.
@@ -20,15 +20,17 @@ Cadastro de Fornecedor SUP-CPL-01 v1.0 (11/11/2026).
    Receita, sanções e certidões).
 4. Ficha consolidada **e Código de Conduta** assinados pelo fornecedor, no mesmo
    envelope Clicksign (aguardando o token — ver seção 9).
-5. Jurídico aprova; o card é **concluído** no kanban (aba **Homologação**) →
-   status **Homologado** (ou **Reprovado**). Ver seção 7b.
+5. Suprimentos envia ao **Jurídico**, que decide: **Aprovar**, **Aprovar com
+   ressalvas**, **Não homologar** ou **Devolver a Suprimentos** → status **Homologado**
+   (ou **Reprovado**). Ver seção 7b.
 6. Colaboradores do prestador (botão **Colaboradores**): ASO e NR aplicável de cada
    um (seção 7c). O contrato só sai quando uma demanda fechar (Jurídico + Vaneska +
    comprador + prestador).
 
-**Fora desta fase:** portal do fornecedor (acesso externo), notificações do kanban
-(ex.: aviso ao Jurídico), aprovações por alçada, IQF, integração com o CIGAM,
-notificação de vencidos ao fornecedor e consulta automática do TCU.
+**Fora desta fase:** portal do fornecedor (acesso externo), aprovações por alçada,
+IQF, integração com o CIGAM, matriz de risco e score, consulta Serasa, tipos de
+documento de colaborador cadastráveis e consulta automática do TCU. Os avisos
+(etapa da homologação, vencimentos) são do Power Automate — seção 10.
 
 Ordem de implantação: **1. aprovação do CNPJ → 2. tabelas → 3. permissões →
 4. plugin → 5. tela → 6. fluxos (opcional)**.
@@ -89,14 +91,28 @@ Validação de LGPD considerada feita pelo responsável do projeto (nov/2026).
 | `dgt_fornecedorhomologacao` | Ciclos de homologação (cards do kanban): etapa, item 9, resultado; concluído = somente leitura |
 | `dgt_fornecedorcolaborador` | Colaboradores do prestador: nome, função, CPF (protegido), observações, ativo |
 | `dgt_colaboradordocumento` | ASO e NR aplicável de cada colaborador (Vigente / Substituído), emissão, validade, arquivo |
+| `dgt_fornecedorcontrato` | Contratos do fornecedor: nome, projeto (texto livre), assinatura, início e fim da vigência, arquivo, situação (Vigente / Encerrado), origem (Manual / E-mail) |
+
+Colunas da homologação no motor (em `dgt_fornecedorhomologacao`): `dgt_fluxoestado`
+(estado do fluxo, JSON), `dgt_etapaatual` (id da etapa), `dgt_prazoetapa`,
+`dgt_responsaveisetapa` (mesmo formato de `dgt_responsaveisjson`, ver
+`docs/fluxo-dataverse.md` seção 5) e `dgt_documentospendentes` (lista do e-mail ao
+fornecedor). Controle dos avisos de vencimento: `dgt_avisovencimentoem` em
+`dgt_fornecedordocumento`, `dgt_colaboradordocumento` e `dgt_fornecedorcontrato`.
+O script também aumenta `dgt_fornecedordocumento.dgt_situacao` para 30 caracteres
+(cabe "Convertido em contrato").
 
 Nada é apagado pela tela. O script também cria o perfil de segurança de campo e a
 Custom API `dgt_ConsultarFornecedor` (exige `prvWritedgt_fornecedor`).
 
 ## 3. Permissões
 
-- Função de segurança de Suprimentos: Criar / Ler / Gravar (Organização) nas 8
-  tabelas, **sem Excluir**.
+- Função de segurança de Suprimentos **e do Jurídico**: Criar / Ler / Gravar
+  (Organização) nas 9 tabelas, **sem Excluir** (o Jurídico grava o ciclo ao decidir).
+- **Áreas "Suprimentos" e "Jurídico"** cadastradas (Áreas, com as siglas usadas no
+  pacote SUP-HOM — `SUY` (Supply/Suprimentos) e `JUR`; atenção: `SUP` é o Suporte) e as pessoas vinculadas em
+  `dgt_usuarioarea`. Quem não estiver vinculado **não vê a pendência nem recebe o
+  e-mail**.
 - Pessoas (ou equipe) de Suprimentos no perfil de campo `DGT - Fornecedores - CNPJ`;
   quem cadastra colaboradores, no perfil `DGT - Fornecedores - CPF de colaboradores`.
 - Usuários e acessos: liberar o módulo **Fornecedores**; quem aprova homologação
@@ -112,7 +128,10 @@ Custom API `dgt_ConsultarFornecedor` (exige `prvWritedgt_fornecedor`).
    - **Configuração segura** (só aqui ficam as chaves):
      `{ "cnpja": "<chave do CNPJá>", "transparencia": "<chave da API de dados>", "infosimples": "<token da Infosimples>" }`
    - Configuração não segura (opcional):
-     `{ "cnpjaParametros": "maxAge=30", "diasEntreConsultas": 14, "limiteLote": 20, "infosimplesTimeout": 90, "diasRenovacaoCertidoes": 15, "rotasEstaduais": {}, "rotasMunicipais": {}, "rotasTrt": { "RS": "tribunal/trt4/ceat" } }`
+     `{ "cnpjaParametros": "maxAge=30", "diasEntreConsultas": 14, "limiteLote": 20, "infosimplesTimeout": 90, "diasRenovacaoCertidoes": 15, "rotasEstaduais": {}, "rotasMunicipais": {}, "rotasTrt": { "RS": "tribunal/trt4/ceat" }, "areaSuprimentos": "SUY" }`
+   - `areaSuprimentos`: sigla da área Suprimentos. O ciclo aberto pela ficha já
+     sai com a etapa `ficha-recebida` e essa área em `dgt_responsaveisetapa`, para
+     o aviso da primeira etapa sair antes de alguém abrir o portal.
 
 ### Onde colocar o token da Infosimples
 
@@ -232,7 +251,8 @@ espalha a carga e cada fornecedor é consultado a cada ~2 semanas.
 2. *Fazer até* `haMais` = false (máx. 15 voltas). Cada volta dura até ~2 min.
 3. Se `irregulares` > 0: e-mail para Suprimentos.
 
-**Alertas de vencimento (30/15/5 dias)** — Agendado (diário):
+**Alertas de vencimento (30/15/5 dias), interno** — Agendado (diário). Os avisos
+ao fornecedor e de contratos estão na seção 10.
 1. Dataverse › *Listar linhas* `dgt_fornecedordocumentos`, filtro:
    `dgt_situacao eq 'Vigente' and (dgt_datavencimento eq @{formatDateTime(addDays(utcNow(),30),'yyyy-MM-dd')} or dgt_datavencimento eq @{formatDateTime(addDays(utcNow(),15),'yyyy-MM-dd')} or dgt_datavencimento eq @{formatDateTime(addDays(utcNow(),5),'yyyy-MM-dd')})`,
    expandir `dgt_Fornecedor($select=dgt_name)`.
@@ -257,31 +277,61 @@ espalha a carga e cada fornecedor é consultado a cada ~2 semanas.
 - Questionário: "Sim" é destacado nas perguntas de risco e "Não" em 6.8
   (programa de integridade) e 6.9 (LGPD). Nada reprova automaticamente.
 
-## 7b. Kanban de homologação
+## 7b. Homologação no motor de fluxos (processo SUP-HOM) — piloto
 
-Colunas fixas: **Ficha recebida → Documentos pendentes → Em análise (Suprimentos)
-→ Aguardando Jurídico → Homologado / Reprovado**.
+A etapa do ciclo segue o fluxo **publicado** do processo **SUP-HOM — Homologação de
+fornecedor** (Processos → Fluxos), no mesmo padrão do Planejamento Orçamentário: o
+estado do fluxo fica no próprio ciclo (`dgt_fluxoestado`).
 
-- **Card = ciclo** (`dgt_fornecedorhomologacao`). Um fornecedor pode ter vários
-  ciclos ao longo do tempo (renovação, recontratação, atualização); só um aberto
-  por vez. O card guarda todos os campos do item 9 (checklist, risco, resultado,
-  validade, ressalvas, Suprimentos, Compliance/Jurídico, conferência bancária).
-- **Onde:** aba **Homologação** do fornecedor (quadro dos ciclos dele + card
-  aberto) e aba **Homologações** do módulo (todos os ciclos abertos e os
-  concluídos nos últimos 60 dias; clicar abre o fornecedor).
-- **Abrir ciclo:** automático quando a ficha chega pelo formulário; ou pelo botão
-  **Abrir ciclo** (motivo + coluna inicial).
-- **Mover:** manual nesta fase — botões ← / →, "Mover para…" ou arrastar o card.
-  Cada movimento fica no histórico. **Sem notificações** (o aviso ao Jurídico
-  entra quando as regras de cada coluna forem definidas).
-- **Concluir ciclo:** só com resultado Aprovado, Aprovado com ressalvas ou
-  Reprovado e as exigências de antes (risco e validade para aprovar; ressalvas
-  para "com ressalvas"/Reprovado). Grava o card e o cadastro (status, risco,
-  validade), e o card vira **somente leitura**.
-- **Homologação anterior ao kanban:** fornecedor já homologado sem ciclos mostra
-  o botão **Registrar a homologação atual como ciclo 1** (cria o ciclo 1 concluído
-  com os dados do cadastro).
-- Só o administrador do módulo move e grava; os demais veem o quadro.
+**Configurar (uma vez):** Processos → Fluxos → **Importar JSON** com
+`docs/exemplos/pacote-homologacao-fornecedor.json` → conferir → **Publicar**. As
+siglas `SUY` (Supply = Suprimentos) e `JUR` do pacote precisam existir em Áreas (troque no JSON, se as
+siglas forem outras). Sem processo publicado, a tela mostra o que falta e **nenhum
+ciclo muda de etapa**.
+
+| Etapa (id) | Responde | Botões |
+|---|---|---|
+| `ficha-recebida` | área Suprimentos | **Solicitar documentos** → documentos-pendentes; **Documentação já completa** → analise-suprimentos |
+| `documentos-pendentes` | área Suprimentos | **Documentação completa** → analise-suprimentos |
+| `analise-suprimentos` | área Suprimentos | **Enviar ao Jurídico** (exige risco e validade do cadastro); **Voltar a pedir documentos** (exige comentário) |
+| `analise-juridico` | área Jurídico | **Aprovar**; **Aprovar com ressalvas** (comentário); **Não homologar** (comentário; resultado Reprovado); **Devolver a Suprimentos** (comentário) |
+| fim `homologado` / `reprovado` | — | — |
+
+- **Quem decide é o Jurídico.** Suprimentos só encaminha ou devolve. Os três botões
+  finais concluem o ciclo com as regras de sempre: aprovar exige risco e validade;
+  "com ressalvas" e "Não homologar" exigem ressalvas (o **parecer** do Jurídico ou, sem ele,
+  o comentário). Grava o ciclo e o cadastro (status, risco, validade, quem
+  respondeu por Suprimentos e pelo Jurídico, com a data).
+- O botão de reprovar chama-se **Não homologar** (o ciclo e o cadastro ficam
+  **Reprovado**): o motor não aceita, em nenhum fluxo, um botão "Reprovar/Devolver"
+  que encerre o fluxo — reprovação, para o motor, sempre volta a uma etapa anterior.
+- **Ninguém move card à mão**, nem o administrador. A etapa só muda pelos botões do
+  fluxo, com comentário, histórico do fluxo e linha no histórico do fornecedor.
+- **Kanban = só visualização** (aba Homologação do fornecedor e aba Homologações do
+  módulo): etapa, há quanto tempo, prazo, quem responde e "Abrir". A coluna
+  (`dgt_etapa`) é derivada da etapa do fluxo (`etapaKanbanDoFluxo` em
+  `homologacao.ts`, testado).
+- **Aba Pendências** ("Aguardando você"): ciclos em que o usuário responde a etapa
+  atual. "Abrir" leva à aba Homologação do fornecedor: etapa, resumo dos documentos
+  (inclusive "a conferir"), campos, comentário, botões e histórico do fluxo.
+- **Checklist do item 9** continua no card: edita quem responde a etapa atual ou o
+  administrador do módulo (correção de dados). Salvar o checklist **não** muda a etapa.
+- **Abrir ciclo:** pela ficha (plugin, `receberFicha`) ou pelo botão **Abrir ciclo**
+  (só o motivo). O plugin cria o ciclo **sem instância**, com `dgt_etapaatual =
+  ficha-recebida` e a área Suprimentos em `dgt_responsaveisetapa`; o portal inicia a
+  instância na primeira vez que alguém abre o ciclo (mesma etapa: o aviso não repete).
+- **Ciclos abertos antes desta versão:** ao abrir, o fluxo começa na **etapa
+  equivalente** à coluna em que o card estava (ex.: "Aguardando Jurídico" →
+  `analise-juridico`), com registro no histórico do fluxo. Ciclos só de teste podem
+  ser concluídos ou recriados. **Pendência (confirmar):** se houver ciclos reais
+  abertos, conferir a etapa de cada um depois da migração.
+- **Fluxo concluído sem gravar o ciclo** (falha de gravação): o card mostra **Gravar a
+  conclusão** para quem responde ou para o administrador.
+- **Homologação anterior ao kanban:** botão **Registrar a homologação atual como
+  ciclo 1** (cria o ciclo 1 concluído com os dados do cadastro).
+- **Limitação (piloto):** como em Documentos e Ambientes, quem pode agir é
+  conferido no navegador. A homologação pelo motor fica em **piloto** até o motor ir
+  para a Custom API.
 
 ## 7c. Colaboradores do prestador
 
@@ -298,6 +348,24 @@ Botão **Colaboradores** no detalhe do fornecedor.
   caracteres do id)` no site de Suprimentos, ou link do arquivo.
 - O histórico do fornecedor registra cadastro, alteração e documentos do
   colaborador, nunca o CPF.
+
+## 7d. Contratos do fornecedor
+
+Aba **Contratos** no fornecedor e aba **Contratos** no módulo (todos os fornecedores).
+
+- Vários contratos por fornecedor: nome, **projeto** (texto livre, com sugestão dos
+  já usados), data de assinatura, início e fim da vigência (vazio = prazo
+  indeterminado), arquivo (pasta do fornecedor › `Contratos`, ou link) e observações.
+- Ordena por assinatura, início ou fim da vigência; filtra por projeto e por
+  "vencendo em até 30 dias (e vencidos)".
+- Situação: **Vigente**, **Vence em N dias**, **Vencido** (calculados pelo fim da
+  vigência) ou **Encerrado** (manual, com motivo). Não se exclui contrato.
+- O histórico do fornecedor registra criação, alteração e encerramento.
+- Contrato que chega assinado por e-mail (ex.: Clicksign) entra pela fila "A
+  conferir": **Conferir → Contrato** (seção 8).
+- Fim da vigência gera aviso interno para Suprimentos (seção 10, E2).
+- **Pendência (confirmar):** a visão Contratos do módulo (além da aba do fornecedor)
+  foi implementada como proposta; confirmar se fica.
 
 ## 8. Ficha pelo Microsoft Forms + documentos por e-mail (opção A)
 
@@ -383,13 +451,59 @@ externo). Os documentos chegam por e-mail com o protocolo.
    Devolve `{ registrados, ignorados }`.
 5. (Opcional) *Responder ao e-mail* confirmando o recebimento.
 
+### Fluxo 2b — Retorno do Clicksign (documentos assinados)
+
+O Clicksign manda **"N documentos assinados: arquivo1.pdf, arquivo2.pdf..."** de
+`assinatura@clicksign.com` para quem enviou o envelope, com os PDFs anexados como
+`<nome original> - Clicksign.pdf`. O assunto **é cortado com "..."** quando há muitos
+arquivos.
+
+**Regra operacional (Suprimentos):** o protocolo `FORN-AAAA-NNNN` vai **no nome do
+arquivo** enviado ao Clicksign (ex.: `FORN-2026-0042 - Contrato manutencao.pdf`) e o
+envelope é enviado pela conta da caixa monitorada (a mesma do Fluxo 2). Sem
+protocolo no nome, o arquivo não é reconhecido. **Pendência (confirmar):** validar
+esta regra com Suprimentos.
+
+Fluxo separado do Fluxo 2 (ações em português):
+
+1. *Quando um novo email chegar (V3)* — **De** = `assinatura@clicksign.com`,
+   *Incluir anexos* = Sim, *Somente com anexos* = Sim.
+2. *Inicializar variável* `arquivos` (Matriz, `[]`) e `protocolos` (Matriz, `[]`).
+3. *Filtrar matriz* dos anexos com `isInline` = false (`Anexos_reais`).
+4. *Aplicar a cada* anexo de `Anexos_reais`: *Executar uma ação não associada*
+   `dgt_ConsultarFornecedor` com
+   `string(setProperty(json('{"acao":"localizarProtocolo"}'), 'assunto', items('Aplicar_a_cada')?['name']))`
+   → *Analisar JSON* → se `encontrado` = true, *Acrescentar à variável de matriz*
+   `protocolos` o valor `protocolo`.
+5. Se `protocolos` estiver vazio: tente uma vez com o **assunto** (mesma ação, com
+   `triggerOutputs()?['body/subject']`). Ainda sem protocolo → **Encerrar** (Êxito),
+   **sem responder** — o remetente é o Clicksign e há envelopes que não são de
+   fornecedor (ex.: "Termo Inventário Estoque").
+6. Protocolo usado = `first(union(variables('protocolos'), variables('protocolos')))`.
+   Se `length(union(variables('protocolos'), variables('protocolos')))` > 1: e-mail a
+   Suprimentos ("e-mail do Clicksign com mais de um protocolo; registrado no
+   primeiro: …") e segue.
+7. Chame `localizarProtocolo` com o protocolo escolhido para obter a `pasta` e siga os
+   passos 3 e 4 do Fluxo 2 (Criar arquivo na pasta do fornecedor, acrescentar a
+   `arquivos`, `receberDocumentos` com `"protocolo"` = o escolhido).
+8. Para marcar a origem: *Aplicar a cada* item de `arquivos` → *Listar linhas*
+   `dgt_fornecedordocumentos` com `dgt_arquivourl eq '@{items('Aplicar_a_cada_2')?['url']}'`
+   → *Atualizar uma linha* com `dgt_observacoes` =
+   `concat(<observações atuais>, ' Assinado via Clicksign.')`.
+
+Os PDFs entram como **"A conferir"**: **não** viram contrato automaticamente. No
+Conferir, quem confere escolhe o que é cada arquivo — um tipo de documento ou
+**Contrato**.
+
 **No portal (opção A):** os arquivos aparecem na aba **Documentos** do fornecedor,
 no bloco **"Recebidos por e-mail — a conferir"** (e na Visão geral, coluna "A
 conferir"). Para cada um: **Conferir** (abre o arquivo; escolher o tipo, emissão e
 validade — a validade é sugerida pelo tipo) → vira **Vigente** e substitui a versão
-anterior do mesmo tipo; ou **Descartar** (com motivo — o arquivo continua no
-SharePoint, só sai da fila). "A conferir" e "Descartado" **não contam** como
-documento entregue.
+anterior do mesmo tipo; **Conferir → Contrato** (nome, projeto, assinatura, início e
+fim da vigência) → cria o contrato com o **mesmo arquivo** (origem E-mail) e o item
+sai da fila como **Convertido em contrato**; ou **Descartar** (com motivo — o
+arquivo continua no SharePoint, só sai da fila). "A conferir", "Descartado" e
+"Convertido em contrato" **não contam** como documento entregue.
 
 A conexão do Outlook do fluxo 2 é a da caixa de Suprimentos (ou de quem tiver
 acesso a ela). **Próxima etapa (C):** a IA lê cada arquivo recebido e já sugere o
@@ -417,3 +531,87 @@ Desenho (a executar quando o token entrar no fluxo de assinatura):
 - O card mostra "Ficha e Código de Conduta assinados (Clicksign)" no andamento;
   hoje aparece "integração aguardando o token".
 
+## 10. Avisos por Power Automate (homologação e vencimentos)
+
+O motor e o portal **não enviam e-mail**. Os avisos são fluxos do Power Automate
+que leem o que o portal grava. Ações em português.
+
+**Padrão de falha (vale para toda chamada ao Dataverse):** em cada ação do Dataverse,
+adicione em paralelo *Enviar um email (V2)* para a caixa de Suprimentos com
+*Configurar executar após* = **falhou** e **atingiu o tempo limite**, assunto
+"Falha no fluxo <nome>" e o link da execução:
+`concat('https://make.powerautomate.com/environments/', workflow()?['tags']?['environmentName'], '/flows/', workflow()?['name'], '/runs/', workflow()?['run']?['name'])`.
+Nunca coloque CNPJ, CPF ou dados bancários no e-mail.
+
+### D2. Aviso de etapa da homologação
+
+1. *Quando uma linha é adicionada, modificada ou excluída* — tipo **Adicionada ou
+   modificada**, tabela **Ciclos de homologação** (`dgt_fornecedorhomologacao`),
+   escopo Organização, **Selecionar colunas** = `dgt_etapaatual`.
+2. *Condição*: `dgt_etapaatual` não vazio **e** `dgt_responsaveisetapa` diferente de
+   `[]`; senão **Encerrar** (ciclo recém-criado ou concluído).
+3. *Obter uma linha por ID* — **Fornecedores**, `_dgt_fornecedor_value`, colunas
+   `dgt_name,dgt_protocolo,dgt_contatocomercial,dgt_emailpedidos`.
+4. *Analisar JSON* de `dgt_responsaveisetapa` (lista de
+   `{ descricao, usuarioId?, areaId?, somenteGestores?, usuariosIds? }`) e resolva os
+   e-mails pela lógica do **Fluxo A** de `docs/fluxo-dataverse.md` (`areaId` →
+   *Listar linhas* em `dgt_usuarioarea` da área, ativos → `dgt_usuario` → e-mail).
+5. *Enviar um email (V2)* interno: razão social, protocolo, etapa (`dgt_etapa`), prazo
+   (`dgt_prazoetapa`) e o link do portal (módulo Fornecedores → aba **Pendências**).
+6. **Caso especial** `dgt_etapaatual` = `documentos-pendentes`: além do aviso interno,
+   e-mail **ao fornecedor**, enviado pela caixa monitorada (a resposta precisa cair
+   no Fluxo 2):
+   - Para: `json(<dgt_contatocomercial>)?['email']`; se vazio, `dgt_emailpedidos`;
+   - Assunto: `@{dgt_protocolo} — Documentos para homologação` (o protocolo no assunto
+     é o que o Fluxo 2 reconhece);
+   - Corpo: as linhas de `dgt_documentospendentes` (gravada pelo portal ao chegar na
+     etapa: só tipos **manuais** que faltam, vencidos ou a vencer) e o pedido para
+     **responder este e-mail com os anexos, sem mudar o assunto**.
+
+### D3. Avisos de vencimento (agendado, diário)
+
+A regra está escrita e testada em `services/fornecedores/avisosVencimento.ts` e
+`contratos.ts` (`contratoNoAvisoDeVencimento`). Antecedência: **15 dias**.
+
+**E1. Ao fornecedor: documentos manuais vencendo em 15 dias** — *Recorrência* diária, 07h.
+
+1. *Listar linhas* **Fornecedores** com
+   `dgt_ativo eq true and (dgt_status eq 'Homologado' or dgt_status eq 'Em homologação')`
+   (Bloqueado, Suspenso, Inativo etc. não recebem).
+2. *Aplicar a cada* fornecedor (Simultaneidade 1):
+   - *Listar linhas* **Documentos de fornecedor**:
+     `_dgt_fornecedor_value eq @{id} and dgt_situacao eq 'Vigente' and dgt_avisovencimentoem eq null and dgt_datavencimento ge @{formatDateTime(utcNow(),'yyyy-MM-dd')} and dgt_datavencimento le @{formatDateTime(addDays(utcNow(),15),'yyyy-MM-dd')} and not endswith(dgt_responsavelnome,'(automático)')`.
+     Os automáticos (certidões emitidas pelo plugin, gravadas com "(automático)") a
+     DGT renova sozinha; **CND estadual ou municipal enviada à mão entra**.
+   - *Listar linhas* **Documentos de colaborador** com
+     `dgt_Colaborador/_dgt_fornecedor_value eq @{id} and dgt_Colaborador/dgt_ativo eq true and dgt_situacao eq 'Vigente' and dgt_avisovencimentoem eq null and dgt_datavencimento ge … and dgt_datavencimento le …`,
+     expandir `dgt_Colaborador($select=dgt_name)`.
+   - Nada nas duas listas → próximo fornecedor.
+   - **Um e-mail por fornecedor** (mesmo destinatário do D2): documento e vencimento;
+     para colaboradores, **nome + tipo/norma + vencimento, nunca o CPF** (não
+     selecione `dgt_cpf`).
+   - Depois de enviar: *Atualizar uma linha* em cada documento listado com
+     `dgt_avisovencimentoem` = `utcNow()`. **Um aviso por documento**: a renovação é
+     um registro novo, sem a data, e volta a ser avisada no próximo vencimento.
+
+**E2. Interno: contratos vencendo** — mesma recorrência.
+
+1. *Listar linhas* **Contratos de fornecedor**:
+   `dgt_situacao eq 'Vigente' and dgt_avisovencimentoem eq null and dgt_fimvigencia ge @{hoje} and dgt_fimvigencia le @{hoje + 15 dias}`,
+   expandir `dgt_Fornecedor($select=dgt_name)`.
+2. Para cada contrato: e-mail aos membros da área Suprimentos (mesma resolução do D2,
+   pela área) com fornecedor, contrato, projeto, fim da vigência e o link do portal
+   (aba **Contratos**); depois *Atualizar uma linha* com `dgt_avisovencimentoem` =
+   `utcNow()`.
+3. **Pendência (confirmar):** antecedência do aviso de contrato — proposta de 15 dias,
+   igual à dos documentos.
+
+## 11. Pendências a confirmar
+
+1. Visão Contratos no módulo (seção 7d), além da aba do fornecedor — implementada
+   como proposta.
+2. Antecedência do aviso de contrato (seção 10, E2) — proposta de 15 dias.
+3. Ciclos abertos antes do motor (seção 7b) — começam na etapa equivalente; conferir
+   se há ciclos reais.
+4. Regra operacional do protocolo no nome do arquivo enviado ao Clicksign (seção 8,
+   Fluxo 2b).

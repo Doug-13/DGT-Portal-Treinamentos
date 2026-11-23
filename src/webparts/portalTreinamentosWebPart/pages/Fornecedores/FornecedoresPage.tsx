@@ -17,6 +17,10 @@ import {
 } from '../../services/fornecedores/FornecedoresService';
 
 import {
+  HomologacaoFluxoService
+} from '../../services/fornecedores/HomologacaoFluxoService';
+
+import {
   IDadosFornecedores
 } from '../../services/fornecedores/modeloFornecedores';
 
@@ -43,12 +47,20 @@ import {
 import ListaFornecedoresView from './ListaFornecedoresView';
 import DetalheFornecedorView, { Secao } from './DetalheFornecedorView';
 import QuadroHomologacoesView from './QuadroHomologacoesView';
+import PendenciasHomologacaoView from './PendenciasHomologacaoView';
+import ContratosFornecedorView from './ContratosFornecedorView';
+import { IContextoFluxoHomologacao } from './HomologacaoFornecedorView';
 import TiposDocumentoView from './TiposDocumentoView';
 
 // ============================================================
 // FORNECEDORES — HOMOLOGAÇÃO E GESTÃO (fase 1, uso interno)
 //
-// Abas: Visão geral · Fornecedores · Homologações (kanban) · Tipos de documento
+// Abas: Visão geral · Pendências · Fornecedores · Homologações (kanban,
+// só visualização) · Contratos · Tipos de documento
+//
+// Homologação no motor de fluxos (processo SUP-HOM): a etapa só muda
+// pelos botões do fluxo, por quem responde a etapa (áreas Suprimentos e
+// Jurídico). PILOTO: quem pode agir é conferido no navegador.
 //
 // Quem vê: quem tem o módulo "fornecedores" liberado (Usuários e
 // acessos). Cadastrar fornecedor e registrar documento: qualquer um
@@ -66,12 +78,14 @@ export interface IFornecedoresPageProps {
   siteUrl?: string;
 }
 
-type AbaFornecedores = 'visao' | 'lista' | 'homologacoes' | 'tipos';
+type AbaFornecedores = 'visao' | 'pendencias' | 'lista' | 'homologacoes' | 'contratos' | 'tipos';
 
 const ABAS: Array<{ id: AbaFornecedores; rotulo: string }> = [
   { id: 'visao', rotulo: 'Visão geral' },
+  { id: 'pendencias', rotulo: 'Pendências' },
   { id: 'lista', rotulo: 'Fornecedores' },
   { id: 'homologacoes', rotulo: 'Homologações' },
+  { id: 'contratos', rotulo: 'Contratos' },
   { id: 'tipos', rotulo: 'Tipos de documento' }
 ];
 
@@ -185,6 +199,14 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
   const [aba, setAba] = React.useState<AbaFornecedores>('visao');
   const [aberto, setAberto] = React.useState<string | undefined>(undefined);
   const [secaoInicial, setSecaoInicial] = React.useState<Secao | undefined>(undefined);
+  const [qtdPendencias, setQtdPendencias] = React.useState<number | undefined>(undefined);
+
+  // Motor de fluxos da homologação (precisa do usuário logado).
+  const motor: IContextoFluxoHomologacao | undefined = React.useMemo(
+    () => (dataverseService && servico && contexto
+      ? { fluxo: new HomologacaoFluxoService(dataverseService, servico), contexto }
+      : undefined),
+    [dataverseService, servico, contexto]);
 
   const usuarioNome = contexto ? contexto.nome : 'Usuário';
   const administra = !!contexto && administraModulo(contexto.perfil, contexto.modulosAdministrados, 'fornecedores');
@@ -260,7 +282,7 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
               onClick={() => { setAba(a.id); setAberto(undefined); }}
               style={{ padding: '10px 16px', border: 0, borderBottom: `3px solid ${ativo ? COR.ciano : 'transparent'}`, marginBottom: '-1px', background: 'none', color: COR.azul, fontWeight: ativo ? 700 : 500, fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}
             >
-              {a.rotulo}
+              {a.rotulo}{a.id === 'pendencias' && qtdPendencias ? ` (${qtdPendencias})` : ''}
             </button>
           );
         })}
@@ -303,6 +325,7 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
               administra={administra}
               usuarioNome={usuarioNome}
               secaoInicial={secaoInicial}
+              motor={motor}
               voltar={() => setAberto(undefined)}
               aoAlterar={async aviso => { await carregar(); if (aviso) { avisar(aviso); } }}
             />
@@ -312,9 +335,32 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
             <QuadroHomologacoesView
               servico={servico}
               fornecedores={dados.fornecedores}
-              administra={administra}
-              usuarioNome={usuarioNome}
               abrir={id => abrirFornecedor(id, 'homologacao')}
+            />
+          )}
+
+          {aba === 'pendencias' && (
+            motor
+              ? (
+                <PendenciasHomologacaoView
+                  servico={servico}
+                  fluxo={motor.fluxo}
+                  contexto={motor.contexto}
+                  fornecedores={dados.fornecedores}
+                  administra={administra}
+                  abrir={id => abrirFornecedor(id, 'homologacao')}
+                  aoContar={setQtdPendencias}
+                />
+              )
+              : <Aviso tipo="info">Pendências indisponíveis: usuário do portal não identificado.</Aviso>
+          )}
+
+          {aba === 'contratos' && (
+            <ContratosFornecedorView
+              servico={servico}
+              fornecedores={dados.fornecedores}
+              usuarioNome={usuarioNome}
+              abrir={id => abrirFornecedor(id, 'contratos')}
             />
           )}
 

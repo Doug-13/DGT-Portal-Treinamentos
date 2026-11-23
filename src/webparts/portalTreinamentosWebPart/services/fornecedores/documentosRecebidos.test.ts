@@ -21,21 +21,26 @@ import {
 
 interface IAtualizacao { tabela: string; id: string; dados: Record<string, unknown> }
 
-const montar = (): { servico: FornecedoresService; atualizacoes: IAtualizacao[]; historico: Array<Record<string, unknown>> } => {
+const montar = (): { servico: FornecedoresService; atualizacoes: IAtualizacao[]; historico: Array<Record<string, unknown>>; criados: IAtualizacao[] } => {
   const atualizacoes: IAtualizacao[] = [];
   const historico: Array<Record<string, unknown>> = [];
+  const criados: IAtualizacao[] = [];
   const dataverse = {
     atualizarRegistro: (tabela: string, id: string, dados: Record<string, unknown>) => {
       atualizacoes.push({ tabela, id, dados });
       return Promise.resolve();
     },
-    criarRegistro: (_tabela: string, dados: Record<string, unknown>) => {
-      historico.push(dados);
+    criarRegistro: (tabela: string, dados: Record<string, unknown>) => {
+      if (tabela === 'dgt_fornecedorhistorico') {
+        historico.push(dados);
+      } else {
+        criados.push({ tabela, id: '', dados });
+      }
       return Promise.resolve('h1');
     },
     referenciaLookup: (tabela: string, id: string) => Promise.resolve(`/${tabela}s(${id})`)
   } as unknown as DataverseService;
-  return { servico: new FornecedoresService(dataverse), atualizacoes, historico };
+  return { servico: new FornecedoresService(dataverse), atualizacoes, historico, criados };
 };
 
 const fornecedor = { id: 'f1', razaoSocial: 'Empresa Exemplo' } as unknown as IFornecedor;
@@ -59,6 +64,7 @@ describe('Documentos recebidos por e-mail', () => {
     expect(lerSituacaoDocumento('Descartado')).toBe('Descartado');
     expect(lerSituacaoDocumento('Substituído')).toBe('Substituído');
     expect(lerSituacaoDocumento('')).toBe('Vigente');
+    expect(lerSituacaoDocumento('Convertido em contrato')).toBe('Convertido em contrato');
   });
 
   it('conferir: grava tipo e datas, vira Vigente, substitui a versão anterior e registra no histórico', async () => {
@@ -85,6 +91,26 @@ describe('Documentos recebidos por e-mail', () => {
     await expect(servico.conferirDocumento(fornecedor, recebido({ situacao: 'Vigente' }),
       { tipo: tipoCnd, emissao: '2026-11-10', vencimento: '2027-05-09', observacoes: '' }, [], 'Analista')).rejects.toThrow(/já foi conferido/);
     expect(atualizacoes).toHaveLength(0);
+  });
+
+  it('conferir → contrato: cria o contrato com o mesmo arquivo e tira o item da fila', async () => {
+    const { servico, atualizacoes, historico, criados } = montar();
+    const dados = { nome: 'Contrato de manutenção', projeto: 'Projeto Norte', dataAssinatura: '2026-11-18', inicioVigencia: '2026-12-01', fimVigencia: '2027-11-30', observacoes: '' };
+
+    await expect(servico.converterEmContrato(fornecedor, recebido(), { ...dados, projeto: '' }, 'Analista')).rejects.toThrow(/projeto/);
+    expect(criados).toHaveLength(0);
+
+    await servico.converterEmContrato(fornecedor, recebido(), dados, 'Analista');
+    expect(criados[0].tabela).toBe('dgt_fornecedorcontrato');
+    expect(criados[0].dados.dgt_origem).toBe('E-mail');
+    expect(criados[0].dados.dgt_arquivourl).toBe('https://exemplo.sharepoint.com/cnd.pdf');
+    expect(criados[0].dados['dgt_DocumentoOrigem@odata.bind']).toContain('d-novo');
+    expect(atualizacoes[0]).toEqual(expect.objectContaining({ id: 'd-novo' }));
+    expect(atualizacoes[0].dados.dgt_situacao).toBe('Convertido em contrato');
+    expect(historico[0].dgt_name).toMatch(/Contrato registrado/);
+
+    // Item já convertido não volta a virar contrato.
+    await expect(servico.converterEmContrato(fornecedor, recebido({ situacao: 'Convertido em contrato' }), dados, 'Analista')).rejects.toThrow(/já foi conferido/);
   });
 
   it('descartar: sai da fila com o motivo; exige motivo', async () => {

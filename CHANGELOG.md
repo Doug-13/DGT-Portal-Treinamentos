@@ -6,6 +6,14 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: Fornecedores — homologação no motor de fluxos (processo SUP-HOM, Processos → Fluxos): Ficha recebida → Documentos pendentes → Análise Suprimentos → Análise Jurídico → Homologado/Reprovado. Responsáveis por área (Suprimentos e Jurídico); quem decide é o Jurídico (Aprovar, Aprovar com ressalvas, Não homologar → Reprovado, Devolver a Suprimentos). Pacote para importar: docs/exemplos/pacote-homologacao-fornecedor.json. Piloto: quem pode agir é conferido no navegador.
+- Novo: Fornecedores — aba Pendências ("Aguardando você"): ciclos em que o usuário responde a etapa atual.
+- Melhoria: Fornecedores — kanban de homologação só para visualização (inclusive para o administrador): sem arrastar, sem ← / → e sem "Mover para"; o card mostra etapa, tempo na etapa, prazo e quem responde. A etapa só muda pelos botões do fluxo, com comentário e histórico.
+- Novo: Fornecedores — contratos do fornecedor (nome, projeto, assinatura, vigência, arquivo), com aba no fornecedor e visão geral no módulo; filtro por projeto e por vencimento; encerrar em vez de excluir.
+- Novo: Fornecedores — Conferir → Contrato: o arquivo recebido por e-mail (ex.: retorno do Clicksign) vira contrato com o mesmo arquivo e sai da fila como "Convertido em contrato".
+- Novo: Fornecedores — colunas para os avisos do Power Automate (etapa da homologação, documentos pendentes, avisos de vencimento) e instruções dos fluxos 2b (retorno do Clicksign), D2 (aviso de etapa) e D3 (vencimentos ao fornecedor e de contratos) em docs/fornecedores.md.
+- Atenção (deploy): rodar de novo scripts/dataverse/criar-tabelas-fornecedores.ps1, atualizar a DLL dos plugins (o ciclo aberto pela ficha já sai com a área Suprimentos; nova chave opcional "areaSuprimentos" na Configuração não segura), importar e publicar o processo SUP-HOM e vincular as pessoas às áreas Suprimentos e Jurídico.
+
 ## [1.4.28] - 2026-11-17
 
 - Novo: Fornecedores — homologação em kanban (Ficha recebida → Documentos pendentes → Em análise → Aguardando Jurídico → Homologado/Reprovado), um card por ciclo; ciclo concluído fica somente leitura e renovação abre um ciclo novo. A ficha recebida pelo formulário abre o ciclo sozinha. Aba Homologações com o quadro de todos os fornecedores.

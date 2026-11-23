@@ -61,12 +61,19 @@ import {
 
 import ColaboradoresFornecedorView from './ColaboradoresFornecedorView';
 import FichaFornecedorView from './FichaFornecedorView';
-import HomologacaoFornecedorView from './HomologacaoFornecedorView';
+import HomologacaoFornecedorView, { IContextoFluxoHomologacao } from './HomologacaoFornecedorView';
+import ContratosFornecedorView, { CamposContrato } from './ContratosFornecedorView';
+
+import {
+  IDadosContrato,
+  projetosDistintos,
+  validarContrato
+} from '../../services/fornecedores/contratos';
 
 // ============================================================
 // FORNECEDORES — DETALHE
 //
-// Seções: Dados · Ficha · Documentos · Consultas · Homologação · Histórico
+// Seções: Dados · Ficha · Documentos · Contratos · Consultas · Homologação · Histórico
 // Status restritos (só administrador do módulo): Homologado, Suspenso,
 // Bloqueado, Descredenciado e Reprovado. "Em homologação" e "Com
 // restrição" qualquer pessoa com o módulo pode definir.
@@ -74,12 +81,13 @@ import HomologacaoFornecedorView from './HomologacaoFornecedorView';
 
 const STATUS_RESTRITOS: StatusFornecedor[] = ['Homologado', 'Suspenso', 'Bloqueado', 'Descredenciado', 'Reprovado'];
 
-export type Secao = 'dados' | 'ficha' | 'documentos' | 'consultas' | 'homologacao' | 'historico';
+export type Secao = 'dados' | 'ficha' | 'documentos' | 'contratos' | 'consultas' | 'homologacao' | 'historico';
 
 const SECOES: Array<{ id: Secao; rotulo: string }> = [
   { id: 'dados', rotulo: 'Dados' },
   { id: 'ficha', rotulo: 'Ficha' },
   { id: 'documentos', rotulo: 'Documentos' },
+  { id: 'contratos', rotulo: 'Contratos' },
   { id: 'consultas', rotulo: 'Consultas' },
   { id: 'homologacao', rotulo: 'Homologação' },
   { id: 'historico', rotulo: 'Histórico' }
@@ -404,13 +412,22 @@ const DocumentoModal: React.FC<{
 // Conferir documento recebido por e-mail ("A conferir")
 // ------------------------------------------------------------
 
+// Valor do select para "este arquivo é um contrato".
+const OPCAO_CONTRATO = '__contrato__';
+
+// Nome sugerido: o do arquivo, sem extensão e sem o sufixo do Clicksign.
+const nomeSugeridoContrato = (arquivo: string): string =>
+  (arquivo || '').replace(/\.[^.]+$/, '').replace(/\s*-\s*Clicksign\s*$/i, '').trim();
+
 const ConferirDocumentoModal: React.FC<{
   recebido: IDocumentoFornecedor;
   tipos: ITipoDocumentoFornecedor[];
   categoria: string;
+  projetos: string[];
   fechar: () => void;
   salvar: (dados: { tipo: ITipoDocumentoFornecedor; emissao: string; vencimento: string; observacoes: string }) => Promise<void>;
-}> = ({ recebido, tipos, categoria, fechar, salvar }) => {
+  salvarContrato: (dados: IDadosContrato) => Promise<void>;
+}> = ({ recebido, tipos, categoria, projetos, fechar, salvar, salvarContrato }) => {
 
   const ativos = tipos.filter(t => t.ativo);
   const daCategoria = ativos.filter(t => tipoSeAplica(t, categoria));
@@ -423,7 +440,12 @@ const ConferirDocumentoModal: React.FC<{
   const [observacoes, setObservacoes] = React.useState('');
   const [gravando, setGravando] = React.useState(false);
   const [erro, setErro] = React.useState('');
+  const [contrato, setContrato] = React.useState<IDadosContrato>(() => ({
+    nome: nomeSugeridoContrato(recebido.arquivoNome || recebido.titulo),
+    projeto: '', dataAssinatura: '', inicioVigencia: '', fimVigencia: '', observacoes: ''
+  }));
 
+  const ehContrato = tipoId === OPCAO_CONTRATO;
   const tipo = ativos.filter(t => t.id === tipoId)[0];
 
   const atualizarSugestao = (novaEmissao: string, novoTipo?: ITipoDocumentoFornecedor): void => {
@@ -433,14 +455,24 @@ const ConferirDocumentoModal: React.FC<{
   };
 
   const confirmar = async (): Promise<void> => {
-    if (!tipo) {
+    if (ehContrato) {
+      const problema = validarContrato(contrato);
+      if (problema) {
+        setErro(problema);
+        return;
+      }
+    } else if (!tipo) {
       setErro('Escolha o tipo do documento.');
       return;
     }
     setGravando(true);
     setErro('');
     try {
-      await salvar({ tipo, emissao, vencimento, observacoes });
+      if (ehContrato) {
+        await salvarContrato(contrato);
+      } else if (tipo) {
+        await salvar({ tipo, emissao, vencimento, observacoes });
+      }
     } catch (e) {
       setErro(String((e as Error)?.message || e));
       setGravando(false);
@@ -450,14 +482,14 @@ const ConferirDocumentoModal: React.FC<{
   return (
     <Modal
       titulo="Conferir documento recebido"
-      subtitulo="Abra o arquivo, confira o que é e informe o tipo e as datas. O documento passa a valer e substitui a versão anterior do mesmo tipo."
+      subtitulo="Abra o arquivo e diga o que ele é: um tipo de documento (passa a valer e substitui a versão anterior) ou um contrato (vai para a aba Contratos)."
       aoFechar={() => { if (!gravando) { fechar(); } }}
       largura={620}
       rodape={(
         <>
           <button type="button" style={botao('secundario', gravando)} disabled={gravando} onClick={fechar}>Cancelar</button>
           <button type="button" style={botao('principal', gravando)} disabled={gravando} onClick={() => { confirmar().catch(() => undefined); }}>
-            {gravando ? 'Gravando…' : 'Confirmar documento'}
+            {gravando ? 'Gravando…' : ehContrato ? 'Registrar contrato' : 'Confirmar documento'}
           </button>
         </>
       )}
@@ -470,13 +502,14 @@ const ConferirDocumentoModal: React.FC<{
       </div>
 
       <div>
-        <label style={rotulo} htmlFor="conf-tipo">Tipo de documento</label>
+        <label style={rotulo} htmlFor="conf-tipo">O que é este arquivo?</label>
         <select id="conf-tipo" style={campo} value={tipoId} onChange={e => {
           const novo = ativos.filter(t => t.id === e.target.value)[0];
           setTipoId(e.target.value);
           atualizarSugestao(emissao, novo);
         }}>
           <option value="">Escolha…</option>
+          <option value={OPCAO_CONTRATO}>Contrato (aba Contratos)</option>
           {daCategoria.length > 0 && (
             <optgroup label="Da categoria do fornecedor">
               {daCategoria.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
@@ -490,6 +523,13 @@ const ConferirDocumentoModal: React.FC<{
         </select>
       </div>
 
+      {ehContrato && (
+        <div style={{ marginTop: '10px' }}>
+          <CamposContrato d={contrato} mudar={p => setContrato(a => ({ ...a, ...p }))} projetos={projetos} prefixo="conf-contrato" />
+        </div>
+      )}
+
+      {!ehContrato && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px 14px', marginTop: '10px' }}>
         <div>
           <label style={rotulo} htmlFor="conf-emissao">Emissão</label>
@@ -502,10 +542,14 @@ const ConferirDocumentoModal: React.FC<{
         </div>
       </div>
 
+      )}
+
+      {!ehContrato && (
       <div style={{ marginTop: '10px' }}>
         <label style={rotulo} htmlFor="conf-obs">Observações</label>
         <textarea id="conf-obs" style={{ ...campo, resize: 'vertical' }} rows={2} value={observacoes} onChange={e => setObservacoes(e.target.value)} />
       </div>
+      )}
     </Modal>
   );
 };
@@ -517,9 +561,11 @@ const DetalheFornecedorView: React.FC<{
   administra: boolean;
   usuarioNome: string;
   secaoInicial?: Secao;
+  // Motor de fluxos da homologação (SUP-HOM).
+  motor?: IContextoFluxoHomologacao;
   voltar: () => void;
   aoAlterar: (aviso?: string) => Promise<void>;
-}> = ({ servico, fornecedor, tipos, administra, usuarioNome, secaoInicial, voltar, aoAlterar }) => {
+}> = ({ servico, fornecedor, tipos, administra, usuarioNome, secaoInicial, motor, voltar, aoAlterar }) => {
 
   const [secao, setSecao] = React.useState<Secao>(secaoInicial || 'dados');
   const [verColaboradores, setVerColaboradores] = React.useState(false);
@@ -533,6 +579,7 @@ const DetalheFornecedorView: React.FC<{
   const [verAnteriores, setVerAnteriores] = React.useState(false);
   const [conferir, setConferir] = React.useState<IDocumentoFornecedor | undefined>(undefined);
   const [descartando, setDescartando] = React.useState('');
+  const [projetos, setProjetos] = React.useState<string[]>([]);
 
   const carregarDocumentos = React.useCallback(async (): Promise<void> => {
     try {
@@ -735,7 +782,12 @@ const DetalheFornecedorView: React.FC<{
                         {d.arquivoUrl ? <a href={d.arquivoUrl} target="_blank" rel="noopener noreferrer" style={{ color: COR.azul }}>abrir</a> : '—'}
                       </td>
                       <td style={{ ...celula, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <button type="button" style={botao('principal')} onClick={() => setConferir(d)}>Conferir</button>{' '}
+                        <button type="button" style={botao('principal')} onClick={() => {
+                          setConferir(d);
+                          servico.listarContratos()
+                            .then(r => setProjetos(projetosDistintos(r.contratos)))
+                            .catch(() => setProjetos([]));
+                        }}>Conferir</button>{' '}
                         <button type="button" style={botao('discreto', descartando === d.id)} disabled={descartando === d.id}
                           onClick={() => { descartar(d).catch(() => undefined); }}>
                           {descartando === d.id ? 'Descartando…' : 'Descartar'}
@@ -889,17 +941,30 @@ const DetalheFornecedorView: React.FC<{
         />
       )}
 
+      {/* ---------------- Contratos ---------------- */}
+      {secao === 'contratos' && (
+        <ContratosFornecedorView
+          servico={servico}
+          fornecedor={fornecedor}
+          usuarioNome={usuarioNome}
+          aoAlterar={async aviso => { setHistorico(undefined); await aoAlterar(aviso); }}
+        />
+      )}
+
       {/* ---------------- Homologação ---------------- */}
       {secao === 'homologacao' && (
         documentos
           ? (
             <HomologacaoFornecedorView
               servico={servico}
+              motor={motor}
               fornecedor={fornecedor}
               situacao={situacao}
+              aConferir={aConferir.length}
               administra={administra}
               usuarioNome={usuarioNome}
               aoAlterar={async aviso => { setHistorico(undefined); await aoAlterar(aviso); }}
+              irParaDocumentos={() => setSecao('documentos')}
             />
           )
           : <div style={{ padding: '20px', color: COR.texto2 }}>Carregando…</div>
@@ -945,7 +1010,15 @@ const DetalheFornecedorView: React.FC<{
           recebido={conferir}
           tipos={tipos}
           categoria={fornecedor.categoria}
+          projetos={projetos}
           fechar={() => setConferir(undefined)}
+          salvarContrato={async dados => {
+            await servico.converterEmContrato(fornecedor, conferir, dados, usuarioNome);
+            setConferir(undefined);
+            setHistorico(undefined);
+            await carregarDocumentos();
+            await aoAlterar(`Contrato "${dados.nome}" registrado (aba Contratos).`);
+          }}
           salvar={async dados => {
             const vigentes = (documentos || []).filter(d => d.tipoId === dados.tipo.id && d.situacao === 'Vigente');
             await servico.conferirDocumento(fornecedor, conferir, dados, vigentes, usuarioNome);

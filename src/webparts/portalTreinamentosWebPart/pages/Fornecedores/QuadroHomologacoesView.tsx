@@ -24,9 +24,10 @@ import {
 // ============================================================
 // FORNECEDORES — QUADRO GERAL DE HOMOLOGAÇÕES
 //
-// Todos os ciclos em aberto e os concluídos nos últimos 60 dias. Clicar
-// no card abre o fornecedor na aba Homologação (onde o card é editado).
-// Arrastar entre colunas abertas: só o administrador do módulo.
+// Todos os ciclos em aberto e os concluídos nos últimos 60 dias.
+// SOMENTE VISUALIZAÇÃO (quem está em cada etapa): ninguém move card.
+// "Abrir" leva ao fornecedor, aba Homologação, onde estão os botões do
+// fluxo para quem responde a etapa.
 // ============================================================
 
 const DIAS_CONCLUIDOS = 60;
@@ -34,10 +35,8 @@ const DIAS_CONCLUIDOS = 60;
 const QuadroHomologacoesView: React.FC<{
   servico: FornecedoresService;
   fornecedores: IFornecedor[];
-  administra: boolean;
-  usuarioNome: string;
   abrir: (fornecedorId: string) => void;
-}> = ({ servico, fornecedores, administra, usuarioNome, abrir }) => {
+}> = ({ servico, fornecedores, abrir }) => {
 
   const [ciclos, setCiclos] = React.useState<ICicloHomologacao[] | undefined>(undefined);
   const [disponivel, setDisponivel] = React.useState(true);
@@ -88,8 +87,7 @@ const QuadroHomologacoesView: React.FC<{
         <input aria-label="Buscar no quadro" placeholder="Buscar fornecedor ou protocolo…" value={busca} onChange={e => setBusca(e.target.value)}
           style={{ padding: '8px 10px', border: `1px solid ${COR.cinzaClaro}`, borderRadius: '8px', fontFamily: 'inherit', fontSize: '13.5px', minWidth: '260px' }} />
         <span style={ajuda}>
-          Ciclos em aberto e concluídos nos últimos {DIAS_CONCLUIDOS} dias. Clique no card para abrir o fornecedor.
-          {administra ? ' Arraste entre as colunas abertas para mover.' : ''}
+          Ciclos em aberto e concluídos nos últimos {DIAS_CONCLUIDOS} dias. Somente visualização: a etapa muda pelos botões do fluxo, na aba Pendências ou no fornecedor.
         </span>
       </div>
 
@@ -99,13 +97,7 @@ const QuadroHomologacoesView: React.FC<{
       {ciclos && cards.length > 0 && (
         <QuadroKanban
           cards={cards}
-          podeMover={administra}
           aoAbrir={c => abrir(c.fornecedorId)}
-          aoSoltar={(c, destino) => {
-            servico.moverCiclo(c, destino, usuarioNome)
-              .then(() => carregar())
-              .catch(e => setErro(String((e as Error)?.message || e)));
-          }}
         />
       )}
     </div>

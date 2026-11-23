@@ -23,8 +23,9 @@ import {
 import {
   API_CONSULTAR_FORNECEDOR,
   ClassificacaoRisco,
-  EtapaHomologacao,
   ICicloHomologacao,
+  IContratoFornecedor,
+  OrigemContrato,
   IColaboradorFornecedor,
   IDadosHomologacao,
   IDocumentoColaborador,
@@ -52,6 +53,7 @@ import {
   lerSituacaoDocumento,
   ResultadoSancoes,
   SITUACAO_A_CONFERIR,
+  SITUACAO_CONVERTIDO_CONTRATO,
   STATUS_FORNECEDOR,
   StatusFornecedor,
   TABELAS_FORN,
@@ -67,6 +69,11 @@ import {
   validarConclusao,
   verificacoesOk
 } from './homologacao';
+
+import {
+  IDadosContrato,
+  validarContrato
+} from './contratos';
 
 import {
   chaveDocumento,
@@ -193,6 +200,14 @@ const COLUNAS_CICLO =
   'dgt_classificacaorisco,dgt_resultadohomologacao,dgt_ressalvas,dgt_validadecadastro,dgt_verificacoes,' +
   'dgt_responsavelsuprimentos,dgt_responsavelcompliance,dgt_bancarioconferido,dgt_responsavelnome,createdon';
 
+// Colunas do motor de fluxos (SUP-HOM). Só lidas quando já existem
+// (script criar-tabelas-fornecedores.ps1 rodado de novo).
+const COLUNAS_CICLO_FLUXO = 'dgt_etapaatual,dgt_prazoetapa,dgt_responsaveisetapa,dgt_fluxoestado';
+
+const COLUNAS_CONTRATO =
+  'dgt_fornecedorcontratoid,_dgt_fornecedor_value,dgt_name,dgt_projeto,dgt_dataassinatura,dgt_iniciovigencia,dgt_fimvigencia,' +
+  'dgt_arquivourl,dgt_arquivonome,dgt_observacoes,dgt_situacao,dgt_origem,_dgt_documentoorigem_value,dgt_responsavelnome,createdon';
+
 const COLUNAS_COLABORADOR =
   'dgt_fornecedorcolaboradorid,_dgt_fornecedor_value,dgt_name,dgt_funcao,dgt_cpf,dgt_observacoes,dgt_ativo,createdon';
 
@@ -300,6 +315,7 @@ export class FornecedoresService {
 
   private readonly dataverse: DataverseService;
   private readonly envio?: SharePointDocumentoService;
+  private colunasFluxoCiclo: boolean | undefined;
 
   public constructor(
     dataverse: DataverseService,
@@ -681,8 +697,9 @@ export class FornecedoresService {
       filtro = `(dgt_concluidoem eq null or dgt_concluidoem ge ${corte})`;
     }
     try {
+      const colunas = (await this.temColunasFluxoCiclo()) ? `${COLUNAS_CICLO},${COLUNAS_CICLO_FLUXO}` : COLUNAS_CICLO;
       const regs = await this.dataverse.listarRegistros(TABELAS_FORN.ciclo,
-        `$select=${COLUNAS_CICLO}&$filter=${filtro}&$orderby=dgt_numero desc`);
+        `$select=${colunas}&$filter=${filtro}&$orderby=dgt_numero desc`);
       return { disponivel: true, ciclos: regs.map(r => this.lerCiclo(r)) };
     } catch (erro) {
       if (ehTabelaInexistente(erro)) {
@@ -692,29 +709,40 @@ export class FornecedoresService {
     }
   }
 
+  // As colunas do motor (dgt_fluxoestado…) já existem no Dataverse?
+  public async temColunasFluxoCiclo(): Promise<boolean> {
+    if (this.colunasFluxoCiclo === undefined) {
+      try {
+        await this.dataverse.listarRegistros(TABELAS_FORN.ciclo, `$select=${COLUNAS_CICLO_FLUXO}&$top=1`);
+        this.colunasFluxoCiclo = true;
+      } catch {
+        this.colunasFluxoCiclo = false;
+      }
+    }
+    return this.colunasFluxoCiclo;
+  }
+
+  // Abre o card na primeira coluna. A etapa a partir daí segue o motor
+  // de fluxos (HomologacaoFluxoService.iniciar, chamado pela tela).
   public async iniciarCiclo(
     fornecedor: IFornecedor,
     ciclos: ICicloHomologacao[],
     motivo: string,
-    etapa: EtapaHomologacao,
     usuarioNome: string
-  ): Promise<void> {
+  ): Promise<string> {
     if (ciclos.some(c => !c.concluidoEm)) {
       throw new Error('Este fornecedor já tem um ciclo de homologação em aberto.');
     }
     if (!motivo.trim()) {
       throw new Error('Escolha o motivo do ciclo.');
     }
-    if (etapa === 'Concluído') {
-      throw new Error('O ciclo começa numa coluna aberta.');
-    }
     const numero = proximoNumeroCiclo(ciclos);
-    await this.dataverse.criarRegistro(TABELAS_FORN.ciclo, {
+    const id = await this.dataverse.criarRegistro(TABELAS_FORN.ciclo, {
       dgt_name: limitar(`Ciclo ${numero} — ${motivo}`, 200),
       'dgt_Fornecedor@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.fornecedor, fornecedor.id),
       dgt_numero: numero,
       dgt_motivo: limitar(motivo, 60),
-      dgt_etapa: etapa,
+      dgt_etapa: 'Ficha recebida',
       dgt_etapadesde: new Date().toISOString(),
       dgt_protocolo: limitar(fornecedor.protocolo, 30),
       dgt_classificacaorisco: fornecedor.classificacaoRisco || '',
@@ -723,7 +751,8 @@ export class FornecedoresService {
       dgt_responsavelnome: limitar(usuarioNome, 200)
     });
     await this.registrarHistorico(fornecedor.id, 'Homologação: ciclo aberto',
-      `Ciclo ${numero} (${motivo}) aberto na coluna "${etapa}".`, usuarioNome);
+      `Ciclo ${numero} (${motivo}) aberto.`, usuarioNome);
+    return guid(id);
   }
 
   // Homologação feita antes do kanban (campos do cadastro) → ciclo 1
@@ -754,24 +783,6 @@ export class FornecedoresService {
     });
     await this.registrarHistorico(fornecedor.id, 'Homologação: ciclo anterior registrado',
       `A homologação que já estava no cadastro (${resultado}) virou o ciclo 1, concluído.`, usuarioNome);
-  }
-
-  public async moverCiclo(ciclo: ICicloHomologacao, destino: EtapaHomologacao, usuarioNome: string): Promise<void> {
-    if (ciclo.concluidoEm) {
-      throw new Error('Ciclo concluído é somente leitura. Abra um ciclo novo.');
-    }
-    if (destino === 'Concluído') {
-      throw new Error('Para ir a "Homologado / Reprovado", use Concluir ciclo (exige o resultado).');
-    }
-    if (destino === ciclo.etapa) {
-      return;
-    }
-    await this.dataverse.atualizarRegistro(TABELAS_FORN.ciclo, ciclo.id, {
-      dgt_etapa: destino,
-      dgt_etapadesde: new Date().toISOString()
-    });
-    await this.registrarHistorico(ciclo.fornecedorId, 'Homologação: etapa',
-      `Ciclo ${ciclo.numero}: "${ciclo.etapa}" → "${destino}".`, usuarioNome);
   }
 
   private dadosDoCiclo(d: IDadosHomologacao): Record<string, unknown> {
@@ -1179,6 +1190,150 @@ export class FornecedoresService {
   }
 
   // ==========================================================
+  // CONTRATOS (dgt_fornecedorcontrato)
+  // Vários por fornecedor. Encerrar em vez de excluir. Arquivo na
+  // pasta do fornecedor, subpasta "Contratos".
+  // ==========================================================
+
+  // Sem fornecedorId: todos (visão Contratos do módulo).
+  public async listarContratos(fornecedorId?: string): Promise<{ disponivel: boolean; contratos: IContratoFornecedor[] }> {
+    const filtro = fornecedorId ? `&$filter=_dgt_fornecedor_value eq ${guid(fornecedorId)}` : '';
+    try {
+      const regs = await this.dataverse.listarRegistros(TABELAS_FORN.contrato, `$select=${COLUNAS_CONTRATO}${filtro}`);
+      return { disponivel: true, contratos: regs.map(r => this.lerContrato(r)) };
+    } catch (erro) {
+      if (ehTabelaInexistente(erro)) {
+        return { disponivel: false, contratos: [] };
+      }
+      throw new Error(mensagemErro(erro));
+    }
+  }
+
+  private corpoContrato(d: IDadosContrato): Record<string, unknown> {
+    return {
+      dgt_name: limitar(d.nome, 200),
+      dgt_projeto: limitar(d.projeto, 200),
+      dgt_dataassinatura: d.dataAssinatura || null,
+      dgt_iniciovigencia: d.inicioVigencia || null,
+      dgt_fimvigencia: d.fimVigencia || null,
+      dgt_observacoes: limitar(d.observacoes, 4000)
+    };
+  }
+
+  private descreverContrato(d: IDadosContrato): string {
+    return `${d.nome} · projeto ${d.projeto} · vigência ${d.inicioVigencia || '—'} a ${d.fimVigencia || 'indeterminado'}` +
+      `${d.dataAssinatura ? ` · assinado em ${d.dataAssinatura}` : ''}`;
+  }
+
+  // Novo (contrato undefined) ou edição. Arquivo: envio ou link.
+  public async salvarContrato(
+    fornecedor: IFornecedor,
+    contrato: IContratoFornecedor | undefined,
+    d: IDadosContrato,
+    arquivo: { arquivo?: File; link?: string },
+    usuarioNome: string
+  ): Promise<void> {
+    const problema = validarContrato(d);
+    if (problema) {
+      throw new Error(problema);
+    }
+    if (contrato && contrato.situacao === 'Encerrado') {
+      throw new Error('Contrato encerrado não pode ser alterado.');
+    }
+    const link = (arquivo.link || '').trim();
+    if (link && !/^https:\/\//i.test(link)) {
+      throw new Error('O link do arquivo precisa começar com https://');
+    }
+    verificarSensivel(d.nome, d.projeto, d.observacoes);
+
+    const corpo = this.corpoContrato(d);
+    if (arquivo.arquivo) {
+      const enviado = await this.enviarArquivo(
+        [this.pastaFornecedor(fornecedor), 'Contratos'],
+        `${limitar(d.nome, 80)} - ${d.inicioVigencia}`,
+        arquivo.arquivo);
+      corpo.dgt_arquivourl = limitar(enviado.url, 2000);
+      corpo.dgt_arquivonome = limitar(enviado.nome, 255);
+    } else if (link) {
+      corpo.dgt_arquivourl = limitar(link, 2000);
+    }
+
+    if (!contrato) {
+      await this.dataverse.criarRegistro(TABELAS_FORN.contrato, {
+        ...corpo,
+        'dgt_Fornecedor@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.fornecedor, fornecedor.id),
+        dgt_situacao: 'Vigente',
+        dgt_origem: 'Manual',
+        dgt_responsavelnome: limitar(usuarioNome, 200)
+      });
+      await this.registrarHistorico(fornecedor.id, 'Contrato registrado', this.descreverContrato(d), usuarioNome);
+      return;
+    }
+
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.contrato, contrato.id, corpo);
+    await this.registrarHistorico(fornecedor.id, 'Contrato alterado', this.descreverContrato(d), usuarioNome);
+  }
+
+  public async encerrarContrato(
+    fornecedor: IFornecedor,
+    contrato: IContratoFornecedor,
+    motivo: string,
+    usuarioNome: string
+  ): Promise<void> {
+    const texto = (motivo || '').trim();
+    if (!texto) {
+      throw new Error('Informe o motivo do encerramento.');
+    }
+    if (contrato.situacao === 'Encerrado') {
+      throw new Error('Este contrato já está encerrado.');
+    }
+    verificarSensivel(texto);
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.contrato, contrato.id, {
+      dgt_situacao: 'Encerrado',
+      dgt_observacoes: limitar(`${contrato.observacoes} Encerrado: ${texto}`.trim(), 4000)
+    });
+    await this.registrarHistorico(fornecedor.id, 'Contrato encerrado', `${contrato.nome} (${contrato.projeto}): ${texto}`, usuarioNome);
+  }
+
+  // Item da fila "A conferir" que é um contrato (ex.: retorno do
+  // Clicksign): cria o contrato com o MESMO arquivo e tira o item da fila.
+  public async converterEmContrato(
+    fornecedor: IFornecedor,
+    recebido: IDocumentoFornecedor,
+    d: IDadosContrato,
+    usuarioNome: string
+  ): Promise<void> {
+    if (recebido.situacao !== SITUACAO_A_CONFERIR) {
+      throw new Error('Este documento já foi conferido ou descartado. Atualize a tela.');
+    }
+    const problema = validarContrato(d);
+    if (problema) {
+      throw new Error(problema);
+    }
+    verificarSensivel(d.nome, d.projeto, d.observacoes);
+
+    await this.dataverse.criarRegistro(TABELAS_FORN.contrato, {
+      ...this.corpoContrato(d),
+      'dgt_Fornecedor@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.fornecedor, fornecedor.id),
+      'dgt_DocumentoOrigem@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.documento, recebido.id),
+      dgt_arquivourl: limitar(recebido.arquivoUrl, 2000),
+      dgt_arquivonome: limitar(recebido.arquivoNome || recebido.titulo, 255),
+      dgt_situacao: 'Vigente',
+      dgt_origem: 'E-mail',
+      dgt_responsavelnome: limitar(usuarioNome, 200)
+    });
+
+    await this.dataverse.atualizarRegistro(TABELAS_FORN.documento, recebido.id, {
+      dgt_situacao: SITUACAO_CONVERTIDO_CONTRATO,
+      dgt_observacoes: limitar(`${recebido.observacoes} Convertido no contrato "${d.nome}".`.trim(), 4000),
+      dgt_responsavelnome: limitar(usuarioNome, 200)
+    });
+
+    await this.registrarHistorico(fornecedor.id, 'Contrato registrado (arquivo recebido por e-mail)',
+      `${this.descreverContrato(d)} · arquivo ${recebido.arquivoNome || recebido.titulo}`, usuarioNome);
+  }
+
+  // ==========================================================
   // GRAVAÇÃO — TIPOS DE DOCUMENTO (Administrador do módulo)
   // ==========================================================
 
@@ -1250,6 +1405,11 @@ export class FornecedoresService {
             '(sem permissão de edição ou pasta inexistente). Peça acesso a Suprimentos ou informe o link do arquivo.'
           : m);
     }
+  }
+
+  // Passo do fluxo de homologação no histórico do fornecedor.
+  public async registrarHistoricoFluxo(fornecedorId: string, acao: string, descricao: string, usuarioNome: string): Promise<void> {
+    await this.registrarHistorico(fornecedorId, acao, descricao, usuarioNome);
   }
 
   private async registrarHistorico(fornecedorId: string, acao: string, descricao: string, usuarioNome: string): Promise<void> {
@@ -1355,6 +1515,30 @@ export class FornecedoresService {
       responsavelCompliance: texto(r, 'dgt_responsavelcompliance'),
       bancarioConferido: r.dgt_bancarioconferido === true,
       abertoPor: texto(r, 'dgt_responsavelnome'),
+      criadoEm: texto(r, 'createdon'),
+      fluxoIniciado: !!texto(r, 'dgt_fluxoestado'),
+      etapaAtual: texto(r, 'dgt_etapaatual'),
+      prazoEtapa: texto(r, 'dgt_prazoetapa'),
+      responsaveisEtapa: texto(r, 'dgt_responsaveisetapa')
+    };
+  }
+
+  private lerContrato(r: IDataverseRecord): IContratoFornecedor {
+    return {
+      id: guid(r.dgt_fornecedorcontratoid),
+      fornecedorId: guid(r._dgt_fornecedor_value),
+      nome: texto(r, 'dgt_name'),
+      projeto: texto(r, 'dgt_projeto'),
+      dataAssinatura: soData(texto(r, 'dgt_dataassinatura')),
+      inicioVigencia: soData(texto(r, 'dgt_iniciovigencia')),
+      fimVigencia: soData(texto(r, 'dgt_fimvigencia')),
+      arquivoUrl: texto(r, 'dgt_arquivourl'),
+      arquivoNome: texto(r, 'dgt_arquivonome'),
+      observacoes: texto(r, 'dgt_observacoes'),
+      situacao: texto(r, 'dgt_situacao') === 'Encerrado' ? 'Encerrado' : 'Vigente',
+      origem: (texto(r, 'dgt_origem') === 'E-mail' ? 'E-mail' : 'Manual') as OrigemContrato,
+      documentoOrigemId: guid(r._dgt_documentoorigem_value),
+      registradoPor: texto(r, 'dgt_responsavelnome'),
       criadoEm: texto(r, 'createdon')
     };
   }
