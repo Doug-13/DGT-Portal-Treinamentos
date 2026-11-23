@@ -6,6 +6,8 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.30] - 2026-11-23
+
 - Novo: Fornecedores — homologação no motor de fluxos (processo SUP-HOM, Processos → Fluxos): Ficha recebida → Documentos pendentes → Análise Suprimentos → Análise Jurídico → Homologado/Reprovado. Responsáveis por área (Suprimentos e Jurídico); quem decide é o Jurídico (Aprovar, Aprovar com ressalvas, Não homologar → Reprovado, Devolver a Suprimentos). Pacote para importar: docs/exemplos/pacote-homologacao-fornecedor.json. Piloto: quem pode agir é conferido no navegador.
 - Novo: Fornecedores — aba Pendências ("Aguardando você"): ciclos em que o usuário responde a etapa atual.
 - Melhoria: Fornecedores — kanban de homologação só para visualização (inclusive para o administrador): sem arrastar, sem ← / → e sem "Mover para"; o card mostra etapa, tempo na etapa, prazo e quem responde. A etapa só muda pelos botões do fluxo, com comentário e histórico.

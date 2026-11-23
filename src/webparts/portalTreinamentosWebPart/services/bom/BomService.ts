@@ -456,6 +456,44 @@ export class BomService {
     }
   }
 
+  // ----------------------------------------------------------
+  // Etapa 5 — B.O.M. pronto
+  // ----------------------------------------------------------
+
+  // Data de envio (coluna opcional: sem ela, devolve vazio).
+  public async lerDataEnvio(bomId: string): Promise<string> {
+    try {
+      const lido = await this.dataverse.obterRegistro(TABELAS_BOM.bom, bomId, [BOM.dataEnvio]);
+      return lido ? data(texto(lido.registro, BOM.dataEnvio)) : '';
+    } catch {
+      return '';
+    }
+  }
+
+  // Congela a lista de itens na seleção de kit e muda a etapa para
+  // "Enviado para aprovação". A data de envio é gravada quando a
+  // coluna dgt_bom_dataenvio existe.
+  public async enviarParaAprovacao(
+    bomId: string,
+    selecao: ISelecaoKit,
+    usuarioNome: string
+  ): Promise<void> {
+    await this.salvarSelecaoKit(bomId, selecao, usuarioNome);
+    const etapa = { [BOM.etapa]: valorOpcao(OPCOES_BOM.etapa, 'Enviado para aprovação') };
+    try {
+      await this.dataverse.atualizarRegistro(TABELAS_BOM.bom, bomId, {
+        ...etapa,
+        [BOM.dataEnvio]: new Date().toISOString().substring(0, 10)
+      });
+    } catch (erro) {
+      if (/dgt_bom_dataenvio/i.test(erro instanceof Error ? erro.message : String(erro))) {
+        await this.dataverse.atualizarRegistro(TABELAS_BOM.bom, bomId, etapa);
+        return;
+      }
+      throw erro;
+    }
+  }
+
   public async atualizarEtapa(
     bomId: string,
     etapa: EtapaBom

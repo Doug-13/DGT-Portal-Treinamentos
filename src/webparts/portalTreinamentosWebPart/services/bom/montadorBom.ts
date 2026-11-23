@@ -160,6 +160,20 @@ export interface ISelecaoKit {
   servidores?: Partial<Record<FinalidadeServidor, ISelecaoServidor>>;
   atualizadoEm?: string;
   atualizadoPor?: string;
+  // Etapa 5: lista congelada no envio para aprovação. Depois do envio,
+  // o B.O.M. mostra este retrato, e não o catálogo atual da aba Kits.
+  bomEnviado?: IBomEnviado;
+}
+
+export interface IBomEnviado {
+  em: string;
+  por: string;
+  itens: IItemBom[];
+  alertas: string[];
+  totais: IResultadoBom['totais'];
+  // Código CIGAM → valor unitário (R$) usado no envio.
+  precos: Record<string, number>;
+  valorTotal: number;
 }
 
 export interface IItemBom {

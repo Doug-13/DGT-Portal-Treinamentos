@@ -37,15 +37,19 @@ import MatrizGoNoGoEtapa from './MatrizGoNoGoEtapa';
 import SelecaoKitEtapa from './SelecaoKitEtapa';
 
 import {
+  IBomEnviado,
   ISelecaoKit,
   montarBom
 } from '../../services/bom/montadorBom';
 
 import {
+  ICatalogoKitsCarregado,
   garantirCatalogoKitsAplicado
 } from '../../services/bom/KitsService';
 
 import EtapaHHBom from './EtapaHHBom';
+
+import EtapaBomPronto from './EtapaBomPronto';
 
 import {
   COR,
@@ -68,7 +72,8 @@ import {
 // demanda) e etapa 2 (Matriz Go/No-Go).
 // Fase 2: etapa 3 (Seleção de kit — montador de B.O.M.).
 // Etapa 4 (Cálculo de HH): prévia com o HH vigente de cada área (menu Cálculo de HH).
-// Etapa 5 (B.O.M. pronto): em definição.
+// Etapa 5 (B.O.M. pronto): apresentação do B.O.M., saídas (CIGAM, CSV,
+// PDF) e envio para aprovação, que congela a lista de itens.
 // ============================================================
 
 export interface IArquiteturaPageProps {
@@ -186,9 +191,9 @@ const IconeX: React.FC = () => (
   </svg>
 );
 
-type AbaBom = 'demanda' | 'gonogo' | 'kit' | 'hh';
+type AbaBom = 'demanda' | 'gonogo' | 'kit' | 'hh' | 'pronto';
 
-const ABA_DO_PASSO: Record<number, AbaBom> = { 1: 'demanda', 2: 'gonogo', 3: 'kit', 4: 'hh' };
+const ABA_DO_PASSO: Record<number, AbaBom> = { 1: 'demanda', 2: 'gonogo', 3: 'kit', 4: 'hh', 5: 'pronto' };
 
 // Etapa em que o B.O.M. está → aba que abre.
 const abaDaEtapa = (etapa: EtapaBom): AbaBom =>
@@ -198,7 +203,9 @@ const abaDaEtapa = (etapa: EtapaBom): AbaBom =>
       ? 'gonogo'
       : etapa === 'Seleção de kit'
         ? 'kit'
-        : 'hh';
+        : etapa === 'B.O.M. pronto' || etapa === 'Enviado para aprovação'
+          ? 'pronto'
+          : 'hh';
 
 const CabecalhoBom: React.FC<{
   bom: IBomRegistro;
@@ -243,9 +250,12 @@ const CabecalhoBom: React.FC<{
       return atual > 3 ? 'Concluída' : atual === 3 ? 'Em montagem' : 'Aguardando o Go/No-Go';
     }
     if (passo === 4) {
-      return atual >= 4 ? 'Aguardando planilhas de HH' : 'Aguardando o kit';
+      return atual >= 4 ? 'Prévia com o HH vigente' : 'Aguardando o kit';
     }
-    return atual > passo ? 'Concluída' : 'Em definição';
+    if (atual > 5) {
+      return 'Enviado para aprovação';
+    }
+    return atual === 5 ? 'Pronto para envio' : atual === 4 ? 'Disponível para revisão' : 'Aguardando o kit';
   };
 
   return (
@@ -311,7 +321,8 @@ const CabecalhoBom: React.FC<{
               item.passo === 1 ||
               (item.passo === 2 && atual >= 2) ||
               (item.passo === 3 && atual >= 3 && !bloqueado) ||
-              (item.passo === 4 && atual >= 4);
+              (item.passo === 4 && atual >= 4) ||
+              (item.passo === 5 && atual >= 4);
             const selecionado = ABA_DO_PASSO[item.passo] === aba;
 
             const corMarcador =
@@ -328,7 +339,7 @@ const CabecalhoBom: React.FC<{
                   type="button"
                   disabled={!clicavel}
                   onClick={() => onAba(ABA_DO_PASSO[item.passo])}
-                  title={item.passo === 5 ? 'Etapa em definição — será construída numa próxima fase.' : item.passo === 4 ? 'Aguardando as planilhas de HH.' : undefined}
+                  title={item.passo === 5 && atual < 4 ? 'Disponível depois de concluir a seleção de kit.' : undefined}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -539,11 +550,25 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
   // Dataverse antes de montar o B.O.M. Sem tabela ou sem permissão,
   // o montador segue com o catálogo padrão do sistema.
   const [, setVersaoCatalogo] = React.useState(0);
+  // Valores do CIGAM por código (aba Kits), para o B.O.M. pronto.
+  const [precos, setPrecos] = React.useState<Record<string, number>>({});
+  const [dataEnvio, setDataEnvio] = React.useState('');
+
+  const lerPrecos = (catalogo: ICatalogoKitsCarregado): Record<string, number> => {
+    const mapa: Record<string, number> = {};
+    catalogo.itens.forEach(item => {
+      if (item.codigo && typeof item.valor === 'number' && item.valor > 0) {
+        mapa[item.codigo] = item.valor;
+      }
+    });
+    return mapa;
+  };
 
   React.useEffect(() => {
     garantirCatalogoKitsAplicado(dataverseService)
       .then(catalogo => {
         if (catalogo) {
+          setPrecos(lerPrecos(catalogo));
           setVersaoCatalogo(v => v + 1);
         }
       })
@@ -569,7 +594,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
 
   // Carrega a seleção de kit ao abrir a etapa 3 ou 4.
   React.useEffect(() => {
-    if (!servico || !bomId || (aba !== 'kit' && aba !== 'hh') || kitCarregado === bomId) {
+    if (!servico || !bomId || (aba !== 'kit' && aba !== 'hh' && aba !== 'pronto') || kitCarregado === bomId) {
       return;
     }
     servico.lerSelecaoKit(bomId)
@@ -580,6 +605,14 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
       })
       .catch(error => setErro((error as Error).message));
   }, [servico, bomId, aba, kitCarregado]);
+
+  // Data de envio do B.O.M. aberto (etapa 5).
+  React.useEffect(() => {
+    setDataEnvio('');
+    if (servico && bomId && aba === 'pronto') {
+      servico.lerDataEnvio(bomId).then(setDataEnvio).catch(() => undefined);
+    }
+  }, [servico, bomId, aba]);
 
   const abrirBom = (item: IBomRegistro): void => {
     setBomId(item.id);
@@ -738,11 +771,72 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
 
         {
           aba === 'hh' && (
-            <EtapaHHBom
-              dataverseService={dataverseService}
-              resumoKit={selecaoKit ? montarBom(selecaoKit) : undefined}
-              aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
-            />
+            <>
+              <EtapaHHBom
+                dataverseService={dataverseService}
+                resumoKit={selecaoKit ? montarBom(selecaoKit) : undefined}
+                aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
+              />
+              {
+                selecaoKit && selecaoKit.pontos.length > 0 && ETAPAS[etapa].passo >= 4 && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+                    <button
+                      type="button"
+                      style={botao('principal', salvando)}
+                      disabled={salvando}
+                      onClick={() => {
+                        (async () => {
+                          if (ETAPAS[etapa].passo === 4) {
+                            await executar(async () => {
+                              await servico.atualizarEtapa(bom.id, 'B.O.M. pronto');
+                            }, 'B.O.M. pronto para revisão e envio.');
+                          }
+                          setAba('pronto');
+                          window.scrollTo(0, 0);
+                        })().catch(() => undefined);
+                      }}
+                    >
+                      Avançar para B.O.M. pronto →
+                    </button>
+                  </div>
+                )
+              }
+            </>
+          )
+        }
+
+        {
+          aba === 'pronto' && (
+            kitCarregado !== bom.id
+              ? <div style={{ ...cartao, color: COR.texto2 }}>Carregando o B.O.M....</div>
+              : (
+                <EtapaBomPronto
+                  bom={{ ...bom, etapa }}
+                  demanda={demanda}
+                  analise={ultima}
+                  selecao={selecaoKit}
+                  resultado={selecaoKit && !selecaoKit.bomEnviado ? montarBom(selecaoKit) : undefined}
+                  precos={precos}
+                  dataverseService={dataverseService}
+                  dataEnvio={dataEnvio}
+                  salvando={salvando}
+                  aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
+                  aoVoltarHH={() => { setAba('hh'); window.scrollTo(0, 0); }}
+                  onEnviar={async (congelado: IBomEnviado) => {
+                    if (!selecaoKit) {
+                      return;
+                    }
+                    const nome = contexto && contexto.nome ? contexto.nome : '';
+                    const selecao: ISelecaoKit = { ...selecaoKit, bomEnviado: { ...congelado, por: nome } };
+                    await executar(async () => {
+                      await servico.enviarParaAprovacao(bom.id, selecao, nome);
+                      setSelecaoKit(selecao);
+                      setDataEnvio(await servico.lerDataEnvio(bom.id));
+                    }, `BOM ${bom.numero.replace(/^BOM\s*/i, '')} enviado para aprovação.`);
+                    window.scrollTo(0, 0);
+                  }}
+                />
+              )
           )
         }
       </section>
