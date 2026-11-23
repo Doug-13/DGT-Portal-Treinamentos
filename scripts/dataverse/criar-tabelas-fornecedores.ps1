@@ -12,6 +12,7 @@
     dgt_fornecedorhomologacao   Ciclos de homologação (cards do kanban)
     dgt_fornecedorcolaborador   Colaboradores do prestador (CPF PROTEGIDO)
     dgt_colaboradordocumento    Documentos do colaborador (ASO, NR aplicável)
+    dgt_fornecedorcontrato      Contratos do fornecedor (projeto, vigência)
 
 .DESCRIPTION
   Pode ser executado mais de uma vez: o que já existe é mantido e só o
@@ -368,6 +369,23 @@ function New-Protocolo {
   }
 }
 
+# Aumenta o tamanho de uma coluna de texto que já existe (nunca diminui).
+function Set-TamanhoTexto {
+  param([string] $Tabela, [string] $Coluna, [int] $Tamanho)
+  $caminho = "EntityDefinitions(LogicalName='$Tabela')/Attributes(LogicalName='$Coluna')"
+  if (-not (Test-Existe "$caminho`?`$select=LogicalName")) { return }
+  $atributo = Invoke-Dv -Metodo 'GET' -Caminho "$caminho/Microsoft.Dynamics.CRM.StringAttributeMetadata"
+  if ([int]$atributo.MaxLength -ge $Tamanho) {
+    Write-Host "  = $Tabela.$Coluna já tem $($atributo.MaxLength) caracteres"
+    return
+  }
+  Write-Host "  ~ $Tabela.$Coluna : $($atributo.MaxLength) -> $Tamanho caracteres" -ForegroundColor Green
+  $atributo.PSObject.Properties.Remove('@odata.context')
+  $atributo | Add-Member -NotePropertyName '@odata.type' -NotePropertyValue 'Microsoft.Dynamics.CRM.StringAttributeMetadata' -Force
+  $atributo.MaxLength = $Tamanho
+  Invoke-Dv -Metodo 'PUT' -Caminho $caminho -Corpo $atributo | Out-Null
+}
+
 # Perfil de segurança de campo com permissões em colunas protegidas
 function Set-PerfilCampo {
   param([string] $NomePerfil, [string] $Descricao, [string[]] $Colunas, [int] $Atualizar = 4, [string] $Tabela = 'dgt_fornecedor')
@@ -416,6 +434,7 @@ New-Tabela 'dgt_FornecedorHistorico' 'Histórico de fornecedor' 'Históricos de 
 New-Tabela 'dgt_FornecedorHomologacao' 'Ciclo de homologação' 'Ciclos de homologação' 'Um ciclo de homologação do fornecedor (card do kanban). Concluído = somente leitura.'
 New-Tabela 'dgt_FornecedorColaborador' 'Colaborador de fornecedor' 'Colaboradores de fornecedor' 'Colaborador do prestador que atua para a DGT (CPF em coluna protegida, sem contatos).'
 New-Tabela 'dgt_ColaboradorDocumento' 'Documento de colaborador' 'Documentos de colaborador' 'ASO e NR aplicável do colaborador do prestador (Vigente ou Substituído).'
+New-Tabela 'dgt_FornecedorContrato' 'Contrato de fornecedor' 'Contratos de fornecedor' 'Contrato do fornecedor: projeto, assinatura e vigência. Encerrar em vez de excluir.'
 
 # ------------------------------------------------------------
 # 2) Colunas
@@ -507,8 +526,11 @@ New-SomenteData $T 'dgt_DataVencimento'       'Validade'
 New-TextoLongo  $T 'dgt_ArquivoUrl'           'Endereço do arquivo' 2000
 New-Texto       $T 'dgt_ArquivoNome'          'Nome do arquivo' 255
 New-TextoLongo  $T 'dgt_Observacoes'          'Observações' 4000
-New-Texto       $T 'dgt_Situacao'             'Situação (Vigente/Substituído)' 20
+New-Texto       $T 'dgt_Situacao'             'Situação (Vigente/Substituído/A conferir/Descartado/Convertido em contrato)' 30
 New-Texto       $T 'dgt_ResponsavelNome'      'Registrado por' 200
+New-DataHora    $T 'dgt_AvisoVencimentoEm'    'Aviso de vencimento enviado em'
+# "Convertido em contrato" (22 caracteres) não cabia nos 20 originais.
+Set-TamanhoTexto $T 'dgt_situacao' 30
 
 Write-Host "`n5) Colunas de dgt_fornecedorconsulta" -ForegroundColor Cyan
 $T = 'dgt_fornecedorconsulta'
@@ -543,6 +565,12 @@ New-Texto       $T 'dgt_ResponsavelSuprimentos' 'Responsável Suprimentos / data
 New-Texto       $T 'dgt_ResponsavelCompliance' 'Compliance / Jurídico / data' 200
 New-SimNao      $T 'dgt_BancarioConferido'    'Dados bancários conferidos (na conclusão)' $false
 New-Texto       $T 'dgt_ResponsavelNome'      'Aberto por' 200
+# Motor de fluxos (processo SUP-HOM): estado da instância no próprio ciclo.
+New-TextoLongo  $T 'dgt_FluxoEstado'          'Estado do fluxo (JSON)' 1048576
+New-Texto       $T 'dgt_EtapaAtual'           'Etapa atual do fluxo (id)' 100
+New-DataHora    $T 'dgt_PrazoEtapa'           'Prazo da etapa'
+New-TextoLongo  $T 'dgt_ResponsaveisEtapa'    'Responsáveis da etapa (JSON)' 100000
+New-TextoLongo  $T 'dgt_DocumentosPendentes'  'Documentos pendentes (para o e-mail ao fornecedor)' 4000
 
 Write-Host "`n6c) Colunas de dgt_fornecedorcolaborador (dgt_name = nome)" -ForegroundColor Cyan
 $T = 'dgt_fornecedorcolaborador'
@@ -565,6 +593,23 @@ New-Texto       $T 'dgt_ArquivoNome'          'Nome do arquivo' 255
 New-TextoLongo  $T 'dgt_Observacoes'          'Observações' 2000
 New-Texto       $T 'dgt_Situacao'             'Situação (Vigente/Substituído)' 20
 New-Texto       $T 'dgt_ResponsavelNome'      'Registrado por' 200
+New-DataHora    $T 'dgt_AvisoVencimentoEm'    'Aviso de vencimento enviado em'
+
+Write-Host "`n6e) Colunas de dgt_fornecedorcontrato (dgt_name = nome do contrato)" -ForegroundColor Cyan
+$T = 'dgt_fornecedorcontrato'
+New-Lookup      $T 'dgt_Fornecedor'           'Fornecedor' 'dgt_fornecedor' 'dgt_fornecedor_dgt_fornecedorcontrato'
+New-Texto       $T 'dgt_Projeto'              'Projeto' 200
+New-SomenteData $T 'dgt_DataAssinatura'       'Data de assinatura'
+New-SomenteData $T 'dgt_InicioVigencia'       'Início da vigência'
+New-SomenteData $T 'dgt_FimVigencia'          'Fim da vigência (vazio = indeterminado)'
+New-TextoLongo  $T 'dgt_ArquivoUrl'           'Endereço do arquivo' 2000
+New-Texto       $T 'dgt_ArquivoNome'          'Nome do arquivo' 255
+New-TextoLongo  $T 'dgt_Observacoes'          'Observações' 4000
+New-Texto       $T 'dgt_Situacao'             'Situação (Vigente/Encerrado)' 20
+New-Texto       $T 'dgt_Origem'               'Origem (Manual/E-mail)' 20
+New-Lookup      $T 'dgt_DocumentoOrigem'      'Arquivo de origem (fila A conferir)' 'dgt_fornecedordocumento' 'dgt_fornecedordocumento_dgt_fornecedorcontrato'
+New-DataHora    $T 'dgt_AvisoVencimentoEm'    'Aviso de vencimento enviado em'
+New-Texto       $T 'dgt_ResponsavelNome'      'Registrado por' 200
 
 # ------------------------------------------------------------
 # 7) Publicação
@@ -573,7 +618,7 @@ New-Texto       $T 'dgt_ResponsavelNome'      'Registrado por' 200
 Write-Host "`n7) Publicando..." -ForegroundColor Cyan
 
 Invoke-Dv -Metodo 'POST' -Caminho 'PublishXml' -Corpo @{
-  ParameterXml = '<importexportxml><entities><entity>dgt_fornecedor</entity><entity>dgt_tipodocumentofornecedor</entity><entity>dgt_fornecedordocumento</entity><entity>dgt_fornecedorconsulta</entity><entity>dgt_fornecedorhistorico</entity><entity>dgt_fornecedorhomologacao</entity><entity>dgt_fornecedorcolaborador</entity><entity>dgt_colaboradordocumento</entity></entities></importexportxml>'
+  ParameterXml = '<importexportxml><entities><entity>dgt_fornecedor</entity><entity>dgt_tipodocumentofornecedor</entity><entity>dgt_fornecedordocumento</entity><entity>dgt_fornecedorconsulta</entity><entity>dgt_fornecedorhistorico</entity><entity>dgt_fornecedorhomologacao</entity><entity>dgt_fornecedorcolaborador</entity><entity>dgt_colaboradordocumento</entity><entity>dgt_fornecedorcontrato</entity></entities></importexportxml>'
 } | Out-Null
 
 # ------------------------------------------------------------
@@ -691,7 +736,7 @@ Write-Host 'Próximos passos:' -ForegroundColor Green
 Write-Host '  1. Funções de segurança (somente quem usa o módulo Fornecedores):'
 Write-Host '       dgt_fornecedor, dgt_tipodocumentofornecedor, dgt_fornecedordocumento,'
 Write-Host '       dgt_fornecedorconsulta, dgt_fornecedorhistorico, dgt_fornecedorhomologacao,'
-Write-Host '       dgt_fornecedorcolaborador, dgt_colaboradordocumento'
+Write-Host '       dgt_fornecedorcolaborador, dgt_colaboradordocumento, dgt_fornecedorcontrato'
 Write-Host '       -> Criar, Ler, Gravar (Organização). NÃO conceda Excluir (a tela só desativa).'
 Write-Host '       dgt_fornecedorconsulta e dgt_fornecedorhistorico: Ler basta para quem só consulta.'
 Write-Host "  2. Perfis de segurança de campo: '$NomePerfil' (Suprimentos),"

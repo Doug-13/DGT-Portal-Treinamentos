@@ -5,17 +5,31 @@ import {
 } from '../../services/fornecedores/FornecedoresService';
 
 import {
-  CLASSIFICACOES_RISCO,
-  ClassificacaoRisco,
+  HomologacaoFluxoService,
+  IDisponibilidadeHomologacao,
+  IEstadoFluxoCiclo
+} from '../../services/fornecedores/HomologacaoFluxoService';
+
+import {
+  IContextoAcesso
+} from '../../services/AutorizacaoService';
+
+import {
+  IUsuarioAreaAdmin
+} from '../../services/AreaAdminService';
+
+import {
+  IResponsavelResolvido
+} from '../../models/Fluxo';
+
+import {
   ETAPAS_HOMOLOGACAO,
-  EtapaHomologacao,
   ICicloHomologacao,
   IDadosHomologacao,
   IdVerificacao,
   IFornecedor,
   IVerificacao,
   MOTIVOS_CICLO,
-  RESULTADOS_HOMOLOGACAO,
   ResultadoHomologacao,
   VERIFICACOES_HOMOLOGACAO
 } from '../../services/fornecedores/modeloFornecedores';
@@ -26,14 +40,14 @@ import {
 
 import {
   cicloAberto,
-  etapaVizinha,
+  documentosManuaisPendentes,
   resultadoConclusivo,
   SituacaoVerificacao,
-  statusPeloResultado,
   sugerirVerificacoes,
-  validarConclusao,
   verificacoesOk
 } from '../../services/fornecedores/homologacao';
+
+import PainelFluxoOrcamento from '../Orcamento/PainelFluxoOrcamento';
 
 import {
   Aviso,
@@ -53,19 +67,19 @@ import {
 } from '../Kits/kitsComum';
 
 // ============================================================
-// FORNECEDORES — HOMOLOGAÇÃO EM KANBAN (item 9 da Ficha SUP-CPL-01)
+// FORNECEDORES — HOMOLOGAÇÃO (item 9 da Ficha SUP-CPL-01)
 //
-// Colunas: Ficha recebida → Documentos pendentes → Em análise
-// (Suprimentos) → Aguardando Jurídico → Homologado / Reprovado.
-// Cada card é um CICLO (dgt_fornecedorhomologacao). A ficha que chega
-// pelo formulário abre o ciclo sozinha; as colunas seguintes são
-// movidas à mão (botões, "Mover para" ou arrastar). Concluir exige o
-// resultado e grava também o cadastro (status, risco, validade).
-// Ciclo concluído = histórico somente leitura; renovação = ciclo novo.
-// Sem notificações nesta fase.
+// A etapa do ciclo segue o motor de fluxos (processo SUP-HOM, em
+// Processos → Fluxos): Ficha recebida → Documentos pendentes → Análise
+// Suprimentos → Análise Jurídico → Homologado / Reprovado. Quem decide
+// o resultado é o Jurídico.
 //
-// Só o administrador do módulo grava. As sugestões automáticas são
-// apoio: quem marca "OK" é a pessoa responsável.
+// O kanban é SOMENTE VISUALIZAÇÃO, para todos (inclusive o
+// administrador): ninguém arrasta nem move card. A etapa só muda pelos
+// botões do fluxo, com comentário e histórico.
+//
+// O checklist do item 9 continua no card: edita quem responde a etapa
+// atual (ou o administrador do módulo, para correção de dados).
 // ============================================================
 
 const TOM: Record<SituacaoVerificacao, TomSelo> = {
@@ -102,6 +116,24 @@ const diasDesde = (iso: string): number => {
 const tomResultado = (r: ResultadoHomologacao): TomSelo =>
   r === 'Aprovado' ? 'ciano' : r === 'Aprovado com ressalvas' ? 'azul' : r === 'Reprovado' ? 'indigo' : 'cinza';
 
+// Quem responde a etapa (descrições gravadas pelo motor no ciclo).
+export const quemResponde = (ciclo: ICicloHomologacao): string => {
+  try {
+    const lista = ciclo.responsaveisEtapa ? (JSON.parse(ciclo.responsaveisEtapa) as IResponsavelResolvido[]) : [];
+    return lista.map(r => r.descricao).filter((d, i, todos) => !!d && todos.indexOf(d) === i).join(' · ');
+  } catch {
+    return '';
+  }
+};
+
+const prazoTexto = (prazo: string): { texto: string; atrasado: boolean } | undefined => {
+  if (!prazo) {
+    return undefined;
+  }
+  const atrasado = Date.parse(prazo) < Date.now();
+  return { texto: `${atrasado ? '! venceu' : 'prazo'} ${dataBr(prazo.substring(0, 10))}`, atrasado };
+};
+
 const dadosDoCiclo = (c: ICicloHomologacao, f: IFornecedor): IDadosHomologacao => ({
   classificacaoRisco: c.classificacaoRisco,
   resultadoHomologacao: c.resultadoHomologacao || 'Pendente',
@@ -115,7 +147,7 @@ const dadosDoCiclo = (c: ICicloHomologacao, f: IFornecedor): IDadosHomologacao =
 });
 
 // ------------------------------------------------------------
-// Quadro (colunas + cards) — usado aqui e na aba geral
+// Quadro (colunas + cards), SOMENTE LEITURA — usado aqui e na aba geral
 // ------------------------------------------------------------
 
 export interface ICardQuadro {
@@ -127,104 +159,80 @@ export interface ICardQuadro {
 export const QuadroKanban: React.FC<{
   cards: ICardQuadro[];
   selecionado?: string;
-  podeMover: boolean;
   aoAbrir: (ciclo: ICicloHomologacao) => void;
-  aoSoltar?: (ciclo: ICicloHomologacao, destino: EtapaHomologacao) => void;
-}> = ({ cards, selecionado, podeMover, aoAbrir, aoSoltar }) => {
-
-  const [arrastando, setArrastando] = React.useState<string>('');
-  const [sobre, setSobre] = React.useState<string>('');
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ETAPAS_HOMOLOGACAO.length}, minmax(190px, 1fr))`, gap: '10px', overflowX: 'auto', paddingBottom: '6px' }}>
-      {ETAPAS_HOMOLOGACAO.map(etapa => {
-        const daColuna = cards.filter(c => c.ciclo.etapa === etapa.id);
-        const aceita = podeMover && !!aoSoltar && etapa.id !== 'Concluído';
-        return (
-          <section
-            key={etapa.id}
-            aria-label={`Coluna ${etapa.rotulo}`}
-            onDragOver={e => { if (aceita && arrastando) { e.preventDefault(); setSobre(etapa.id); } }}
-            onDragLeave={() => setSobre('')}
-            onDrop={e => {
-              e.preventDefault();
-              setSobre('');
-              const card = cards.filter(c => c.ciclo.id === arrastando)[0];
-              setArrastando('');
-              if (aceita && card && aoSoltar) { aoSoltar(card.ciclo, etapa.id); }
-            }}
-            style={{
-              background: sobre === etapa.id ? COR.cinzaClaro : COR.fundo,
-              border: `1px solid ${COR.cinzaClaro}`,
-              borderRadius: '10px',
-              padding: '8px',
-              minHeight: '120px'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', color: COR.texto2, margin: '2px 4px 8px' }}>
-              <span>{etapa.rotulo}</span>
-              <span>{daColuna.length}</span>
-            </div>
-            {daColuna.map(card => {
-              const c = card.ciclo;
-              const aberto = !c.concluidoEm;
-              const ativo = selecionado === c.id;
-              return (
+}> = ({ cards, selecionado, aoAbrir }) => (
+  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ETAPAS_HOMOLOGACAO.length}, minmax(190px, 1fr))`, gap: '10px', overflowX: 'auto', paddingBottom: '6px' }}>
+    {ETAPAS_HOMOLOGACAO.map(etapa => {
+      const daColuna = cards.filter(c => c.ciclo.etapa === etapa.id);
+      return (
+        <section
+          key={etapa.id}
+          aria-label={`Coluna ${etapa.rotulo}`}
+          style={{ background: COR.fundo, border: `1px solid ${COR.cinzaClaro}`, borderRadius: '10px', padding: '8px', minHeight: '120px' }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', color: COR.texto2, margin: '2px 4px 8px' }}>
+            <span>{etapa.rotulo}</span>
+            <span>{daColuna.length}</span>
+          </div>
+          {daColuna.map(card => {
+            const c = card.ciclo;
+            const aberto = !c.concluidoEm;
+            const ativo = selecionado === c.id;
+            const prazo = aberto ? prazoTexto(c.prazoEtapa) : undefined;
+            const quem = aberto ? quemResponde(c) : '';
+            return (
+              <div
+                key={c.id}
+                style={{
+                  background: COR.branco,
+                  border: `1px solid ${ativo ? COR.ciano : COR.cinzaClaro}`,
+                  borderLeft: `4px solid ${aberto ? COR.ciano : COR.cinzaClaro}`,
+                  borderRadius: '8px',
+                  padding: '8px 10px',
+                  marginBottom: '8px',
+                  color: COR.azul,
+                  opacity: aberto ? 1 : 0.8,
+                  boxShadow: ativo ? '0 0 0 2px rgba(0, 174, 199, .25)' : 'none'
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '13.5px', lineHeight: 1.3 }}>{card.titulo}</div>
+                <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '2px' }}>{card.subtitulo}</div>
+                {quem && <div style={{ fontSize: '12px', marginTop: '4px' }}>Responde: {quem}</div>}
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                  {aberto
+                    ? <Selo tom="cinza">{`há ${diasDesde(c.etapaDesde)} dia(s)`}</Selo>
+                    : <Selo tom={tomResultado(c.resultadoHomologacao)}>{c.resultadoHomologacao}</Selo>}
+                  {prazo && <Selo tom={prazo.atrasado ? 'indigo' : 'azul'}>{prazo.texto}</Selo>}
+                  <Selo tom="cinza">{`${verificacoesOk(c)}/9`}</Selo>
+                  {c.classificacaoRisco && <Selo tom={c.classificacaoRisco === 'Alto' ? 'indigo' : 'azul'}>{`risco ${c.classificacaoRisco.toLowerCase()}`}</Selo>}
+                </div>
                 <button
-                  key={c.id}
                   type="button"
-                  draggable={podeMover && aberto && !!aoSoltar}
-                  onDragStart={e => { setArrastando(c.id); e.dataTransfer.effectAllowed = 'move'; }}
-                  onDragEnd={() => { setArrastando(''); setSobre(''); }}
                   onClick={() => aoAbrir(c)}
                   aria-pressed={ativo}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    background: COR.branco,
-                    border: `1px solid ${ativo ? COR.ciano : COR.cinzaClaro}`,
-                    borderLeft: `4px solid ${aberto ? COR.ciano : COR.cinzaClaro}`,
-                    borderRadius: '8px',
-                    padding: '8px 10px',
-                    marginBottom: '8px',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    color: COR.azul,
-                    opacity: aberto ? 1 : 0.8,
-                    boxShadow: ativo ? '0 0 0 2px rgba(0, 174, 199, .25)' : 'none'
-                  }}
+                  style={{ marginTop: '6px', padding: 0, border: 0, background: 'none', color: COR.azul, fontWeight: 700, fontSize: '12.5px', textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit' }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: '13.5px', lineHeight: 1.3 }}>{card.titulo}</div>
-                  <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '2px' }}>{card.subtitulo}</div>
-                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
-                    {aberto
-                      ? <Selo tom="cinza">{`há ${diasDesde(c.etapaDesde)} dia(s)`}</Selo>
-                      : <Selo tom={tomResultado(c.resultadoHomologacao)}>{c.resultadoHomologacao}</Selo>}
-                    <Selo tom="cinza">{`${verificacoesOk(c)}/9`}</Selo>
-                    {c.classificacaoRisco && <Selo tom={c.classificacaoRisco === 'Alto' ? 'indigo' : 'azul'}>{`risco ${c.classificacaoRisco.toLowerCase()}`}</Selo>}
-                  </div>
+                  Abrir
                 </button>
-              );
-            })}
-          </section>
-        );
-      })}
-    </div>
-  );
-};
+              </div>
+            );
+          })}
+        </section>
+      );
+    })}
+  </div>
+);
 
 // ------------------------------------------------------------
-// Abrir ciclo
+// Abrir ciclo (só o motivo: começa sempre na primeira etapa do fluxo)
 // ------------------------------------------------------------
 
 const AbrirCicloModal: React.FC<{
   motivoSugerido: string;
   fechar: () => void;
-  confirmar: (motivo: string, etapa: EtapaHomologacao) => Promise<void>;
+  confirmar: (motivo: string) => Promise<void>;
 }> = ({ motivoSugerido, fechar, confirmar }) => {
   const [motivo, setMotivo] = React.useState(motivoSugerido);
-  const [etapa, setEtapa] = React.useState<EtapaHomologacao>('Ficha recebida');
   const [gravando, setGravando] = React.useState(false);
   const [erro, setErro] = React.useState('');
 
@@ -232,7 +240,7 @@ const AbrirCicloModal: React.FC<{
     setGravando(true);
     setErro('');
     try {
-      await confirmar(motivo, etapa);
+      await confirmar(motivo);
     } catch (e) {
       setErro(String((e as Error)?.message || e));
       setGravando(false);
@@ -242,7 +250,7 @@ const AbrirCicloModal: React.FC<{
   return (
     <Modal
       titulo="Abrir ciclo de homologação"
-      subtitulo="Um card novo no kanban. Os ciclos anteriores ficam como histórico."
+      subtitulo="O ciclo começa na primeira etapa do fluxo de homologação. Os ciclos anteriores ficam como histórico."
       aoFechar={() => { if (!gravando) { fechar(); } }}
       largura={520}
       rodape={(
@@ -259,32 +267,47 @@ const AbrirCicloModal: React.FC<{
       <select id="ciclo-motivo" style={campo} value={motivo} onChange={e => setMotivo(e.target.value)}>
         {MOTIVOS_CICLO.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
-      <label style={rotulo} htmlFor="ciclo-etapa">Começa na coluna</label>
-      <select id="ciclo-etapa" style={campo} value={etapa} onChange={e => setEtapa(e.target.value as EtapaHomologacao)}>
-        {ETAPAS_HOMOLOGACAO.filter(e => e.id !== 'Concluído').map(e => <option key={e.id} value={e.id}>{e.rotulo}</option>)}
-      </select>
     </Modal>
   );
 };
 
 // ------------------------------------------------------------
-// Card aberto (todos os campos do item 9)
+// Card aberto: fluxo (etapa, botões, histórico) + checklist do item 9
 // ------------------------------------------------------------
+
+export interface IContextoFluxoHomologacao {
+  fluxo: HomologacaoFluxoService;
+  contexto: IContextoAcesso;
+}
 
 const CardCiclo: React.FC<{
   servico: FornecedoresService;
+  motor?: IContextoFluxoHomologacao;
   fornecedor: IFornecedor;
   ciclo: ICicloHomologacao;
   situacao: ISituacaoDocumental;
+  aConferir: number;
   administra: boolean;
   usuarioNome: string;
   aoAlterar: (aviso?: string) => Promise<void>;
-}> = ({ servico, fornecedor, ciclo, situacao, administra, usuarioNome, aoAlterar }) => {
+  irParaDocumentos?: () => void;
+}> = ({ servico, motor, fornecedor, ciclo, situacao, aConferir, administra, usuarioNome, aoAlterar, irParaDocumentos }) => {
 
   const [d, setD] = React.useState<IDadosHomologacao>(() => dadosDoCiclo(ciclo, fornecedor));
   const [motivo, setMotivo] = React.useState('');
   const [gravando, setGravando] = React.useState('');
   const [erro, setErro] = React.useState('');
+  const [avisos, setAvisos] = React.useState<string[]>([]);
+
+  const [disponibilidade, setDisponibilidade] = React.useState<IDisponibilidadeHomologacao | undefined>(undefined);
+  const [estado, setEstado] = React.useState<IEstadoFluxoCiclo | undefined>(undefined);
+  const [podeAgir, setPodeAgir] = React.useState(false);
+  const [vinculos, setVinculos] = React.useState<IUsuarioAreaAdmin[]>([]);
+  const [usuarios, setUsuarios] = React.useState<Array<{ id: string; nome: string }>>([]);
+  const [carregandoFluxo, setCarregandoFluxo] = React.useState(true);
+
+  const aberto = !ciclo.concluidoEm;
+  const pendentesManuais = documentosManuaisPendentes(situacao);
 
   React.useEffect(() => {
     setD(dadosDoCiclo(ciclo, fornecedor));
@@ -292,8 +315,49 @@ const CardCiclo: React.FC<{
     setErro('');
   }, [ciclo, fornecedor]);
 
-  const aberto = !ciclo.concluidoEm;
-  const somenteLeitura = !administra || !aberto;
+  // Carrega o fluxo do ciclo. Ciclo aberto sem instância (aberto pela
+  // ficha ou antes desta versão): inicia aqui, na primeira abertura.
+  const carregarFluxo = React.useCallback(async (): Promise<void> => {
+    if (!motor) {
+      setCarregandoFluxo(false);
+      return;
+    }
+    setCarregandoFluxo(true);
+    try {
+      const disp = await motor.fluxo.verificar();
+      setDisponibilidade(disp);
+      setVinculos(await motor.fluxo.vinculos());
+      setUsuarios(await motor.fluxo.usuarios());
+      if (!disp.ativo) {
+        setEstado(undefined);
+        return;
+      }
+      let atual = await motor.fluxo.carregar(ciclo);
+      if (!atual && aberto) {
+        const inicio = await motor.fluxo.iniciar(fornecedor, ciclo, motor.contexto, documentosManuaisPendentes(situacao));
+        if (!inicio.ok) {
+          setErro(inicio.erros.join(' '));
+        }
+        setAvisos(inicio.avisos);
+        atual = await motor.fluxo.carregar(ciclo);
+      }
+      setEstado(atual);
+      setPodeAgir(atual ? await motor.fluxo.podeAgir(atual, motor.contexto) : false);
+    } catch (e) {
+      setErro(String((e as Error)?.message || e));
+    } finally {
+      setCarregandoFluxo(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motor, ciclo.id, ciclo.fluxoIniciado, aberto]);
+
+  React.useEffect(() => {
+    carregarFluxo().catch(() => undefined);
+  }, [carregarFluxo]);
+
+  // Checklist: quem responde a etapa atual ou o administrador do módulo.
+  const podeEditarChecklist = aberto && (podeAgir || administra);
+  const somenteLeitura = !podeEditarChecklist;
   const sugestoes = sugerirVerificacoes(fornecedor, situacao);
   const mudar = (parcial: Partial<IDadosHomologacao>): void => setD(a => ({ ...a, ...parcial }));
 
@@ -309,12 +373,50 @@ const CardCiclo: React.FC<{
       };
     });
 
-  const executar = async (rotuloAcao: string, acao: () => Promise<string | undefined>): Promise<void> => {
-    setGravando(rotuloAcao);
+  const executarAcao = async (acaoChave: string, comentario: string, valores: Record<string, string>): Promise<string[]> => {
+    if (!motor) {
+      return ['O fluxo de homologação não está disponível.'];
+    }
+    setGravando('fluxo');
+    try {
+      const r = await motor.fluxo.executar(fornecedor, ciclo, motor.contexto, acaoChave, comentario, valores, pendentesManuais);
+      if (!r.ok) {
+        return r.erros;
+      }
+      setAvisos(r.avisos);
+      await aoAlterar(r.status ? `Ciclo ${ciclo.numero} concluído. Status do cadastro: ${r.status}.` : 'Etapa concluída.');
+      await carregarFluxo();
+      return [];
+    } catch (e) {
+      return [String((e as Error)?.message || e)];
+    } finally {
+      setGravando('');
+    }
+  };
+
+  const gravarConclusao = async (): Promise<void> => {
+    if (!motor || !estado) {
+      return;
+    }
+    setGravando('conclusao');
     setErro('');
     try {
-      const aviso = await acao();
-      await aoAlterar(aviso);
+      const r = await motor.fluxo.gravarConclusao(fornecedor, ciclo, estado, motor.contexto);
+      setAvisos(r.avisos);
+      if (r.status) {
+        await aoAlterar(`Ciclo ${ciclo.numero} concluído. Status do cadastro: ${r.status}.`);
+      }
+    } finally {
+      setGravando('');
+    }
+  };
+
+  const salvarChecklist = async (): Promise<void> => {
+    setGravando('salvar');
+    setErro('');
+    try {
+      await servico.salvarCiclo(ciclo, fornecedor, d, motivo, usuarioNome);
+      await aoAlterar('Checklist salvo.');
     } catch (e) {
       setErro(String((e as Error)?.message || e));
     } finally {
@@ -322,25 +424,7 @@ const CardCiclo: React.FC<{
     }
   };
 
-  const mover = (destino: EtapaHomologacao): Promise<void> =>
-    executar('mover', async () => {
-      await servico.moverCiclo(ciclo, destino, usuarioNome);
-      return `Ciclo ${ciclo.numero} em "${destino}".`;
-    });
-
-  const problemaConclusao = validarConclusao(d);
-  const statusDepois = statusPeloResultado(d.resultadoHomologacao, fornecedor.status);
-  const anterior = etapaVizinha(ciclo.etapa, -1);
-  const proxima = etapaVizinha(ciclo.etapa, 1);
-  const pendentesFluxo = situacao.pendencias.length;
-
-  const andamento: Array<{ texto: string; feito: boolean; detalhe: string }> = [
-    { texto: 'Ficha recebida (formulário)', feito: !!fornecedor.fichaRecebidaEm, detalhe: ciclo.protocolo || fornecedor.protocolo || 'sem protocolo' },
-    { texto: 'Documentos enviados', feito: pendentesFluxo === 0, detalhe: pendentesFluxo ? `${pendentesFluxo} pendência(s) na aba Documentos` : 'sem pendências' },
-    { texto: 'Consultas (Receita, sanções, certidões)', feito: !!fornecedor.situacaoCadastral && fornecedor.resultadoSancoes !== 'Não consultado' && fornecedor.resultadoCertidoes !== 'Não consultado', detalhe: `sanções: ${fornecedor.resultadoSancoes} · certidões: ${fornecedor.resultadoCertidoes}` },
-    { texto: 'Ficha e Código de Conduta assinados (Clicksign)', feito: /assinad/i.test(fornecedor.assinaturaStatus), detalhe: fornecedor.assinaturaStatus || 'integração aguardando o token' },
-    { texto: 'Aprovação do Jurídico', feito: !!d.responsavelCompliance, detalhe: d.responsavelCompliance || 'registre abaixo quem aprovou e quando' }
-  ];
+  const fluxoConcluidoSemGravar = !!estado && estado.instancia.status === 'concluido' && aberto;
 
   return (
     <div style={{ ...painel, marginTop: '14px', borderTop: `4px solid ${aberto ? COR.ciano : COR.cinzaClaro}` }}>
@@ -356,36 +440,56 @@ const CardCiclo: React.FC<{
       </div>
 
       {!aberto && <Aviso tipo="info">Ciclo concluído: somente leitura. Para renovar ou recontratar, abra um ciclo novo.</Aviso>}
-      {aberto && !administra && <Aviso tipo="info">Somente o administrador do módulo move o card e grava a homologação. Você vê o andamento e as sugestões do sistema.</Aviso>}
       {erro && <Aviso tipo="alerta">{erro}</Aviso>}
+      {avisos.map(a => <Aviso key={a} tipo="alerta">{a}</Aviso>)}
 
-      {aberto && administra && (
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 12px' }}>
-          <button type="button" style={botao('secundario', !anterior || !!gravando)} disabled={!anterior || !!gravando} onClick={() => { if (anterior) { mover(anterior).catch(() => undefined); } }}>
-            ← {anterior || 'início'}
-          </button>
-          <button type="button" style={botao('secundario', !proxima || !!gravando)} disabled={!proxima || !!gravando} onClick={() => { if (proxima) { mover(proxima).catch(() => undefined); } }}>
-            {proxima || 'última coluna aberta'} →
-          </button>
-          <select aria-label="Mover para a coluna" style={{ ...campo, width: 'auto', minWidth: '200px' }} value="" disabled={!!gravando}
-            onChange={e => { const destino = e.target.value as EtapaHomologacao; if (destino) { mover(destino).catch(() => undefined); } }}>
-            <option value="">Mover para…</option>
-            {ETAPAS_HOMOLOGACAO.filter(e => e.id !== 'Concluído' && e.id !== ciclo.etapa).map(e => <option key={e.id} value={e.id}>{e.rotulo}</option>)}
-          </select>
-          <span style={ajuda}>Homologado / Reprovado: use “Concluir ciclo” abaixo.</span>
+      {/* Documentos do fornecedor (resumo) */}
+      {aberto && (
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', background: COR.fundo, borderRadius: '8px', padding: '8px 12px', marginBottom: '12px', fontSize: '13px' }}>
+          <span style={{ fontWeight: 700 }}>Documentos:</span>
+          <span>{situacao.pendencias.length === 0 ? '✓ sem pendências' : `${situacao.faltando} faltando · ${situacao.vencidos} vencido(s) · ${situacao.aVencer} a vencer`}</span>
+          {aConferir > 0 && <Selo tom="ciano">{`${aConferir} recebido(s) por e-mail a conferir`}</Selo>}
+          {irParaDocumentos && <button type="button" style={botao('secundario')} onClick={irParaDocumentos}>Abrir documentos</button>}
         </div>
       )}
 
-      <div style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', color: COR.texto2, margin: '6px 0' }}>Andamento</div>
-      <ul style={{ margin: '0 0 12px', paddingLeft: '20px', fontSize: '13.5px', lineHeight: 1.8 }}>
-        {andamento.map(e => (
-          <li key={e.texto}>
-            <span style={{ fontWeight: 600 }}>{e.feito ? '✓ ' : ''}{e.texto}</span>
-            <span style={{ color: COR.texto2 }}> — {e.detalhe}</span>
-          </li>
-        ))}
-      </ul>
+      {/* Fluxo (motor) */}
+      {aberto && motor && carregandoFluxo && <div style={{ ...ajuda, marginBottom: '10px' }}>Carregando o fluxo de homologação…</div>}
+      {aberto && motor && !carregandoFluxo && disponibilidade && !disponibilidade.ativo && (
+        <Aviso tipo="alerta">
+          Fluxo de homologação indisponível: {disponibilidade.motivo} Enquanto isso, o ciclo não muda de etapa.
+        </Aviso>
+      )}
+      {!motor && aberto && <Aviso tipo="info">O fluxo de homologação não está disponível nesta tela.</Aviso>}
 
+      {estado && motor && (
+        <div style={{ marginBottom: '14px' }}>
+          <PainelFluxoOrcamento
+            estado={estado}
+            dadosResponsaveis={motor.fluxo.dadosResponsaveis(estado.instancia)}
+            vinculos={vinculos}
+            usuarios={usuarios}
+            podeAgir={podeAgir && aberto}
+            processando={gravando === 'fluxo'}
+            onExecutar={executarAcao}
+            diagramaAberto={false}
+            rotuloFluxo="Fluxo de homologação"
+            textoConcluido="✓ Homologação concluída — fluxo encerrado"
+            observacaoAcoes="Salve o checklist antes de enviar: as alterações não salvas do card não vão junto."
+          />
+          {aberto && !podeAgir && estado.instancia.status === 'emAndamento' && (
+            <div style={{ ...ajuda, marginTop: '6px' }}>Você vê o andamento. Só quem responde a etapa atual age nela.</div>
+          )}
+        </div>
+      )}
+
+      {fluxoConcluidoSemGravar && (administra || podeAgir) && (
+        <Aviso tipo="alerta" acao={<button type="button" style={botao('principal', !!gravando)} disabled={!!gravando} onClick={() => { gravarConclusao().catch(() => undefined); }}>{gravando === 'conclusao' ? 'Gravando…' : 'Gravar a conclusão'}</button>}>
+          O fluxo foi concluído, mas o ciclo ainda não foi fechado no cadastro.
+        </Aviso>
+      )}
+
+      <div style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', color: COR.texto2, margin: '6px 0' }}>Checklist do item 9</div>
       <div style={{ overflowX: 'auto', border: `1px solid ${COR.cinzaClaro}`, borderRadius: '10px', marginBottom: '12px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: COR.branco }}>
           <thead>
@@ -439,74 +543,33 @@ const CardCiclo: React.FC<{
         </table>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px 14px' }}>
-        <div>
-          <label style={rotulo} htmlFor={`hm-risco-${ciclo.id}`}>Classificação de risco</label>
-          <select id={`hm-risco-${ciclo.id}`} style={campo} disabled={somenteLeitura} value={d.classificacaoRisco} onChange={e => mudar({ classificacaoRisco: e.target.value as ClassificacaoRisco })}>
-            {CLASSIFICACOES_RISCO.map(r => <option key={r} value={r}>{r || 'Não definida'}</option>)}
-          </select>
-          <div style={ajuda}>Natureza, porte e complexidade do fornecimento; porte, governança e tradição do fornecedor.</div>
-        </div>
-        <div>
-          <label style={rotulo} htmlFor={`hm-resultado-${ciclo.id}`}>Resultado da homologação</label>
-          <select id={`hm-resultado-${ciclo.id}`} style={campo} disabled={somenteLeitura} value={d.resultadoHomologacao} onChange={e => mudar({ resultadoHomologacao: e.target.value as ResultadoHomologacao })}>
-            {RESULTADOS_HOMOLOGACAO.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-          {aberto && resultadoConclusivo(d.resultadoHomologacao) && statusDepois !== fornecedor.status && (
-            <div style={ajuda}>Ao concluir, o status do cadastro muda para “{statusDepois}”.</div>
-          )}
-        </div>
-        <div>
-          <label style={rotulo} htmlFor={`hm-validade-${ciclo.id}`}>Validade do cadastro / próxima revisão</label>
-          <input id={`hm-validade-${ciclo.id}`} type="date" style={campo} disabled={somenteLeitura} value={d.validadeCadastro} onChange={e => mudar({ validadeCadastro: e.target.value })} />
-        </div>
-      </div>
-
-      <label style={rotulo} htmlFor={`hm-ressalvas-${ciclo.id}`}>Ressalvas, medidas de mitigação ou referência ao parecer</label>
-      <textarea id={`hm-ressalvas-${ciclo.id}`} style={{ ...campo, resize: 'vertical' }} rows={3} disabled={somenteLeitura} value={d.ressalvas} onChange={e => mudar({ ressalvas: e.target.value })} />
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px 14px' }}>
-        <div>
-          <label style={rotulo} htmlFor={`hm-sup-${ciclo.id}`}>Responsável Suprimentos / data</label>
-          <input id={`hm-sup-${ciclo.id}`} style={campo} disabled={somenteLeitura} value={d.responsavelSuprimentos} onChange={e => mudar({ responsavelSuprimentos: e.target.value })} placeholder="Nome — dd/mm/aaaa" />
-        </div>
-        <div>
-          <label style={rotulo} htmlFor={`hm-jur-${ciclo.id}`}>Compliance / Jurídico (se acionado)</label>
-          <input id={`hm-jur-${ciclo.id}`} style={campo} disabled={somenteLeitura} value={d.responsavelCompliance} onChange={e => mudar({ responsavelCompliance: e.target.value })} placeholder="Nome — dd/mm/aaaa" />
-        </div>
-      </div>
-
-      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', fontSize: '13.5px' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 12px', fontSize: '13.5px' }}>
         <input type="checkbox" disabled={somenteLeitura} checked={d.bancarioConferido} onChange={e => mudar({ bancarioConferido: e.target.checked })} />
         Dados bancários confirmados por contato telefônico independente (número obtido fora da ficha)
       </label>
 
-      {!somenteLeitura && (
+      {/* Resultado: definido pelo fluxo (Suprimentos e Jurídico) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px 14px', fontSize: '13.5px', background: COR.fundo, borderRadius: '8px', padding: '10px 12px' }}>
+        <div><span style={{ color: COR.texto2 }}>Classificação de risco: </span><strong>{ciclo.classificacaoRisco || '—'}</strong></div>
+        <div><span style={{ color: COR.texto2 }}>Validade do cadastro: </span><strong>{ciclo.validadeCadastro ? dataBr(ciclo.validadeCadastro) : '—'}</strong></div>
+        <div><span style={{ color: COR.texto2 }}>Resultado: </span><strong>{ciclo.resultadoHomologacao || 'Pendente'}</strong></div>
+        <div><span style={{ color: COR.texto2 }}>Suprimentos: </span>{ciclo.responsavelSuprimentos || '—'}</div>
+        <div><span style={{ color: COR.texto2 }}>Jurídico: </span>{ciclo.responsavelCompliance || '—'}</div>
+        {ciclo.ressalvas && <div style={{ gridColumn: '1 / -1' }}><span style={{ color: COR.texto2 }}>Ressalvas / parecer: </span>{ciclo.ressalvas}</div>}
+        {aberto && <div style={{ ...ajuda, gridColumn: '1 / -1', margin: 0 }}>Risco e validade são preenchidos na etapa Análise Suprimentos; o resultado e as ressalvas, na decisão do Jurídico.</div>}
+      </div>
+
+      {podeEditarChecklist && (
         <>
           <CampoMotivo valor={motivo} aoMudar={setMotivo} desabilitado={!!gravando} />
-          {resultadoConclusivo(d.resultadoHomologacao) && problemaConclusao && <div style={{ ...ajuda, color: COR.indigo }}>{problemaConclusao}</div>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
             <button type="button" style={botao('secundario', !!gravando)} disabled={!!gravando} onClick={() => { setD(dadosDoCiclo(ciclo, fornecedor)); setMotivo(''); }}>Desfazer</button>
-            <button type="button" style={botao('secundario', !!gravando || !motivo.trim())} disabled={!!gravando || !motivo.trim()}
-              onClick={() => {
-                executar('salvar', async () => {
-                  await servico.salvarCiclo(ciclo, fornecedor, d, motivo, usuarioNome);
-                  return 'Card salvo.';
-                }).catch(() => undefined);
-              }}>
-              {gravando === 'salvar' ? 'Salvando…' : 'Salvar card'}
-            </button>
-            <button type="button" style={botao('principal', !!gravando || !motivo.trim() || !!problemaConclusao)} disabled={!!gravando || !motivo.trim() || !!problemaConclusao}
-              title={problemaConclusao || undefined}
-              onClick={() => {
-                executar('concluir', async () => {
-                  const status = await servico.concluirCiclo(ciclo, fornecedor, d, motivo, usuarioNome);
-                  return `Ciclo ${ciclo.numero} concluído: ${d.resultadoHomologacao}. Status: ${status}.`;
-                }).catch(() => undefined);
-              }}>
-              {gravando === 'concluir' ? 'Concluindo…' : 'Concluir ciclo'}
+            <button type="button" style={botao('principal', !!gravando || !motivo.trim())} disabled={!!gravando || !motivo.trim()}
+              onClick={() => { salvarChecklist().catch(() => undefined); }}>
+              {gravando === 'salvar' ? 'Salvando…' : 'Salvar checklist'}
             </button>
           </div>
+          {!podeAgir && administra && <div style={{ ...ajuda, textAlign: 'right' }}>Edição como administrador do módulo (correção de dados). A etapa não muda.</div>}
         </>
       )}
     </div>
@@ -519,12 +582,15 @@ const CardCiclo: React.FC<{
 
 const HomologacaoFornecedorView: React.FC<{
   servico: FornecedoresService;
+  motor?: IContextoFluxoHomologacao;
   fornecedor: IFornecedor;
   situacao: ISituacaoDocumental;
+  aConferir: number;
   administra: boolean;
   usuarioNome: string;
   aoAlterar: (aviso?: string) => Promise<void>;
-}> = ({ servico, fornecedor, situacao, administra, usuarioNome, aoAlterar }) => {
+  irParaDocumentos?: () => void;
+}> = ({ servico, motor, fornecedor, situacao, aConferir, administra, usuarioNome, aoAlterar, irParaDocumentos }) => {
 
   const [ciclos, setCiclos] = React.useState<ICicloHomologacao[] | undefined>(undefined);
   const [disponivel, setDisponivel] = React.useState(true);
@@ -589,7 +655,7 @@ const HomologacaoFornecedorView: React.FC<{
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
         <div style={{ flex: 1, minWidth: '220px', fontSize: '13px', color: COR.texto2 }}>
           {aberto
-            ? `Ciclo ${aberto.numero} em andamento. ${administra ? 'Arraste o card ou use os botões dele para mudar de coluna.' : ''}`
+            ? `Ciclo ${aberto.numero} em andamento. A etapa muda só pelos botões do fluxo, com comentário.`
             : ciclos.length > 0 ? 'Nenhum ciclo em andamento.' : 'Nenhum ciclo de homologação registrado.'}
         </div>
         {administra && legadoConcluido && (
@@ -614,27 +680,20 @@ const HomologacaoFornecedorView: React.FC<{
         </Aviso>
       )}
 
-      <QuadroKanban
-        cards={cards}
-        selecionado={selecionado}
-        podeMover={administra}
-        aoAbrir={c => setSelecionado(c.id)}
-        aoSoltar={(c, destino) => {
-          servico.moverCiclo(c, destino, usuarioNome)
-            .then(() => depoisDeAlterar(`Ciclo ${c.numero} em "${destino}".`))
-            .catch(e => setErro(String((e as Error)?.message || e)));
-        }}
-      />
+      <QuadroKanban cards={cards} selecionado={selecionado} aoAbrir={c => setSelecionado(c.id)} />
 
       {ciclo && (
         <CardCiclo
           servico={servico}
+          motor={motor}
           fornecedor={fornecedor}
           ciclo={ciclo}
           situacao={situacao}
+          aConferir={aConferir}
           administra={administra}
           usuarioNome={usuarioNome}
           aoAlterar={depoisDeAlterar}
+          irParaDocumentos={irParaDocumentos}
         />
       )}
 
@@ -642,16 +701,16 @@ const HomologacaoFornecedorView: React.FC<{
         <AbrirCicloModal
           motivoSugerido={motivoSugerido}
           fechar={() => setAbrindo(false)}
-          confirmar={async (motivo, etapa) => {
-            await servico.iniciarCiclo(fornecedor, ciclos, motivo, etapa, usuarioNome);
+          confirmar={async motivo => {
+            const id = await servico.iniciarCiclo(fornecedor, ciclos, motivo, usuarioNome);
             setAbrindo(false);
-            setSelecionado('');
-            await depoisDeAlterar('Ciclo aberto.');
+            setSelecionado(id);
+            await depoisDeAlterar('Ciclo aberto na primeira etapa do fluxo.');
           }}
         />
       )}
 
-      <div style={{ ...ajuda, marginTop: '12px' }}>O contrato é emitido só quando uma demanda fechar, assinado por Jurídico, Suprimentos, comprador e prestador.</div>
+      <div style={{ ...ajuda, marginTop: '12px' }}>O contrato é emitido só quando uma demanda fechar, assinado por Jurídico, Suprimentos, comprador e prestador. Contratos assinados ficam na aba Contratos.</div>
     </div>
   );
 };

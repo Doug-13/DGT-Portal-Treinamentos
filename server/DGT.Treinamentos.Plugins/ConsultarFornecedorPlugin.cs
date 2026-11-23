@@ -82,7 +82,8 @@ namespace DGT.Treinamentos.Plugins
     //         "diasRenovacaoCertidoes": 15,
     //         "rotasEstaduais":  { "SC": "<rota>?inscricao_estadual={ie}" },
     //         "rotasMunicipais": { "SC/FLORIANOPOLIS": "<rota>" },
-    //         "rotasTrt":        { "RS": "tribunal/trt4/ceat" } }
+    //         "rotasTrt":        { "RS": "tribunal/trt4/ceat" },
+    //         "areaSuprimentos": "SUY" }          (sigla da área da 1ª etapa da homologação)
     //   rotasTrt (CEAT): TRT da sede do fornecedor, por UF ("RS") ou por
     //   cidade ("SP/CAMPINAS", para UF com mais de um TRT). Padrão: só RS
     //   (TRT4, rota confirmada). UF sem rota: "Sem cobertura".
@@ -161,6 +162,9 @@ namespace DGT.Treinamentos.Plugins
         private readonly string _urlInfosimples = "https://api.infosimples.com/api/v2/consultas";
         private readonly int _timeoutInfosimples = 90;
         private readonly int _diasRenovacaoCertidoes = 15;
+        // Sigla (dgt_area.dgt_sigla) da área que responde a 1ª etapa da
+        // homologação (SUP-HOM) — gravada no ciclo aberto pela ficha.
+        private readonly string _areaSuprimentos = HomologacaoFornecedor.SiglaSuprimentosPadrao;
         private readonly Dictionary<string, string> _rotasEstaduais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _rotasMunicipais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _rotasTrt = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -202,6 +206,7 @@ namespace DGT.Treinamentos.Plugins
                     _urlInfosimples = Texto(config["infosimplesUrl"], _urlInfosimples).TrimEnd('/');
                     _timeoutInfosimples = Math.Min(100, Math.Max(15, (int?)config["infosimplesTimeout"] ?? _timeoutInfosimples));
                     _diasRenovacaoCertidoes = Math.Max(1, (int?)config["diasRenovacaoCertidoes"] ?? _diasRenovacaoCertidoes);
+                    _areaSuprimentos = Texto(config["areaSuprimentos"], _areaSuprimentos).Trim();
                     LerRotas(config["rotasEstaduais"] as JObject, _rotasEstaduais);
                     LerRotas(config["rotasMunicipais"] as JObject, _rotasMunicipais);
                     LerRotas(config["rotasTrt"] as JObject, _rotasTrt);
@@ -1516,7 +1521,7 @@ namespace DGT.Treinamentos.Plugins
             var gravado = sistema.Retrieve(TabelaFornecedor, id, new ColumnSet("dgt_protocolo", "dgt_name", "dgt_categoria"));
             var categoria = gravado.GetAttributeValue<string>("dgt_categoria") ?? string.Empty;
 
-            AbrirCicloSeNecessario(sistema, tracing, id, tipoSolicitacao, gravado.GetAttributeValue<string>("dgt_protocolo") ?? string.Empty, usuario);
+            AbrirCicloSeNecessario(sistema, tracing, id, tipoSolicitacao, gravado.GetAttributeValue<string>("dgt_protocolo") ?? string.Empty, usuario, _areaSuprimentos);
 
             return new JObject
             {
@@ -1636,11 +1641,13 @@ namespace DGT.Treinamentos.Plugins
             return resposta;
         }
 
-        // Kanban de homologação: a ficha que chega abre um ciclo novo na
-        // coluna "Ficha recebida" se o fornecedor não tem ciclo em aberto.
-        // As colunas seguintes são movidas à mão no portal. Sem a tabela
-        // (script ainda não rodado), só registra no rastreamento.
-        private static void AbrirCicloSeNecessario(IOrganizationService sistema, ITracingService tracing, Guid fornecedorId, string motivo, string protocolo, string usuario)
+        // Homologação: a ficha que chega abre um ciclo novo na coluna
+        // "Ficha recebida" se o fornecedor não tem ciclo em aberto. A etapa
+        // segue o motor de fluxos (SUP-HOM) no portal; aqui o ciclo nasce
+        // SEM instância, mas já com a etapa e a área Suprimentos
+        // (PrepararCicloParaFluxo) para o aviso da 1ª etapa sair. Sem a
+        // tabela (script ainda não rodado), só registra no rastreamento.
+        private static void AbrirCicloSeNecessario(IOrganizationService sistema, ITracingService tracing, Guid fornecedorId, string motivo, string protocolo, string usuario, string siglaSuprimentos)
         {
             try
             {
@@ -1660,7 +1667,8 @@ namespace DGT.Treinamentos.Plugins
                 ciclo["dgt_protocolo"] = Limitar(protocolo, 30);
                 ciclo["dgt_resultadohomologacao"] = "Pendente";
                 ciclo["dgt_responsavelnome"] = Limitar(usuario, 200);
-                sistema.Create(ciclo);
+                var cicloId = sistema.Create(ciclo);
+                PrepararCicloParaFluxo(sistema, tracing, cicloId, siglaSuprimentos);
 
                 RegistrarHistorico(sistema, fornecedorId, "Homologação: ciclo aberto",
                     $"Ciclo {numero} ({motivo}) aberto na coluna \"Ficha recebida\" pela ficha {protocolo}.", usuario);
@@ -1668,6 +1676,36 @@ namespace DGT.Treinamentos.Plugins
             catch (Exception ex)
             {
                 tracing.Trace("Ficha: ciclo de homologação não aberto: {0}", ex.Message);
+            }
+        }
+
+        // Colunas do motor (dgt_etapaatual, dgt_responsaveisetapa). Em
+        // separado: sem elas (script não rodado) ou sem a área cadastrada,
+        // o ciclo continua aberto e o portal resolve ao abrir.
+        private static void PrepararCicloParaFluxo(IOrganizationService sistema, ITracingService tracing, Guid cicloId, string siglaSuprimentos)
+        {
+            try
+            {
+                var sigla = string.IsNullOrWhiteSpace(siglaSuprimentos) ? HomologacaoFornecedor.SiglaSuprimentosPadrao : siglaSuprimentos.Trim();
+                var consulta = new QueryExpression("dgt_area") { ColumnSet = new ColumnSet("dgt_name", "dgt_sigla"), TopCount = 1 };
+                consulta.Criteria.AddCondition("dgt_sigla", ConditionOperator.Equal, sigla);
+                var area = sistema.RetrieveMultiple(consulta).Entities.FirstOrDefault();
+
+                var atualizacao = new Entity(TabelaCiclo, cicloId);
+                atualizacao["dgt_etapaatual"] = HomologacaoFornecedor.EtapaInicial;
+                if (area != null)
+                {
+                    atualizacao["dgt_responsaveisetapa"] = HomologacaoFornecedor.ResponsaveisDaArea(area.Id, sigla, area.GetAttributeValue<string>("dgt_name"));
+                }
+                else
+                {
+                    tracing.Trace("Ficha: área de sigla {0} não encontrada; o ciclo fica sem responsáveis até ser aberto no portal.", sigla);
+                }
+                sistema.Update(atualizacao);
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace("Ficha: ciclo aberto sem as colunas do fluxo: {0}", ex.Message);
             }
         }
 

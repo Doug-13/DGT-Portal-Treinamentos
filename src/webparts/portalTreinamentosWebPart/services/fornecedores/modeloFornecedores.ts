@@ -21,7 +21,15 @@ export const TABELAS_FORN = {
   historico: 'dgt_fornecedorhistorico',
   ciclo: 'dgt_fornecedorhomologacao',
   colaborador: 'dgt_fornecedorcolaborador',
-  colaboradorDocumento: 'dgt_colaboradordocumento'
+  colaboradorDocumento: 'dgt_colaboradordocumento',
+  contrato: 'dgt_fornecedorcontrato'
+};
+
+// Processo do motor de fluxos (Processos → Fluxos) que governa a
+// homologação. Plano B: primeiro processo ativo cujo nome contenha o texto.
+export const PROCESSO_HOMOLOGACAO = {
+  CODIGO: 'SUP-HOM',
+  NOME_CONTEM: 'homologacao de fornecedor'
 };
 
 // Custom API (plugin ConsultarFornecedorPlugin). As chaves do CNPJá e
@@ -275,8 +283,10 @@ export interface IContatoFornecedor {
 // ------------------------------------------------------------
 // Kanban de homologação: um card = um ciclo (dgt_fornecedorhomologacao).
 // Ciclo concluído (Homologado/Reprovado) vira histórico somente leitura;
-// renovação ou recontratação abre um ciclo NOVO. As colunas são movidas
-// à mão nesta fase (sem notificações automáticas).
+// renovação ou recontratação abre um ciclo NOVO. A etapa segue o motor
+// de fluxos (processo SUP-HOM): a coluna do kanban (dgt_etapa) é
+// DERIVADA da etapa do fluxo (ver homologacao.ts › etapaKanbanDoFluxo).
+// Ninguém move card à mão.
 // ------------------------------------------------------------
 
 export type EtapaHomologacao =
@@ -321,6 +331,12 @@ export interface ICicloHomologacao {
   bancarioConferido: boolean; // retrato na conclusão
   abertoPor: string;
   criadoEm: string;
+  // Motor de fluxos (SUP-HOM). Sem fluxoIniciado, o ciclo ainda não tem
+  // instância (ex.: aberto pela ficha, no plugin).
+  fluxoIniciado: boolean;
+  etapaAtual: string;           // id da etapa do fluxo
+  prazoEtapa: string;
+  responsaveisEtapa: string;    // JSON, mesmo formato de dgt_responsaveisjson
 }
 
 // ------------------------------------------------------------
@@ -455,15 +471,51 @@ export interface ITipoDocumentoFornecedor {
   codigoConsulta?: CodigoCertidao | '';
 }
 
-// "A conferir": arquivo recebido por e-mail (Fluxo 2), ainda sem tipo e
-// datas — NÃO conta como documento válido até a analista conferir.
+// "A conferir": arquivo recebido por e-mail (Fluxo 2/2b), ainda sem tipo
+// e datas — NÃO conta como documento válido até a analista conferir.
 // "Descartado": anexo que não era documento (logo, assinatura…).
-export type SituacaoDocumento = 'Vigente' | 'Substituído' | 'A conferir' | 'Descartado';
+// "Convertido em contrato": o arquivo da fila virou um contrato (aba
+// Contratos); também não conta como documento entregue.
+export type SituacaoDocumento = 'Vigente' | 'Substituído' | 'A conferir' | 'Descartado' | 'Convertido em contrato';
 
 export const SITUACAO_A_CONFERIR: SituacaoDocumento = 'A conferir';
 
+export const SITUACAO_CONVERTIDO_CONTRATO: SituacaoDocumento = 'Convertido em contrato';
+
 export const lerSituacaoDocumento = (valor: string): SituacaoDocumento =>
-  valor === 'Substituído' || valor === 'A conferir' || valor === 'Descartado' ? valor : 'Vigente';
+  valor === 'Substituído' || valor === 'A conferir' || valor === 'Descartado' || valor === 'Convertido em contrato' ? valor : 'Vigente';
+
+// ------------------------------------------------------------
+// Contratos do fornecedor (dgt_fornecedorcontrato). Vários por
+// fornecedor; projeto em texto livre. Encerrar em vez de excluir.
+// "Vencido" e "Vence em N dias" são calculados pelo fim da vigência.
+// ------------------------------------------------------------
+
+export type SituacaoContratoGravada = 'Vigente' | 'Encerrado';
+
+export type OrigemContrato = 'Manual' | 'E-mail';
+
+export interface IContratoFornecedor {
+  id: string;
+  fornecedorId: string;
+  nome: string;
+  projeto: string;
+  dataAssinatura: string;   // yyyy-mm-dd
+  inicioVigencia: string;   // yyyy-mm-dd
+  fimVigencia: string;      // yyyy-mm-dd (vazio = prazo indeterminado)
+  arquivoUrl: string;
+  arquivoNome: string;
+  observacoes: string;
+  situacao: SituacaoContratoGravada;
+  origem: OrigemContrato;
+  documentoOrigemId: string;
+  registradoPor: string;
+  criadoEm: string;
+}
+
+// Antecedência dos avisos de vencimento (Power Automate, docs/fornecedores.md):
+// documentos manuais ao fornecedor e contratos para Suprimentos.
+export const DIAS_AVISO_VENCIMENTO = 15;
 
 export interface IDocumentoFornecedor {
   id: string;
