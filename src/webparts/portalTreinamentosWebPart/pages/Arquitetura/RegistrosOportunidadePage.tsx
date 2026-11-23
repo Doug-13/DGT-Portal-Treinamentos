@@ -226,6 +226,16 @@ const PainelRo: React.FC<{
   const [historico, setHistorico] = React.useState<IAlteracaoRo[] | undefined>(undefined);
   const [erroHistorico, setErroHistorico] = React.useState('');
 
+  // Lista fixa + fabricantes do cadastro (dgt_fabricante), quando legível.
+  const [opcoesFabricante, setOpcoesFabricante] = React.useState<string[]>(FABRICANTES);
+  React.useEffect(() => {
+    let ativo = true;
+    servico.opcoesFabricante()
+      .then(lista => { if (ativo) setOpcoesFabricante(lista); })
+      .catch(() => undefined);
+    return () => { ativo = false; };
+  }, [servico]);
+
   const novo = !form.id;
   const [validadeManual, setValidadeManual] = React.useState(!!dados.validade);
   const validade = validadeManual || !prazos
@@ -315,8 +325,8 @@ const PainelRo: React.FC<{
                   <label><span style={rotulo}>Nº do RO *</span><input style={campo} value={form.numero} onChange={e => alterar('numero', e.target.value)} placeholder="Ex.: OP-0690583" /></label>
                   <label><span style={rotulo}>Fabricante *</span>
                     <select style={campo} value={form.fabricante} onChange={e => alterar('fabricante', e.target.value)}>
-                      {FABRICANTES.indexOf(form.fabricante) < 0 && <option value={form.fabricante}>{form.fabricante}</option>}
-                      {FABRICANTES.map(f => <option key={f} value={f}>{f}</option>)}
+                      {opcoesFabricante.indexOf(form.fabricante) < 0 && <option value={form.fabricante}>{form.fabricante}</option>}
+                      {opcoesFabricante.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
                   </label>
                 </div>

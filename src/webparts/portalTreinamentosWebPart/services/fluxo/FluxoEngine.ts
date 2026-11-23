@@ -1,4 +1,10 @@
 import {
+  MomentoNotificacao,
+  normalizarNotificacaoAtividade,
+  notificacaoSeAplica
+} from './notificacaoFluxo';
+
+import {
   formatarValorComponente,
   validarComponente
 } from './valorComponente';
@@ -774,6 +780,73 @@ const criarTarefa = (
       : undefined
 });
 
+// ------------------------------------------------------------
+// NOTIFICAÇÕES (aba Notificações da atividade e evento de notificação)
+//
+// O motor só ANOTA os pedidos (instancia.notificacoesSolicitadas). Quem
+// resolve os destinatários e grava na fila dgt_implemail é o
+// FluxoService, depois de gravar o estado (ver notificacaoFluxo.ts).
+// ------------------------------------------------------------
+
+interface IDadosPedidoNotificacao {
+  acaoRotulo?: string;
+  resultado?: string;
+  comentario?: string;
+  executorNome?: string;
+  prazo?: string;
+}
+
+const pedirNotificacoes = (
+  instancia: IFluxoInstancia,
+  elemento: IFluxoElemento,
+  momento: MomentoNotificacao,
+  agora: string,
+  dados: IDadosPedidoNotificacao
+): void => {
+
+  const evento =
+    elemento.tipo === 'eventoNotificacao';
+
+  (elemento.notificacoes || [])
+    .filter(config => (evento ? config.ativa : notificacaoSeAplica(config, momento, dados.resultado)))
+    .forEach(config => {
+      if (!instancia.notificacoesSolicitadas) {
+        instancia.notificacoesSolicitadas = [];
+      }
+      instancia.notificacoesSolicitadas.push({
+        chave: `${instancia.revisaoId}:${elemento.id}:${config.chave}:${gerarId('n')}`,
+        elementoId: elemento.id,
+        elementoNome: elemento.nome,
+        origem: evento ? 'evento' : 'atividade',
+        momento: evento ? 'aoPassar' : momento,
+        // Atividade: só os responsáveis dela (e-mail + Teams opcional).
+        config: evento ? config : normalizarNotificacaoAtividade(config),
+        responsaveisEtapa: evento ? [] : elemento.responsaveis.slice(),
+        acaoRotulo: dados.acaoRotulo,
+        resultado: dados.resultado,
+        comentario: dados.comentario,
+        executorNome: dados.executorNome,
+        prazo: dados.prazo,
+        solicitadaEm: agora
+      });
+    });
+};
+
+// Última ação humana registrada (dados do evento de notificação).
+const ultimaAcaoHumana = (
+  instancia: IFluxoInstancia
+): IDadosPedidoNotificacao => {
+  const passo = instancia.historico.find(item => !item.sistema);
+  return passo
+    ? {
+      acaoRotulo: passo.acaoRotulo,
+      resultado: passo.resultado,
+      comentario: passo.comentario,
+      executorNome: passo.executadoPorNome
+    }
+    : {};
+};
+
 const DESCRICAO_ACAO_SISTEMA: Record<AcaoSistemaFluxo, string> = {
   publicarComRetreinamento:
     'Publicação com retreinamento (simulada)',
@@ -902,6 +975,10 @@ const avancar = (
       instancia.concluidoEm =
         agora;
 
+      // Notificações "ao começar" da etapa de publicação (ex.: avisar
+      // que a revisão ficou vigente).
+      pedirNotificacoes(instancia, destino, 'aoChegar', agora, ultimaAcaoHumana(instancia));
+
       limparTransicoesOrfas(
         definicao,
         instancia
@@ -912,9 +989,15 @@ const avancar = (
 
     if (destino.tipo === 'tarefaHumana') {
 
+      const tarefa =
+        criarTarefa(destino, agora);
+
       instancia.tarefas.push(
-        criarTarefa(destino, agora)
+        tarefa
       );
+
+      // Aba Notificações: "Quando a atividade começar".
+      pedirNotificacoes(instancia, destino, 'aoChegar', agora, { ...ultimaAcaoHumana(instancia), prazo: tarefa.prazo });
 
       limparTransicoesOrfas(
         definicao,
@@ -1085,6 +1168,37 @@ const avancar = (
 
       resultadoAtual =
         'concluido';
+    }
+
+    // Evento de notificação (círculo com carta): pede o envio e segue.
+    // Mantém o resultado da última ação humana (como um gateway), para
+    // que uma decisão logo depois continue funcionando.
+    if (destino.tipo === 'eventoNotificacao') {
+
+      const antes =
+        (instancia.notificacoesSolicitadas || []).length;
+
+      pedirNotificacoes(instancia, destino, 'aoChegar', agora, ultimaAcaoHumana(instancia));
+
+      const pedidas =
+        (instancia.notificacoesSolicitadas || []).length - antes;
+
+      instancia.historico.unshift({
+        revisao: instancia.revisao,
+        id: gerarId('hist'),
+        data: agora,
+        elementoId: destino.id,
+        elementoNome: destino.nome,
+        acaoChave: 'notificacao',
+        acaoRotulo:
+          pedidas > 0
+            ? `Notificação solicitada${instancia.simulado ? ' (simulada)' : ''}`
+            : 'Notificação desativada — nada enviado',
+        resultado: resultadoAtual,
+        executadoPorId: 'sistema',
+        executadoPorNome: 'Sistema',
+        sistema: true
+      });
     }
 
     // Evento de revisão: pede para renumerar a revisão e segue.
@@ -1474,6 +1588,15 @@ export const executarAcao = (
   instancia.historico.unshift(
     entrada
   );
+
+  // Aba Notificações: "Quando a atividade for concluída" (com filtro
+  // opcional pelo resultado da ação).
+  pedirNotificacoes(instancia, elemento, 'aoConcluir', agora, {
+    acaoRotulo: acao.rotulo,
+    resultado: acao.resultado,
+    comentario: (execucao.comentario || '').trim() || undefined,
+    executorNome: execucao.ator.nome
+  });
 
   const acoesSistema: AcaoSistemaFluxo[] = [];
 

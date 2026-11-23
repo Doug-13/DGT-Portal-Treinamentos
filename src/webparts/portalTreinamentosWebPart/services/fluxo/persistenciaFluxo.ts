@@ -1,4 +1,12 @@
 import {
+  IDespachanteNotificacoes
+} from './notificacaoFluxo';
+
+import {
+  NotificacaoFluxoService
+} from '../notificacoes/NotificacaoFluxoService';
+
+import {
   DataverseService
 } from '../DataverseService';
 
@@ -73,14 +81,15 @@ const montar = (
   catalogo: IFluxoCatalogo,
   repositorio: IFluxoRepositorio,
   processos: IProcessosRepositorio,
-  metadados: IMetadadosRepositorio
+  metadados: IMetadadosRepositorio,
+  notificacoes?: IDespachanteNotificacoes
 ): IPersistenciaFluxo => ({
   local: repositorio.local,
   catalogo,
   repositorio,
   processos,
   metadados,
-  servico: new FluxoService(repositorio, catalogo, metadados)
+  servico: new FluxoService(repositorio, catalogo, metadados, notificacoes)
 });
 
 export const obterPersistenciaFluxo = (
@@ -101,7 +110,9 @@ export const obterPersistenciaFluxo = (
         new FluxoCatalogoDataverse(dataverse),
         new FluxoRepositorioDataverse(dataverse),
         new ProcessosRepositorioDataverse(dataverse),
-        new MetadadosRepositorioDataverse(dataverse)
+        new MetadadosRepositorioDataverse(dataverse),
+        // Notificações do fluxo (aba Notificações e evento com carta).
+        new NotificacaoFluxoService(dataverse, 'documento')
       );
 
     porServico.push({ dataverse, persistencia });

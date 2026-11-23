@@ -156,10 +156,13 @@ const AvisosPortal: React.FC<IAvisosPortalProps> = (props) => {
       const conhecidos = vistos || [];
       const novos = atuais.filter(aviso => conhecidos.indexOf(aviso.id) < 0);
       gravarVistos(email, conhecidos.concat(novos.map(aviso => aviso.id)));
-      // Primeira vez neste navegador: só registra.
-      if (vistos !== undefined && novos.length > 0) {
+      // Primeira vez neste navegador: não mostra cartões na tela, mas
+      // coloca o que já existe no sino do cabeçalho.
+      if (novos.length > 0) {
         acrescentarHistorico(email, novos);
-        mostrar(novos, preferencias);
+        if (vistos !== undefined) {
+          mostrar(novos, preferencias);
+        }
       }
     } catch {
       // Falha momentânea: tenta de novo no próximo intervalo.

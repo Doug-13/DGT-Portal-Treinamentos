@@ -4,6 +4,7 @@ import Icones, { IconeChave } from './common/Icones';
 import VersaoPortal from './common/VersaoPortal';
 import MenuUsuario from './common/MenuUsuario';
 import AvisosPortal from './common/AvisosPortal';
+import SinoNotificacoes from './common/SinoNotificacoes';
 import AdministrarIaModal from '../pages/Indicadores/AdministrarIaModal';
 
 import {
@@ -4574,6 +4575,14 @@ const PortalTreinamentos:
               >
                 {telaCheia ? <Icones.shrink /> : <Icones.expand />}
               </button>
+
+              {/* Notificações (avisos do portal, com não lidas) */}
+              <SinoNotificacoes
+                email={autorizacao.contexto ? autorizacao.contexto.email : ''}
+                classeBotao={styles.headerIcon}
+                onNavegar={pagina => navegar(pagina as Pagina)}
+                onAbrirDocumento={abrirDocumentoPorId}
+              />
 
               {/* Versão do portal + Novidades */}
               <VersaoPortal />

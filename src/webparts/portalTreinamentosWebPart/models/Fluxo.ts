@@ -15,6 +15,11 @@ import {
   IConfigAssinatura
 } from '../services/fluxo/assinaturaFluxo';
 
+import {
+  IConfigNotificacao,
+  INotificacaoSolicitada
+} from '../services/fluxo/notificacaoFluxo';
+
 // ============================================================
 // MODELO DO FLUXO CONFIGURÁVEL DE DOCUMENTOS
 //
@@ -51,6 +56,10 @@ export type TipoElementoFluxo =
   // a eles num campo "Documentos referenciados" deste fluxo. O fluxo
   // atual segue adiante (não espera os filhos terminarem).
   | 'subprocesso'
+  // Evento de notificação (círculo com carta no desenho): ao ser
+  // percorrido, pede o envio das notificações configuradas nele e
+  // segue (não para o fluxo). Ver services/fluxo/notificacaoFluxo.ts.
+  | 'eventoNotificacao'
   | 'fim';
 
 // Quem pode executar uma etapa. Os tipos 'grupo', 'funcao',
@@ -562,6 +571,10 @@ export interface IFluxoElemento {
   //   'nao' (padrão) · 'sim' · 'etapa:<id>' = sim, se o fluxo passou
   //   por aquela etapa neste ciclo (ex.: "Revisar Treinamento").
   retreinamentoAoPublicar?: string;
+
+  // tarefaHumana: aba "Notificações" (ao começar / ao concluir).
+  // eventoNotificacao: as notificações enviadas ao passar pelo evento.
+  notificacoes?: IConfigNotificacao[];
 }
 
 export type TipoCondicaoTransicao =
@@ -771,6 +784,11 @@ export interface IFluxoInstancia {
   // ser alterados no filho.
   camposHerdados?: string[];
   camposSomenteLeitura?: string[];
+
+  // TRANSITÓRIO — notificações pedidas pelo motor nesta ação. O
+  // FluxoService retira daqui antes de gravar e entrega ao despachante
+  // (fila dgt_implemail → Power Automate). Nunca é persistido.
+  notificacoesSolicitadas?: INotificacaoSolicitada[];
 }
 
 // Quem está executando a ação.

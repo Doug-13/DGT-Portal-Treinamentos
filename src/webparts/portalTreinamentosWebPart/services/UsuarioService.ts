@@ -17,6 +17,10 @@ import {
   lerDataConformidade
 } from './ConformidadeService';
 
+import {
+  atribuicaoRemovida
+} from '../utils/atribuicaoRemovida';
+
 // Prazo para realização (dgt_datalimite) já passou? Compara só o dia.
 const prazoExpirado = (
   valor: string
@@ -332,12 +336,12 @@ export class UsuarioService {
           )
         );
 
-      // Atribuições removidas (dgt_ativo = Não) não contam
-      // como pendência da equipe.
+      // Atribuições removidas (dgt_ativo = Não ou status Cancelado)
+      // não contam como pendência nem vencimento da equipe.
       const atribuicoesUsuario =
         atribuicoes.filter(item => {
 
-          if (item.dgt_ativo === false) {
+          if (atribuicaoRemovida(item)) {
             return false;
           }
 

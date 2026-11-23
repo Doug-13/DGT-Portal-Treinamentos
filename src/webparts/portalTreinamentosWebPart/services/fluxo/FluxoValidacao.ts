@@ -1,4 +1,8 @@
 import {
+  validarConfigNotificacao
+} from './notificacaoFluxo';
+
+import {
   validarMapeamentos
 } from './subprocesso/mapeamentoSubprocesso';
 
@@ -100,7 +104,7 @@ const rotaExiste = (
       }
 
       // Decisões e eventos de revisão repassam o resultado da ação.
-      return destino.tipo === 'gateway' || destino.tipo === 'eventoRevisao'
+      return destino.tipo === 'gateway' || destino.tipo === 'eventoRevisao' || destino.tipo === 'eventoNotificacao'
         ? rotaExiste(definicao, destino.id, resultado, visitados.concat(origemId))
         : true;
     }
@@ -627,6 +631,15 @@ export const validarDefinicao = (
           )
           .forEach(erro => erros.push(erro));
       }
+
+      // Notificações: evento com carta e aba Notificações das atividades.
+      if (item.tipo === 'eventoNotificacao' && saidas.length > 1) {
+        erros.push(`O evento de notificação "${item.nome}" deve ter apenas uma ligação de saída. Para escolher caminhos, use uma decisão depois dele.`);
+      }
+
+      (item.notificacoes || []).forEach(
+        notificacao => validarConfigNotificacao(notificacao, item.nome).forEach(erro => erros.push(erro))
+      );
 
       if (item.tipo === 'eventoRevisao') {
 

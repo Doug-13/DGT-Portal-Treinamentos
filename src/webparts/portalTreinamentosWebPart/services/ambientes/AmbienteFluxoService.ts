@@ -1,4 +1,8 @@
 import {
+  NotificacaoFluxoService
+} from '../notificacoes/NotificacaoFluxoService';
+
+import {
   IDependenciasSubprocessoAmbiente,
   ISolicitanteFilho,
   avaliarFilhosAmbiente,
@@ -252,7 +256,9 @@ export class AmbienteFluxoService {
       new FluxoService(
         this.repositorio,
         persistencia.catalogo,
-        persistencia.metadados
+        persistencia.metadados,
+        // Notificações do fluxo (aba Notificações e evento com carta).
+        new NotificacaoFluxoService(dataverse, 'ambiente')
       );
   }
 

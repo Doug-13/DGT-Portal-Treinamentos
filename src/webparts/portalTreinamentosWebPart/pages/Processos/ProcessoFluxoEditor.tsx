@@ -1,5 +1,7 @@
 import * as React from 'react';
 
+import EditorNotificacoes from './EditorNotificacoes';
+
 import CopiarFluxoModal, {
   ICopiaEscolhida,
   IFonteCopiaFluxo
@@ -995,7 +997,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
 
           if (tipo === 'tarefaHumana') {
             lista = lista.concat(acoesDe(conexao.origemId));
-          } else if (tipo === 'gateway' || tipo === 'eventoRevisao') {
+          } else if (tipo === 'gateway' || tipo === 'eventoRevisao' || tipo === 'eventoNotificacao') {
             // Decisões e eventos de revisão repassam o resultado.
             lista = lista.concat(resultadosQueChegam(conexao.origemId, visitados.concat(destinoId)));
           }
@@ -1049,7 +1051,7 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
       return percurso;
     }
 
-    for (let passo = 0; passo < 5 && tipoDe(atual) === 'eventoRevisao'; passo++) {
+    for (let passo = 0; passo < 5 && (tipoDe(atual) === 'eventoRevisao' || tipoDe(atual) === 'eventoNotificacao'); passo++) {
 
       const proxima =
         retrato.conexoes.filter(
@@ -1324,11 +1326,41 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
               ? 'Decisão'
               : tipoSelecionado === 'eventoRevisao'
                 ? 'Evento de revisão'
+              : tipoSelecionado === 'eventoNotificacao'
+                ? 'Evento de notificação'
               : tipoSelecionado === 'inicio'
                 ? 'Início'
                 : tipoSelecionado === 'fim'
                   ? 'Fim'
                   : 'Elemento não suportado';
+
+  // Aba Notificações (atividade) e configuração do evento de notificação.
+  const editorNotificacoes = (
+    modo: 'atividade' | 'evento'
+  ): React.ReactNode =>
+    configSelecionado && selecionado && (
+      <EditorNotificacoes
+        key={`${selecionado.id}-notificacoes`}
+        modo={modo}
+        notificacoes={configSelecionado.notificacoes}
+        editavel={editavel}
+        nomeElemento={selecionado.nome}
+        metadados={metadadosAtuais}
+        usuarios={usuarios}
+        areas={areas}
+        acoes={configSelecionado.acoes}
+        onAlterar={notificacoes => {
+          if (!selecionado || !edicao || !editavel || !configSelecionado) {
+            return;
+          }
+          setEdicao({
+            ...edicao,
+            configsElementos: { ...edicao.configsElementos, [selecionado.id]: { ...configSelecionado, notificacoes } }
+          });
+          setAlterado(true);
+        }}
+      />
+    );
 
   const abasDoModal: IAbaModalFluxo[] =
     tipoSelecionado === 'tarefaHumana' && configSelecionado
@@ -1356,12 +1388,23 @@ const ProcessoFluxoEditor: React.FC<IProcessoFluxoEditorProps> = ({
           conteudo: painel('campos')
         },
         {
+          id: 'notificacoes',
+          rotulo: 'Notificações',
+          indicador: String((configSelecionado.notificacoes || []).filter(item => item.ativa).length),
+          conteudo: editorNotificacoes('atividade')
+        },
+        {
           id: 'caminhos',
           rotulo: 'Caminhos',
           indicador: String(saidas.length),
           conteudo: painel('caminhos')
         }
       ]
+      : tipoSelecionado === 'eventoNotificacao' && configSelecionado
+        ? [
+          { id: 'notificacao', rotulo: 'Notificação', conteudo: editorNotificacoes('evento') },
+          { id: 'geral', rotulo: 'Geral', conteudo: painel('geral') }
+        ]
       : tipoSelecionado === 'gateway' && selecionado && !selecionado.conexao
         ? [
           { id: 'geral', rotulo: 'Geral', conteudo: painel('geral') },
