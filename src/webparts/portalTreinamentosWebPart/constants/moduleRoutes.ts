@@ -66,7 +66,9 @@ export const obterModuloPagina =
       pagina ===
       'processos' ||
       pagina ===
-      'fluxos'
+      'fluxos' ||
+      pagina ===
+      'desenhosProcesso'
     ) {
       return 'processos';
     }

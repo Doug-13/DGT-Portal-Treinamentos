@@ -111,6 +111,19 @@ export const formatarData = (valor?: string): string =>
     ? `${valor.substring(8, 10)}/${valor.substring(5, 7)}/${valor.substring(0, 4)}`
     : '—';
 
+// Data e hora locais (dd/mm/aaaa hh:mm) de um ISO completo.
+export const formatarDataHora = (valor?: string): string => {
+  if (!valor) {
+    return '—';
+  }
+  const d = new Date(valor);
+  if (isNaN(d.getTime())) {
+    return formatarData(valor);
+  }
+  const dd = (n: number): string => (n < 10 ? `0${n}` : String(n));
+  return `${dd(d.getDate())}/${dd(d.getMonth() + 1)}/${d.getFullYear()} ${dd(d.getHours())}:${dd(d.getMinutes())}`;
+};
+
 export const formatarNumero = (valor: number): string =>
   valor.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 

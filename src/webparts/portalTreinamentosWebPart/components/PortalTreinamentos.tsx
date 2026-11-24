@@ -4855,6 +4855,11 @@ const PortalTreinamentos:
                       pagina: 'fluxos',
                       label: 'Fluxos',
                       icon: 'settings'
+                    },
+                    {
+                      pagina: 'desenhosProcesso',
+                      label: 'Desenhos',
+                      icon: 'workflow'
                     }
                   ]}
                   paginaAtual={paginaAtual}

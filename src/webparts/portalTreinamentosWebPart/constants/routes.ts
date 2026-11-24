@@ -27,6 +27,8 @@ export type Pagina =
   | 'testeTreinamento'
   | 'processos'
   | 'fluxos'
+  // Desenhos de processo (documentação, substitui o Visio)
+  | 'desenhosProcesso'
 
   // Módulo Licitações (PNCP)
   | 'licitacoes'
@@ -85,6 +87,7 @@ export const ROTAS = {
   TESTE_TREINAMENTO: 'testeTreinamento',
   PROCESSOS: 'processos',
   FLUXOS: 'fluxos',
+  DESENHOS_PROCESSO: 'desenhosProcesso',
   LICITACOES: 'licitacoes',
   LICITACOES_TESTE: 'licitacoesTeste',
   MEU_PERFIL: 'meuPerfil',

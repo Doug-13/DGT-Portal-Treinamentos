@@ -2,159 +2,111 @@
 
 A coluna **Valor (R$)** da aba *Kits → Equipamentos e itens* mostra o preço
 unitário de cada item, buscado no CIGAM pelo **código CIGAM** do item.
+Referência da API: [APIs_CIGAM_Consulta_Precos.md](APIs_CIGAM_Consulta_Precos.md)
+(mesmas chamadas do programa *ConsultaPrecosCIGAM.exe*).
 
 ```
 Portal (botão "Atualizar valores do CIGAM")
   └─ cria uma linha em dgt_cigamsincronizacao (Situação = Pendente)
-       └─ Power Automate: "Quando uma linha é adicionada"
+       └─ Plugin AtualizarValoresCigamPlugin (Create, assíncrono)
             1. Login no CIGAM            → hash (Bearer)
-            2. Para cada dgt_kititem com código:
-                 GET PrecosTabela/Buscar → PrecoUnitario
-                 atualiza dgt_valor, dgt_valoratualizadoem, ...
-            3. Atualiza o pedido         → Concluída / Erro
-Portal lê dgt_kititem e mostra o valor (somente leitura)
+            2. Para cada dgt_kititem ATIVO e COM código:
+                 GET PrecosTabela/Buscar?$filter=Elemento eq '<código sem máscara>'
+                 escolhe a tabela configurada (padrão 010), vigente e com preço
+                 grava dgt_valor, dgt_valoratualizadoem, dgt_valororigem, dgt_valorsituacao
+            3. Logout e atualiza o pedido → Concluída / Erro (com resumo)
+Portal acompanha o pedido a cada 8 s e recarrega os valores ao terminar
 ```
 
 O portal **nunca** fala com o CIGAM e **nunca** vê usuário ou senha do
-CIGAM. Isso segue a regra da DGT: credenciais não ficam no código, em
-logs, em mensagens de erro nem em URLs.
+CIGAM. A credencial fica na **configuração segura** do passo do plugin,
+visível só para administradores do sistema.
 
----
+## Regras
 
-## 1. Qual endpoint traz o preço
+| Situação | O que acontece |
+|---|---|
+| Item **sem código CIGAM** (vazio ou texto como "a levantar") | **Não é consultado** e não é alterado |
+| Tabela configurada vigente e com preço > 0 | `dgt_valor` recebe o `PrecoUnitario`; origem "CIGAM — tabela 010 … (vigente até …)" |
+| API devolve lista vazia | "Sem tabela de preço no CIGAM (ou preço zerado na tabela)" — a API omite preço zerado |
+| Só existe a tabela vencida | "Tabela 010 vencida em dd/mm/aaaa" |
+| Item está em outras tabelas | "Não está na tabela 010. Tabelas do item no CIGAM: 012, 024" |
+| Erro na chamada (400/500, timeout) | Tenta o filtro alternativo (`CodigoMaterial`); persistindo, grava o motivo no item |
+| HTTP 401 | Faz novo login uma vez e repete |
+| HTTP 403 | "Usuário de integração sem permissão em PrecosTabela/Buscar" |
 
-O endpoint sugerido inicialmente,
-`GET api/suprimentos/me/ItemListaMateriaisEnderecamento/BuscarItem`,
-**não serve**: ele busca um item de lista de materiais do
-multiendereçamento pela *hash* do documento (estoque/separação) e não
-devolve preço.
+Sem preço, o **valor anterior é mantido** (o portal mostra a data e o motivo).
 
-O que traz preço, pela documentação (`/api/Help`):
+Correções em relação à primeira versão deste documento (validadas pelo
+programa ConsultaPrecosCIGAM):
+1. A URL efetiva tem o prefixo duplicado: `https://dgtportais.cigam.cloud/api/api/`.
+2. O código vai **sem máscara** (`310.005.0082` → `3100050082`).
+3. A tabela **não** vai no `$filter`: o CIGAM mistura `068` e `70`; a escolha é feita no plugin (`068` = `68`).
+4. O campo `Portal` do login não é necessário.
 
-| Endpoint | O que devolve | Uso |
-|---|---|---|
-| `GET api/genericos/ge/PrecosTabela/Buscar` | Linhas de tabela de preço: `CodigoTabela`, `Elemento` (material), `PrecoUnitario`, `PrecoMenor`, `PrecoMaior`, `PrecoDesconto`, `ValidadeInicial`, `ValidadeFinal` | **Recomendado.** Aceita filtros OData |
-| `GET api/genericos/ge/TabelaPreco/BuscarTabelasPedido` | Tabelas de preço disponíveis | Descobrir o código da tabela certa |
-| `GET api/suprimentos/co/ItemOrdem/Buscar` | Itens de ordens de compra | Alternativa: último custo de compra |
+## 1. Decisões antes de ligar
 
-> **A confirmar com Suprimentos/Controladoria antes de ligar o fluxo:**
-> 1. O "Valor" do kit é **preço de venda** (tabela de preço) ou **custo**
->    (última compra / custo médio)? O fluxo abaixo usa tabela de preço.
-> 2. Qual é o **código da tabela de preço** a usar (ex.: tabela de
->    custo de referência dos projetos)?
-> 3. O campo `Elemento` da tabela de preço é o **código do material**
->    (ex.: `3100050082`)? Testar com um item conhecido (passo 3).
+1. **Valor do kit = preço de venda** (tabela de preço). A API de preços não traz custo.
+   Se o B.O.M. precisar de custo, é outra consulta (ex.: última compra) — combinar com Suprimentos.
+2. **Tabela(s) a usar**, em ordem de preferência. Padrão: `010` (VENDA PADRÃO 2021).
 
 ## 2. Usuário de integração no CIGAM
 
-1. Peça ao administrador do CIGAM um **usuário só de leitura** para
-   integração (não use o usuário de uma pessoa).
-2. Anote também o valor de **Portal** exigido no login
-   (`SESSION_APP_PORTAL` do Web.config da API) — o suporte do CIGAM
-   informa.
-3. A senha **não** vai para o portal, para o código nem para este
-   documento. Ela será guardada no passo 4.
+Peça ao administrador do CIGAM um **usuário só de leitura** com direito em
+`genericos/ge/PrecosTabela/Buscar`. Não use o usuário de uma pessoa.
 
-## 3. Testar a consulta (Postman ou Insomnia, na sua máquina)
+## 3. Registrar o plugin (Plugin Registration Tool)
 
-1. `POST https://dgtportais.cigam.cloud/api/genericos/ge/Login/Autenticar`
-   com o corpo `{ "NomeUsuario": "...", "Senha": "...", "Portal": "..." }`.
-   A resposta traz `hash`.
-2. `GET https://dgtportais.cigam.cloud/api/genericos/ge/PrecosTabela/Buscar?$filter=CodigoTabela eq 'TABELA' and Elemento eq '3100050082'`
-   com o cabeçalho `Authorization: Bearer <hash>`.
-3. Confira se `PrecoUnitario` é o valor esperado.
+1. Compile `server/DGT.Treinamentos.Plugins` (Release) e use **Update** na assembly
+   *DGT.Treinamentos.Plugins* já registrada.
+2. **Register New Step**:
 
-Se o filtro por `Elemento` não funcionar, teste sem filtro com `$top=5`
-para ver os nomes reais dos campos e ajuste o passo 5.
+   | Campo | Valor |
+   |---|---|
+   | Message | `Create` |
+   | Primary Entity | `dgt_cigamsincronizacao` |
+   | Event Handler | `DGT.Treinamentos.Plugins.AtualizarValoresCigamPlugin` |
+   | Stage | **PostOperation** |
+   | Execution Mode | **Asynchronous** |
+   | Delete AsyncOperation if StatusCode = Successful | marcado |
+   | Unsecure Configuration | `{ "url": "https://dgtportais.cigam.cloud/api/api/", "tabelas": ["010"], "segundosMaximos": 100 }` |
+   | Secure Configuration | `{ "usuario": "<usuário de integração>", "senha": "<senha>" }` |
 
-Não cole a resposta do login (o `hash`) em chats, e-mails ou tickets: ele
-funciona como uma senha temporária.
+3. Use `https://dgtportaishml.cigam.cloud/api/api/` primeiro (homologação) e troque a URL depois.
 
-## 4. Guardar a credencial no Power Platform
+A senha é digitada **só** na configuração segura do passo: não vai para o
+código, para este documento, para logs nem para mensagens de erro.
 
-Em *make.powerapps.com → Soluções → DGT – Portal de Conhecimento e
-Treinamentos → Novo → Mais → Variável de ambiente*:
+## 4. Testar
 
-| Variável | Tipo | Valor |
-|---|---|---|
-| `dgt_CigamUrl` | Texto | `https://dgtportais.cigam.cloud/api` |
-| `dgt_CigamUsuario` | Texto | usuário de integração |
-| `dgt_CigamPortal` | Texto | valor de *Portal* do login |
-| `dgt_CigamTabelaPreco` | Texto | código da tabela de preço |
-| `dgt_CigamSenha` | **Segredo** (Azure Key Vault) | referência ao segredo no Key Vault |
+1. Na aba *Kits → Equipamentos e itens*, clique em **↻ Atualizar valores do CIGAM**.
+2. A barra mostra "Em andamento … buscando no CIGAM" e se atualiza sozinha.
+3. Ao terminar: "Concluída — N com valor · N sem preço · N sem código (não consultados)".
+4. Passe o mouse no valor de um item para ver a tabela de origem e a data.
 
-A variável do tipo **Segredo** exige um Azure Key Vault com o segredo
-cadastrado e permissão para o Dataverse lê-lo (o administrador do Azure
-faz isso uma vez). Assim a senha nunca aparece no fluxo nem no histórico
-de execuções.
+Se a barra mostrar "sem resposta há mais de 15 min", o passo não está
+registrado ou falhou: veja *Configurações → Trabalhos do sistema* (filtro
+pela tabela *Sincronização com o CIGAM*). O botão vira **↻ Pedir de novo**.
 
-## 5. Criar o fluxo (Power Automate, dentro da solução)
+## 5. Limite de tempo
 
-**Gatilho:** *Dataverse — Quando uma linha é adicionada, modificada ou
-excluída*
-- Tipo de alteração: **Adicionada**
-- Tabela: **Sincronizações com o CIGAM**
-- Escopo: **Organização**
-- Filtrar linhas: `dgt_situacao eq 'Pendente'`
-
-**Ações:**
-
-1. *Dataverse — Atualizar uma linha* (o pedido do gatilho):
-   `dgt_situacao = Em andamento`.
-2. **HTTP** (login no CIGAM):
-   - Método `POST`, URI `@{parameters('dgt_CigamUrl')}/genericos/ge/Login/Autenticar`
-   - Corpo: `{ "NomeUsuario": "@{parameters('dgt_CigamUsuario')}", "Senha": "@{parameters('dgt_CigamSenha')}", "Portal": "@{parameters('dgt_CigamPortal')}" }`
-   - **Configurações da ação → Entradas seguras e Saídas seguras: LIGADO**
-     (assim usuário, senha e hash não aparecem no histórico).
-3. *Compor* `hash` = `body('HTTP_Login')?['hash']`.
-4. *Dataverse — Listar linhas*: tabela **Itens do catálogo de kits**,
-   filtro `dgt_ativo eq true and dgt_codigo ne null`, colunas
-   `dgt_kititemid,dgt_codigo`.
-5. *Inicializar variáveis* `atualizados` e `semPreco` (inteiro, 0).
-6. *Aplicar a cada* item da lista (simultaneidade 5):
-   1. **HTTP** `GET`
-      `@{parameters('dgt_CigamUrl')}/genericos/ge/PrecosTabela/Buscar?$filter=CodigoTabela eq '@{parameters('dgt_CigamTabelaPreco')}' and Elemento eq '@{items('Aplicar_a_cada')?['dgt_codigo']}'`
-      com cabeçalho `Authorization: Bearer @{outputs('Compor_hash')}`
-      (**Entradas seguras ligado**).
-   2. *Condição*: `length(body('HTTP_Preco'))` maior que 0
-      - **Sim** → *Dataverse — Atualizar uma linha* (`dgt_kititem`):
-        - `dgt_valor` = `first(body('HTTP_Preco'))?['PrecoUnitario']`
-        - `dgt_valoratualizadoem` = `utcNow()`
-        - `dgt_valororigem` = `CIGAM — tabela @{parameters('dgt_CigamTabelaPreco')}`
-        - `dgt_valorsituacao` = *(vazio)*
-        - *Incrementar variável* `atualizados`
-      - **Não** → atualizar só `dgt_valorsituacao` = `Não encontrado na tabela de preços`
-        e `dgt_valoratualizadoem` = `utcNow()`; *Incrementar* `semPreco`.
-        (Não apague o `dgt_valor` anterior: o portal mostra a data.)
-7. *Dataverse — Atualizar uma linha* (o pedido):
-   `dgt_situacao = Concluída`, `dgt_itensatualizados`, `dgt_itenssempreco`,
-   `dgt_concluidoem = utcNow()`.
-8. **Tratamento de erro:** um escopo *Em caso de falha* (Configurar
-   execução após: *falhou / atingiu o tempo limite*) que atualiza o
-   pedido com `dgt_situacao = Erro` e `dgt_mensagem` com um texto
-   simples (ex.: "Falha no login do CIGAM"). **Não** copie o corpo da
-   resposta do CIGAM para a mensagem (pode conter dados de sessão).
-
-Opcional: um segundo gatilho **Recorrência** (ex.: toda segunda, 6h) que
-apenas cria uma linha *Pendente* em `dgt_cigamsincronizacao` — o mesmo
-fluxo faz o resto.
+Plugins têm 2 minutos por execução. O plugin para com folga (100 s, ajustável
+em `segundosMaximos`) e processa primeiro os itens atualizados há mais tempo.
+Se faltar algum, a mensagem avisa e um novo pedido continua de onde parou.
 
 ## 6. Permissões
 
-- Conexão do Dataverse usada pelo fluxo: **Ler e Gravar** em
-  `dgt_kititem` e `dgt_cigamsincronizacao`.
-- Perfil de quem mantém os kits: **Criar e Ler** em
-  `dgt_cigamsincronizacao` (o script já concede com `-PapelMantenedores`).
-- O conector HTTP é **premium** no Power Automate.
+- Quem mantém os kits: **Criar e Ler** em `dgt_cigamsincronizacao` (o script
+  `criar-colunas-valor-cigam.ps1` já concede com `-PapelMantenedores`).
+- O plugin grava como SYSTEM: não precisa de permissão extra para os usuários.
 
 ## 7. Como o portal mostra
 
 | Situação | Na coluna Valor (R$) |
 |---|---|
-| Item sem código CIGAM | `—` |
+| Item sem código CIGAM | `—` (não consultado) |
 | Ainda não buscado | selo *a buscar* |
-| Não encontrado na tabela | selo *! sem preço* (passe o mouse para ver o motivo) |
+| Sem preço | selo *! sem preço* (passe o mouse para ver o motivo) |
 | Com valor | `R$ 1.234,56` e a data; data com mais de 30 dias aparece com `!` |
 
-O valor é **somente leitura** no portal. Alterar o código CIGAM de um
-item não apaga o valor antigo; ele é substituído na próxima atualização.
+O valor é **somente leitura** no portal.

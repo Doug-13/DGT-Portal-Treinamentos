@@ -27,7 +27,10 @@ export type NomeIconeKit =
   | 'rosto'
   | 'radar'
   | 'chave'
-  | 'pessoas';
+  | 'pessoas'
+  | 'trocar'
+  | 'desfazer'
+  | 'relogio';
 
 const CAMINHOS: Record<NomeIconeKit, React.ReactNode> = {
   torre: (<><path d="M12 2v3" /><rect x="8" y="5" width="8" height="5" rx="1" /><path d="M10 10l-2 12h8l-2-12" /><path d="M9 16h6" /></>),
@@ -52,7 +55,10 @@ const CAMINHOS: Record<NomeIconeKit, React.ReactNode> = {
   rosto: (<><circle cx="12" cy="11" r="6" /><path d="M9.5 10h.01" /><path d="M14.5 10h.01" /><path d="M10 13.5c1.2 1 2.8 1 4 0" /><path d="M3 7V4h3" /><path d="M21 7V4h-3" /><path d="M3 17v3h3" /><path d="M21 17v3h-3" /></>),
   radar: (<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><path d="M12 12l6-6" /></>),
   chave: (<><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9" /><path d="M17 6l3 3" /></>),
-  pessoas: (<><circle cx="9" cy="8" r="3" /><path d="M3 20a6 6 0 0 1 12 0" /><circle cx="17" cy="9" r="2.5" /><path d="M15 15a5 5 0 0 1 6 5" /></>)
+  pessoas: (<><circle cx="9" cy="8" r="3" /><path d="M3 20a6 6 0 0 1 12 0" /><circle cx="17" cy="9" r="2.5" /><path d="M15 15a5 5 0 0 1 6 5" /></>),
+  trocar: (<><path d="M4 8h14" /><polyline points="14 4 18 8 14 12" /><path d="M20 16H6" /><polyline points="10 12 6 16 10 20" /></>),
+  desfazer: (<><polyline points="9 5 4 10 9 15" /><path d="M4 10h10a6 6 0 0 1 0 12h-3" /></>),
+  relogio: (<><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></>)
 };
 
 export const IconeKit: React.FC<{ nome: NomeIconeKit; tamanho?: number; cor?: string }> = ({ nome, tamanho = 18, cor }) => (

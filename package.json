@@ -1,6 +1,6 @@
 {
   "name": "DGT-Portal-Treinamentos",
-  "version": "1.4.30",
+  "version": "1.4.31",
   "private": true,
   "engines": {
     "node": ">=22.14.0 < 23.0.0"

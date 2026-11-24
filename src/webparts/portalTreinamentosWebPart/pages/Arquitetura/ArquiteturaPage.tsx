@@ -49,6 +49,11 @@ import {
 
 import EtapaHHBom from './EtapaHHBom';
 
+import {
+  IComplementosHH,
+  pendenciasComplementos
+} from '../../services/hh/complementosHH';
+
 import EtapaBomPronto from './EtapaBomPronto';
 
 import {
@@ -506,6 +511,9 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
   const [selecaoKit, setSelecaoKit] = React.useState<ISelecaoKit | undefined>(undefined);
   const [kitSemColuna, setKitSemColuna] = React.useState(false);
   const [kitCarregado, setKitCarregado] = React.useState('');
+  // Etapa 4 — integração e contrato de manutenção (rascunho na tela).
+  const [complementosHH, setComplementosHH] = React.useState<IComplementosHH | undefined>(undefined);
+  const [complementosAlterados, setComplementosAlterados] = React.useState(false);
   const [analises, setAnalises] = React.useState<IAnaliseGoNoGo[]>([]);
 
   const avisar = (texto: string): void => {
@@ -605,6 +613,11 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
       })
       .catch(error => setErro((error as Error).message));
   }, [servico, bomId, aba, kitCarregado]);
+
+  React.useEffect(() => {
+    setComplementosHH(selecaoKit ? selecaoKit.complementosHH : undefined);
+    setComplementosAlterados(false);
+  }, [selecaoKit]);
 
   // Data de envio do B.O.M. aberto (etapa 5).
   React.useEffect(() => {
@@ -751,6 +764,8 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                   canal={demanda.canal}
                   salvando={salvando}
                   somenteLeitura={etapa === 'Enviado para aprovação'}
+                  usuarioNome={contexto && contexto.nome ? contexto.nome : ''}
+                  usuarioId={contexto && contexto.usuarioId ? contexto.usuarioId : undefined}
                   onSalvar={async (selecao, concluir) => {
                     await executar(async () => {
                       await servico.salvarSelecaoKit(bom.id, selecao, contexto && contexto.nome ? contexto.nome : '');
@@ -776,30 +791,74 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                 dataverseService={dataverseService}
                 resumoKit={selecaoKit ? montarBom(selecaoKit) : undefined}
                 aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
+                complementos={complementosHH}
+                somenteLeitura={etapa === 'Enviado para aprovação' || !selecaoKit || ETAPAS[etapa].passo < 4}
+                onAlterarComplementos={c => { setComplementosHH(c); setComplementosAlterados(true); }}
               />
               {
-                selecaoKit && selecaoKit.pontos.length > 0 && ETAPAS[etapa].passo >= 4 && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-                    <button
-                      type="button"
-                      style={botao('principal', salvando)}
-                      disabled={salvando}
-                      onClick={() => {
-                        (async () => {
-                          if (ETAPAS[etapa].passo === 4) {
-                            await executar(async () => {
-                              await servico.atualizarEtapa(bom.id, 'B.O.M. pronto');
-                            }, 'B.O.M. pronto para revisão e envio.');
-                          }
-                          setAba('pronto');
-                          window.scrollTo(0, 0);
-                        })().catch(() => undefined);
-                      }}
-                    >
-                      Avançar para B.O.M. pronto →
-                    </button>
-                  </div>
-                )
+                selecaoKit && selecaoKit.pontos.length > 0 && ETAPAS[etapa].passo >= 4 && (() => {
+                  const enviado = etapa === 'Enviado para aprovação';
+                  const pendencias = pendenciasComplementos(complementosHH);
+                  // Grava as respostas na seleção de kit (mesmo JSON do B.O.M.).
+                  const salvarComplementos = async (): Promise<void> => {
+                    if (!complementosAlterados || enviado) {
+                      return;
+                    }
+                    const nome = contexto && contexto.nome ? contexto.nome : '';
+                    const selecao: ISelecaoKit = {
+                      ...selecaoKit,
+                      complementosHH: { ...complementosHH, atualizadoEm: new Date().toISOString(), atualizadoPor: nome }
+                    };
+                    await servico.salvarSelecaoKit(bom.id, selecao, nome);
+                    setSelecaoKit(selecao);
+                  };
+                  return (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', marginTop: '16px', flexWrap: 'wrap' }}>
+                      {!enviado && pendencias.length > 0 && (
+                        <span style={{ fontSize: '12.5px', color: '#B45309', marginRight: 'auto' }}>{pendencias.join(' ')}</span>
+                      )}
+                      {!enviado && complementosAlterados && (
+                        <span style={{ fontSize: '12.5px', color: '#B45309', fontWeight: 700 }}>Alterações não salvas</span>
+                      )}
+                      {!enviado && (
+                        <button
+                          type="button"
+                          style={botao('secundario', salvando || !complementosAlterados)}
+                          disabled={salvando || !complementosAlterados}
+                          onClick={() => {
+                            executar(salvarComplementos, 'Respostas de integração e manutenção salvas.')
+                              .then(() => setAba('hh'))
+                              .catch(() => undefined);
+                          }}
+                        >
+                          Salvar respostas
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        style={botao('principal', salvando || (!enviado && pendencias.length > 0))}
+                        disabled={salvando || (!enviado && pendencias.length > 0)}
+                        title={!enviado && pendencias.length > 0 ? 'Responda as perguntas de integração e manutenção' : undefined}
+                        onClick={() => {
+                          (async () => {
+                            if (complementosAlterados || ETAPAS[etapa].passo === 4) {
+                              await executar(async () => {
+                                await salvarComplementos();
+                                if (ETAPAS[etapa].passo === 4) {
+                                  await servico.atualizarEtapa(bom.id, 'B.O.M. pronto');
+                                }
+                              }, ETAPAS[etapa].passo === 4 ? 'B.O.M. pronto para revisão e envio.' : 'Respostas de integração e manutenção salvas.');
+                            }
+                            setAba('pronto');
+                            window.scrollTo(0, 0);
+                          })().catch(() => undefined);
+                        }}
+                      >
+                        Avançar para B.O.M. pronto →
+                      </button>
+                    </div>
+                  );
+                })()
               }
             </>
           )

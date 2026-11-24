@@ -644,25 +644,8 @@ export class KitsService {
 
     // ---- Último pedido de atualização de preços
     let sincronizacaoDisponivel = true;
-    const ultimas = await this.dataverse
-      .listarRegistros(
-        TABELA_SINCRONIZACAO_CIGAM,
-        `$select=${Object.keys(COL_SINCRONIZACAO).map(k => (COL_SINCRONIZACAO as Record<string, string>)[k]).join(',')},createdon&$orderby=createdon desc&$top=1`
-      )
-      .catch(() => { sincronizacaoDisponivel = false; return [] as IDataverseRecord[]; });
-
-    const ultimaSincronizacao: ISincronizacaoCigam | undefined = ultimas[0]
-      ? {
-        id: guid(ultimas[0][COL_SINCRONIZACAO.id]),
-        situacao: (texto(ultimas[0], COL_SINCRONIZACAO.situacao) || 'Pendente') as SituacaoSincronizacao,
-        mensagem: texto(ultimas[0], COL_SINCRONIZACAO.mensagem),
-        solicitadoPor: texto(ultimas[0], COL_SINCRONIZACAO.solicitadoPor),
-        solicitadoEm: texto(ultimas[0], 'createdon'),
-        concluidoEm: texto(ultimas[0], COL_SINCRONIZACAO.concluidoEm),
-        itensAtualizados: numero(ultimas[0], COL_SINCRONIZACAO.itensAtualizados),
-        itensSemPreco: numero(ultimas[0], COL_SINCRONIZACAO.itensSemPreco)
-      }
-      : undefined;
+    const ultimaSincronizacao = await this.obterUltimaSincronizacao()
+      .catch(() => { sincronizacaoDisponivel = false; return undefined; });
 
     return {
       origem: 'dataverse',
@@ -678,9 +661,32 @@ export class KitsService {
     };
   }
 
-  // Pede ao fluxo do Power Automate que atualize os valores do CIGAM.
-  // O portal só cria o pedido: login e consulta ao CIGAM ficam no
-  // fluxo (credencial guardada no Power Platform, nunca no navegador).
+  // Último pedido de atualização de preços (ou undefined se não houver).
+  // Lança erro quando a tabela dgt_cigamsincronizacao não existe.
+  public async obterUltimaSincronizacao(): Promise<ISincronizacaoCigam | undefined> {
+    const ultimas = await this.dataverse.listarRegistros(
+      TABELA_SINCRONIZACAO_CIGAM,
+      `$select=${Object.keys(COL_SINCRONIZACAO).map(k => (COL_SINCRONIZACAO as Record<string, string>)[k]).join(',')},createdon&$orderby=createdon desc&$top=1`
+    );
+    const r = ultimas[0];
+    return r
+      ? {
+        id: guid(r[COL_SINCRONIZACAO.id]),
+        situacao: (texto(r, COL_SINCRONIZACAO.situacao) || 'Pendente') as SituacaoSincronizacao,
+        mensagem: texto(r, COL_SINCRONIZACAO.mensagem),
+        solicitadoPor: texto(r, COL_SINCRONIZACAO.solicitadoPor),
+        solicitadoEm: texto(r, 'createdon'),
+        concluidoEm: texto(r, COL_SINCRONIZACAO.concluidoEm),
+        itensAtualizados: numero(r, COL_SINCRONIZACAO.itensAtualizados),
+        itensSemPreco: numero(r, COL_SINCRONIZACAO.itensSemPreco)
+      }
+      : undefined;
+  }
+
+  // Cria o pedido de atualização de preços. Quem processa é o plugin
+  // AtualizarValoresCigamPlugin (Create assíncrono desta tabela): login e
+  // consulta ao CIGAM ficam no servidor, nunca no navegador. Itens sem
+  // código CIGAM não são consultados.
   public async solicitarAtualizacaoValores(usuarioNome: string): Promise<void> {
     await this.dataverse.criarRegistro(TABELA_SINCRONIZACAO_CIGAM, {
       [COL_SINCRONIZACAO.nome]: `Preços dos kits — ${new Date().toLocaleString('pt-BR')}`.substring(0, 200),

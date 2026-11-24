@@ -5,7 +5,8 @@ import {
 } from '../../../services/bom/montadorBom';
 
 import {
-  hhParaBom
+  hhParaBom,
+  nomeAreaBom
 } from '../../../services/hh/calculoHH';
 
 import {
@@ -103,7 +104,7 @@ export const envelopeDoHH = (
         const r = hhParaBom(area.chave, vigente.dados, kit.pontos, custoTotal);
         return {
           area: area.chave,
-          nome: area.nome,
+          nome: nomeAreaBom(area.chave, area.nome),
           versaoId: vigente.versao.id,
           versao: vigente.versao.versao,
           mesReferencia: vigente.versao.mesReferencia,
