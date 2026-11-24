@@ -28,8 +28,8 @@ Cadastro de Fornecedor SUP-CPL-01 v1.0 (11/11/2026).
    comprador + prestador).
 
 **Fora desta fase:** portal do fornecedor (acesso externo), aprovações por alçada,
-IQF, integração com o CIGAM, matriz de risco e score, consulta Serasa, tipos de
-documento de colaborador cadastráveis e consulta automática do TCU. Os avisos
+IQF, integração com o CIGAM, matriz de risco e score, consulta Serasa, marcação de
+tipos de documento por colaborador e consulta automática do TCU. Os avisos
 (etapa da homologação, vencimentos) são do Power Automate — seção 10.
 
 Ordem de implantação: **1. aprovação do CNPJ → 2. tabelas → 3. permissões →
@@ -102,13 +102,39 @@ fornecedor). Controle dos avisos de vencimento: `dgt_avisovencimentoem` em
 O script também aumenta `dgt_fornecedordocumento.dgt_situacao` para 30 caracteres
 (cabe "Convertido em contrato").
 
+Também (idempotente):
+
+- `dgt_tipodocumentofornecedor.dgt_aplicaa` — **Empresa** ou **Colaborador** (vazio =
+  Empresa, os tipos antigos);
+- `dgt_colaboradordocumento.dgt_TipoDocumento` — Pesquisa → tipo de documento (os
+  registros antigos, sem ela, valem pelo nome em `dgt_tipo`);
+- `dgt_fornecedorhomologacao.dgt_relatoriosjson` — relatórios de homologação emitidos
+  (`{ emitidoEm, fase, nome, url, geradoPor, final }`);
+- tipos iniciais: **ASO** (Colaborador, obrigatório para todos, 365 dias), **NR
+  aplicável** (Colaborador, opcional, pede a norma) e **Relatório de homologação**
+  (Empresa, não obrigatório, sem validade, Interno);
+- `dgt_implemail.dgt_remetente` (fila padrão de e-mails; ver seção 10).
+
 Nada é apagado pela tela. O script também cria o perfil de segurança de campo e a
 Custom API `dgt_ConsultarFornecedor` (exige `prvWritedgt_fornecedor`).
 
 ## 3. Permissões
 
-- Função de segurança de Suprimentos **e do Jurídico**: Criar / Ler / Gravar
-  (Organização) nas 9 tabelas, **sem Excluir** (o Jurídico grava o ciclo ao decidir).
+- Função de segurança de Suprimentos: Criar / Ler / Gravar (Organização) nas 9
+  tabelas, **sem Excluir**.
+- **Jurídico** (decide a homologação):
+  - Criar, Ler e Gravar (Organização) em `dgt_fornecedor`,
+    `dgt_fornecedorhomologacao` e `dgt_fornecedorhistorico`; **Ler** nas demais
+    tabelas do módulo; Criar em `dgt_fornecedordocumento` (o relatório final vira
+    documento);
+  - módulo **Fornecedores** liberado (não precisa ser administrador do módulo);
+  - SharePoint: leitura **e gravação** na pasta **Contratos Fornecedores** (o
+    relatório de homologação é salvo na pasta do fornecedor › Homologação);
+  - perfil de campo `DGT - Fornecedores - CNPJ` (decidido: o Jurídico vê o CNPJ).
+- **Fila de e-mails** (`dgt_implemail`, "E-mails de implantações"): **Criar** e
+  **Ler** (nível Usuário) para quem age na homologação (Suprimentos e Jurídico) — as
+  notificações do fluxo são gravadas com a permissão de quem clica. O fluxo de e-mail
+  das Implantações (o envio central) precisa estar **ativo**.
 - **Áreas "Suprimentos" e "Jurídico"** cadastradas (Áreas, com as siglas usadas no
   pacote SUP-HOM — `SUY` (Supply/Suprimentos) e `JUR`; atenção: `SUP` é o Suporte) e as pessoas vinculadas em
   `dgt_usuarioarea`. Quem não estiver vinculado **não vê a pendência nem recebe o
@@ -129,9 +155,10 @@ Custom API `dgt_ConsultarFornecedor` (exige `prvWritedgt_fornecedor`).
      `{ "cnpja": "<chave do CNPJá>", "transparencia": "<chave da API de dados>", "infosimples": "<token da Infosimples>" }`
    - Configuração não segura (opcional):
      `{ "cnpjaParametros": "maxAge=30", "diasEntreConsultas": 14, "limiteLote": 20, "infosimplesTimeout": 90, "diasRenovacaoCertidoes": 15, "rotasEstaduais": {}, "rotasMunicipais": {}, "rotasTrt": { "RS": "tribunal/trt4/ceat" }, "areaSuprimentos": "SUY" }`
-   - `areaSuprimentos`: sigla da área Suprimentos. O ciclo aberto pela ficha já
-     sai com a etapa `ficha-recebida` e essa área em `dgt_responsaveisetapa`, para
-     o aviso da primeira etapa sair antes de alguém abrir o portal.
+   - `areaSuprimentos`: sigla da área Suprimentos (Supply = `SUY`). O ciclo aberto
+     pela ficha já sai com a etapa `ficha-recebida`, essa área em
+     `dgt_responsaveisetapa` e o e-mail "Nova ficha" na fila para os membros dela.
+   - `linkPortal` (opcional): link do portal no e-mail "Nova ficha".
 
 ### Onde colocar o token da Infosimples
 
@@ -329,6 +356,35 @@ ciclo muda de etapa**.
   conclusão** para quem responde ou para o administrador.
 - **Homologação anterior ao kanban:** botão **Registrar a homologação atual como
   ciclo 1** (cria o ciclo 1 concluído com os dados do cadastro).
+- **Notificações (e-mail, pela fila padrão):** configuradas no próprio processo —
+  Processos → Fluxos → SUP-HOM → duplo clique na atividade → aba **Notificações**. O
+  pacote já traz "Quando a atividade começar" nas 4 etapas (para os responsáveis) e o
+  evento com carta **"Resultado da homologação"** antes dos fins `homologado` e
+  `reprovado`, para a área Supply. Teams vem desligado (quem quiser liga no editor).
+  - `{registro}` = razão social (protocolo) — ciclo N, **nunca o CNPJ**.
+  - Para mudar num fluxo **já publicado**: edite no editor e clique em **Aplicar
+    alterações** (sem reimportar). Ciclos **já abertos** continuam na versão em que
+    começaram; a mudança vale para os ciclos novos.
+  - **Não notifica**: a criação tardia da instância (ciclo aberto pela ficha, iniciado
+    na primeira abertura do card) e a migração de ciclo antigo para a etapa
+    equivalente. O aviso da ficha nova é o e-mail "Nova ficha" que o plugin grava na
+    fila para a área Supply. **"Abrir ciclo" pelo botão** notifica a 1ª etapa.
+- **Relatório de homologação (PDF):** botão **Gerar relatório (PDF)** no card (aba
+  Homologação do fornecedor e tela aberta pela aba Pendências), para quem vê o ciclo,
+  inclusive concluído. Gerado também **automaticamente ao concluir** (os três botões
+  finais do Jurídico e "Gravar a conclusão").
+  - Cabeçalho com data e hora de emissão, **fase atual** e quem gerou; ciclo em
+    andamento sai como **PRÉVIA**. Seções: fornecedor (CNPJ só para quem tem o perfil
+    de campo), checklist do item 9 (sem a verificação bancária), consultas,
+    documentos da empresa (vigentes, pendentes e vencidos), decisão e linha do tempo do
+    fluxo. **Nunca**: dados bancários e CPF (CPF digitado em comentário sai como
+    "[CPF removido]").
+  - Salvo na pasta do fornecedor › `Homologação`, com o nome
+    `Relatorio homologacao <protocolo> ciclo <n> - <fase> - <aaaa-mm-dd HHmm>.pdf`;
+    listado em **Relatórios emitidos** e no histórico do fornecedor.
+  - O relatório **final** também vira documento do tipo **Relatório de homologação**;
+    as prévias não. Se a geração falhar, a conclusão **não** é desfeita: aparece o
+    aviso e o botão para gerar de novo.
 - **Limitação (piloto):** como em Documentos e Ambientes, quem pode agir é
   conferido no navegador. A homologação pelo motor fica em **piloto** até o motor ir
   para a Custom API.
@@ -340,14 +396,27 @@ Botão **Colaboradores** no detalhe do fornecedor.
 - Cadastro: nome, função/cargo, CPF (coluna protegida, dígito validado, sem
   repetir no mesmo fornecedor) e observações. **Sem e-mail e sem telefone.**
   Desativar em vez de apagar.
-- Documentos: **ASO** (obrigatório, com validade; sugestão de 1 ano a partir da
-  emissão) e **NR aplicável** (texto livre com a norma — NR-10, NR-35… —, com
-  validade). Nova versão do ASO, ou da mesma NR, deixa a anterior Substituída.
-- Pendência: ASO faltando ou vencido, ou alguma NR vencida.
+- **Tipos de documento cadastráveis** (Tipos de documento › **Colaborador**,
+  administrador do módulo): cada tipo é **obrigatório para todos os colaboradores**
+  (ex.: ASO, Integração) ou **opcional** (ex.: NR-10, ficha de EPI), com validade
+  padrão. Categorias, visibilidade e consulta automática não se aplicam.
+  - Marcar um tipo como obrigatório vale **na hora** para todos os colaboradores
+    ativos (a tela avisa ao salvar).
+  - **NR aplicável** (tipo criado pelo script) pede a norma em texto: um vigente por
+    norma. Os demais tipos: um vigente por tipo; a nova versão deixa a anterior
+    Substituída.
+  - Registros antigos (sem o tipo ligado) continuam valendo pelo nome.
+- **Pendência:** tipo obrigatório sem documento vigente, ou vencido; tipo opcional só
+  quando o documento registrado **vence** (opcional nunca registrado não é pendência).
+- **Isolamento:** tipos de colaborador **não** entram em nada da empresa — situação
+  documental, Conferir, e-mail "Documentos pendentes", checklist, relatório e registro
+  de documento da empresa.
 - Arquivos: pasta do fornecedor › `Colaboradores` › `Nome (8 primeiros
   caracteres do id)` no site de Suprimentos, ou link do arquivo.
 - O histórico do fornecedor registra cadastro, alteração e documentos do
   colaborador, nunca o CPF.
+- **Possível evolução:** marcar tipos por colaborador (ex.: NR-35 só para quem
+  trabalha em altura).
 
 ## 7d. Contratos do fornecedor
 
@@ -531,47 +600,82 @@ Desenho (a executar quando o token entrar no fluxo de assinatura):
 - O card mostra "Ficha e Código de Conduta assinados (Clicksign)" no andamento;
   hoje aparece "integração aguardando o token".
 
-## 10. Avisos por Power Automate (homologação e vencimentos)
+## 10. E-mails do módulo — fila padrão do portal
 
-O motor e o portal **não enviam e-mail**. Os avisos são fluxos do Power Automate
-que leem o que o portal grava. Ações em português.
+O módulo **não envia e-mail**. Ele usa a **fila padrão do portal**, a mesma das
+notificações do fluxo e das Implantações (`docs/notificacoes-fluxo.md`): cada e-mail
+é uma linha em `dgt_implemail` (status `Pendente`), e **o fluxo de e-mail central**
+do Power Automate envia e grava `Enviado` ou `Falha` (com o erro). Nenhum fluxo de
+envio próprio do módulo.
 
-**Padrão de falha (vale para toda chamada ao Dataverse):** em cada ação do Dataverse,
-adicione em paralelo *Enviar um email (V2)* para a caixa de Suprimentos com
-*Configurar executar após* = **falhou** e **atingiu o tempo limite**, assunto
-"Falha no fluxo <nome>" e o link da execução:
-`concat('https://make.powerautomate.com/environments/', workflow()?['tags']?['environmentName'], '/flows/', workflow()?['name'], '/runs/', workflow()?['run']?['name'])`.
-Nunca coloque CNPJ, CPF ou dados bancários no e-mail.
+| E-mail | Quem grava na fila | `dgt_tipo` |
+|---|---|---|
+| Nova ficha recebida → membros da área **Supply** | Plugin (`receberFicha`, ao abrir o ciclo) | `fornecedorFichaRecebida` |
+| Etapas e resultado da homologação | Motor de fluxos — aba **Notificações** das atividades e evento "Resultado da homologação" (SUP-HOM) | `notificacaoFluxo` |
+| Vencimentos (documentos ao fornecedor; contratos para Supply) | Fluxo agendado do Power Automate (D3) | `fornecedorVencimento` / `fornecedorContrato` |
 
-### D2. Aviso de etapa da homologação
+O **e-mail ao fornecedor** na etapa "Documentos pendentes" é a exceção: fica no
+Power Automate (D2), enviado **da caixa monitorada**, para a resposta com os anexos
+cair no Fluxo 2.
 
-1. *Quando uma linha é adicionada, modificada ou excluída* — tipo **Adicionada ou
-   modificada**, tabela **Ciclos de homologação** (`dgt_fornecedorhomologacao`),
-   escopo Organização, **Selecionar colunas** = `dgt_etapaatual`.
-2. *Condição*: `dgt_etapaatual` não vazio **e** `dgt_responsaveisetapa` diferente de
-   `[]`; senão **Encerrar** (ciclo recém-criado ou concluído).
-3. *Obter uma linha por ID* — **Fornecedores**, `_dgt_fornecedor_value`, colunas
+**Remetente.** Todas as linhas do módulo levam `dgt_remetente = fornecedores`
+(coluna criada pelo `criar-tabelas-fornecedores.ps1`). **Hoje o fluxo central ignora
+a coluna e tudo sai pela conta de automação.** Quando a caixa
+**fornecedores@dgt.com.br** estiver liberada (caixa compartilhada; a conta de
+automação com *Enviar como* e *Acesso total*):
+
+1. No fluxo de e-mail central, troque o *Enviar um email (V2)* por um **Alternar**
+   em `dgt_remetente`:
+   - `fornecedores` → **Enviar um email de uma caixa de correio compartilhada (V2)**,
+     caixa `fornecedores@dgt.com.br`;
+   - Padrão → a ação de hoje (Implantações e notificações sem mudança).
+   A lista de remetentes fica **no fluxo** (chave → caixa), nunca um endereço vindo
+   da linha: assim ninguém usa a fila para mandar e-mail "como" outra caixa.
+2. Troque o gatilho dos **Fluxos 2 e 2b** para *Quando um novo email chegar em uma
+   caixa de correio compartilhada (V2)* em fornecedores@ — a resposta do fornecedor
+   com os anexos cai direto no fluxo; o D2 passa a enviar dessa caixa.
+
+**Permissões:** ver seção 3 (Criar e Ler, nível Usuário, em `dgt_implemail` para
+Suprimentos e Jurídico). O plugin grava como sistema.
+
+**Plugin (Configuração não segura, opcional):** `"linkPortal": "https://..."` — link
+do portal no e-mail "Nova ficha". Sem ele, o e-mail diz "Fornecedores → Pendências".
+
+Nunca vai no e-mail: CNPJ, CPF ou dados bancários.
+
+### D2. Avisos de etapa — internos no motor; ao fornecedor no Power Automate
+
+**Internos (sem Power Automate):** notificações nativas do SUP-HOM (seção 7b) —
+"Quando a atividade começar" nas 4 etapas e o evento "Resultado da homologação" para
+a área Supply. A ficha nova é avisada pelo plugin (e-mail "Nova ficha" na fila).
+
+**Ao fornecedor (Power Automate), etapa `documentos-pendentes`** — sai da **caixa
+monitorada** (a mesma do Fluxo 2), para a resposta com os anexos cair nela:
+
+1. *Quando uma linha é adicionada, modificada ou excluída* — **Modificada**, tabela
+   **Ciclos de homologação**, escopo Organização, **Selecionar colunas** =
+   `dgt_etapaatual`, **Filtrar linhas** = `dgt_etapaatual eq 'documentos-pendentes'`.
+   (O portal só grava `dgt_etapaatual` quando a etapa muda: o e-mail sai uma vez por
+   chegada na etapa.)
+2. *Obter uma linha por ID* — **Fornecedores**, `_dgt_fornecedor_value`, colunas
    `dgt_name,dgt_protocolo,dgt_contatocomercial,dgt_emailpedidos`.
-4. *Analisar JSON* de `dgt_responsaveisetapa` (lista de
-   `{ descricao, usuarioId?, areaId?, somenteGestores?, usuariosIds? }`) e resolva os
-   e-mails pela lógica do **Fluxo A** de `docs/fluxo-dataverse.md` (`areaId` →
-   *Listar linhas* em `dgt_usuarioarea` da área, ativos → `dgt_usuario` → e-mail).
-5. *Enviar um email (V2)* interno: razão social, protocolo, etapa (`dgt_etapa`), prazo
-   (`dgt_prazoetapa`) e o link do portal (módulo Fornecedores → aba **Pendências**).
-6. **Caso especial** `dgt_etapaatual` = `documentos-pendentes`: além do aviso interno,
-   e-mail **ao fornecedor**, enviado pela caixa monitorada (a resposta precisa cair
-   no Fluxo 2):
-   - Para: `json(<dgt_contatocomercial>)?['email']`; se vazio, `dgt_emailpedidos`;
-   - Assunto: `@{dgt_protocolo} — Documentos para homologação` (o protocolo no assunto
-     é o que o Fluxo 2 reconhece);
-   - Corpo: as linhas de `dgt_documentospendentes` (gravada pelo portal ao chegar na
-     etapa: só tipos **manuais** que faltam, vencidos ou a vencer) e o pedido para
-     **responder este e-mail com os anexos, sem mudar o assunto**.
+3. Para: `json(<dgt_contatocomercial>)?['email']`; se vazio, `dgt_emailpedidos`. Sem
+   nenhum → e-mail a Suprimentos ("fornecedor sem e-mail de contato") e **Encerrar**.
+4. *Enviar um email (V2)* **com a conexão da caixa monitorada** (ou *de uma caixa de
+   correio compartilhada*): Assunto `@{dgt_protocolo} — Documentos para homologação`;
+   corpo com a lista de `dgt_documentospendentes` (só tipos **manuais da empresa** que
+   faltam, vencidos ou a vencer) e o pedido para **responder este e-mail com os
+   anexos, sem mudar o assunto**. Sem CNPJ, CPF ou dados bancários.
+5. **Padrão de falha** (abaixo) no passo 2 e no envio.
 
 ### D3. Avisos de vencimento (agendado, diário)
 
 A regra está escrita e testada em `services/fornecedores/avisosVencimento.ts` e
-`contratos.ts` (`contratoNoAvisoDeVencimento`). Antecedência: **15 dias**.
+`contratos.ts` (`contratoNoAvisoDeVencimento`). Antecedência: **15 dias**. O fluxo é
+agendado (não há servidor), mas **não envia**: grava na fila. Em toda ação do
+Dataverse, o **padrão de falha**: em paralelo, *Configurar executar após* = falhou /
+atingiu o tempo limite → linha na fila para Supply com o link da execução
+(`concat('https://make.powerautomate.com/environments/', workflow()?['tags']?['environmentName'], '/flows/', workflow()?['name'], '/runs/', workflow()?['run']?['name'])`).
 
 **E1. Ao fornecedor: documentos manuais vencendo em 15 dias** — *Recorrência* diária, 07h.
 
@@ -587,10 +691,15 @@ A regra está escrita e testada em `services/fornecedores/avisosVencimento.ts` e
      `dgt_Colaborador/_dgt_fornecedor_value eq @{id} and dgt_Colaborador/dgt_ativo eq true and dgt_situacao eq 'Vigente' and dgt_avisovencimentoem eq null and dgt_datavencimento ge … and dgt_datavencimento le …`,
      expandir `dgt_Colaborador($select=dgt_name)`.
    - Nada nas duas listas → próximo fornecedor.
-   - **Um e-mail por fornecedor** (mesmo destinatário do D2): documento e vencimento;
-     para colaboradores, **nome + tipo/norma + vencimento, nunca o CPF** (não
-     selecione `dgt_cpf`).
-   - Depois de enviar: *Atualizar uma linha* em cada documento listado com
+   - **Um e-mail por fornecedor** — *Adicionar uma nova linha* em **E-mails de
+     implantações**: `dgt_para` = contato comercial (`json(dgt_contatocomercial)?['email']`,
+     ou `dgt_emailpedidos`), `dgt_name` = `@{dgt_protocolo} — Documentos a vencer`,
+     `dgt_corpo` = HTML com documento e vencimento (para colaboradores, **nome +
+     tipo/norma + vencimento, nunca o CPF** — não selecione `dgt_cpf`),
+     `dgt_tipo` = `fornecedorVencimento`, `dgt_motivo` =
+     `forn-venc:@{id do fornecedor}:@{formatDateTime(utcNow(),'yyyy-MM-dd')}`,
+     `dgt_status` = `Pendente`, `dgt_remetente` = `fornecedores`.
+   - Depois de gravar: *Atualizar uma linha* em cada documento listado com
      `dgt_avisovencimentoem` = `utcNow()`. **Um aviso por documento**: a renovação é
      um registro novo, sem a data, e volta a ser avisada no próximo vencimento.
 
@@ -599,11 +708,14 @@ A regra está escrita e testada em `services/fornecedores/avisosVencimento.ts` e
 1. *Listar linhas* **Contratos de fornecedor**:
    `dgt_situacao eq 'Vigente' and dgt_avisovencimentoem eq null and dgt_fimvigencia ge @{hoje} and dgt_fimvigencia le @{hoje + 15 dias}`,
    expandir `dgt_Fornecedor($select=dgt_name)`.
-2. Para cada contrato: e-mail aos membros da área Suprimentos (mesma resolução do D2,
-   pela área) com fornecedor, contrato, projeto, fim da vigência e o link do portal
-   (aba **Contratos**); depois *Atualizar uma linha* com `dgt_avisovencimentoem` =
-   `utcNow()`.
-3. **Pendência (confirmar):** antecedência do aviso de contrato — proposta de 15 dias,
+2. Membros da área Supply: *Listar linhas* `dgt_usuarioarea` da área (ativos) →
+   `dgt_usuario` → e-mail.
+3. Para cada contrato e cada pessoa: *Adicionar uma nova linha* na fila (`dgt_tipo` =
+   `fornecedorContrato`, `dgt_motivo` = `forn-contrato:@{id do contrato}:@{e-mail}`,
+   `dgt_status` = `Pendente`, `dgt_remetente` = `fornecedores`) com fornecedor,
+   contrato, projeto, fim da vigência e o link do portal (aba **Contratos**); depois
+   *Atualizar uma linha* no contrato com `dgt_avisovencimentoem` = `utcNow()`.
+4. **Pendência (confirmar):** antecedência do aviso de contrato — proposta de 15 dias,
    igual à dos documentos.
 
 ## 11. Pendências a confirmar

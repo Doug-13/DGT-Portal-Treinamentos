@@ -25,6 +25,7 @@ import {
 import {
   ETAPAS_HOMOLOGACAO,
   ICicloHomologacao,
+  IRelatorioEmitido,
   IDadosHomologacao,
   IdVerificacao,
   IFornecedor,
@@ -46,6 +47,13 @@ import {
   sugerirVerificacoes,
   verificacoesOk
 } from '../../services/fornecedores/homologacao';
+
+import {
+  faseDoCiclo,
+  gerarPdfRelatorio,
+  montarConteudoRelatorio,
+  nomeArquivoRelatorio
+} from '../../services/fornecedores/relatorioHomologacao';
 
 import PainelFluxoOrcamento from '../Orcamento/PainelFluxoOrcamento';
 
@@ -80,6 +88,11 @@ import {
 //
 // O checklist do item 9 continua no card: edita quem responde a etapa
 // atual (ou o administrador do módulo, para correção de dados).
+//
+// Relatório de homologação (PDF): botão "Gerar relatório" a qualquer
+// momento (prévia, com a fase atual) e automático ao concluir (final,
+// vira documento). Toda emissão é salva na pasta do fornecedor ›
+// Homologação e listada em "Relatórios emitidos".
 // ============================================================
 
 const TOM: Record<SituacaoVerificacao, TomSelo> = {
@@ -305,6 +318,8 @@ const CardCiclo: React.FC<{
   const [vinculos, setVinculos] = React.useState<IUsuarioAreaAdmin[]>([]);
   const [usuarios, setUsuarios] = React.useState<Array<{ id: string; nome: string }>>([]);
   const [carregandoFluxo, setCarregandoFluxo] = React.useState(true);
+  const [relatorios, setRelatorios] = React.useState<IRelatorioEmitido[]>([]);
+  const [relatoriosDisponivel, setRelatoriosDisponivel] = React.useState(true);
 
   const aberto = !ciclo.concluidoEm;
   const pendentesManuais = documentosManuaisPendentes(situacao);
@@ -355,6 +370,47 @@ const CardCiclo: React.FC<{
     carregarFluxo().catch(() => undefined);
   }, [carregarFluxo]);
 
+  const carregarRelatorios = React.useCallback(async (): Promise<void> => {
+    const r = await servico.listarRelatorios(ciclo.id);
+    setRelatoriosDisponivel(r.disponivel);
+    setRelatorios(r.relatorios.slice().reverse());
+  }, [servico, ciclo.id]);
+
+  React.useEffect(() => {
+    carregarRelatorios().catch(() => undefined);
+  }, [carregarRelatorios]);
+
+  // Gera o PDF com os dados ATUAIS (relê o ciclo e o fluxo) e salva no
+  // SharePoint. final = conclusão pelo Jurídico (vira documento).
+  // Falha não desfaz nada: devolve o aviso e o botão continua disponível.
+  const emitirRelatorio = async (final: boolean): Promise<string[]> => {
+    try {
+      const atual = (await servico.listarCiclos(fornecedor.id)).ciclos.filter(c => c.id === ciclo.id)[0] || ciclo;
+      const estadoAtual = motor ? await motor.fluxo.carregar(atual) : undefined;
+      const consultas = await servico.listarConsultas(fornecedor.id);
+      const emitidoEm = new Date();
+      const conteudo = montarConteudoRelatorio({
+        fornecedor,
+        ciclo: atual,
+        situacao,
+        consultas,
+        historicoFluxo: estadoAtual ? estadoAtual.instancia.historico : [],
+        parecer: estadoAtual ? (estadoAtual.instancia.valores.parecer || '') : '',
+        emitidoEm,
+        geradoPor: usuarioNome
+      });
+      const pdf = await gerarPdfRelatorio(conteudo);
+      const fase = faseDoCiclo(atual);
+      const r = await servico.arquivarRelatorio(fornecedor, atual, pdf,
+        nomeArquivoRelatorio(atual.protocolo || fornecedor.protocolo, atual.numero, fase, emitidoEm),
+        { fase, final, geradoPor: usuarioNome, emitidoEm });
+      await carregarRelatorios();
+      return r.avisos;
+    } catch (e) {
+      return [`O relatório de homologação não foi gerado: ${String((e as Error)?.message || e)}. Use "Gerar relatório (PDF)" para tentar de novo.`];
+    }
+  };
+
   // Checklist: quem responde a etapa atual ou o administrador do módulo.
   const podeEditarChecklist = aberto && (podeAgir || administra);
   const somenteLeitura = !podeEditarChecklist;
@@ -383,7 +439,12 @@ const CardCiclo: React.FC<{
       if (!r.ok) {
         return r.erros;
       }
-      setAvisos(r.avisos);
+      const avisosAcao = r.avisos.slice();
+      if (r.status) {
+        // Concluído pelo Jurídico: relatório final (vira documento).
+        avisosAcao.push(...await emitirRelatorio(true));
+      }
+      setAvisos(avisosAcao);
       await aoAlterar(r.status ? `Ciclo ${ciclo.numero} concluído. Status do cadastro: ${r.status}.` : 'Etapa concluída.');
       await carregarFluxo();
       return [];
@@ -402,7 +463,11 @@ const CardCiclo: React.FC<{
     setErro('');
     try {
       const r = await motor.fluxo.gravarConclusao(fornecedor, ciclo, estado, motor.contexto);
-      setAvisos(r.avisos);
+      const avisosConclusao = r.avisos.slice();
+      if (r.status) {
+        avisosConclusao.push(...await emitirRelatorio(true));
+      }
+      setAvisos(avisosConclusao);
       if (r.status) {
         await aoAlterar(`Ciclo ${ciclo.numero} concluído. Status do cadastro: ${r.status}.`);
       }
@@ -487,6 +552,36 @@ const CardCiclo: React.FC<{
         <Aviso tipo="alerta" acao={<button type="button" style={botao('principal', !!gravando)} disabled={!!gravando} onClick={() => { gravarConclusao().catch(() => undefined); }}>{gravando === 'conclusao' ? 'Gravando…' : 'Gravar a conclusão'}</button>}>
           O fluxo foi concluído, mas o ciclo ainda não foi fechado no cadastro.
         </Aviso>
+      )}
+
+      {/* Relatório de homologação (PDF) */}
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px' }}>
+        <button type="button" style={botao('secundario', !!gravando)} disabled={!!gravando}
+          onClick={() => {
+            setGravando('relatorio');
+            setErro('');
+            emitirRelatorio(false)
+              .then(lista => { setAvisos(lista); setGravando(''); })
+              .catch(() => setGravando(''));
+          }}>
+          {gravando === 'relatorio' ? 'Gerando relatório…' : 'Gerar relatório (PDF)'}
+        </button>
+        <span style={ajuda}>{aberto ? 'Prévia com a fase atual.' : 'Ciclo concluído: relatório com a decisão.'} Salvo na pasta do fornecedor › Homologação.</span>
+      </div>
+      {!relatoriosDisponivel && <div style={{ ...ajuda, marginBottom: '10px' }}>A lista de relatórios precisa da coluna nova (rode de novo criar-tabelas-fornecedores.ps1).</div>}
+      {relatorios.length > 0 && (
+        <div style={{ marginBottom: '14px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', color: COR.texto2, margin: '0 0 6px' }}>Relatórios emitidos</div>
+          <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', lineHeight: 1.8 }}>
+            {relatorios.map(r => (
+              <li key={`${r.emitidoEm}-${r.nome}`}>
+                {formatarDataHora(r.emitidoEm)} · {r.fase} · <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: COR.azul }}>abrir ↗</a>
+                {r.final && <> <Selo tom="ciano">final</Selo></>}
+                <span style={{ color: COR.texto2 }}> · {r.geradoPor}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <div style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', color: COR.texto2, margin: '6px 0' }}>Checklist do item 9</div>
@@ -703,9 +798,21 @@ const HomologacaoFornecedorView: React.FC<{
           fechar={() => setAbrindo(false)}
           confirmar={async motivo => {
             const id = await servico.iniciarCiclo(fornecedor, ciclos, motivo, usuarioNome);
+            // Aberto pelo botão: o fluxo começa já, e a 1ª etapa notifica
+            // (no início tardio, na primeira abertura do card, não notifica).
+            let aviso = 'Ciclo aberto na primeira etapa do fluxo.';
+            if (motor) {
+              const novo = (await servico.listarCiclos(fornecedor.id)).ciclos.filter(c => c.id === id)[0];
+              if (novo) {
+                const r = await motor.fluxo.iniciar(fornecedor, novo, motor.contexto, documentosManuaisPendentes(situacao), { notificar: true });
+                if (!r.ok) {
+                  aviso = `Ciclo aberto, mas o fluxo não começou: ${r.erros.join(' ')}`;
+                }
+              }
+            }
             setAbrindo(false);
             setSelecionado(id);
-            await depoisDeAlterar('Ciclo aberto na primeira etapa do fluxo.');
+            await depoisDeAlterar(aviso);
           }}
         />
       )}

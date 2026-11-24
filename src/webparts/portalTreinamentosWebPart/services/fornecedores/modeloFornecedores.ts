@@ -356,17 +356,31 @@ export interface IColaboradorFornecedor {
   criadoEm: string;
 }
 
-export type TipoDocumentoColaborador = 'ASO' | 'NR aplicável';
+// Tipos de documento de colaborador: CADASTRÁVEIS em Tipos de documento
+// (dgt_tipodocumentofornecedor com dgt_aplicaa = "Colaborador"). O campo
+// "obrigatório" significa "obrigatório para todos os colaboradores".
+// "NR aplicável" (criado pelo script) pede a norma em texto: um vigente
+// por norma. Os demais tipos: um vigente por tipo.
+export const NOME_TIPO_NR_APLICAVEL = 'NR aplicável';
 
-export const TIPOS_DOCUMENTO_COLABORADOR: Array<{ tipo: TipoDocumentoColaborador; descricao: string; obrigatorio: boolean }> = [
-  { tipo: 'ASO', descricao: 'Atestado de Saúde Ocupacional. Obrigatório, com validade.', obrigatorio: true },
-  { tipo: 'NR aplicável', descricao: 'Treinamento/capacitação na NR que se aplica a este colaborador (informe qual), com validade.', obrigatorio: false }
-];
+export const NOME_TIPO_ASO = 'ASO';
+
+const semAcentoModelo = (valor: string): string =>
+  (valor || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+// O tipo pede a norma (NR-10, NR-35...) ao registrar?
+export const tipoExigeNorma = (nomeTipo: string): boolean =>
+  semAcentoModelo(nomeTipo) === semAcentoModelo(NOME_TIPO_NR_APLICAVEL);
+
+export const mesmoNomeDeTipo = (a: string, b: string): boolean => semAcentoModelo(a) === semAcentoModelo(b);
 
 export interface IDocumentoColaborador {
   id: string;
   colaboradorId: string;
-  tipo: TipoDocumentoColaborador;
+  // Id do tipo cadastrado (dgt_TipoDocumento). Vazio nos registros
+  // antigos: o tipo é achado pelo nome (dgt_tipo).
+  tipoId: string;
+  tipo: string;           // nome do tipo (ex.: ASO, NR aplicável, Integração)
   norma: string;          // "NR aplicável": qual norma (ex.: NR-10)
   emissao: string;        // yyyy-mm-dd
   vencimento: string;     // yyyy-mm-dd
@@ -454,8 +468,13 @@ export interface IFornecedor {
   assinaturaStatus: string;
 }
 
+// A quem o tipo se aplica: à empresa (documentos do fornecedor) ou a cada
+// colaborador do prestador. Vazio (tipos antigos) = Empresa.
+export type AplicaATipo = 'Empresa' | 'Colaborador';
+
 export interface ITipoDocumentoFornecedor {
   id: string;
+  aplicaA?: AplicaATipo;
   nome: string;
   descricao: string;
   // Vazio = vale para todas as categorias.
@@ -512,6 +531,20 @@ export interface IContratoFornecedor {
   registradoPor: string;
   criadoEm: string;
 }
+
+// Relatório de homologação (PDF) emitido — lista em
+// dgt_fornecedorhomologacao.dgt_relatoriosjson.
+export interface IRelatorioEmitido {
+  emitidoEm: string;   // ISO
+  fase: string;
+  nome: string;
+  url: string;
+  geradoPor: string;
+  final: boolean;
+}
+
+// Tipo de documento (Empresa) do relatório final; criado pelo script.
+export const NOME_TIPO_RELATORIO_HOMOLOGACAO = 'Relatório de homologação';
 
 // Antecedência dos avisos de vencimento (Power Automate, docs/fornecedores.md):
 // documentos manuais ao fornecedor e contratos para Suprimentos.
@@ -573,7 +606,10 @@ export interface IHistoricoFornecedor {
 export interface IDadosFornecedores {
   disponivel: boolean;   // false = tabelas ainda não criadas
   fornecedores: IFornecedor[];
+  // SÓ tipos da EMPRESA (situação documental, Conferir, e-mail ao
+  // fornecedor, checklist, relatório). Os de colaborador ficam à parte.
   tipos: ITipoDocumentoFornecedor[];
+  tiposColaborador: ITipoDocumentoFornecedor[];
   documentos: IDocumentoFornecedor[];   // somente vigentes
   aConferir: IDocumentoFornecedor[];    // recebidos por e-mail, ainda não conferidos
 }

@@ -6,6 +6,13 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: Fornecedores — notificações nativas da homologação (fila padrão de e-mails, dgt_implemail): "Quando a atividade começar" nas 4 etapas do SUP-HOM e evento "Resultado da homologação" para a área Supply, já no pacote; aviso "Nova ficha" para a área Supply gravado pelo plugin. Criação tardia da instância e migração de ciclo antigo não notificam. Os e-mails levam o remetente "fornecedores" (coluna nova dgt_remetente) para sair de fornecedores@ quando o fluxo central tiver a caixa.
+- Novo: Fornecedores — relatório de homologação em PDF: botão "Gerar relatório" no card (prévia com a fase atual) e geração automática na conclusão (relatório final, registrado como documento "Relatório de homologação"). Salvo na pasta do fornecedor › Homologação e listado em "Relatórios emitidos". Sem dados bancários e sem CPF; CNPJ só para quem tem o perfil de campo.
+- Novo: Fornecedores — tipos de documento de colaborador cadastráveis (Tipos de documento › Colaborador), cada um obrigatório para todos os colaboradores ou opcional. Pendência: obrigatório faltando ou vencido; opcional só quando vence. ASO e NR aplicável criados pelo script; registros antigos continuam valendo.
+- Melhoria: Processos — no pacote JSON, destinatário de notificação do tipo Área aceita a sigla ("area": "SUY"), como os responsáveis.
+- Correção: Fornecedores — as notificações configuradas no processo SUP-HOM não eram enviadas (o serviço da homologação não usava o despachante de notificações do motor).
+- Atenção (deploy): Fornecedores — rodar de novo scripts/dataverse/criar-tabelas-fornecedores.ps1 (tipos de colaborador, relatórios, remetente na fila); aplicar as notificações no SUP-HOM (reimportar o pacote ou "Aplicar alterações" no editor); Criar e Ler (nível Usuário) em dgt_implemail para Suprimentos e Jurídico, com o fluxo de e-mail central ativo; Jurídico: permissões nas tabelas, módulo liberado, gravação na pasta Contratos Fornecedores e perfil de campo do CNPJ (docs/fornecedores.md, seção 3).
+
 ## [1.4.30] - 2026-11-23
 
 - Novo: Fornecedores — homologação no motor de fluxos (processo SUP-HOM, Processos → Fluxos): Ficha recebida → Documentos pendentes → Análise Suprimentos → Análise Jurídico → Homologado/Reprovado. Responsáveis por área (Suprimentos e Jurídico); quem decide é o Jurídico (Aprovar, Aprovar com ressalvas, Não homologar → Reprovado, Devolver a Suprimentos). Pacote para importar: docs/exemplos/pacote-homologacao-fornecedor.json. Piloto: quem pode agir é conferido no navegador.

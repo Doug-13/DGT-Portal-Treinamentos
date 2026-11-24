@@ -8,6 +8,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Messages;
+using Microsoft.Xrm.Sdk.Metadata;
+using Microsoft.Xrm.Sdk.Metadata.Query;
 using Microsoft.Xrm.Sdk.Query;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -83,7 +86,8 @@ namespace DGT.Treinamentos.Plugins
     //         "rotasEstaduais":  { "SC": "<rota>?inscricao_estadual={ie}" },
     //         "rotasMunicipais": { "SC/FLORIANOPOLIS": "<rota>" },
     //         "rotasTrt":        { "RS": "tribunal/trt4/ceat" },
-    //         "areaSuprimentos": "SUY" }          (sigla da área da 1ª etapa da homologação)
+    //         "areaSuprimentos": "SUY",           (sigla da área da 1ª etapa da homologação)
+    //         "linkPortal": "https://..." }       (link no e-mail "Ficha recebida"; opcional)
     //   rotasTrt (CEAT): TRT da sede do fornecedor, por UF ("RS") ou por
     //   cidade ("SP/CAMPINAS", para UF com mais de um TRT). Padrão: só RS
     //   (TRT4, rota confirmada). UF sem rota: "Sem cobertura".
@@ -165,6 +169,8 @@ namespace DGT.Treinamentos.Plugins
         // Sigla (dgt_area.dgt_sigla) da área que responde a 1ª etapa da
         // homologação (SUP-HOM) — gravada no ciclo aberto pela ficha.
         private readonly string _areaSuprimentos = HomologacaoFornecedor.SiglaSuprimentosPadrao;
+        // Link do portal no aviso "Ficha recebida" (opcional).
+        private readonly string _linkPortal = string.Empty;
         private readonly Dictionary<string, string> _rotasEstaduais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _rotasMunicipais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _rotasTrt = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -207,6 +213,7 @@ namespace DGT.Treinamentos.Plugins
                     _timeoutInfosimples = Math.Min(100, Math.Max(15, (int?)config["infosimplesTimeout"] ?? _timeoutInfosimples));
                     _diasRenovacaoCertidoes = Math.Max(1, (int?)config["diasRenovacaoCertidoes"] ?? _diasRenovacaoCertidoes);
                     _areaSuprimentos = Texto(config["areaSuprimentos"], _areaSuprimentos).Trim();
+                    _linkPortal = Texto(config["linkPortal"], string.Empty).Trim();
                     LerRotas(config["rotasEstaduais"] as JObject, _rotasEstaduais);
                     LerRotas(config["rotasMunicipais"] as JObject, _rotasMunicipais);
                     LerRotas(config["rotasTrt"] as JObject, _rotasTrt);
@@ -1521,7 +1528,8 @@ namespace DGT.Treinamentos.Plugins
             var gravado = sistema.Retrieve(TabelaFornecedor, id, new ColumnSet("dgt_protocolo", "dgt_name", "dgt_categoria"));
             var categoria = gravado.GetAttributeValue<string>("dgt_categoria") ?? string.Empty;
 
-            AbrirCicloSeNecessario(sistema, tracing, id, tipoSolicitacao, gravado.GetAttributeValue<string>("dgt_protocolo") ?? string.Empty, usuario, _areaSuprimentos);
+            AbrirCicloSeNecessario(sistema, tracing, id, tipoSolicitacao, gravado.GetAttributeValue<string>("dgt_protocolo") ?? string.Empty, usuario, _areaSuprimentos,
+                gravado.GetAttributeValue<string>("dgt_name") ?? string.Empty, _linkPortal);
 
             return new JObject
             {
@@ -1647,7 +1655,8 @@ namespace DGT.Treinamentos.Plugins
         // SEM instância, mas já com a etapa e a área Suprimentos
         // (PrepararCicloParaFluxo) para o aviso da 1ª etapa sair. Sem a
         // tabela (script ainda não rodado), só registra no rastreamento.
-        private static void AbrirCicloSeNecessario(IOrganizationService sistema, ITracingService tracing, Guid fornecedorId, string motivo, string protocolo, string usuario, string siglaSuprimentos)
+        private static void AbrirCicloSeNecessario(IOrganizationService sistema, ITracingService tracing, Guid fornecedorId, string motivo, string protocolo, string usuario, string siglaSuprimentos,
+            string razaoSocial, string linkPortal)
         {
             try
             {
@@ -1668,7 +1677,11 @@ namespace DGT.Treinamentos.Plugins
                 ciclo["dgt_resultadohomologacao"] = "Pendente";
                 ciclo["dgt_responsavelnome"] = Limitar(usuario, 200);
                 var cicloId = sistema.Create(ciclo);
-                PrepararCicloParaFluxo(sistema, tracing, cicloId, siglaSuprimentos);
+                var areaId = PrepararCicloParaFluxo(sistema, tracing, cicloId, siglaSuprimentos);
+                if (areaId.HasValue)
+                {
+                    AvisarFichaRecebida(sistema, tracing, cicloId, areaId.Value, razaoSocial, protocolo, motivo, linkPortal);
+                }
 
                 RegistrarHistorico(sistema, fornecedorId, "Homologação: ciclo aberto",
                     $"Ciclo {numero} ({motivo}) aberto na coluna \"Ficha recebida\" pela ficha {protocolo}.", usuario);
@@ -1682,8 +1695,10 @@ namespace DGT.Treinamentos.Plugins
         // Colunas do motor (dgt_etapaatual, dgt_responsaveisetapa). Em
         // separado: sem elas (script não rodado) ou sem a área cadastrada,
         // o ciclo continua aberto e o portal resolve ao abrir.
-        private static void PrepararCicloParaFluxo(IOrganizationService sistema, ITracingService tracing, Guid cicloId, string siglaSuprimentos)
+        // Devolve a área Supply encontrada (para o aviso por e-mail).
+        private static Guid? PrepararCicloParaFluxo(IOrganizationService sistema, ITracingService tracing, Guid cicloId, string siglaSuprimentos)
         {
+            Guid? areaId = null;
             try
             {
                 var sigla = string.IsNullOrWhiteSpace(siglaSuprimentos) ? HomologacaoFornecedor.SiglaSuprimentosPadrao : siglaSuprimentos.Trim();
@@ -1691,10 +1706,19 @@ namespace DGT.Treinamentos.Plugins
                 consulta.Criteria.AddCondition("dgt_sigla", ConditionOperator.Equal, sigla);
                 var area = sistema.RetrieveMultiple(consulta).Entities.FirstOrDefault();
 
+                // Sem as colunas do fluxo (script não rodado): não tenta gravar.
+                // Chamada que falha dentro do plugin desfaz a transação inteira.
+                if (!ColunaExiste(sistema, TabelaCiclo, "dgt_etapaatual") || !ColunaExiste(sistema, TabelaCiclo, "dgt_responsaveisetapa"))
+                {
+                    tracing.Trace("Ficha: colunas do fluxo ainda não existem no ciclo.");
+                    return null;
+                }
+
                 var atualizacao = new Entity(TabelaCiclo, cicloId);
                 atualizacao["dgt_etapaatual"] = HomologacaoFornecedor.EtapaInicial;
                 if (area != null)
                 {
+                    areaId = area.Id;
                     atualizacao["dgt_responsaveisetapa"] = HomologacaoFornecedor.ResponsaveisDaArea(area.Id, sigla, area.GetAttributeValue<string>("dgt_name"));
                 }
                 else
@@ -1707,6 +1731,93 @@ namespace DGT.Treinamentos.Plugins
             {
                 tracing.Trace("Ficha: ciclo aberto sem as colunas do fluxo: {0}", ex.Message);
             }
+            return areaId;
+        }
+
+        // A coluna existe? Consulta de metadados que NÃO falha quando a
+        // tabela ou a coluna não existem (devolve vazio).
+        private static bool ColunaExiste(IOrganizationService sistema, string tabela, string coluna)
+        {
+            var consulta = new EntityQueryExpression
+            {
+                Criteria = new MetadataFilterExpression(LogicalOperator.And),
+                Properties = new MetadataPropertiesExpression("LogicalName", "Attributes"),
+                AttributeQuery = new AttributeQueryExpression
+                {
+                    Criteria = new MetadataFilterExpression(LogicalOperator.And),
+                    Properties = new MetadataPropertiesExpression("LogicalName")
+                }
+            };
+            consulta.Criteria.Conditions.Add(new MetadataConditionExpression("LogicalName", MetadataConditionOperator.Equals, tabela));
+            consulta.AttributeQuery.Criteria.Conditions.Add(new MetadataConditionExpression("LogicalName", MetadataConditionOperator.Equals, coluna));
+            var resposta = (RetrieveMetadataChangesResponse)sistema.Execute(new RetrieveMetadataChangesRequest { Query = consulta });
+            return resposta.EntityMetadata.Any(e => e.Attributes != null && e.Attributes.Any(a => a.LogicalName == coluna));
+        }
+
+        // Aviso "Ficha recebida" a cada membro ativo da área Supply, pela
+        // fila padrão de e-mails do portal (dgt_implemail). Quem envia é o
+        // fluxo central do Power Automate. Falha aqui não impede a ficha.
+        private static void AvisarFichaRecebida(IOrganizationService sistema, ITracingService tracing, Guid cicloId, Guid areaId,
+            string razaoSocial, string protocolo, string motivo, string linkPortal)
+        {
+            try
+            {
+                if (!ColunaExiste(sistema, "dgt_implemail", "dgt_status"))
+                {
+                    tracing.Trace("Ficha: fila de e-mails (dgt_implemail) não existe; aviso não enviado.");
+                    return;
+                }
+                var comRemetente = ColunaExiste(sistema, "dgt_implemail", "dgt_remetente");
+
+                var vinculos = new QueryExpression("dgt_usuarioarea") { ColumnSet = new ColumnSet("dgt_usuario", "dgt_ativo") };
+                vinculos.Criteria.AddCondition("dgt_area", ConditionOperator.Equal, areaId);
+                var usuarios = sistema.RetrieveMultiple(vinculos).Entities
+                    .Where(v => v.GetAttributeValue<bool?>("dgt_ativo") != false)
+                    .Select(v => v.GetAttributeValue<EntityReference>("dgt_usuario"))
+                    .Where(u => u != null)
+                    .Select(u => u.Id)
+                    .Distinct()
+                    .ToList();
+
+                var emails = new List<string>();
+                foreach (var usuarioId in usuarios)
+                {
+                    var u = sistema.Retrieve("dgt_usuario", usuarioId, new ColumnSet("dgt_email", "dgt_ativo"));
+                    var email = (u.GetAttributeValue<string>("dgt_email") ?? string.Empty).Trim();
+                    if (u.GetAttributeValue<bool?>("dgt_ativo") != false && email.Contains("@") && !emails.Contains(email, StringComparer.OrdinalIgnoreCase))
+                    {
+                        emails.Add(email);
+                    }
+                }
+
+                var assunto = HomologacaoFornecedor.AssuntoFichaRecebida(razaoSocial, protocolo);
+                var corpo = HomologacaoFornecedor.CorpoFichaRecebida(razaoSocial, protocolo, motivo, linkPortal);
+
+                foreach (var email in emails)
+                {
+                    var linha = new Entity("dgt_implemail");
+                    linha["dgt_name"] = assunto;
+                    linha["dgt_para"] = Limitar(email, 320);
+                    linha["dgt_corpo"] = corpo;
+                    linha["dgt_tipo"] = HomologacaoFornecedor.TipoEmailFichaRecebida;
+                    linha["dgt_motivo"] = HomologacaoFornecedor.MotivoFichaRecebida(cicloId, email);
+                    linha["dgt_status"] = "Pendente";
+                    if (comRemetente)
+                    {
+                        linha["dgt_remetente"] = HomologacaoFornecedor.RemetenteFornecedores;
+                    }
+                    sistema.Create(linha);
+                }
+
+                if (emails.Count == 0)
+                {
+                    tracing.Trace("Ficha: nenhum membro ativo com e-mail na área Supply; aviso não enviado.");
+                }
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace("Ficha: aviso por e-mail não gravado na fila: {0}", ex.Message);
+            }
         }
 
         // Obrigatórios da categoria que o fornecedor precisa ENVIAR
@@ -1716,6 +1827,15 @@ namespace DGT.Treinamentos.Plugins
             var consulta = new QueryExpression(TabelaTipo) { ColumnSet = new ColumnSet("dgt_name", "dgt_categorias", "dgt_codigoconsulta", "dgt_ordem") };
             consulta.Criteria.AddCondition("dgt_ativo", ConditionOperator.Equal, true);
             consulta.Criteria.AddCondition("dgt_obrigatorio", ConditionOperator.Equal, true);
+            // Tipos de COLABORADOR (dgt_aplicaa) não são documentos da empresa:
+            // ficam fora da lista do e-mail ao fornecedor.
+            if (ColunaExiste(sistema, TabelaTipo, "dgt_aplicaa"))
+            {
+                var empresa = new FilterExpression(LogicalOperator.Or);
+                empresa.AddCondition("dgt_aplicaa", ConditionOperator.Null);
+                empresa.AddCondition("dgt_aplicaa", ConditionOperator.NotEqual, "Colaborador");
+                consulta.Criteria.AddFilter(empresa);
+            }
             consulta.AddOrder("dgt_ordem", OrderType.Ascending);
 
             return sistema.RetrieveMultiple(consulta).Entities

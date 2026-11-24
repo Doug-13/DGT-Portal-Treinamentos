@@ -429,7 +429,8 @@ const ConferirDocumentoModal: React.FC<{
   salvarContrato: (dados: IDadosContrato) => Promise<void>;
 }> = ({ recebido, tipos, categoria, projetos, fechar, salvar, salvarContrato }) => {
 
-  const ativos = tipos.filter(t => t.ativo);
+  // Só tipos da empresa (tipo de colaborador nunca entra no Conferir).
+  const ativos = tipos.filter(t => t.ativo && t.aplicaA !== 'Colaborador');
   const daCategoria = ativos.filter(t => tipoSeAplica(t, categoria));
   const outros = ativos.filter(t => !tipoSeAplica(t, categoria));
 
@@ -558,6 +559,8 @@ const DetalheFornecedorView: React.FC<{
   servico: FornecedoresService;
   fornecedor: IFornecedor;
   tipos: ITipoDocumentoFornecedor[];
+  // Tipos de documento de colaborador (só a tela de Colaboradores usa).
+  tiposColaborador: ITipoDocumentoFornecedor[];
   administra: boolean;
   usuarioNome: string;
   secaoInicial?: Secao;
@@ -565,7 +568,7 @@ const DetalheFornecedorView: React.FC<{
   motor?: IContextoFluxoHomologacao;
   voltar: () => void;
   aoAlterar: (aviso?: string) => Promise<void>;
-}> = ({ servico, fornecedor, tipos, administra, usuarioNome, secaoInicial, motor, voltar, aoAlterar }) => {
+}> = ({ servico, fornecedor, tipos, tiposColaborador, administra, usuarioNome, secaoInicial, motor, voltar, aoAlterar }) => {
 
   const [secao, setSecao] = React.useState<Secao>(secaoInicial || 'dados');
   const [verColaboradores, setVerColaboradores] = React.useState(false);
@@ -691,6 +694,7 @@ const DetalheFornecedorView: React.FC<{
       <ColaboradoresFornecedorView
         servico={servico}
         fornecedor={fornecedor}
+        tiposColaborador={tiposColaborador}
         usuarioNome={usuarioNome}
         voltar={() => setVerColaboradores(false)}
         aoAlterar={async () => { setHistorico(undefined); }}

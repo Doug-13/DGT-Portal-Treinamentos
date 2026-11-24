@@ -25,11 +25,13 @@ import {
   ClassificacaoRisco,
   ICicloHomologacao,
   IContratoFornecedor,
+  IRelatorioEmitido,
+  NOME_TIPO_RELATORIO_HOMOLOGACAO,
   OrigemContrato,
+  tipoExigeNorma,
   IColaboradorFornecedor,
   IDadosHomologacao,
   IDocumentoColaborador,
-  TipoDocumentoColaborador,
   CodigoCertidao,
   Criticidade,
   IDadosBancarios,
@@ -225,7 +227,7 @@ export interface IDadosColaborador {
 }
 
 export interface INovoDocumentoColaborador {
-  tipo: TipoDocumentoColaborador;
+  tipo: ITipoDocumentoFornecedor;
   norma: string;
   emissao: string;
   vencimento: string;
@@ -316,6 +318,8 @@ export class FornecedoresService {
   private readonly dataverse: DataverseService;
   private readonly envio?: SharePointDocumentoService;
   private colunasFluxoCiclo: boolean | undefined;
+  private colunaAplicaA: boolean | undefined;
+  private colunaTipoDocColaborador: boolean | undefined;
 
   public constructor(
     dataverse: DataverseService,
@@ -345,9 +349,7 @@ export class FornecedoresService {
     try {
       registros = await Promise.all([
         this.dataverse.listarRegistros(TABELAS_FORN.fornecedor, `$select=${COLUNAS_FORNECEDOR}`),
-        this.dataverse.listarRegistros(TABELAS_FORN.tipoDocumento,
-          '$select=dgt_tipodocumentofornecedorid,dgt_name,dgt_descricao,dgt_categorias,dgt_obrigatorio,dgt_exigevalidade,' +
-          'dgt_validadedias,dgt_visibilidade,dgt_ordem,dgt_ativo,dgt_codigoconsulta'),
+        this.listarTipos(),
         this.dataverse.listarRegistros(TABELAS_FORN.documento,
           '$select=dgt_fornecedordocumentoid,dgt_name,_dgt_fornecedor_value,_dgt_tipodocumento_value,dgt_dataemissao,' +
           'dgt_datavencimento,dgt_arquivourl,dgt_arquivonome,dgt_observacoes,dgt_situacao,dgt_responsavelnome,createdon' +
@@ -360,15 +362,18 @@ export class FornecedoresService {
       ]);
     } catch (erro) {
       if (ehTabelaInexistente(erro)) {
-        return { disponivel: false, fornecedores: [], tipos: [], documentos: [], aConferir: [] };
+        return { disponivel: false, fornecedores: [], tipos: [], tiposColaborador: [], documentos: [], aConferir: [] };
       }
       throw erro;
     }
 
     const [regFornecedores, regTipos, regDocumentos, regAConferir] = registros;
 
-    const tipos = regTipos.map(r => this.lerTipo(r))
+    const todosTipos = regTipos.map(r => this.lerTipo(r))
       .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
+    // Isolamento: tipos de colaborador NUNCA entram no que trata
+    // documentos da empresa (situação, Conferir, e-mail, checklist, relatório).
+    const tipos = todosTipos.filter(t => t.aplicaA !== 'Colaborador');
 
     const nomeTipo: Record<string, string> = {};
     tipos.forEach(t => { nomeTipo[t.id] = t.nome; });
@@ -378,9 +383,44 @@ export class FornecedoresService {
       fornecedores: regFornecedores.map(r => this.lerFornecedor(r))
         .sort((a, b) => a.razaoSocial.localeCompare(b.razaoSocial, 'pt-BR')),
       tipos,
+      tiposColaborador: todosTipos.filter(t => t.aplicaA === 'Colaborador'),
       documentos: regDocumentos.map(r => this.lerDocumento(r, nomeTipo)),
       aConferir: regAConferir.map(r => this.lerDocumento(r, nomeTipo))
     };
+  }
+
+  // Tipos de documento (com dgt_aplicaa, quando a coluna já existe).
+  private async listarTipos(): Promise<IDataverseRecord[]> {
+    const base =
+      'dgt_tipodocumentofornecedorid,dgt_name,dgt_descricao,dgt_categorias,dgt_obrigatorio,dgt_exigevalidade,' +
+      'dgt_validadedias,dgt_visibilidade,dgt_ordem,dgt_ativo,dgt_codigoconsulta';
+    return this.dataverse.listarRegistros(TABELAS_FORN.tipoDocumento,
+      `$select=${(await this.temColunaAplicaA()) ? `${base},dgt_aplicaa` : base}`);
+  }
+
+  // Coluna "Aplica-se a" (Empresa/Colaborador) já existe?
+  public async temColunaAplicaA(): Promise<boolean> {
+    if (this.colunaAplicaA === undefined) {
+      try {
+        await this.dataverse.listarRegistros(TABELAS_FORN.tipoDocumento, '$select=dgt_aplicaa&$top=1');
+        this.colunaAplicaA = true;
+      } catch {
+        this.colunaAplicaA = false;
+      }
+    }
+    return this.colunaAplicaA;
+  }
+
+  private async temColunaTipoDocColaborador(): Promise<boolean> {
+    if (this.colunaTipoDocColaborador === undefined) {
+      try {
+        await this.dataverse.listarRegistros(TABELAS_FORN.colaboradorDocumento, '$select=_dgt_tipodocumento_value&$top=1');
+        this.colunaTipoDocColaborador = true;
+      } catch {
+        this.colunaTipoDocColaborador = false;
+      }
+    }
+    return this.colunaTipoDocColaborador;
   }
 
   // Todas as versões (inclusive substituídas) de um fornecedor.
@@ -911,8 +951,9 @@ export class FornecedoresService {
     const documentos: IDocumentoColaborador[] = [];
     for (let i = 0; i < colaboradores.length; i += 20) {
       const filtro = colaboradores.slice(i, i + 20).map(c => `_dgt_colaborador_value eq ${c.id}`).join(' or ');
+      const colunas = (await this.temColunaTipoDocColaborador()) ? `${COLUNAS_DOC_COLABORADOR},_dgt_tipodocumento_value` : COLUNAS_DOC_COLABORADOR;
       const regs = await this.dataverse.listarRegistros(TABELAS_FORN.colaboradorDocumento,
-        `$select=${COLUNAS_DOC_COLABORADOR}&$filter=${filtro}&$orderby=createdon desc`);
+        `$select=${colunas}&$filter=${filtro}&$orderby=createdon desc`);
       regs.forEach(r => documentos.push(this.lerDocumentoColaborador(r)));
     }
     return { disponivel: true, colaboradores, documentos };
@@ -975,24 +1016,33 @@ export class FornecedoresService {
       `${nome}${dados.funcao ? ` (${limitar(dados.funcao, 120)})` : ''}${cpf ? ' — CPF na coluna protegida' : ' — sem CPF'}.`, usuarioNome);
   }
 
+  // Tipo CADASTRADO (aplica-se a Colaborador). "NR aplicável" pede a
+  // norma. Nova versão do mesmo tipo (ou da mesma norma) deixa a anterior
+  // Substituída.
   public async registrarDocumentoColaborador(
     fornecedor: IFornecedor,
     colaborador: IColaboradorFornecedor,
     dados: INovoDocumentoColaborador,
     documentosDoColaborador: IDocumentoColaborador[],
+    tiposColaborador: ITipoDocumentoFornecedor[],
     usuarioNome: string
   ): Promise<void> {
-    const norma = dados.tipo === 'NR aplicável' ? limitar(dados.norma, 120) : '';
-    if (dados.tipo === 'NR aplicável' && !norma) {
+    const tipo = dados.tipo;
+    if (!tipo || !tipo.id || tipo.aplicaA !== 'Colaborador') {
+      throw new Error('Escolha um tipo de documento de colaborador.');
+    }
+    const exigeNorma = tipoExigeNorma(tipo.nome);
+    const norma = exigeNorma ? limitar(dados.norma, 120) : '';
+    if (exigeNorma && !norma) {
       throw new Error('Informe qual NR se aplica a este colaborador (ex.: NR-10, NR-35).');
     }
     if (!dados.emissao) {
       throw new Error('Informe a data de emissão.');
     }
-    if (!dados.vencimento) {
-      throw new Error(`${dados.tipo} exige data de validade.`);
+    if (tipo.exigeValidade && !dados.vencimento) {
+      throw new Error(`"${tipo.nome}" exige data de validade.`);
     }
-    if (dados.vencimento < dados.emissao) {
+    if (dados.vencimento && dados.vencimento < dados.emissao) {
       throw new Error('A validade não pode ser anterior à emissão.');
     }
     if (!dados.arquivo && !(dados.linkArquivo || '').trim()) {
@@ -1003,42 +1053,46 @@ export class FornecedoresService {
     }
     verificarSensivel(norma, dados.observacoes);
 
-    const rotulo = norma ? `${dados.tipo} — ${norma}` : dados.tipo;
+    const rotulo = norma ? `${tipo.nome} — ${norma}` : tipo.nome;
     let arquivoUrl = (dados.linkArquivo || '').trim();
     let arquivoNome = '';
     if (dados.arquivo) {
       const pastaColaborador = `${limitar(colaborador.nome, 80)} (${colaborador.id.substring(0, 8)})`;
       const enviado = await this.enviarArquivo(
         [this.pastaFornecedor(fornecedor), 'Colaboradores', pastaColaborador],
-        `${norma ? `NR ${norma.replace(/^NR[-\s]*/i, '')}` : 'ASO'} - ${dados.emissao}`,
+        `${norma ? `NR ${norma.replace(/^NR[-\s]*/i, '')}` : limitar(tipo.nome, 60)} - ${dados.emissao}`,
         dados.arquivo);
       arquivoUrl = enviado.url;
       arquivoNome = enviado.nome;
     }
 
-    await this.dataverse.criarRegistro(TABELAS_FORN.colaboradorDocumento, {
+    const registro: Record<string, unknown> = {
       dgt_name: limitar(rotulo, 200),
       'dgt_Colaborador@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.colaborador, colaborador.id),
-      dgt_tipo: dados.tipo,
+      dgt_tipo: limitar(tipo.nome, 30),
       dgt_norma: norma,
       dgt_dataemissao: dados.emissao,
-      dgt_datavencimento: dados.vencimento,
+      dgt_datavencimento: dados.vencimento || null,
       dgt_arquivourl: limitar(arquivoUrl, 2000),
       dgt_arquivonome: limitar(arquivoNome, 255),
       dgt_observacoes: limitar(dados.observacoes, 2000),
       dgt_situacao: 'Vigente',
       dgt_responsavelnome: limitar(usuarioNome, 200)
-    });
+    };
+    if (await this.temColunaTipoDocColaborador()) {
+      registro['dgt_TipoDocumento@odata.bind'] = await this.dataverse.referenciaLookup(TABELAS_FORN.tipoDocumento, tipo.id);
+    }
+    await this.dataverse.criarRegistro(TABELAS_FORN.colaboradorDocumento, registro);
 
-    // Versão anterior do mesmo documento (ASO, ou a mesma NR) → Substituído.
-    const chave = chaveDocumento({ tipo: dados.tipo, norma });
-    const anteriores = documentosDoColaborador.filter(d => d.situacao === 'Vigente' && chaveDocumento(d) === chave);
+    // Versão anterior do mesmo tipo (ou da mesma norma) → Substituído.
+    const chave = chaveDocumento({ tipoId: tipo.id, tipo: tipo.nome, norma }, tiposColaborador);
+    const anteriores = documentosDoColaborador.filter(d => d.situacao === 'Vigente' && chaveDocumento(d, tiposColaborador) === chave);
     for (const anterior of anteriores) {
       await this.dataverse.atualizarRegistro(TABELAS_FORN.colaboradorDocumento, anterior.id, { dgt_situacao: 'Substituído' });
     }
 
     await this.registrarHistorico(fornecedor.id, anteriores.length > 0 ? 'Colaborador: documento renovado' : 'Colaborador: documento registrado',
-      `${colaborador.nome} — ${rotulo}: emissão ${dados.emissao}, validade ${dados.vencimento}.`, usuarioNome);
+      `${colaborador.nome} — ${rotulo}: emissão ${dados.emissao}${dados.vencimento ? `, validade ${dados.vencimento}` : ', sem validade'}.`, usuarioNome);
   }
 
   // ==========================================================
@@ -1187,6 +1241,105 @@ export class FornecedoresService {
       'Documento descartado',
       `${recebido.arquivoNome || recebido.titulo}: ${texto}`,
       usuarioNome);
+  }
+
+  // ==========================================================
+  // RELATÓRIO DE HOMOLOGAÇÃO (PDF) — arquivamento
+  // Pasta do fornecedor › "Homologação". Cada emissão entra na lista
+  // dgt_relatoriosjson do ciclo e no histórico. O relatório FINAL (na
+  // conclusão) também vira documento do tipo "Relatório de
+  // homologação"; as prévias não (não substituem versões).
+  // ==========================================================
+
+  public async listarRelatorios(cicloId: string): Promise<{ disponivel: boolean; relatorios: IRelatorioEmitido[] }> {
+    try {
+      const lido = await this.dataverse.obterRegistro(TABELAS_FORN.ciclo, cicloId, ['dgt_relatoriosjson']);
+      const lista = lido ? lerJson<IRelatorioEmitido[]>(texto(lido.registro, 'dgt_relatoriosjson')) : undefined;
+      return { disponivel: true, relatorios: Array.isArray(lista) ? lista : [] };
+    } catch {
+      return { disponivel: false, relatorios: [] };
+    }
+  }
+
+  public async arquivarRelatorio(
+    fornecedor: IFornecedor,
+    ciclo: ICicloHomologacao,
+    pdf: Blob,
+    nomeArquivo: string,
+    meta: { fase: string; final: boolean; geradoPor: string; emitidoEm: Date }
+  ): Promise<{ relatorio: IRelatorioEmitido; avisos: string[] }> {
+
+    const avisos: string[] = [];
+    const arquivo = new File([pdf], nomeArquivo, { type: 'application/pdf' });
+    const enviado = await this.enviarArquivo(
+      [this.pastaFornecedor(fornecedor), 'Homologação'],
+      nomeArquivo.replace(/\.pdf$/i, ''),
+      arquivo);
+
+    const relatorio: IRelatorioEmitido = {
+      emitidoEm: meta.emitidoEm.toISOString(),
+      fase: meta.fase,
+      nome: enviado.nome || nomeArquivo,
+      url: enviado.url,
+      geradoPor: meta.geradoPor,
+      final: meta.final
+    };
+
+    // Lista do ciclo (sem a coluna: o arquivo fica no SharePoint e avisa).
+    try {
+      const atual = await this.listarRelatorios(ciclo.id);
+      if (!atual.disponivel) {
+        throw new Error('coluna dgt_relatoriosjson não encontrada');
+      }
+      await this.dataverse.atualizarRegistro(TABELAS_FORN.ciclo, ciclo.id, {
+        dgt_relatoriosjson: JSON.stringify(atual.relatorios.concat([relatorio])).substring(0, 100000)
+      });
+    } catch (erro) {
+      avisos.push(`O relatório foi salvo no SharePoint, mas não entrou na lista do ciclo (rode de novo criar-tabelas-fornecedores.ps1): ${mensagemErro(erro)}`);
+    }
+
+    await this.registrarHistorico(fornecedor.id, `Relatório de homologação emitido (fase ${meta.fase})`,
+      `Ciclo ${ciclo.numero}${meta.final ? ' — relatório final' : ' — prévia'}: ${relatorio.nome}`, meta.geradoPor);
+
+    if (meta.final) {
+      try {
+        await this.registrarRelatorioComoDocumento(fornecedor, relatorio, meta.geradoPor);
+      } catch (erro) {
+        avisos.push(`O relatório final foi salvo, mas não foi registrado em Documentos: ${mensagemErro(erro)}`);
+      }
+    }
+
+    return { relatorio, avisos };
+  }
+
+  private async registrarRelatorioComoDocumento(fornecedor: IFornecedor, relatorio: IRelatorioEmitido, usuarioNome: string): Promise<void> {
+    const nomeTipo = NOME_TIPO_RELATORIO_HOMOLOGACAO.replace(/'/g, "''");
+    const tipos = await this.dataverse.listarRegistros(TABELAS_FORN.tipoDocumento,
+      `$select=dgt_tipodocumentofornecedorid,dgt_name&$filter=dgt_name eq '${nomeTipo}'&$top=1`);
+    if (tipos.length === 0) {
+      throw new Error(`tipo "${NOME_TIPO_RELATORIO_HOMOLOGACAO}" não existe (rode de novo criar-tabelas-fornecedores.ps1).`);
+    }
+    const tipoId = guid(tipos[0].dgt_tipodocumentofornecedorid);
+    const emissao = relatorio.emitidoEm.substring(0, 10);
+
+    const anteriores = await this.dataverse.listarRegistros(TABELAS_FORN.documento,
+      `$select=dgt_fornecedordocumentoid&$filter=_dgt_fornecedor_value eq ${guid(fornecedor.id)} and _dgt_tipodocumento_value eq ${tipoId} and dgt_situacao eq 'Vigente'`);
+
+    await this.dataverse.criarRegistro(TABELAS_FORN.documento, {
+      dgt_name: NOME_TIPO_RELATORIO_HOMOLOGACAO,
+      'dgt_Fornecedor@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.fornecedor, fornecedor.id),
+      'dgt_TipoDocumento@odata.bind': await this.dataverse.referenciaLookup(TABELAS_FORN.tipoDocumento, tipoId),
+      dgt_dataemissao: emissao,
+      dgt_datavencimento: null,
+      dgt_arquivourl: limitar(relatorio.url, 2000),
+      dgt_arquivonome: limitar(relatorio.nome, 255),
+      dgt_observacoes: limitar(`Relatório final do ciclo (${relatorio.fase}).`, 4000),
+      dgt_situacao: 'Vigente',
+      dgt_responsavelnome: limitar(usuarioNome, 200)
+    });
+    for (const anterior of anteriores) {
+      await this.dataverse.atualizarRegistro(TABELAS_FORN.documento, guid(anterior.dgt_fornecedordocumentoid), { dgt_situacao: 'Substituído' });
+    }
   }
 
   // ==========================================================
@@ -1343,18 +1496,28 @@ export class FornecedoresService {
     }
     verificarSensivel(tipo.nome, tipo.descricao);
 
+    const colaborador = tipo.aplicaA === 'Colaborador';
+    const comColuna = await this.temColunaAplicaA();
+    if (colaborador && !comColuna) {
+      throw new Error('Tipos de colaborador exigem a coluna "Aplica-se a": rode de novo scripts/dataverse/criar-tabelas-fornecedores.ps1.');
+    }
+
     const dados: Record<string, unknown> = {
       dgt_name: limitar(tipo.nome, 200),
       dgt_descricao: limitar(tipo.descricao, 2000),
-      dgt_categorias: limitar(tipo.categorias.join(';'), 500),
+      // Categorias, visibilidade e consulta automática não se aplicam a colaborador.
+      dgt_categorias: colaborador ? '' : limitar(tipo.categorias.join(';'), 500),
       dgt_obrigatorio: tipo.obrigatorio,
       dgt_exigevalidade: tipo.exigeValidade,
       dgt_validadedias: tipo.validadeDias && tipo.validadeDias > 0 ? Math.round(tipo.validadeDias) : null,
       dgt_visibilidade: tipo.visibilidade,
       dgt_ordem: Math.round(tipo.ordem || 0),
       dgt_ativo: tipo.ativo,
-      dgt_codigoconsulta: tipo.codigoConsulta || null
+      dgt_codigoconsulta: colaborador ? null : (tipo.codigoConsulta || null)
     };
+    if (comColuna) {
+      dados.dgt_aplicaa = colaborador ? 'Colaborador' : 'Empresa';
+    }
 
     if (tipo.id) {
       await this.dataverse.atualizarRegistro(TABELAS_FORN.tipoDocumento, tipo.id, dados);
@@ -1560,7 +1723,8 @@ export class FornecedoresService {
     return {
       id: guid(r.dgt_colaboradordocumentoid),
       colaboradorId: guid(r._dgt_colaborador_value),
-      tipo: texto(r, 'dgt_tipo') === 'NR aplicável' ? 'NR aplicável' : 'ASO',
+      tipoId: guid(r._dgt_tipodocumento_value),
+      tipo: texto(r, 'dgt_tipo'),
       norma: texto(r, 'dgt_norma'),
       emissao: soData(texto(r, 'dgt_dataemissao')),
       vencimento: soData(texto(r, 'dgt_datavencimento')),
@@ -1577,6 +1741,7 @@ export class FornecedoresService {
     const dias = Number(r.dgt_validadedias);
     return {
       id: guid(r.dgt_tipodocumentofornecedorid),
+      aplicaA: texto(r, 'dgt_aplicaa') === 'Colaborador' ? 'Colaborador' : 'Empresa',
       nome: texto(r, 'dgt_name'),
       descricao: texto(r, 'dgt_descricao'),
       categorias: lerCategorias(texto(r, 'dgt_categorias')),

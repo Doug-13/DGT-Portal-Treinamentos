@@ -322,6 +322,7 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
               servico={servico}
               fornecedor={fornecedorAberto}
               tipos={dados.tipos}
+              tiposColaborador={dados.tiposColaborador}
               administra={administra}
               usuarioNome={usuarioNome}
               secaoInicial={secaoInicial}
@@ -368,6 +369,7 @@ const FornecedoresPage: React.FC<IFornecedoresPageProps> = ({ dataverseService, 
             <TiposDocumentoView
               servico={servico}
               tipos={dados.tipos}
+              tiposColaborador={dados.tiposColaborador}
               podeEditar={administra}
               aoAlterar={async aviso => { await carregar(); avisar(aviso); }}
             />

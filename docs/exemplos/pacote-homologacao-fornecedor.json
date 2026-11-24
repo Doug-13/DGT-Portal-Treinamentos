@@ -7,77 +7,387 @@
     "area": "SUY"
   },
   "metadados": [
-    { "chave": "classificacaoRisco", "rotulo": "Classificação de risco", "tipo": "lista", "opcoes": ["Baixo", "Médio", "Alto"], "ajuda": "Natureza, porte e complexidade do fornecimento; porte, governança e tradição do fornecedor." },
-    { "chave": "validadeCadastro", "rotulo": "Validade do cadastro / próxima revisão", "tipo": "data" },
-    { "chave": "parecer", "rotulo": "Parecer / ressalvas do Jurídico", "tipo": "textoLongo", "ajuda": "Vira as ressalvas do ciclo. Vazio = vale o comentário da decisão." }
+    {
+      "chave": "classificacaoRisco",
+      "rotulo": "Classificação de risco",
+      "tipo": "lista",
+      "opcoes": [
+        "Baixo",
+        "Médio",
+        "Alto"
+      ],
+      "ajuda": "Natureza, porte e complexidade do fornecimento; porte, governança e tradição do fornecedor."
+    },
+    {
+      "chave": "validadeCadastro",
+      "rotulo": "Validade do cadastro / próxima revisão",
+      "tipo": "data"
+    },
+    {
+      "chave": "parecer",
+      "rotulo": "Parecer / ressalvas do Jurídico",
+      "tipo": "textoLongo",
+      "ajuda": "Vira as ressalvas do ciclo. Vazio = vale o comentário da decisão."
+    }
   ],
   "fluxo": {
     "elementos": [
-      { "id": "inicio", "tipo": "inicio", "nome": "Início" },
       {
-        "id": "ficha-recebida", "tipo": "tarefaHumana", "nome": "Ficha recebida",
+        "id": "inicio",
+        "tipo": "inicio",
+        "nome": "Início"
+      },
+      {
+        "id": "ficha-recebida",
+        "tipo": "tarefaHumana",
+        "nome": "Ficha recebida",
         "instrucoes": "Confira a ficha e a aba Documentos. Se faltar algo, solicite: o fornecedor recebe o e-mail com o protocolo e a lista do que falta.",
         "prazoDiasUteis": 2,
-        "responsaveis": [{ "tipo": "area", "area": "SUY" }],
+        "responsaveis": [
+          {
+            "tipo": "area",
+            "area": "SUY"
+          }
+        ],
         "acoes": [
-          { "chave": "solicitarDocumentos", "rotulo": "Solicitar documentos", "resultado": "solicitar", "principal": true },
-          { "chave": "documentacaoCompleta", "rotulo": "Documentação já completa", "resultado": "completa" }
+          {
+            "chave": "solicitarDocumentos",
+            "rotulo": "Solicitar documentos",
+            "resultado": "solicitar",
+            "principal": true
+          },
+          {
+            "chave": "documentacaoCompleta",
+            "rotulo": "Documentação já completa",
+            "resultado": "completa"
+          }
+        ],
+        "notificacoes": [
+          {
+            "chave": "not-ficha-recebida",
+            "ativa": true,
+            "momento": "aoChegar",
+            "incluirResponsaveisEtapa": true,
+            "destinatarios": [],
+            "canais": [
+              "email"
+            ],
+            "assunto": "Fornecedores — nova ficha recebida: {registro}",
+            "mensagem": "Olá,\n\nA ficha de cadastro de {registro} foi recebida e aguarda a análise inicial de Suprimentos.\n\nPróximo passo: conferir os dados e solicitar os documentos ao fornecedor (ou indicar que a documentação já está completa).\nPrazo: {prazo}\n\nAcesse: {link}\n\nNão responda este e-mail; a ação é feita no portal."
+          }
         ]
       },
       {
-        "id": "documentos-pendentes", "tipo": "tarefaHumana", "nome": "Documentos pendentes",
+        "id": "documentos-pendentes",
+        "tipo": "tarefaHumana",
+        "nome": "Documentos pendentes",
         "instrucoes": "Aguardando o fornecedor. Os arquivos que chegam por e-mail aparecem em Documentos → Recebidos por e-mail — a conferir.",
         "prazoDiasUteis": 10,
-        "responsaveis": [{ "tipo": "area", "area": "SUY" }],
+        "responsaveis": [
+          {
+            "tipo": "area",
+            "area": "SUY"
+          }
+        ],
         "acoes": [
-          { "chave": "documentacaoCompleta", "rotulo": "Documentação completa", "resultado": "completa", "principal": true }
+          {
+            "chave": "documentacaoCompleta",
+            "rotulo": "Documentação completa",
+            "resultado": "completa",
+            "principal": true
+          }
+        ],
+        "notificacoes": [
+          {
+            "chave": "not-documentos-pendentes",
+            "ativa": true,
+            "momento": "aoChegar",
+            "incluirResponsaveisEtapa": true,
+            "destinatarios": [],
+            "canais": [
+              "email"
+            ],
+            "assunto": "Fornecedores — aguardando documentos: {registro}",
+            "mensagem": "Olá,\n\nOs documentos de {registro} foram solicitados ao fornecedor.\n\nConforme os arquivos chegarem (aba Documentos → \"Recebidos por e-mail — a conferir\"), confira cada um. Quando estiver tudo certo, use \"Documentação completa\".\nPrazo: {prazo}\n\nAcesse: {link}\n\nNão responda este e-mail; a ação é feita no portal."
+          }
         ]
       },
       {
-        "id": "analise-suprimentos", "tipo": "tarefaHumana", "nome": "Análise Suprimentos",
+        "id": "analise-suprimentos",
+        "tipo": "tarefaHumana",
+        "nome": "Análise Suprimentos",
         "instrucoes": "Marque o checklist do item 9 no card, defina o risco e a validade do cadastro e envie ao Jurídico. Suprimentos não reprova: encaminha ou devolve.",
         "prazoDiasUteis": 5,
-        "responsaveis": [{ "tipo": "area", "area": "SUY" }],
+        "responsaveis": [
+          {
+            "tipo": "area",
+            "area": "SUY"
+          }
+        ],
+        "notificacoes": [
+          {
+            "chave": "not-analise-suprimentos",
+            "ativa": true,
+            "momento": "aoChegar",
+            "incluirResponsaveisEtapa": true,
+            "destinatarios": [],
+            "canais": [
+              "email"
+            ],
+            "assunto": "Fornecedores — análise de Suprimentos: {registro}",
+            "mensagem": "Olá,\n\n{registro} está pronto para a análise de Suprimentos.\nÚltima ação: {acao} ({executor}).\nComentário: {comentario}\n\nRevise o checklist do item 9, defina a classificação de risco e a validade do cadastro e envie ao Jurídico.\nPrazo: {prazo}\n\nAcesse: {link}\n\nNão responda este e-mail; a ação é feita no portal."
+          }
+        ],
         "campos": [
-          { "chave": "classificacaoRisco", "obrigatorio": true, "validarNosResultados": ["enviado"] },
-          { "chave": "validadeCadastro", "obrigatorio": true, "validarNosResultados": ["enviado"] }
+          {
+            "chave": "classificacaoRisco",
+            "obrigatorio": true,
+            "validarNosResultados": [
+              "enviado"
+            ]
+          },
+          {
+            "chave": "validadeCadastro",
+            "obrigatorio": true,
+            "validarNosResultados": [
+              "enviado"
+            ]
+          }
         ],
         "acoes": [
-          { "chave": "enviarJuridico", "rotulo": "Enviar ao Jurídico", "resultado": "enviado", "principal": true },
-          { "chave": "voltarDocumentos", "rotulo": "Voltar a pedir documentos", "resultado": "devolvido", "exigeComentario": true, "dispensaCampos": true }
+          {
+            "chave": "enviarJuridico",
+            "rotulo": "Enviar ao Jurídico",
+            "resultado": "enviado",
+            "principal": true
+          },
+          {
+            "chave": "voltarDocumentos",
+            "rotulo": "Voltar a pedir documentos",
+            "resultado": "devolvido",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
         ]
       },
       {
-        "id": "analise-juridico", "tipo": "tarefaHumana", "nome": "Análise Jurídico",
+        "id": "analise-juridico",
+        "tipo": "tarefaHumana",
+        "nome": "Análise Jurídico",
         "instrucoes": "Decida a homologação. Aprovar com ressalvas e Não homologar exigem comentário (ou o parecer). Devolver volta para Análise Suprimentos.",
         "prazoDiasUteis": 5,
-        "responsaveis": [{ "tipo": "area", "area": "JUR" }],
+        "responsaveis": [
+          {
+            "tipo": "area",
+            "area": "JUR"
+          }
+        ],
+        "notificacoes": [
+          {
+            "chave": "not-analise-juridico",
+            "ativa": true,
+            "momento": "aoChegar",
+            "incluirResponsaveisEtapa": true,
+            "destinatarios": [],
+            "canais": [
+              "email"
+            ],
+            "assunto": "Fornecedores — parecer jurídico pendente: {registro}",
+            "mensagem": "Olá,\n\nSuprimentos concluiu a análise de {registro} e enviou para o parecer do Jurídico.\n\nDecisões possíveis no portal: Aprovar, Aprovar com ressalvas, Não homologar ou Devolver a Suprimentos.\nPrazo: {prazo}\n\nAcesse: {link}\n\nNão responda este e-mail; a ação é feita no portal."
+          }
+        ],
         "campos": [
-          { "chave": "classificacaoRisco", "somenteLeitura": true },
-          { "chave": "validadeCadastro", "somenteLeitura": true },
-          { "chave": "parecer" }
+          {
+            "chave": "classificacaoRisco",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "validadeCadastro",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "parecer"
+          }
         ],
         "acoes": [
-          { "chave": "aprovar", "rotulo": "Aprovar", "resultado": "aprovado", "principal": true },
-          { "chave": "aprovarRessalvas", "rotulo": "Aprovar com ressalvas", "resultado": "aprovadoRessalvas", "exigeComentario": true },
-          { "chave": "naoHomologar", "rotulo": "Não homologar", "resultado": "naoHomologado", "exigeComentario": true, "mensagemConfirmacao": "Não homologar este fornecedor? O cadastro passa a Reprovado." },
-          { "chave": "devolver", "rotulo": "Devolver a Suprimentos", "resultado": "devolvido", "exigeComentario": true, "dispensaCampos": true }
+          {
+            "chave": "aprovar",
+            "rotulo": "Aprovar",
+            "resultado": "aprovado",
+            "principal": true
+          },
+          {
+            "chave": "aprovarRessalvas",
+            "rotulo": "Aprovar com ressalvas",
+            "resultado": "aprovadoRessalvas",
+            "exigeComentario": true
+          },
+          {
+            "chave": "naoHomologar",
+            "rotulo": "Não homologar",
+            "resultado": "naoHomologado",
+            "exigeComentario": true,
+            "mensagemConfirmacao": "Não homologar este fornecedor? O cadastro passa a Reprovado."
+          },
+          {
+            "chave": "devolver",
+            "rotulo": "Devolver a Suprimentos",
+            "resultado": "devolvido",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
         ]
       },
-      { "id": "homologado", "tipo": "fim", "nome": "Homologado" },
-      { "id": "reprovado", "tipo": "fim", "nome": "Reprovado" }
+      {
+        "id": "evento-homologado",
+        "tipo": "eventoNotificacao",
+        "nome": "Resultado da homologação",
+        "notificacoes": [
+          {
+            "chave": "not-resultado-homologacao",
+            "ativa": true,
+            "momento": "aoChegar",
+            "incluirResponsaveisEtapa": false,
+            "destinatarios": [
+              {
+                "tipo": "area",
+                "area": "SUY",
+                "descricao": "Área: Supply"
+              }
+            ],
+            "canais": [
+              "email"
+            ],
+            "assunto": "Fornecedores — homologação concluída: {registro} ({acao})",
+            "mensagem": "Olá,\n\nO Jurídico registrou a decisão sobre {registro}: {acao}.\nParecer/comentário: {comentario}\nResponsável: {executor}\n\nO relatório de homologação final foi salvo na pasta do fornecedor.\n\nAcesse: {link}\n\nNão responda este e-mail; a ação é feita no portal."
+          }
+        ]
+      },
+      {
+        "id": "homologado",
+        "tipo": "fim",
+        "nome": "Homologado"
+      },
+      {
+        "id": "evento-reprovado",
+        "tipo": "eventoNotificacao",
+        "nome": "Resultado da homologação (não homologado)",
+        "notificacoes": [
+          {
+            "chave": "not-resultado-nao-homologado",
+            "ativa": true,
+            "momento": "aoChegar",
+            "incluirResponsaveisEtapa": false,
+            "destinatarios": [
+              {
+                "tipo": "area",
+                "area": "SUY",
+                "descricao": "Área: Supply"
+              }
+            ],
+            "canais": [
+              "email"
+            ],
+            "assunto": "Fornecedores — homologação concluída: {registro} ({acao})",
+            "mensagem": "Olá,\n\nO Jurídico registrou a decisão sobre {registro}: {acao}.\nParecer/comentário: {comentario}\nResponsável: {executor}\n\nO relatório de homologação final foi salvo na pasta do fornecedor.\n\nAcesse: {link}\n\nNão responda este e-mail; a ação é feita no portal."
+          }
+        ]
+      },
+      {
+        "id": "reprovado",
+        "tipo": "fim",
+        "nome": "Reprovado"
+      }
     ],
     "transicoes": [
-      { "de": "inicio", "para": "ficha-recebida" },
-      { "de": "ficha-recebida", "para": "documentos-pendentes", "quando": { "resultado": "solicitar" }, "rotulo": "Solicitar documentos" },
-      { "de": "ficha-recebida", "para": "analise-suprimentos", "quando": { "resultado": "completa" }, "rotulo": "Já completa" },
-      { "de": "documentos-pendentes", "para": "analise-suprimentos", "quando": { "resultado": "completa" }, "rotulo": "Completa" },
-      { "de": "analise-suprimentos", "para": "analise-juridico", "quando": { "resultado": "enviado" }, "rotulo": "Ao Jurídico" },
-      { "de": "analise-suprimentos", "para": "documentos-pendentes", "quando": { "resultado": "devolvido" }, "rotulo": "Pedir documentos", "excecao": true },
-      { "de": "analise-juridico", "para": "homologado", "quando": { "resultado": "aprovado" }, "rotulo": "Aprovado" },
-      { "de": "analise-juridico", "para": "homologado", "quando": { "resultado": "aprovadoRessalvas" }, "rotulo": "Com ressalvas" },
-      { "de": "analise-juridico", "para": "reprovado", "quando": { "resultado": "naoHomologado" }, "rotulo": "Não homologado", "excecao": true },
-      { "de": "analise-juridico", "para": "analise-suprimentos", "quando": { "resultado": "devolvido" }, "rotulo": "Devolver", "excecao": true }
+      {
+        "de": "inicio",
+        "para": "ficha-recebida"
+      },
+      {
+        "de": "ficha-recebida",
+        "para": "documentos-pendentes",
+        "quando": {
+          "resultado": "solicitar"
+        },
+        "rotulo": "Solicitar documentos"
+      },
+      {
+        "de": "ficha-recebida",
+        "para": "analise-suprimentos",
+        "quando": {
+          "resultado": "completa"
+        },
+        "rotulo": "Já completa"
+      },
+      {
+        "de": "documentos-pendentes",
+        "para": "analise-suprimentos",
+        "quando": {
+          "resultado": "completa"
+        },
+        "rotulo": "Completa"
+      },
+      {
+        "de": "analise-suprimentos",
+        "para": "analise-juridico",
+        "quando": {
+          "resultado": "enviado"
+        },
+        "rotulo": "Ao Jurídico"
+      },
+      {
+        "de": "analise-suprimentos",
+        "para": "documentos-pendentes",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Pedir documentos",
+        "excecao": true
+      },
+      {
+        "de": "analise-juridico",
+        "para": "evento-homologado",
+        "quando": {
+          "resultado": "aprovado"
+        },
+        "rotulo": "Aprovado"
+      },
+      {
+        "de": "analise-juridico",
+        "para": "evento-homologado",
+        "quando": {
+          "resultado": "aprovadoRessalvas"
+        },
+        "rotulo": "Com ressalvas"
+      },
+      {
+        "de": "analise-juridico",
+        "para": "evento-reprovado",
+        "quando": {
+          "resultado": "naoHomologado"
+        },
+        "rotulo": "Não homologado",
+        "excecao": true
+      },
+      {
+        "de": "analise-juridico",
+        "para": "analise-suprimentos",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Devolver",
+        "excecao": true
+      },
+      {
+        "de": "evento-homologado",
+        "para": "homologado"
+      },
+      {
+        "de": "evento-reprovado",
+        "para": "reprovado",
+        "excecao": true
+      }
     ]
   }
 }

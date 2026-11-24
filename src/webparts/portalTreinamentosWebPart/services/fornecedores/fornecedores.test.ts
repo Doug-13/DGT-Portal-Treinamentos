@@ -31,6 +31,7 @@ import {
 } from './homologacao';
 
 import {
+  chaveDocumento,
   chaveNorma,
   cpfValido,
   mascararCpf,
@@ -338,9 +339,23 @@ const cpfSintetico = (base9: string): string => {
   return base9 + d1 + dv(base9 + d1, 11);
 };
 
-const docColaborador = (tipoDoc: 'ASO' | 'NR aplicável', norma: string, vencimento: string, extra: Partial<IDocumentoColaborador> = {}): IDocumentoColaborador => ({
+// Tipos de colaborador cadastrados (fictícios).
+const tipoColab = (id: string, nome: string, obrigatorio: boolean): ITipoDocumentoFornecedor => ({
+  id, nome, aplicaA: 'Colaborador', descricao: '', categorias: [], obrigatorio, exigeValidade: true,
+  visibilidade: 'Interno', ordem: 1, ativo: true
+});
+const TIPOS_COLAB = [
+  tipoColab('t-aso', 'ASO', true),
+  tipoColab('t-int', 'Integração (NR-01)', true),
+  tipoColab('t-nr', 'NR aplicável', false),
+  tipoColab('t-epi', 'Ficha de EPI', false)
+];
+
+// Sem tipoId = registro antigo (achado pelo nome).
+const docColaborador = (tipoDoc: string, norma: string, vencimento: string, extra: Partial<IDocumentoColaborador> = {}): IDocumentoColaborador => ({
   id: `${tipoDoc}-${norma}-${vencimento}`,
   colaboradorId: 'col1',
+  tipoId: '',
   tipo: tipoDoc,
   norma,
   emissao: '2026-01-01',
@@ -370,22 +385,44 @@ describe('colaboradores', () => {
     expect(chaveNorma('NR10')).toBe('NR-10');
   });
 
-  it('aponta ASO faltando ou vencido e NR vencida', () => {
-    expect(situacaoColaborador([], hoje).pendente).toBe(true);
-    expect(situacaoColaborador([], hoje).aso.estado).toBe('Faltando');
+  it('pendência: obrigatório faltando ou vencido; opcional só quando vence', () => {
+    const vazio = situacaoColaborador([], TIPOS_COLAB, hoje);
+    expect(vazio.pendente).toBe(true);
+    expect(vazio.faltandoObrigatorios).toEqual(['ASO', 'Integração (NR-01)']);
 
-    const emDia = situacaoColaborador([docColaborador('ASO', '', '2027-06-01'), docColaborador('NR aplicável', 'NR-35', '2027-06-01')], hoje);
+    const emDia = situacaoColaborador([
+      docColaborador('ASO', '', '2027-06-01'),
+      docColaborador('', '', '2027-06-01', { tipoId: 't-int' }),
+      docColaborador('NR aplicável', 'NR-35', '2027-06-01')
+    ], TIPOS_COLAB, hoje);
     expect(emDia.pendente).toBe(false);
-    expect(emDia.nrs.map(n => n.rotulo)).toEqual(['NR-35']);
+    expect(emDia.itens.map(i => i.rotulo)).toEqual(['ASO', 'Integração (NR-01)', 'NR-35']);
 
-    const nrVencida = situacaoColaborador([docColaborador('ASO', '', '2027-06-01'), docColaborador('NR aplicável', 'NR-10', '2026-10-01')], hoje);
-    expect(nrVencida.pendente).toBe(true);
+    // Obrigatório vencido.
+    expect(situacaoColaborador([
+      docColaborador('ASO', '', '2026-10-01'), docColaborador('', '', '2027-06-01', { tipoId: 't-int' })
+    ], TIPOS_COLAB, hoje).pendente).toBe(true);
+
+    // Opcional vencido gera pendência; opcional nunca registrado, não.
+    const base = [docColaborador('ASO', '', '2027-06-01'), docColaborador('', '', '2027-06-01', { tipoId: 't-int' })];
+    expect(situacaoColaborador(base.concat([docColaborador('NR aplicável', 'NR-10', '2026-10-01')]), TIPOS_COLAB, hoje).pendente).toBe(true);
+    expect(situacaoColaborador(base.concat([docColaborador('', '', '2026-10-01', { tipoId: 't-epi' })]), TIPOS_COLAB, hoje).pendente).toBe(true);
+    expect(situacaoColaborador(base, TIPOS_COLAB, hoje).pendente).toBe(false);
+  });
+
+  it('substitui por tipo (e por norma no NR aplicável); registro antigo vale pelo nome', () => {
+    // Antigo (sem tipoId, nome "ASO") e novo (tipoId t-aso) têm a mesma chave.
+    expect(chaveDocumento(docColaborador('ASO', '', ''), TIPOS_COLAB)).toBe(chaveDocumento(docColaborador('', '', '', { tipoId: 't-aso' }), TIPOS_COLAB));
+    expect(chaveDocumento(docColaborador('NR aplicável', 'NR 10', ''), TIPOS_COLAB)).toBe('t-nr|NR-10');
+    expect(chaveDocumento(docColaborador('NR aplicável', 'NR-35', ''), TIPOS_COLAB)).not.toBe('t-nr|NR-10');
 
     // Versão substituída não conta; vale a vigente mais recente.
     const renovado = situacaoColaborador([
       docColaborador('ASO', '', '2026-10-01', { situacao: 'Substituído' }),
-      docColaborador('ASO', '', '2027-10-01', { emissao: '2026-10-02' })
-    ], hoje);
-    expect(renovado.aso.estado).toBe('OK');
+      docColaborador('', '', '2027-10-01', { tipoId: 't-aso', emissao: '2026-10-02' }),
+      docColaborador('Integração (NR-01)', '', '2027-10-01')
+    ], TIPOS_COLAB, hoje);
+    expect(renovado.itens.filter(i => i.rotulo === 'ASO')[0].estado).toBe('OK');
+    expect(renovado.pendente).toBe(false);
   });
 });

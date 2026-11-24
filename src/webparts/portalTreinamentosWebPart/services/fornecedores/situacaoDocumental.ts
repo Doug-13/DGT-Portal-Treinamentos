@@ -74,11 +74,14 @@ export const estadoPeloVencimento = (
   return { estado: dias <= DIAS_AVISO ? 'A vencer' : 'OK', dias };
 };
 
+// Só tipos da EMPRESA: tipo de colaborador nunca entra na situação
+// documental do fornecedor (nem no Conferir, e-mail, checklist, relatório).
 export const tipoSeAplica = (
   tipo: ITipoDocumentoFornecedor,
   categoria: string
 ): boolean =>
-  tipo.ativo && (tipo.categorias.length === 0 || tipo.categorias.indexOf(categoria) >= 0);
+  tipo.ativo && tipo.aplicaA !== 'Colaborador' &&
+  (tipo.categorias.length === 0 || tipo.categorias.indexOf(categoria) >= 0);
 
 // Documento vigente mais recente de cada tipo (pela emissão; empate
 // pela data de registro).
