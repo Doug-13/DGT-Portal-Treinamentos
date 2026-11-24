@@ -51,6 +51,13 @@ import {
 import SeletorServidor from './SeletorServidor';
 
 import {
+  MapaPrecos,
+  formatarMoeda,
+  totalizarItens,
+  valorDoItem
+} from '../../services/bom/valoresBom';
+
+import {
   HistoricoAlteracoes,
   IDadosAlteracaoItem,
   ModalAlterarItem,
@@ -85,6 +92,9 @@ export interface ISelecaoKitEtapaProps {
   // Quem está usando: vai para o histórico das trocas de itens.
   usuarioNome?: string;
   usuarioId?: string;
+  // Valores unitários do CIGAM por código (aba Kits). Sem o mapa, a
+  // tela não mostra as colunas de valor.
+  precos?: MapaPrecos;
 }
 
 const VERDE = '#107C10';
@@ -295,6 +305,15 @@ const ListaAlertas: React.FC<{ alertas: IAlertaBom[]; mostrarOrigem?: boolean }>
 // Tabela de itens. Na visão do ponto mostra também os itens
 // removidos (riscados, logo acima do que entrou no lugar) e o botão
 // de trocar/cancelar cada item.
+// Botão quadrado das ações por linha (trocar, cancelar, desfazer).
+// Declarado antes de TabelaItens por causa da regra no-use-before-define.
+const botaoLinha = (desabilitado: boolean): React.CSSProperties => ({
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: '30px', height: '30px', borderRadius: '7px',
+  border: `1px solid ${COR.borda}`, background: '#FFFFFF', color: COR.indigo,
+  cursor: desabilitado ? 'not-allowed' : 'pointer', opacity: desabilitado ? 0.5 : 1
+});
+
 const TabelaItens: React.FC<{
   itens: IItemBom[];
   mostrarOrigem: boolean;
@@ -302,7 +321,13 @@ const TabelaItens: React.FC<{
   onTrocar?: (item: IItemBom) => void;
   onDesfazer?: (registro: IAlteracaoAplicada) => void;
   bloqueado?: boolean;
-}> = ({ itens, mostrarOrigem, alteracoes, onTrocar, onDesfazer, bloqueado }) => {
+  precos?: MapaPrecos;
+}> = ({ itens, mostrarOrigem, alteracoes, onTrocar, onDesfazer, bloqueado, precos }) => {
+
+  const comValores = !!precos;
+  const numero: React.CSSProperties = { padding: '8px 12px', verticalAlign: 'top', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' };
+  const semValorCel = (texto: string): React.ReactElement => <span style={{ color: AMBAR, fontSize: '11.5px', fontWeight: 700 }}>{texto}</span>;
+  const totais = totalizarItens(itens, precos);
 
   const aplicadas = (alteracoes || []).filter(a => a.situacao === 'aplicada');
   const comAcoes = !!onTrocar || !!onDesfazer;
@@ -335,6 +360,15 @@ const TabelaItens: React.FC<{
       <td style={{ ...celula, textAlign: 'right', fontWeight: 700, color: COR.texto2, textDecoration: 'line-through' }}>
         {a.quantidadeRemovida.toLocaleString('pt-BR')}
       </td>
+      {comValores && (() => {
+        const v = valorDoItem(precos, a.alteracao.removido.codigo);
+        return (
+          <>
+            <td style={{ ...numero, color: COR.texto2, textDecoration: 'line-through' }}>{v !== undefined ? formatarMoeda(v) : '—'}</td>
+            <td style={{ ...numero, color: COR.texto2, textDecoration: 'line-through' }} title="Fora do total: item removido">{v !== undefined ? formatarMoeda(v * a.quantidadeRemovida) : '—'}</td>
+          </>
+        );
+      })()}
       {comAcoes && (
         <td style={{ ...celula, textAlign: 'right' }}>
           {onDesfazer && (
@@ -374,6 +408,15 @@ const TabelaItens: React.FC<{
         <td style={{ ...celula, textAlign: 'right', fontWeight: 800, color: COR.azul }}>
           {i.quantidade.toLocaleString('pt-BR')}
         </td>
+        {comValores && (() => {
+          const v = i.codigo && !i.pendente ? valorDoItem(precos, i.codigo) : undefined;
+          return (
+            <>
+              <td style={{ ...numero, color: COR.azul }}>{v !== undefined ? formatarMoeda(v) : semValorCel(i.codigo && !i.pendente ? 'sem valor' : '—')}</td>
+              <td style={{ ...numero, color: COR.azul, fontWeight: 700 }}>{v !== undefined ? formatarMoeda(v * i.quantidade) : '—'}</td>
+            </>
+          );
+        })()}
         {comAcoes && (
           <td style={{ ...celula, textAlign: 'right', whiteSpace: 'nowrap' }}>
             {i.substituto
@@ -403,21 +446,29 @@ const TabelaItens: React.FC<{
             <th style={{ padding: '9px 12px' }}>Código</th>
             <th style={{ padding: '9px 12px' }}>Item</th>
             <th style={{ padding: '9px 12px', textAlign: 'right' }}>Qtd.</th>
+            {comValores && <th style={{ padding: '9px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>Valor unit.</th>}
+            {comValores && <th style={{ padding: '9px 12px', textAlign: 'right' }}>Total</th>}
             {comAcoes && <th style={{ padding: '9px 12px', width: '1%' }}><span style={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Ações</span></th>}
           </tr>
         </thead>
         <tbody>{linhas}</tbody>
+        {comValores && itens.length > 0 && (
+          <tfoot>
+            <tr style={{ borderTop: `2px solid ${COR.azul}`, background: COR.fundo }}>
+              <td colSpan={4} style={{ padding: '9px 12px', fontSize: '12.5px', color: COR.texto2 }}>
+                <strong style={{ color: COR.azul }}>Total</strong>
+                {totais.semValor > 0 && ` · ${totais.semValor} item(ns) sem valor do CIGAM não somados`}
+                {totais.semCodigo > 0 && ` · ${totais.semCodigo} sem código`}
+              </td>
+              <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 800, color: COR.azul, whiteSpace: 'nowrap' }}>{formatarMoeda(totais.total)}</td>
+              {comAcoes && <td />}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );
 };
-
-const botaoLinha = (desabilitado: boolean): React.CSSProperties => ({
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  width: '30px', height: '30px', borderRadius: '7px',
-  border: `1px solid ${COR.borda}`, background: '#FFFFFF', color: COR.indigo,
-  cursor: desabilitado ? 'not-allowed' : 'pointer', opacity: desabilitado ? 0.5 : 1
-});
 
 const botaoIcone = (desabilitado: boolean, perigo?: boolean): React.CSSProperties => ({
   ...botao('secundario', desabilitado),
@@ -443,7 +494,8 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   modoSimulacao,
   onAlterar,
   usuarioNome,
-  usuarioId
+  usuarioId,
+  precos
 }) => {
 
   const [selecao, setSelecao] = React.useState<ISelecaoKit>(() => normalizarSelecao(selecaoInicial || selecaoVazia()));
@@ -469,6 +521,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   }, [selecaoInicial]);
 
   const resultado = React.useMemo(() => montarBom(selecao), [selecao]);
+  const totalProjeto = React.useMemo(() => totalizarItens(resultado.itens, precos), [resultado, precos]);
 
   // Campo "Componente" do fluxo: repassa cada alteração (não a 1ª carga).
   const primeiraCarga = React.useRef(true);
@@ -1060,6 +1113,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
           onTrocar={somenteLeitura ? undefined : setTrocando}
           onDesfazer={somenteLeitura ? undefined : desfazerAlteracao}
           bloqueado={bloqueado}
+          precos={precos}
         />
         {!somenteLeitura && (
           <div style={{ ...dica, display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -1138,7 +1192,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
           </div>
           {resultado.alertas.length > 0 ? <ListaAlertas alertas={resultado.alertas} mostrarOrigem /> : <div style={{ height: '12px' }} />}
           {resultado.itens.length > 0
-            ? <TabelaItens itens={resultado.itens} mostrarOrigem />
+            ? <TabelaItens itens={resultado.itens} mostrarOrigem precos={precos} />
             : <div style={{ fontSize: '13px', color: COR.texto2 }}>Nenhum item ainda.</div>}
         </>
       )}
@@ -1157,6 +1211,22 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
         </div>
       )}
 
+      {precos && (
+        <div style={{ ...painel, marginBottom: '14px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', borderLeft: `4px solid ${VERDE}` }}>
+          <div>
+            <div style={{ fontSize: '11.5px', fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: COR.texto2 }}>Total do projeto (valores do CIGAM)</div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: COR.azul, lineHeight: 1.15 }}>{formatarMoeda(totalProjeto.total)}</div>
+          </div>
+          <div style={{ fontSize: '12.5px', color: COR.texto2, lineHeight: 1.5 }}>
+            Soma de valor unitário × quantidade de todos os pontos ({resultado.totais.pontos} ponto(s), {resultado.itens.length} itens).
+            <br />
+            <strong style={{ color: COR.azul }}>{totalProjeto.comValor}</strong> com valor
+            {totalProjeto.semValor > 0 && <span style={{ color: AMBAR, fontWeight: 700 }}> · {totalProjeto.semValor} sem valor do CIGAM (não somados)</span>}
+            {totalProjeto.semCodigo > 0 && <span> · {totalProjeto.semCodigo} sem código</span>}
+            {totalProjeto.comValor === 0 && resultado.itens.length > 0 && <span> · atualize os valores na aba Kits</span>}
+          </div>
+        </div>
+      )}
       {blocoProjeto}
       <SeletorServidor
         selecao={selecao}
@@ -1195,6 +1265,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
           <span style={{ fontSize: '12.5px', color: COR.texto2 }}>
             <strong style={{ color: COR.azul }}>{resultado.totais.pontos}</strong> ponto(s) ·{' '}
             <strong style={{ color: COR.azul }}>{resultado.itens.length}</strong> itens
+            {precos && <> · <strong style={{ color: COR.azul }}>{formatarMoeda(totalProjeto.total)}</strong></>}
             {erros.length > 0 && <span style={{ color: VERMELHO, fontWeight: 700 }}> · {erros.length} erro(s) para corrigir</span>}
             {alterado && <span style={{ color: AMBAR, fontWeight: 700 }}> · alterações não salvas</span>}
           </span>

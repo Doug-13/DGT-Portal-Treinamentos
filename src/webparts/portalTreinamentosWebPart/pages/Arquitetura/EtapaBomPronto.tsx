@@ -26,6 +26,8 @@ import {
 
 import EtapaHHBom from './EtapaHHBom';
 
+import { valorDoItem } from '../../services/bom/valoresBom';
+
 import {
   totalIntegracao,
   totalManutencao
@@ -249,7 +251,7 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
     .map(item => {
       const valor = congelado
         ? (congelado.precos[item.codigo] !== undefined ? congelado.precos[item.codigo] : undefined)
-        : (item.codigo && precos[item.codigo] !== undefined ? precos[item.codigo] : undefined);
+        : valorDoItem(precos, item.codigo);
       return { ...item, valorUnitario: valor, total: valor !== undefined ? valor * item.quantidade : undefined };
     })
     .sort((a, b) =>

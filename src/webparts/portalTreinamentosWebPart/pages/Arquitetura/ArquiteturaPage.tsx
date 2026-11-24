@@ -57,6 +57,10 @@ import {
 import EtapaBomPronto from './EtapaBomPronto';
 
 import {
+  mapaPrecosDoCatalogo
+} from '../../services/bom/valoresBom';
+
+import {
   COR,
   DECISAO,
   ETAPAS,
@@ -562,15 +566,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
   const [precos, setPrecos] = React.useState<Record<string, number>>({});
   const [dataEnvio, setDataEnvio] = React.useState('');
 
-  const lerPrecos = (catalogo: ICatalogoKitsCarregado): Record<string, number> => {
-    const mapa: Record<string, number> = {};
-    catalogo.itens.forEach(item => {
-      if (item.codigo && typeof item.valor === 'number' && item.valor > 0) {
-        mapa[item.codigo] = item.valor;
-      }
-    });
-    return mapa;
-  };
+  const lerPrecos = (catalogo: ICatalogoKitsCarregado): Record<string, number> => mapaPrecosDoCatalogo(catalogo.itens);
 
   React.useEffect(() => {
     garantirCatalogoKitsAplicado(dataverseService)
@@ -766,6 +762,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                   somenteLeitura={etapa === 'Enviado para aprovação'}
                   usuarioNome={contexto && contexto.nome ? contexto.nome : ''}
                   usuarioId={contexto && contexto.usuarioId ? contexto.usuarioId : undefined}
+                  precos={precos}
                   onSalvar={async (selecao, concluir) => {
                     await executar(async () => {
                       await servico.salvarSelecaoKit(bom.id, selecao, contexto && contexto.nome ? contexto.nome : '');
