@@ -468,6 +468,7 @@ const IndicadoresPage:
                 definicao={validacao.definicao}
                 dataverseService={props.dataverseService}
                 areasPermitidas={veTodasAsAreas ? undefined : areasDoUsuario}
+                modulosAdministrados={props.contexto ? props.contexto.modulosAdministrados : undefined}
                 areas={areas}
                 onSalvarDefinicao={dashboardService && (podeGerenciar || (!!dashboardAtivo.pessoal && dashboardAtivo.donoId === meuId)) ? salvarDefinicao : undefined}
               />
@@ -597,6 +598,7 @@ const IndicadoresPage:
             acesso={acessoCriacao}
             areas={areas}
             areasPermitidas={veTodasAsAreas ? undefined : areasDoUsuario}
+            modulosAdministrados={props.contexto ? props.contexto.modulosAdministrados : undefined}
             existente={criandoComIa === 'ajustar' && dashboardAtivo && dashboardAtivo.pessoal ? dashboardAtivo : undefined}
             onFechar={() => setCriandoComIa('')}
             onSalvo={id => {

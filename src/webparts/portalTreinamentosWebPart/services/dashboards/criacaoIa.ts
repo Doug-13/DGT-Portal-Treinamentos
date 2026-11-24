@@ -66,6 +66,21 @@ export const fontesPermitidas = (acesso: IAcessoCriacao, catalogo: IDescricaoFon
   });
 };
 
+// A IA não montou painel porque nada do pedido existe nas fontes do
+// usuário: resposta legítima, mostrada como explicação (não como erro).
+export class SemPainelPossivel extends Error {
+  public readonly resumo: string;
+  public readonly semDados: string[];
+
+  constructor(resumo: string, semDados: string[]) {
+    super(resumo || 'Não há dados no portal para montar esse painel.');
+    this.name = 'SemPainelPossivel';
+    this.resumo = resumo;
+    this.semDados = semDados;
+    Object.setPrototypeOf(this, SemPainelPossivel.prototype);
+  }
+}
+
 export interface IResultadoCriacao {
   definicao: IDefinicaoDashboard;
   texto: string;
@@ -138,6 +153,12 @@ export const gerarDashboard = async (dataverse: DataverseService, entrada: IPedi
 
   for (;;) {
     const texto = String(resposta.definicao || '');
+    if (!texto.trim()) {
+      throw new SemPainelPossivel(
+        String(resposta.resumo || ''),
+        (resposta.semDados || []).map(item => String(item)).filter(Boolean)
+      );
+    }
     // Mesmo catálogo FILTRADO: fonte fora das permissões é erro.
     const validacao = validarDashboard(texto, entrada.catalogo);
     if (validacao.definicao) {

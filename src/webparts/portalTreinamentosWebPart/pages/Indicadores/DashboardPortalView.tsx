@@ -43,6 +43,11 @@ import {
   GraficoRosca
 } from './graficosDashboard';
 
+import {
+  areasDaFonte,
+  veTodasAsAreasNaFonte
+} from '../../services/dashboards/acessoFontes';
+
 import EditorVisual from './EditorVisual';
 
 import AssistenteDashboard from './AssistenteDashboard';
@@ -68,6 +73,9 @@ export interface IDashboardPortalViewProps {
   dataverseService: DataverseService;
   // Áreas que a pessoa pode ver (undefined = todas).
   areasPermitidas?: string[];
+  // Módulos que a pessoa administra: nas fontes desses módulos ela vê
+  // todas as áreas (ex.: Administrador do Planejamento orçamentário).
+  modulosAdministrados?: string[];
   // Todas as áreas (id, nome) para o seletor.
   areas: Array<{ id: string; nome: string }>;
 }
@@ -388,17 +396,29 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
   const [abaAtiva, setAbaAtiva] = React.useState<string>('0');
   React.useEffect(() => { setAbaAtiva('0'); }, [props.definicao]);
 
-  const areasSelecionaveis =
-    props.areas.filter(item => !props.areasPermitidas || props.areasPermitidas.indexOf(item.id) >= 0);
+  // Vê todas as áreas em alguma fonte do painel? Então o seletor de Área
+  // oferece todas (cada fonte continua respeitando a própria regra).
+  const veTodasEmAlgumaFonte = fontesUsadas(props.definicao)
+    .some(fonte => veTodasAsAreasNaFonte(fonte, props.areasPermitidas, props.modulosAdministrados));
 
-  const areaIds = area ? [area] : props.areasPermitidas;
+  const areasSelecionaveis =
+    props.areas.filter(item => veTodasEmAlgumaFonte || !props.areasPermitidas || props.areasPermitidas.indexOf(item.id) >= 0);
 
   React.useEffect(() => {
     let ativo = true;
     setCarregando(true);
     setErro('');
     const fontes = fontesUsadas(props.definicao);
-    Promise.all(fontes.map(fonte => carregarFonte(fonte, { dataverse: props.dataverseService, ano, areaIds }).then(linhas => ({ fonte, linhas }))))
+    // Um contexto por conjunto de áreas: fontes com a mesma regra
+    // compartilham as consultas em comum (áreas, vínculos, atribuições).
+    const contextos: { [chave: string]: { dataverse: DataverseService; ano: number; areaIds?: string[] } } = {};
+    const contextoDa = (fonte: string): { dataverse: DataverseService; ano: number; areaIds?: string[] } => {
+      const areaIds = areasDaFonte(fonte, area, props.areasPermitidas, props.modulosAdministrados);
+      const chave = areaIds ? areaIds.join(',') || '(nenhuma)' : '(todas)';
+      contextos[chave] = contextos[chave] || { dataverse: props.dataverseService, ano, areaIds };
+      return contextos[chave];
+    };
+    Promise.all(fontes.map(fonte => carregarFonte(fonte, contextoDa(fonte)).then(linhas => ({ fonte, linhas }))))
       .then(resultados => {
         if (!ativo) {
           return;
@@ -411,9 +431,9 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
       .then(() => { if (ativo) { setCarregando(false); } })
       .catch(() => undefined);
     return () => { ativo = false; };
-  // areaIds é derivado de area e areasPermitidas.
+  // As áreas de cada fonte derivam de area, areasPermitidas e modulosAdministrados.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.definicao, props.dataverseService, ano, area, (props.areasPermitidas || []).join(',')]);
+  }, [props.definicao, props.dataverseService, ano, area, (props.areasPermitidas || []).join(','), (props.modulosAdministrados || []).join(',')]);
 
   const filtrosDef = definicao.filtros || {};
   const camposFiltro = (filtrosDef.campos || []).slice(0, 4);
@@ -556,7 +576,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
           <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             Área
             <select value={area} onChange={e => setArea(e.target.value)} style={{ padding: '6px 8px', borderRadius: '8px', border: 0, fontSize: '13px', maxWidth: '240px' }}>
-              <option value="">{props.areasPermitidas ? 'Todas as minhas áreas' : 'Todas as áreas'}</option>
+              <option value="">{props.areasPermitidas && !veTodasEmAlgumaFonte ? 'Todas as minhas áreas' : 'Todas as áreas'}</option>
               {areasSelecionaveis.map(item => <option key={item.id} value={item.id}>{item.nome}</option>)}
             </select>
           </label>

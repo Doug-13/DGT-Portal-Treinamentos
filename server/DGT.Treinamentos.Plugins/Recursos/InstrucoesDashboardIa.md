@@ -35,7 +35,13 @@ Quando vierem ERROS DO VALIDADOR, corrija exatamente esses erros e devolva o pai
 
 ## Resposta
 
-Responda SOMENTE com um objeto JSON (sem texto antes ou depois, sem markdown):
+Responda SOMENTE com um objeto JSON (sem texto antes ou depois, sem markdown), inclusive quando não for
+possível montar painel. Se NENHUMA parte do pedido puder ser atendida com o catálogo, responda com
+"dashboard": null, explique em "resumo" (2 a 3 frases, dizendo que esses dados não existem no portal e o que
+o painel conseguiria mostrar com os dados disponíveis) e liste em "semDados" o que falta. Se só parte do pedido
+puder ser atendida, monte o painel com essa parte e liste o resto em "semDados".
+
+Formato:
 
 {"resumo": "2 a 4 frases sobre o painel criado ou o que mudou", "semDados": ["..."], "dashboard": { ...definição... }}
 

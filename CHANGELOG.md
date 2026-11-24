@@ -6,6 +6,9 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Novo: dashboards criados pela IA respeitam o acesso de quem cria — a IA só monta indicadores com as fontes de dados que o usuário pode ver.
+- Melhoria: ajustes na criação de dashboards pela IA (instruções do assistente, tela de criação e exibição na página Indicadores).
+
 ## [1.4.30] - 2026-11-23
 
 - Novo: Fornecedores — homologação no motor de fluxos (processo SUP-HOM, Processos → Fluxos): Ficha recebida → Documentos pendentes → Análise Suprimentos → Análise Jurídico → Homologado/Reprovado. Responsáveis por área (Suprimentos e Jurídico); quem decide é o Jurídico (Aprovar, Aprovar com ressalvas, Não homologar → Reprovado, Devolver a Suprimentos). Pacote para importar: docs/exemplos/pacote-homologacao-fornecedor.json. Piloto: quem pode agir é conferido no navegador.
