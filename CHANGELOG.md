@@ -8,6 +8,12 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+## [1.4.32] - 2026-11-25
+
+- Melhoria: Arquitetura de Soluções — Cálculo de HH: ao responder "Sim", o valor HH de desenvolvimento vem preenchido com R$ 350,00 e o valor do ponto da manutenção com R$ 96,92 (editáveis).
+- Melhoria: Arquitetura de Soluções — Cálculo de HH do B.O.M. e componente de HH dos fluxos não mostram mais HH por ponto, pontos e HH dos pontos (derivam de salários). Os cálculos continuam; "Cobre o HH?" mostra só Sim/Não, sem a diferença em R$.
+- Correção: Arquitetura de Soluções — B.O.M. pronto: o botão "Baixar PDF" gera e baixa o arquivo .pdf na hora (jsPDF), com capa, indicadores, itens, alterações nos kits, integração/manutenção, totais do projeto e numeração de páginas. Antes abria uma janela de impressão, bloqueada como pop-up e sem download.
+- Novo: Arquitetura de Soluções — o Cálculo de HH usa o valor total dos itens da Seleção de kit (preços do CIGAM) no lugar do custo digitado: calcula o valor pelo % fixo de Implantação (7%) e Supply (0,5%), mostra se esse valor cobre o HH dos pontos e soma os "Totais do projeto" (itens + Implantação + Supply + integração + manutenção). Os totais aparecem no B.O.M. pronto (indicador, tela e PDF) e são congelados no envio para aprovação.
 - Novo: Arquitetura de Soluções — Cálculo de HH: perguntas "Tem integração?" (nº de horas × valor HH de desenvolvimento + taxa BDI) e "Tem contrato de manutenção?" (nº de pontos × valor do ponto). Com "Sim", abrem as colunas para preencher e o total. As respostas ficam gravadas no B.O.M. (quem salvou e quando), são obrigatórias para avançar e aparecem no B.O.M. pronto e no PDF.
 - Melhoria: Arquitetura de Soluções — na tabela do Cálculo de HH do B.O.M., as áreas passam a ser Implantação (% fixo 7%) e Supply (% fixo 0,5%). O menu Cálculo de HH não muda.
 - Novo: Arquitetura de Soluções — Seleção de kit: cada item do kit gerado pode ser trocado por outro (do catálogo ou informado à mão) ou cancelado, com motivo obrigatório. O item removido aparece riscado e o novo destacado, com quem fez e quando; quantidade igual à do item removido (acompanha o kit) ou outra por ponto.

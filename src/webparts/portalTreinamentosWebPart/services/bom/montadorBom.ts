@@ -36,6 +36,10 @@ import {
 } from '../hh/complementosHH';
 
 import {
+  IResumoValoresBom
+} from '../hh/valoresProjeto';
+
+import {
   FINALIDADES,
   IAvaliacaoServidor,
   IContagemCameras,
@@ -241,6 +245,9 @@ export interface IBomEnviado {
   valorTotal: number;
   // Itens trocados/cancelados nos kits, como estavam no envio.
   alteracoes?: IRegistroAlteracaoBom[];
+  // Totais do projeto (itens + Implantação + Supply + integração +
+  // manutenção), como estavam no envio.
+  resumoValores?: IResumoValoresBom;
 }
 
 export interface IItemBom {

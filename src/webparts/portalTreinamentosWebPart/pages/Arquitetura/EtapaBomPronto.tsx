@@ -20,7 +20,6 @@ import {
 
 import {
   HistoricoAlteracoes,
-  SITUACAO,
   quemQuando
 } from './AlteracoesItensKit';
 
@@ -29,11 +28,17 @@ import EtapaHHBom from './EtapaHHBom';
 import { valorDoItem } from '../../services/bom/valoresBom';
 
 import {
-  totalIntegracao,
-  totalManutencao
-} from '../../services/hh/complementosHH';
+  IResumoValoresBom,
+  resumoValoresBom
+} from '../../services/hh/valoresProjeto';
 
-import logoDgt from '../../assets/logo-dgt.png';
+import {
+  ILinhaBom,
+  baixarBlob,
+  gerarPdfBom,
+  nomeArquivoPdfBom,
+  solucoesDoPonto
+} from './pdfBom';
 
 import {
   COR,
@@ -43,7 +48,6 @@ import {
   botao,
   cartao,
   formatarData,
-  formatarDataHora,
   formatarNumero
 } from './arquiteturaComum';
 
@@ -76,158 +80,10 @@ export interface IEtapaBomProntoProps {
   aoVoltarHH: () => void;
 }
 
-interface ILinhaBom extends IItemBom {
-  valorUnitario?: number;
-  total?: number;
-}
-
 const moeda = (v: number): string =>
   `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const ORDEM_CATEGORIA = ['Estrutura', 'Câmera', 'Equipamento', 'Infraestrutura', 'Identificação', 'Licença', 'Serviço'];
-
-const escapar = (texto: string): string =>
-  String(texto === undefined || texto === null ? '' : texto)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-
-const doisDigitos = (n: number): string => (n < 10 ? `0${n}` : String(n));
-
-const hojeIso = (): string => {
-  const d = new Date();
-  return `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}-${doisDigitos(d.getDate())}`;
-};
-
-const solucoesDoPonto = (ponto: ISelecaoKit['pontos'][number]): string =>
-  [
-    ponto.safeCity ? 'Safe City' : '',
-    ponto.smartDetect ? 'Smart Detect' : '',
-    ponto.faceDetect ? 'Face Detect' : '',
-    ponto.safeWay ? 'Safe Way' : ''
-  ].filter(Boolean).join(', ') || '—';
-
-// ------------------------------------------------------------
-// Documento para impressão / PDF (identidade visual DGT)
-// ------------------------------------------------------------
-
-const montarDocumento = (dados: {
-  bom: IBomRegistro;
-  demanda: IDemandaBom;
-  analise?: IAnaliseGoNoGo;
-  selecao?: ISelecaoKit;
-  linhas: ILinhaBom[];
-  valorTotal: number;
-  semPreco: number;
-  alertas: string[];
-  enviado: boolean;
-  dataEnvio?: string;
-  historico: IRegistroAlteracaoBom[];
-}): string => {
-
-  const { bom, demanda, analise, selecao, linhas, valorTotal, semPreco, alertas, enviado, dataEnvio, historico } = dados;
-  const quem = (por: string, em: string): string => `${escapar(por || 'usuário não identificado')} · ${escapar(formatarDataHora(em))}`;
-  const conteudoAlteracao = (r: IRegistroAlteracaoBom): string => {
-    const a = r.alteracao;
-    return `<span class="sai">− ${escapar(a.removido.descricao)} (${escapar(a.removido.codigo || 'sem código')}${r.quantidadeRemovida ? ` · ${r.quantidadeRemovida} un.` : ''})</span>` +
-      (a.acao === 'substituir' && a.adicionado ? `<br><span class="entra">+ ${escapar(a.adicionado.descricao)} (${escapar(a.adicionado.codigo || 'sem código')}${r.quantidadeAdicionada ? ` · ${r.quantidadeAdicionada} un.` : ''})</span>` : '') +
-      `<br><span class="hist">${a.acao === 'substituir' ? 'Substituído' : 'Cancelado'} por ${quem(a.por, a.em)} · ${escapar(SITUACAO[r.situacao].texto)} · Motivo: ${escapar(a.motivo)}` +
-      (a.desfeita ? ` · Desfeita por ${quem(a.desfeita.por, a.desfeita.em)}${a.desfeita.motivo ? ` (${escapar(a.desfeita.motivo)})` : ''}` : '') +
-      '</span>';
-  };
-  const linhaAlteracao = (r: IRegistroAlteracaoBom): string => `<div class="alt">${conteudoAlteracao(r)}</div>`;
-  const logo = new URL(logoDgt, window.location.href).href;
-  const kv = (rotulo: string, valor: string): string =>
-    `<tr><th>${escapar(rotulo)}</th><td>${escapar(valor || '—')}</td></tr>`;
-
-  const pontos = (selecao ? selecao.pontos : []).map(p => {
-    const vigentes = historico.filter(r => r.pontoId === p.id && r.situacao === 'aplicada');
-    return `<tr><td><b>${escapar(p.nome)}</b></td><td>${escapar(nomeKitDoPonto(p))}${vigentes.length ? `<br><i>kit alterado: ${vigentes.length} item(ns)</i>` : ''}</td><td class="n">${p.quantidade}</td><td class="n">${p.camerasVideo}</td><td class="n">${p.camerasOcr}</td><td>${escapar(solucoesDoPonto(p))}</td></tr>` +
-      (vigentes.length ? `<tr><td></td><td colspan="5">${vigentes.map(linhaAlteracao).join('')}</td></tr>` : '');
-  }).join('');
-
-  const itens = linhas.map(l =>
-    `<tr><td>${l.pendente ? '<i>sem código</i>' : escapar(l.codigo)}</td><td>${escapar(l.descricao)}${l.substituto ? ' <i>(substituto)</i>' : ''}</td><td>${escapar(l.categoria)}</td><td class="n">${l.quantidade}</td><td class="n">${l.valorUnitario !== undefined ? moeda(l.valorUnitario) : '—'}</td><td class="n">${l.total !== undefined ? moeda(l.total) : '—'}</td></tr>`
-  ).join('');
-
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
-<title>BOM ${escapar(bom.numero.replace(/^BOM\s*/i, ''))} ${escapar(bom.revisao)}</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
-<style>
-@page{size:A4;margin:14mm 14mm 16mm}
-*{box-sizing:border-box}
-body{margin:0;font-family:Barlow,Arial,sans-serif;color:#202A44;font-size:11.5px;line-height:1.4}
-.capa{background:#202A44;color:#fff;padding:20px 24px;display:flex;gap:20px;align-items:center;border-bottom:4px solid #05C3DD;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.capa img{height:54px;background:#fff;border-radius:6px;padding:6px}
-.k1{font-weight:700;font-size:24px;letter-spacing:.04em;text-transform:uppercase}
-.k2{color:#05C3DD;font-weight:600;font-size:14px;letter-spacing:.06em;text-transform:uppercase;margin:2px 0 6px}
-.k3{font-weight:600;font-size:14px}.k4{font-weight:300;font-size:11.5px}
-.kpis{display:flex;gap:8px;margin:14px 0 4px}
-.kpis div{flex:1;background:#EDF0F5;border-left:4px solid #05C3DD;padding:8px 10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.kpis span{display:block;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#888B8D;font-weight:600}
-.kpis b{font-size:15px}
-h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #05C3DD;display:inline-block}
-table{width:100%;border-collapse:collapse;margin-bottom:6px;page-break-inside:auto}
-tr{page-break-inside:avoid}
-.kv th{width:30%;background:#F2F2F2;text-align:left;font-weight:600;padding:5px 8px;border:1px solid #D9D9D6;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.kv td{padding:5px 8px;border:1px solid #D9D9D6}
-.t thead{display:table-header-group}
-.t th{background:#202A44;color:#fff;text-transform:uppercase;font-size:9.5px;letter-spacing:.05em;padding:6px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.t td{padding:5px 6px;border-bottom:1px solid #D9D9D6;vertical-align:top}
-.t tbody tr:nth-child(even) td{background:#F2F2F2;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.t tfoot td{font-weight:700;background:#EDF0F5;border-top:2px solid #202A44;padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.n{text-align:right;white-space:nowrap}
-.dec{display:inline-block;font-weight:700;padding:3px 10px;margin-right:8px}
-.dec.go{background:#202A44;color:#fff}.dec.gr{border:2px solid #485CC7;color:#485CC7}.dec.ng{border:2px dashed #888B8D}
-.nota{background:#E6F9FC;border-left:4px solid #05C3DD;padding:7px 10px;margin:6px 0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-ul{margin:4px 0;padding-left:16px}li{margin:3px 0}
-.alt{margin:2px 0 6px;font-size:10.5px}.alt .sai{color:#B42318;text-decoration:line-through}.alt .entra{color:#107C10;font-weight:600}.alt .hist{color:#888B8D}
-.rodape{margin-top:18px;border-top:1px solid #D9D9D6;padding-top:6px;font-size:9.5px;color:#888B8D;display:flex;justify-content:space-between}
-</style></head><body>
-<div class="capa"><img src="${logo}" alt="DGT"><div>
-<div class="k1">Bill of Materials</div>
-<div class="k2">BOM ${escapar(bom.numero.replace(/^BOM\s*/i, ''))} · ${escapar(bom.revisao)}</div>
-<div class="k3">${escapar(demanda.nome)}</div>
-<div class="k4">${escapar([demanda.cliente, [demanda.municipio, demanda.uf].filter(Boolean).join('/')].filter(Boolean).join(' · '))} · emitido em ${formatarData(hojeIso())}${enviado ? ` · enviado para aprovação${dataEnvio ? ' em ' + formatarData(dataEnvio) : ''}` : ''}</div>
-</div></div>
-<div class="kpis">
-<div><span>Pontos</span><b>${selecao ? selecao.pontos.reduce((t, p) => t + p.quantidade, 0) : 0}</b></div>
-<div><span>Linhas de itens</span><b>${linhas.length}</b></div>
-<div><span>Valor CIGAM estimado</span><b>${moeda(valorTotal)}</b></div>
-<div><span>Itens sem preço</span><b>${semPreco}</b></div>
-</div>
-<h2>1. Identificação</h2>
-<table class="kv">
-${kv('Demanda', `${demanda.numero} · ${demanda.nome}`)}${kv('Cliente', demanda.cliente)}${kv('Município / UF', [demanda.municipio, demanda.uf].filter(Boolean).join(' / '))}
-${kv('Canal / modalidade', [demanda.canal, demanda.modalidade].filter(Boolean).join(' · '))}${kv('Tipo de projeto', demanda.tipoProjeto)}${kv('Tipo de entrega', demanda.tipoEntrega)}
-${kv('Oportunidade CRM', demanda.numeroCrm)}${kv('Prazo de entrega', formatarData(demanda.prazoEntrega))}${kv('Responsável pelo B.O.M.', bom.responsavelNome)}
-${kv('Responsáveis da demanda', demanda.responsaveis.filter(r => r.ativo).map(r => r.nome).join(', '))}
-</table>
-<h2>2. Análise Go/No-Go</h2>
-${analise ? `<p><span class="dec ${analise.decisao === 'GO' ? 'go' : analise.decisao === 'NO-GO' ? 'ng' : 'gr'}">${escapar(analise.decisao.toUpperCase())}</span>${formatarNumero(analise.pontuacao)} pontos · ${escapar(analise.avaliadorNome)} · ${formatarData(analise.data)}</p>${analise.parecer ? `<div class="nota"><b>Parecer.</b> ${escapar(analise.parecer)}</div>` : ''}` : '<p>Sem análise registrada.</p>'}
-<h2>3. Composição da solução</h2>
-<table class="t"><thead><tr><th>Ponto</th><th>Kit</th><th class="n">Qtd.</th><th class="n">Vídeo</th><th class="n">OCR</th><th>Soluções</th></tr></thead><tbody>${pontos}</tbody></table>
-<h2>4. Itens do B.O.M.</h2>
-<table class="t"><thead><tr><th>Código CIGAM</th><th>Descrição</th><th>Categoria</th><th class="n">Qtd.</th><th class="n">Valor unit.</th><th class="n">Total</th></tr></thead>
-<tbody>${itens}</tbody><tfoot><tr><td colspan="5">Total com valores do CIGAM${semPreco ? ` (${semPreco} item(ns) sem preço não somados)` : ''}</td><td class="n">${moeda(valorTotal)}</td></tr></tfoot></table>
-<h2>5. Alterações nos kits</h2>
-${historico.length ? historico.map(r => `<div class="alt"><b>${escapar(r.pontoNome)}</b> · ${escapar(r.kit)}<br>${conteudoAlteracao(r)}</div>`).join('') : '<p>Nenhum item trocado ou cancelado.</p>'}
-<h2>6. Integração e manutenção</h2>
-${(() => {
-    const c = selecao ? selecao.complementosHH : undefined;
-    const i = c ? c.integracao : undefined;
-    const m = c ? c.manutencao : undefined;
-    const resp = (x?: { tem: boolean }): string => (x ? (x.tem ? 'Sim' : 'Não') : 'Não respondido');
-    return `<table class="kv">${kv('Tem integração?', resp(i))}${i && i.tem ? kv('Integração', `${i.horas} h × ${moeda(i.valorHora)} + BDI ${formatarNumero(i.bdi || 0)}% = ${moeda(totalIntegracao(i))}`) : ''}` +
-      `${kv('Tem contrato de manutenção?', resp(m))}${m && m.tem ? kv('Manutenção', `${m.pontos} ponto(s) × ${moeda(m.valorPonto)} = ${moeda(totalManutencao(m))}`) : ''}</table>`;
-  })()}
-<h2>7. Alertas e pendências</h2>
-${alertas.length ? `<ul>${alertas.map(a => `<li>${escapar(a)}</li>`).join('')}</ul>` : '<p>Nenhuma pendência.</p>'}
-<div class="rodape"><span>BOM ${escapar(bom.numero.replace(/^BOM\s*/i, ''))} ${escapar(bom.revisao)} · Portal DGT · Arquitetura de Soluções</span><span>DGT Tecnologia</span></div>
-<script>window.onload=function(){setTimeout(function(){window.print();},400);};</script>
-</body></html>`;
-};
 
 // ------------------------------------------------------------
 // Componente
@@ -270,6 +126,11 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
 
   const valorTotal = linhas.reduce((t, l) => t + (l.total || 0), 0);
   const semPreco = linhas.filter(l => l.valorUnitario === undefined).length;
+  // Totais do projeto: congelados no envio ou calculados agora com o
+  // valor dos itens e as respostas de integração/manutenção.
+  const resumoValores: IResumoValoresBom = congelado && congelado.resumoValores
+    ? congelado.resumoValores
+    : resumoValoresBom(valorTotal, selecao ? selecao.complementosHH : undefined, semPreco);
   const semCodigo = linhas.filter(l => l.pendente).length;
   const erros = congelado ? 0 : resultado ? resultado.alertas.filter(a => a.nivel === 'erro').length : 0;
 
@@ -329,15 +190,19 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  const gerarPdf = (): void => {
-    const janela = window.open('', '_blank');
-    if (!janela) {
-      mostrar('O navegador bloqueou a nova janela. Permita pop-ups para este site e tente de novo.');
-      return;
+  // Gera o arquivo .pdf e baixa na hora (sem janela de impressão).
+  const [gerandoPdf, setGerandoPdf] = React.useState(false);
+  const gerarPdf = async (): Promise<void> => {
+    setGerandoPdf(true);
+    try {
+      const blob = await gerarPdfBom({ bom, demanda, analise, selecao, linhas, valorTotal, semPreco, alertas, enviado, dataEnvio, historico, resumoValores });
+      baixarBlob(blob, nomeArquivoPdfBom(bom, demanda));
+      mostrar('PDF gerado e baixado.');
+    } catch (erro) {
+      mostrar(`Não foi possível gerar o PDF: ${(erro as Error).message || String(erro)}`);
+    } finally {
+      setGerandoPdf(false);
     }
-    janela.document.open();
-    janela.document.write(montarDocumento({ bom, demanda, analise, selecao, linhas, valorTotal, semPreco, alertas, enviado, dataEnvio, historico }));
-    janela.document.close();
   };
 
   const enviar = async (): Promise<void> => {
@@ -371,7 +236,8 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
       totais: resultado.totais,
       precos: precosUsados,
       valorTotal,
-      alteracoes: historicoAlteracoes(resultado)
+      alteracoes: historicoAlteracoes(resultado),
+      resumoValores: { ...resumoValoresBom(valorTotal, selecao.complementosHH, semPreco), calculadoEm: new Date().toISOString() }
     });
   };
 
@@ -421,7 +287,7 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button type="button" style={botao('secundario')} onClick={copiarCigam}>Copiar para o CIGAM</button>
           <button type="button" style={botao('secundario')} onClick={baixarCsv}>Baixar CSV</button>
-          <button type="button" style={botao('secundario')} onClick={gerarPdf}>Gerar PDF</button>
+          <button type="button" style={botao('secundario', gerandoPdf)} disabled={gerandoPdf} onClick={() => { gerarPdf().catch(() => undefined); }}>{gerandoPdf ? 'Gerando PDF…' : 'Baixar PDF'}</button>
           {!enviado && (
             <button type="button" style={botao('principal', salvando || !resultado || resultado.itens.length === 0)} disabled={salvando || !resultado || resultado.itens.length === 0} onClick={() => { enviar().catch(() => undefined); }}>
               {salvando ? 'Enviando…' : 'Enviar para aprovação →'}
@@ -438,6 +304,7 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
         {indicador('Câmeras', `${totais.camerasVideo} vídeo · ${totais.camerasOcr} OCR`, COR.ciano)}
         {indicador('Linhas de itens', String(linhas.length), COR.indigo)}
         {indicador('Valor CIGAM estimado', moeda(valorTotal), '#107C10')}
+        {indicador('Total do projeto', moeda(resumoValores.total), COR.azul)}
         {indicador('Sem preço / sem código', `${semPreco} / ${semCodigo}`, semPreco || semCodigo ? '#B45309' : COR.borda)}
       </div>
 
@@ -614,6 +481,9 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
         resumoKit={resultado || { itens: itensBase, porPonto: [], alertas: [], totais }}
         custoInicial={valorTotal}
         custoFixo
+        notaCusto={congelado ? 'itens e valores do CIGAM congelados no envio' : 'total dos itens, valores do CIGAM'}
+        itensSemPreco={semPreco}
+        resumoCongelado={congelado ? congelado.resumoValores : undefined}
         somenteLeitura
         complementos={selecao.complementosHH}
       />

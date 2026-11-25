@@ -6,10 +6,13 @@ import {
   IComplementosHH,
   IIntegracaoHH,
   IManutencaoHH,
+  VALOR_HH_DESENVOLVIMENTO_PADRAO,
+  VALOR_PONTO_MANUTENCAO_PADRAO,
   totalIntegracao,
   totalIntegracaoSemBdi,
   totalManutencao
 } from '../../services/hh/complementosHH';
+import { IResumoValoresBom, resumoValoresBom } from '../../services/hh/valoresProjeto';
 import { carregarHHVigente, IVersaoHH } from '../../services/hh/HHService';
 import { AREAS_HH, IDadosHH } from '../../services/hh/modeloHH';
 import { IResultadoBom } from '../../services/bom/montadorBom';
@@ -21,6 +24,8 @@ import { COR, botao, formatarDataHora } from './arquiteturaComum';
 //
 // Usa a versão VIGENTE de cada área (menu Cálculo de HH):
 //   HH dos pontos = pontos do kit × HH por ponto/localidade
+//     (calculado, mas NÃO exibido: deriva de salários; a tela mostra
+//      só se o valor pelo % fixo cobre esse custo)
 //   Alocação no projeto = custo total × % Analista / % Suprimentos
 // A regra final de composição com o B.O.M. (quais áreas somam, como
 // o Suporte entra) será fechada com a terceira planilha.
@@ -49,6 +54,13 @@ export interface IEtapaHHBomProps {
   // editáveis; só com complementos, aparecem para leitura.
   complementos?: IComplementosHH;
   onAlterarComplementos?: (complementos: IComplementosHH) => void;
+  // ---- Valor dos itens da Seleção de kit (Arquitetura) ----
+  // Texto ao lado do valor quando ele vem de fora (custoFixo).
+  notaCusto?: string;
+  // Itens do kit que ficaram fora do valor (sem preço ou sem código).
+  itensSemPreco?: number;
+  // B.O.M. enviado: totais como estavam no envio.
+  resumoCongelado?: IResumoValoresBom;
 }
 
 // ------------------------------------------------------------
@@ -125,7 +137,7 @@ const formatarCustoInicial = (valor?: number): string =>
 
 const EtapaHHBom: React.FC<IEtapaHHBomProps> = ({
   dataverseService, resumoKit, aoVoltarKit, pontosInformados, resumoKitTexto, custoInicial, custoFixo, somenteLeitura, onCalculado,
-  complementos, onAlterarComplementos
+  complementos, onAlterarComplementos, notaCusto, itensSemPreco, resumoCongelado
 }) => {
 
   const [vigentes, setVigentes] = React.useState<Record<string, { versao: IVersaoHH; dados: IDadosHH }> | undefined>(undefined);
@@ -166,8 +178,13 @@ const EtapaHHBom: React.FC<IEtapaHHBomProps> = ({
     if (!onAlterarComplementos) {
       return;
     }
-    const atual: IIntegracaoHH = integracao || { tem: false, horas: 0, valorHora: 0, bdi: 0 };
-    onAlterarComplementos({ ...comp, integracao: { ...atual, ...parcial } });
+    const atual: IIntegracaoHH = integracao || { tem: false, horas: 0, valorHora: VALOR_HH_DESENVOLVIMENTO_PADRAO, bdi: 0 };
+    const nova: IIntegracaoHH = { ...atual, ...parcial };
+    // Ao marcar "Sim" sem valor ainda, entra o valor HH padrão.
+    if (parcial.tem && !(nova.valorHora > 0)) {
+      nova.valorHora = VALOR_HH_DESENVOLVIMENTO_PADRAO;
+    }
+    onAlterarComplementos({ ...comp, integracao: nova });
   };
 
   const mudarManutencao = (parcial: Partial<IManutencaoHH>): void => {
@@ -175,8 +192,13 @@ const EtapaHHBom: React.FC<IEtapaHHBomProps> = ({
       return;
     }
     // Nº de pontos começa com os pontos do kit.
-    const atual: IManutencaoHH = manutencao || { tem: false, pontos: pontos, valorPonto: 0 };
-    onAlterarComplementos({ ...comp, manutencao: { ...atual, ...parcial } });
+    const atual: IManutencaoHH = manutencao || { tem: false, pontos: pontos, valorPonto: VALOR_PONTO_MANUTENCAO_PADRAO };
+    const nova: IManutencaoHH = { ...atual, ...parcial };
+    // Ao marcar "Sim" sem valor ainda, entra o valor do ponto padrão.
+    if (parcial.tem && !(nova.valorPonto > 0)) {
+      nova.valorPonto = VALOR_PONTO_MANUTENCAO_PADRAO;
+    }
+    onAlterarComplementos({ ...comp, manutencao: nova });
   };
 
   const totalInt = totalIntegracao(integracao);
@@ -259,6 +281,53 @@ const EtapaHHBom: React.FC<IEtapaHHBomProps> = ({
     </div>
   );
 
+  // ---------------- totais do projeto ----------------
+
+  const resumo: IResumoValoresBom = resumoCongelado || resumoValoresBom(custoTotal, complementos, itensSemPreco || 0);
+
+  const renderizarTotais = (): React.ReactElement => {
+    const linha = (rotulo: string, detalhe: string, valor: number, destaque?: boolean): React.ReactElement => (
+      <tr key={rotulo}>
+        <td style={{ ...celula, textAlign: 'left', fontWeight: destaque ? 800 : 600, background: destaque ? '#EDF0F5' : undefined, borderTop: destaque ? `2px solid ${COR.azul}` : undefined }}>{rotulo}</td>
+        <td style={{ ...celula, textAlign: 'left', fontSize: '12.5px', color: COR.texto2, background: destaque ? '#EDF0F5' : undefined, borderTop: destaque ? `2px solid ${COR.azul}` : undefined }}>{detalhe}</td>
+        <td style={{ ...celula, fontWeight: destaque ? 800 : 700, fontSize: destaque ? '15px' : '14px', background: destaque ? '#EDF0F5' : undefined, borderTop: destaque ? `2px solid ${COR.azul}` : undefined }}>{moeda(valor)}</td>
+      </tr>
+    );
+    const integ = comp.integracao;
+    const manut = comp.manutencao;
+    return (
+      <div style={{ marginTop: '18px' }}>
+        <h4 style={{ margin: '0 0 10px', color: COR.azul, fontSize: '15px' }}>
+          Totais do projeto
+          {resumoCongelado && <span style={{ fontSize: '12px', fontWeight: 400, color: COR.texto2 }}> · como no envio para aprovação</span>}
+        </h4>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
+            <thead>
+              <tr>
+                <th style={{ ...cab, textAlign: 'left' }}>Composição</th>
+                <th style={{ ...cab, textAlign: 'left' }}>Cálculo</th>
+                <th style={cab}>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linha('Itens do kit', `Seleção de kit, valores do CIGAM${resumo.itensSemPreco ? ` · ${resumo.itensSemPreco} item(ns) sem preço fora` : ''}`, resumo.valorItens)}
+              {resumo.areas.map(a => linha(a.nome, `${num(a.pctFixo * 100, 2)}% sobre os itens`, a.valor))}
+              {linha('Integração', integ && integ.tem ? `${num(integ.horas, 0)} h × ${moeda(integ.valorHora)} + BDI ${num(integ.bdi || 0, 2)}%` : (integ ? 'Não tem' : 'Não respondido'), resumo.integracao)}
+              {linha('Manutenção', manut && manut.tem ? `${num(manut.pontos, 0)} ponto(s) × ${moeda(manut.valorPonto)}` : (manut ? 'Não tem' : 'Não respondido'), resumo.manutencao)}
+              {linha('Total do projeto', 'Itens + Implantação + Supply + integração + manutenção', resumo.total, true)}
+            </tbody>
+          </table>
+        </div>
+        {resumo.valorItens === 0 && (
+          <div style={{ fontSize: '12.5px', color: '#B45309', marginTop: '6px' }}>
+            Os itens do kit ainda não têm valor (sem preços do CIGAM na aba Kits): Implantação e Supply ficam zerados.
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div style={{ background: '#FFFFFF', border: `1px solid ${COR.borda}`, borderRadius: '14px', padding: '18px 20px' }}>
       <h3 style={{ margin: '0 0 6px', color: COR.azul }}>Cálculo de HH — prévia</h3>
@@ -290,18 +359,33 @@ const EtapaHHBom: React.FC<IEtapaHHBomProps> = ({
 
       {areas.length > 0 && (
         <>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13.5px', color: COR.azul, marginBottom: '12px', flexWrap: 'wrap' }}>
-            Custo total do projeto (B.O.M), para a alocação de horas:
-            <input value={custo} disabled={!!somenteLeitura || !!custoFixo} onChange={e => setCusto(e.target.value)} placeholder="Ex.: 250.000,00" inputMode="decimal" style={{ border: `1px solid ${COR.borda}`, borderRadius: '6px', padding: '7px 10px', fontSize: '14px', width: '160px', textAlign: 'right' }} />
-            <span style={{ fontSize: '12.5px', color: COR.texto2 }}>
-              {onCalculado ? (custoFixo ? '(vem de outro campo do registro)' : '(gravado com o resultado)') : '(simulação; não é gravado)'}
-            </span>
-          </label>
+          {custoFixo && notaCusto
+            ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13.5px', color: COR.azul, marginBottom: '12px', flexWrap: 'wrap' }}>
+                Valor dos itens do kit:
+                <strong style={{ fontSize: '16px', fontVariantNumeric: 'tabular-nums' }}>{moeda(custoTotal)}</strong>
+                <span style={{ fontSize: '12.5px', color: COR.texto2 }}>({notaCusto})</span>
+                {!!itensSemPreco && (
+                  <span style={{ fontSize: '12.5px', color: '#B45309', fontWeight: 700 }}>
+                    {itensSemPreco} item(ns) sem preço do CIGAM ficaram de fora
+                  </span>
+                )}
+              </div>
+            )
+            : (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13.5px', color: COR.azul, marginBottom: '12px', flexWrap: 'wrap' }}>
+                Custo total do projeto (B.O.M), para a alocação de horas:
+                <input value={custo} disabled={!!somenteLeitura || !!custoFixo} onChange={e => setCusto(e.target.value)} placeholder="Ex.: 250.000,00" inputMode="decimal" style={{ border: `1px solid ${COR.borda}`, borderRadius: '6px', padding: '7px 10px', fontSize: '14px', width: '160px', textAlign: 'right' }} />
+                <span style={{ fontSize: '12.5px', color: COR.texto2 }}>
+                  {onCalculado ? (custoFixo ? '(vem de outro campo do registro)' : '(gravado com o resultado)') : '(simulação; não é gravado)'}
+                </span>
+              </label>
+            )}
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
               <thead>
                 <tr>
-                  {['Área', 'Versão', 'HH por ponto', 'Pontos', 'HH dos pontos', '% fixo', 'Analista de Projetos', 'Suprimentos'].map((t, i) => (
+                  {['Área', 'Versão', '% fixo', 'Valor pelo % fixo', 'Cobre o HH?', 'Analista de Projetos', 'Suprimentos'].map((t, i) => (
                     <th key={t} style={{ ...cab, textAlign: i < 2 ? 'left' : 'right' }}>{t}</th>
                   ))}
                 </tr>
@@ -314,10 +398,21 @@ const EtapaHHBom: React.FC<IEtapaHHBomProps> = ({
                     <tr key={a.chave}>
                       <td style={{ ...celula, textAlign: 'left', fontWeight: 700 }}>{nomeAreaBom(a.chave, a.nome)}</td>
                       <td style={{ ...celula, textAlign: 'left', fontSize: '12.5px', color: COR.texto2 }}>v{v.versao.versao} · {v.versao.mesReferencia}</td>
-                      <td style={celula}>{moeda(r.hhPorPonto)}</td>
-                      <td style={celula}>{pontos}</td>
-                      <td style={{ ...celula, fontWeight: 700 }}>{moeda(r.hhPontos)}</td>
                       <td style={celula}>{num(r.pctFixo * 100, 2)}%</td>
+                      <td style={{ ...celula, fontWeight: 700 }}>{custoTotal ? moeda(custoTotal * r.pctFixo) : '—'}</td>
+                      <td style={{ ...celula, fontSize: '12.5px' }}>
+                        {custoTotal
+                          ? (() => {
+                            // Só Sim/Não: a diferença em R$ revelaria o HH dos pontos.
+                            const cobre = custoTotal * r.pctFixo >= r.hhPontos;
+                            return (
+                              <span title={cobre ? 'O valor pelo % fixo cobre o custo de HH da área' : 'O valor pelo % fixo não cobre o custo de HH da área: revisar'} style={{ color: cobre ? '#107C10' : '#B42318', fontWeight: 700 }}>
+                                {cobre ? 'Sim' : 'Não, revisar'}
+                              </span>
+                            );
+                          })()
+                          : '—'}
+                      </td>
                       <td style={celula}>{custoTotal ? `${moeda(r.valorAnalista)} · ${num(r.horasAnalista)} h` : '—'}</td>
                       <td style={celula}>{custoTotal ? `${moeda(r.valorSuprimentos)} · ${num(r.horasSuprimentos)} h` : '—'}</td>
                     </tr>
@@ -330,6 +425,8 @@ const EtapaHHBom: React.FC<IEtapaHHBomProps> = ({
       )}
 
       {(complementos || onAlterarComplementos) && renderizarComplementos()}
+
+      {(complementos || onAlterarComplementos || resumoCongelado) && renderizarTotais()}
 
       {aoVoltarKit && (
         <button type="button" style={{ ...botao('secundario'), marginTop: '14px' }} onClick={aoVoltarKit}>← Ver / ajustar a Seleção de kit</button>

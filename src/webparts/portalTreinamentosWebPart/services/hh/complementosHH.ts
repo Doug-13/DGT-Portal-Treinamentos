@@ -31,6 +31,10 @@ export interface IComplementosHH {
   atualizadoPor?: string;
 }
 
+// Valores sugeridos ao responder "Sim" (o usuário pode editar).
+export const VALOR_HH_DESENVOLVIMENTO_PADRAO = 350;
+export const VALOR_PONTO_MANUTENCAO_PADRAO = 96.92;
+
 const n = (v: number | undefined): number => Math.max(0, Number(v) || 0);
 
 export const totalIntegracaoSemBdi = (i?: IIntegracaoHH): number =>

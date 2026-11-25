@@ -57,7 +57,8 @@ import {
 import EtapaBomPronto from './EtapaBomPronto';
 
 import {
-  mapaPrecosDoCatalogo
+  mapaPrecosDoCatalogo,
+  totalizarItens
 } from '../../services/bom/valoresBom';
 
 import {
@@ -784,14 +785,26 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
         {
           aba === 'hh' && (
             <>
+              {(() => {
+                // Valor dos itens da Seleção de kit (preços do CIGAM): base
+                // da alocação de horas e dos % fixos de Implantação/Supply.
+                const resultadoKit = selecaoKit ? montarBom(selecaoKit) : undefined;
+                const valores = resultadoKit ? totalizarItens(resultadoKit.itens, precos) : undefined;
+                return (
               <EtapaHHBom
                 dataverseService={dataverseService}
-                resumoKit={selecaoKit ? montarBom(selecaoKit) : undefined}
+                resumoKit={resultadoKit}
+                custoInicial={valores ? valores.total : 0}
+                custoFixo={!!valores}
+                notaCusto="total dos itens da Seleção de kit, valores do CIGAM"
+                itensSemPreco={valores ? valores.semValor + valores.semCodigo : 0}
                 aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
                 complementos={complementosHH}
                 somenteLeitura={etapa === 'Enviado para aprovação' || !selecaoKit || ETAPAS[etapa].passo < 4}
                 onAlterarComplementos={c => { setComplementosHH(c); setComplementosAlterados(true); }}
               />
+                );
+              })()}
               {
                 selecaoKit && selecaoKit.pontos.length > 0 && ETAPAS[etapa].passo >= 4 && (() => {
                   const enviado = etapa === 'Enviado para aprovação';

@@ -49,7 +49,7 @@ const ComponenteCalculoHH: React.FC<IPropsComponenteNativo> = (props) => {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
           <thead>
             <tr style={{ background: '#F7F9FB', textAlign: 'left' }}>
-              {['Área', 'Versão de HH', 'HH por ponto', 'HH dos pontos', 'Analista', 'Suprimentos'].map(titulo => <th key={titulo} style={{ padding: '6px 8px' }}>{titulo}</th>)}
+              {['Área', 'Versão de HH', 'Analista', 'Suprimentos'].map(titulo => <th key={titulo} style={{ padding: '6px 8px' }}>{titulo}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -57,8 +57,6 @@ const ComponenteCalculoHH: React.FC<IPropsComponenteNativo> = (props) => {
               <tr key={area.area} style={{ borderTop: '1px solid #E5E7EB' }}>
                 <td style={{ padding: '6px 8px', fontWeight: 700 }}>{area.nome}</td>
                 <td style={{ padding: '6px 8px' }}>v{area.versao} · {area.mesReferencia}</td>
-                <td style={{ padding: '6px 8px' }}>R$ {area.hhPorPonto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td style={{ padding: '6px 8px', fontWeight: 700 }}>R$ {area.hhPontos.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td style={{ padding: '6px 8px' }}>{gravado.custoTotal > 0 ? `${area.horasAnalista.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} h` : '—'}</td>
                 <td style={{ padding: '6px 8px' }}>{gravado.custoTotal > 0 ? `${area.horasSuprimentos.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} h` : '—'}</td>
               </tr>
