@@ -11,14 +11,34 @@ import {
 import {
   IBomEnviado,
   IItemBom,
+  IRegistroAlteracaoBom,
   IResultadoBom,
   ISelecaoKit,
+  historicoAlteracoes,
   nomeKitDoPonto
 } from '../../services/bom/montadorBom';
 
+import {
+  HistoricoAlteracoes,
+  quemQuando
+} from './AlteracoesItensKit';
+
 import EtapaHHBom from './EtapaHHBom';
 
-import logoDgt from '../../assets/logo-dgt.png';
+import { valorDoItem } from '../../services/bom/valoresBom';
+
+import {
+  IResumoValoresBom,
+  resumoValoresBom
+} from '../../services/hh/valoresProjeto';
+
+import {
+  ILinhaBom,
+  baixarBlob,
+  gerarPdfBom,
+  nomeArquivoPdfBom,
+  solucoesDoPonto
+} from './pdfBom';
 
 import {
   COR,
@@ -60,133 +80,10 @@ export interface IEtapaBomProntoProps {
   aoVoltarHH: () => void;
 }
 
-interface ILinhaBom extends IItemBom {
-  valorUnitario?: number;
-  total?: number;
-}
-
 const moeda = (v: number): string =>
   `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const ORDEM_CATEGORIA = ['Estrutura', 'Câmera', 'Equipamento', 'Infraestrutura', 'Identificação', 'Licença', 'Serviço'];
-
-const escapar = (texto: string): string =>
-  String(texto === undefined || texto === null ? '' : texto)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-
-const doisDigitos = (n: number): string => (n < 10 ? `0${n}` : String(n));
-
-const hojeIso = (): string => {
-  const d = new Date();
-  return `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}-${doisDigitos(d.getDate())}`;
-};
-
-const solucoesDoPonto = (ponto: ISelecaoKit['pontos'][number]): string =>
-  [
-    ponto.safeCity ? 'Safe City' : '',
-    ponto.smartDetect ? 'Smart Detect' : '',
-    ponto.faceDetect ? 'Face Detect' : '',
-    ponto.safeWay ? 'Safe Way' : ''
-  ].filter(Boolean).join(', ') || '—';
-
-// ------------------------------------------------------------
-// Documento para impressão / PDF (identidade visual DGT)
-// ------------------------------------------------------------
-
-const montarDocumento = (dados: {
-  bom: IBomRegistro;
-  demanda: IDemandaBom;
-  analise?: IAnaliseGoNoGo;
-  selecao?: ISelecaoKit;
-  linhas: ILinhaBom[];
-  valorTotal: number;
-  semPreco: number;
-  alertas: string[];
-  enviado: boolean;
-  dataEnvio?: string;
-}): string => {
-
-  const { bom, demanda, analise, selecao, linhas, valorTotal, semPreco, alertas, enviado, dataEnvio } = dados;
-  const logo = new URL(logoDgt, window.location.href).href;
-  const kv = (rotulo: string, valor: string): string =>
-    `<tr><th>${escapar(rotulo)}</th><td>${escapar(valor || '—')}</td></tr>`;
-
-  const pontos = (selecao ? selecao.pontos : []).map(p =>
-    `<tr><td><b>${escapar(p.nome)}</b></td><td>${escapar(nomeKitDoPonto(p))}</td><td class="n">${p.quantidade}</td><td class="n">${p.camerasVideo}</td><td class="n">${p.camerasOcr}</td><td>${escapar(solucoesDoPonto(p))}</td></tr>`
-  ).join('');
-
-  const itens = linhas.map(l =>
-    `<tr><td>${l.pendente ? '<i>sem código</i>' : escapar(l.codigo)}</td><td>${escapar(l.descricao)}</td><td>${escapar(l.categoria)}</td><td class="n">${l.quantidade}</td><td class="n">${l.valorUnitario !== undefined ? moeda(l.valorUnitario) : '—'}</td><td class="n">${l.total !== undefined ? moeda(l.total) : '—'}</td></tr>`
-  ).join('');
-
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
-<title>BOM ${escapar(bom.numero.replace(/^BOM\s*/i, ''))} ${escapar(bom.revisao)}</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
-<style>
-@page{size:A4;margin:14mm 14mm 16mm}
-*{box-sizing:border-box}
-body{margin:0;font-family:Barlow,Arial,sans-serif;color:#202A44;font-size:11.5px;line-height:1.4}
-.capa{background:#202A44;color:#fff;padding:20px 24px;display:flex;gap:20px;align-items:center;border-bottom:4px solid #05C3DD;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.capa img{height:54px;background:#fff;border-radius:6px;padding:6px}
-.k1{font-weight:700;font-size:24px;letter-spacing:.04em;text-transform:uppercase}
-.k2{color:#05C3DD;font-weight:600;font-size:14px;letter-spacing:.06em;text-transform:uppercase;margin:2px 0 6px}
-.k3{font-weight:600;font-size:14px}.k4{font-weight:300;font-size:11.5px}
-.kpis{display:flex;gap:8px;margin:14px 0 4px}
-.kpis div{flex:1;background:#EDF0F5;border-left:4px solid #05C3DD;padding:8px 10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.kpis span{display:block;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#888B8D;font-weight:600}
-.kpis b{font-size:15px}
-h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #05C3DD;display:inline-block}
-table{width:100%;border-collapse:collapse;margin-bottom:6px;page-break-inside:auto}
-tr{page-break-inside:avoid}
-.kv th{width:30%;background:#F2F2F2;text-align:left;font-weight:600;padding:5px 8px;border:1px solid #D9D9D6;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.kv td{padding:5px 8px;border:1px solid #D9D9D6}
-.t thead{display:table-header-group}
-.t th{background:#202A44;color:#fff;text-transform:uppercase;font-size:9.5px;letter-spacing:.05em;padding:6px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.t td{padding:5px 6px;border-bottom:1px solid #D9D9D6;vertical-align:top}
-.t tbody tr:nth-child(even) td{background:#F2F2F2;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.t tfoot td{font-weight:700;background:#EDF0F5;border-top:2px solid #202A44;padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.n{text-align:right;white-space:nowrap}
-.dec{display:inline-block;font-weight:700;padding:3px 10px;margin-right:8px}
-.dec.go{background:#202A44;color:#fff}.dec.gr{border:2px solid #485CC7;color:#485CC7}.dec.ng{border:2px dashed #888B8D}
-.nota{background:#E6F9FC;border-left:4px solid #05C3DD;padding:7px 10px;margin:6px 0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-ul{margin:4px 0;padding-left:16px}li{margin:3px 0}
-.rodape{margin-top:18px;border-top:1px solid #D9D9D6;padding-top:6px;font-size:9.5px;color:#888B8D;display:flex;justify-content:space-between}
-</style></head><body>
-<div class="capa"><img src="${logo}" alt="DGT"><div>
-<div class="k1">Bill of Materials</div>
-<div class="k2">BOM ${escapar(bom.numero.replace(/^BOM\s*/i, ''))} · ${escapar(bom.revisao)}</div>
-<div class="k3">${escapar(demanda.nome)}</div>
-<div class="k4">${escapar([demanda.cliente, [demanda.municipio, demanda.uf].filter(Boolean).join('/')].filter(Boolean).join(' · '))} · emitido em ${formatarData(hojeIso())}${enviado ? ` · enviado para aprovação${dataEnvio ? ' em ' + formatarData(dataEnvio) : ''}` : ''}</div>
-</div></div>
-<div class="kpis">
-<div><span>Pontos</span><b>${selecao ? selecao.pontos.reduce((t, p) => t + p.quantidade, 0) : 0}</b></div>
-<div><span>Linhas de itens</span><b>${linhas.length}</b></div>
-<div><span>Valor CIGAM estimado</span><b>${moeda(valorTotal)}</b></div>
-<div><span>Itens sem preço</span><b>${semPreco}</b></div>
-</div>
-<h2>1. Identificação</h2>
-<table class="kv">
-${kv('Demanda', `${demanda.numero} · ${demanda.nome}`)}${kv('Cliente', demanda.cliente)}${kv('Município / UF', [demanda.municipio, demanda.uf].filter(Boolean).join(' / '))}
-${kv('Canal / modalidade', [demanda.canal, demanda.modalidade].filter(Boolean).join(' · '))}${kv('Tipo de projeto', demanda.tipoProjeto)}${kv('Tipo de entrega', demanda.tipoEntrega)}
-${kv('Oportunidade CRM', demanda.numeroCrm)}${kv('Prazo de entrega', formatarData(demanda.prazoEntrega))}${kv('Responsável pelo B.O.M.', bom.responsavelNome)}
-${kv('Responsáveis da demanda', demanda.responsaveis.filter(r => r.ativo).map(r => r.nome).join(', '))}
-</table>
-<h2>2. Análise Go/No-Go</h2>
-${analise ? `<p><span class="dec ${analise.decisao === 'GO' ? 'go' : analise.decisao === 'NO-GO' ? 'ng' : 'gr'}">${escapar(analise.decisao.toUpperCase())}</span>${formatarNumero(analise.pontuacao)} pontos · ${escapar(analise.avaliadorNome)} · ${formatarData(analise.data)}</p>${analise.parecer ? `<div class="nota"><b>Parecer.</b> ${escapar(analise.parecer)}</div>` : ''}` : '<p>Sem análise registrada.</p>'}
-<h2>3. Composição da solução</h2>
-<table class="t"><thead><tr><th>Ponto</th><th>Kit</th><th class="n">Qtd.</th><th class="n">Vídeo</th><th class="n">OCR</th><th>Soluções</th></tr></thead><tbody>${pontos}</tbody></table>
-<h2>4. Itens do B.O.M.</h2>
-<table class="t"><thead><tr><th>Código CIGAM</th><th>Descrição</th><th>Categoria</th><th class="n">Qtd.</th><th class="n">Valor unit.</th><th class="n">Total</th></tr></thead>
-<tbody>${itens}</tbody><tfoot><tr><td colspan="5">Total com valores do CIGAM${semPreco ? ` (${semPreco} item(ns) sem preço não somados)` : ''}</td><td class="n">${moeda(valorTotal)}</td></tr></tfoot></table>
-<h2>5. Alertas e pendências</h2>
-${alertas.length ? `<ul>${alertas.map(a => `<li>${escapar(a)}</li>`).join('')}</ul>` : '<p>Nenhuma pendência.</p>'}
-<div class="rodape"><span>BOM ${escapar(bom.numero.replace(/^BOM\s*/i, ''))} ${escapar(bom.revisao)} · Portal DGT · Arquitetura de Soluções</span><span>DGT Tecnologia</span></div>
-<script>window.onload=function(){setTimeout(function(){window.print();},400);};</script>
-</body></html>`;
-};
 
 // ------------------------------------------------------------
 // Componente
@@ -210,7 +107,7 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
     .map(item => {
       const valor = congelado
         ? (congelado.precos[item.codigo] !== undefined ? congelado.precos[item.codigo] : undefined)
-        : (item.codigo && precos[item.codigo] !== undefined ? precos[item.codigo] : undefined);
+        : valorDoItem(precos, item.codigo);
       return { ...item, valorUnitario: valor, total: valor !== undefined ? valor * item.quantidade : undefined };
     })
     .sort((a, b) =>
@@ -218,8 +115,22 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
       a.descricao.localeCompare(b.descricao)
     );
 
+  // Trocas e cancelamentos de itens: os congelados no envio ou os atuais.
+  const historico: IRegistroAlteracaoBom[] = congelado
+    ? (congelado.alteracoes || [])
+    : resultado ? historicoAlteracoes(resultado) : [];
+  const vigentesDoPonto = (pontoId: string): IRegistroAlteracaoBom[] =>
+    historico.filter(r => r.pontoId === pontoId && r.situacao === 'aplicada')
+      .sort((a, b) => a.alteracao.em.localeCompare(b.alteracao.em));
+  const emVigor = historico.filter(r => r.situacao === 'aplicada').length;
+
   const valorTotal = linhas.reduce((t, l) => t + (l.total || 0), 0);
   const semPreco = linhas.filter(l => l.valorUnitario === undefined).length;
+  // Totais do projeto: congelados no envio ou calculados agora com o
+  // valor dos itens e as respostas de integração/manutenção.
+  const resumoValores: IResumoValoresBom = congelado && congelado.resumoValores
+    ? congelado.resumoValores
+    : resumoValoresBom(valorTotal, selecao ? selecao.complementosHH : undefined, semPreco);
   const semCodigo = linhas.filter(l => l.pendente).length;
   const erros = congelado ? 0 : resultado ? resultado.alertas.filter(a => a.nivel === 'erro').length : 0;
 
@@ -279,15 +190,19 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  const gerarPdf = (): void => {
-    const janela = window.open('', '_blank');
-    if (!janela) {
-      mostrar('O navegador bloqueou a nova janela. Permita pop-ups para este site e tente de novo.');
-      return;
+  // Gera o arquivo .pdf e baixa na hora (sem janela de impressão).
+  const [gerandoPdf, setGerandoPdf] = React.useState(false);
+  const gerarPdf = async (): Promise<void> => {
+    setGerandoPdf(true);
+    try {
+      const blob = await gerarPdfBom({ bom, demanda, analise, selecao, linhas, valorTotal, semPreco, alertas, enviado, dataEnvio, historico, resumoValores });
+      baixarBlob(blob, nomeArquivoPdfBom(bom, demanda));
+      mostrar('PDF gerado e baixado.');
+    } catch (erro) {
+      mostrar(`Não foi possível gerar o PDF: ${(erro as Error).message || String(erro)}`);
+    } finally {
+      setGerandoPdf(false);
     }
-    janela.document.open();
-    janela.document.write(montarDocumento({ bom, demanda, analise, selecao, linhas, valorTotal, semPreco, alertas, enviado, dataEnvio }));
-    janela.document.close();
   };
 
   const enviar = async (): Promise<void> => {
@@ -320,7 +235,9 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
       alertas: resultado.alertas.map(a => `${a.nivel === 'erro' ? 'Bloqueio' : 'Aviso'} · ${a.origem}: ${a.mensagem}`),
       totais: resultado.totais,
       precos: precosUsados,
-      valorTotal
+      valorTotal,
+      alteracoes: historicoAlteracoes(resultado),
+      resumoValores: { ...resumoValoresBom(valorTotal, selecao.complementosHH, semPreco), calculadoEm: new Date().toISOString() }
     });
   };
 
@@ -370,7 +287,7 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button type="button" style={botao('secundario')} onClick={copiarCigam}>Copiar para o CIGAM</button>
           <button type="button" style={botao('secundario')} onClick={baixarCsv}>Baixar CSV</button>
-          <button type="button" style={botao('secundario')} onClick={gerarPdf}>Gerar PDF</button>
+          <button type="button" style={botao('secundario', gerandoPdf)} disabled={gerandoPdf} onClick={() => { gerarPdf().catch(() => undefined); }}>{gerandoPdf ? 'Gerando PDF…' : 'Baixar PDF'}</button>
           {!enviado && (
             <button type="button" style={botao('principal', salvando || !resultado || resultado.itens.length === 0)} disabled={salvando || !resultado || resultado.itens.length === 0} onClick={() => { enviar().catch(() => undefined); }}>
               {salvando ? 'Enviando…' : 'Enviar para aprovação →'}
@@ -387,6 +304,7 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
         {indicador('Câmeras', `${totais.camerasVideo} vídeo · ${totais.camerasOcr} OCR`, COR.ciano)}
         {indicador('Linhas de itens', String(linhas.length), COR.indigo)}
         {indicador('Valor CIGAM estimado', moeda(valorTotal), '#107C10')}
+        {indicador('Total do projeto', moeda(resumoValores.total), COR.azul)}
         {indicador('Sem preço / sem código', `${semPreco} / ${semCodigo}`, semPreco || semCodigo ? '#B45309' : COR.borda)}
       </div>
 
@@ -437,16 +355,57 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
             <thead><tr>{['Ponto', 'Kit', 'Qtd.', 'Vídeo', 'OCR/LPR', 'Soluções'].map((t, i) => <th key={t} style={{ ...th, textAlign: i >= 2 && i <= 4 ? 'right' : 'left' }}>{t}</th>)}</tr></thead>
             <tbody>
-              {selecao.pontos.map(p => (
-                <tr key={p.id}>
-                  <td style={{ ...td, fontWeight: 700 }}>{p.nome}</td>
-                  <td style={td}>{nomeKitDoPonto(p)}</td>
-                  <td style={num}>{p.quantidade}</td>
-                  <td style={num}>{p.camerasVideo}</td>
-                  <td style={num}>{p.camerasOcr}</td>
-                  <td style={{ ...td, fontSize: '12.5px' }}>{solucoesDoPonto(p)}</td>
-                </tr>
-              ))}
+              {selecao.pontos.map(p => {
+                const vigentes = vigentesDoPonto(p.id);
+                const borda = vigentes.length ? { borderBottom: 0 } : {};
+                return (
+                  <React.Fragment key={p.id}>
+                    <tr>
+                      <td style={{ ...td, ...borda, fontWeight: 700 }}>{p.nome}</td>
+                      <td style={{ ...td, ...borda }}>
+                        {nomeKitDoPonto(p)}
+                        {vigentes.length > 0 && (
+                          <div style={{ marginTop: '3px' }}>
+                            <Selo texto={`Kit alterado · ${vigentes.length} item(ns)`} cor="#B45309" fundo="#FFF4E5" />
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...num, ...borda }}>{p.quantidade}</td>
+                      <td style={{ ...num, ...borda }}>{p.camerasVideo}</td>
+                      <td style={{ ...num, ...borda }}>{p.camerasOcr}</td>
+                      <td style={{ ...td, ...borda, fontSize: '12.5px' }}>{solucoesDoPonto(p)}</td>
+                    </tr>
+                    {vigentes.length > 0 && (
+                      <tr>
+                        <td style={td} />
+                        <td colSpan={5} style={{ ...td, paddingTop: 0 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {vigentes.map(r => (
+                              <div key={r.alteracao.id} style={{ border: `1px solid ${COR.borda}`, borderLeft: '4px solid #B45309', borderRadius: '8px', padding: '7px 10px', background: '#FFFCF7' }}>
+                                <div style={{ fontSize: '12.5px', color: '#B42318', textDecoration: 'line-through' }}>
+                                  − {r.alteracao.removido.descricao}
+                                  <span style={{ color: COR.texto2 }}> · {r.alteracao.removido.codigo || 'sem código'} · {r.quantidadeRemovida.toLocaleString('pt-BR')} un.</span>
+                                </div>
+                                {r.alteracao.acao === 'substituir' && r.alteracao.adicionado
+                                  ? (
+                                    <div style={{ fontSize: '12.5px', color: '#107C10', fontWeight: 600 }}>
+                                      + {r.alteracao.adicionado.descricao}
+                                      <span style={{ color: COR.texto2, fontWeight: 400 }}> · {r.alteracao.adicionado.codigo || 'sem código'} · {r.quantidadeAdicionada.toLocaleString('pt-BR')} un.</span>
+                                    </div>
+                                  )
+                                  : <div style={{ fontSize: '12px', color: COR.texto2 }}>Cancelado sem substituto</div>}
+                                <div style={{ fontSize: '11.5px', color: COR.texto2, marginTop: '2px' }}>
+                                  {r.alteracao.acao === 'substituir' ? 'Substituído' : 'Cancelado'} por {quemQuando(r.alteracao.por, r.alteracao.em)} · Motivo: {r.alteracao.motivo}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -467,7 +426,11 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
                   <td style={{ ...td, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                     {l.pendente ? <Selo texto="sem código" cor="#B45309" fundo="#FFF4E5" /> : l.codigo}
                   </td>
-                  <td style={td}>{l.descricao}<div style={{ fontSize: '11.5px', color: COR.texto2 }}>{l.origem}</div></td>
+                  <td style={td}>
+                    {l.descricao}
+                    {l.substituto && <span style={{ marginLeft: '6px' }}><Selo texto="substituto" cor="#107C10" fundo="#E7F6EC" /></span>}
+                    <div style={{ fontSize: '11.5px', color: COR.texto2 }}>{l.origem}</div>
+                  </td>
                   <td style={{ ...td, fontSize: '12.5px' }}>{l.categoria}</td>
                   <td style={{ ...num, fontWeight: 700 }}>{l.quantidade}</td>
                   <td style={num}>{l.valorUnitario !== undefined ? moeda(l.valorUnitario) : <span style={{ color: '#B45309' }}>sem preço</span>}</td>
@@ -485,6 +448,19 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
             </tfoot>
           </table>
         </div>
+      </div>
+
+      {/* Histórico das trocas de itens */}
+      <div style={cartao}>
+        <h3 style={titulo}>
+          Alterações nos kits
+          <span style={{ fontSize: '12.5px', fontWeight: 400, color: COR.texto2 }}>
+            {historico.length ? `${emVigor} em vigor · ${historico.length} registro(s) no histórico` : 'nenhum item trocado ou cancelado'}
+          </span>
+        </h3>
+        {historico.length > 0
+          ? <HistoricoAlteracoes registros={historico} mostrarPonto />
+          : <p style={{ fontSize: '13px', color: COR.texto2, margin: 0 }}>Os kits estão como o montador gerou. Para trocar ou cancelar um item, use a Seleção de kit.</p>}
       </div>
 
       {/* Alertas */}
@@ -505,7 +481,11 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
         resumoKit={resultado || { itens: itensBase, porPonto: [], alertas: [], totais }}
         custoInicial={valorTotal}
         custoFixo
+        notaCusto={congelado ? 'itens e valores do CIGAM congelados no envio' : 'total dos itens, valores do CIGAM'}
+        itensSemPreco={semPreco}
+        resumoCongelado={congelado ? congelado.resumoValores : undefined}
         somenteLeitura
+        complementos={selecao.complementosHH}
       />
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' }}>

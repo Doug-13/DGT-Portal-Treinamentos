@@ -12,6 +12,7 @@ import {
 import {
   IAcessoCriacao,
   IResultadoCriacao,
+  SemPainelPossivel,
   fontesPermitidas,
   gerarDashboard
 } from '../../services/dashboards/criacaoIa';
@@ -33,6 +34,8 @@ export interface ICriarDashboardIaModalProps {
   acesso: IAcessoCriacao;
   areas: Array<{ id: string; nome: string }>;
   areasPermitidas?: string[];
+  // Módulos administrados: nas fontes deles, todas as áreas.
+  modulosAdministrados?: string[];
   // "Ajustar com IA" de um dashboard pessoal existente.
   existente?: IDashboard;
   onSalvo: (id: string) => void;
@@ -68,6 +71,7 @@ const CriarDashboardIaModal: React.FC<ICriarDashboardIaModalProps> = (props) => 
   const [gerando, setGerando] = React.useState(false);
   const [salvando, setSalvando] = React.useState(false);
   const [erro, setErro] = React.useState('');
+  const [semPainel, setSemPainel] = React.useState<SemPainelPossivel | undefined>(undefined);
 
   const painelBase = resultado ? resultado.texto : (props.existente ? props.existente.definicao : '');
 
@@ -78,6 +82,7 @@ const CriarDashboardIaModal: React.FC<ICriarDashboardIaModalProps> = (props) => 
     }
     setGerando(true);
     setErro('');
+    setSemPainel(undefined);
     try {
       const novo = await gerarDashboard(props.dataverseService, {
         pedido: limpo,
@@ -92,7 +97,11 @@ const CriarDashboardIaModal: React.FC<ICriarDashboardIaModalProps> = (props) => 
       }
       setAjuste('');
     } catch (falha) {
-      setErro(falha instanceof Error ? falha.message : String(falha));
+      if (falha instanceof SemPainelPossivel) {
+        setSemPainel(falha);
+      } else {
+        setErro(falha instanceof Error ? falha.message : String(falha));
+      }
     } finally {
       setGerando(false);
     }
@@ -241,6 +250,19 @@ const CriarDashboardIaModal: React.FC<ICriarDashboardIaModalProps> = (props) => 
             </div>
           )}
 
+          {semPainel && (
+            <div role="status" style={{ marginTop: '12px', padding: '12px 14px', borderRadius: '10px', background: '#FFF4D6', color: '#5C4300', fontSize: '13px' }}>
+              <strong>Não há dados no portal para montar esse painel.</strong>
+              {semPainel.resumo && <div style={{ marginTop: '6px', whiteSpace: 'pre-wrap' }}>{semPainel.resumo}</div>}
+              {semPainel.semDados.length > 0 && (
+                <ul style={{ margin: '6px 0 0', paddingLeft: '18px' }}>{semPainel.semDados.map(item => <li key={item}>{item}</li>)}</ul>
+              )}
+              <div style={{ marginTop: '8px', fontSize: '12px' }}>
+                Descreva o painel usando os dados disponíveis (lista acima) ou peça ao administrador do portal uma nova fonte de dados.
+              </div>
+            </div>
+          )}
+
           {erro && (
             <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '10px', background: '#FDECEA', color: '#A2352A', fontSize: '13px', whiteSpace: 'pre-line' }}>{erro}</div>
           )}
@@ -257,6 +279,7 @@ const CriarDashboardIaModal: React.FC<ICriarDashboardIaModalProps> = (props) => 
               dataverseService={props.dataverseService}
               areas={props.areas}
               areasPermitidas={props.areasPermitidas}
+              modulosAdministrados={props.modulosAdministrados}
             />
           </div>
         )}

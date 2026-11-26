@@ -93,6 +93,9 @@ import ProcessosPage from
 import ProcessosNegocioPage from
   '../pages/Processos/ProcessosNegocioPage';
 
+import DesenhosProcessoPage from
+  '../pages/Processos/DesenhosProcessoPage';
+
 import {
   solicitarAberturaProcesso
 } from '../services/processos/ProcessoService';
@@ -2090,6 +2093,22 @@ const PortalRouter:
 
             onIrParaFluxos={() =>
               props.navegar('fluxos')
+            }
+          />
+        );
+
+      // Desenhos de processo (documentação, substitui o Visio).
+      // Não têm regras de funcionamento nem passam pelo motor de fluxo.
+      case 'desenhosProcesso':
+
+        return (
+          <DesenhosProcessoPage
+            contexto={
+              props.contextoAcesso
+            }
+
+            dataverseService={
+              props.dataverseService
             }
           />
         );

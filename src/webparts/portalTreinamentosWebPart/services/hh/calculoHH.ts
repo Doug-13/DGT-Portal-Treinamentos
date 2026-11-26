@@ -674,6 +674,17 @@ export interface IHHParaBom {
   horasSuprimentos: number;
 }
 
+// No B.O.M. cada área entra com nome e % fixo próprios (definição
+// da Arquitetura de Soluções): Implantação 7% e Supply 0,5%. Área
+// sem regra aqui usa o nome do menu Cálculo de HH e o % das premissas.
+export const AREAS_BOM: Record<string, { nome: string; pctFixo: number }> = {
+  implantacao: { nome: 'Implantação', pctFixo: 0.07 },
+  suporte: { nome: 'Supply', pctFixo: 0.005 }
+};
+
+export const nomeAreaBom = (area: string, nomePadrao: string): string =>
+  AREAS_BOM[area] ? AREAS_BOM[area].nome : nomePadrao;
+
 // Aplica os valores de uma área a um B.O.M. (pontos do kit e, se
 // houver, o custo total do projeto).
 export const hhParaBom = (
@@ -688,7 +699,7 @@ export const hhParaBom = (
     hhPorPonto: r.resumo.hhPorPonto,
     pontos,
     hhPontos: r.resumo.hhPorPonto * pontos,
-    pctFixo: r.resumo.pctFixo,
+    pctFixo: AREAS_BOM[area] ? AREAS_BOM[area].pctFixo : r.resumo.pctFixo,
     custoTotalProjeto,
     valorAnalista: r.resumo.valorAnalista,
     horasAnalista: r.resumo.horasAnalista,

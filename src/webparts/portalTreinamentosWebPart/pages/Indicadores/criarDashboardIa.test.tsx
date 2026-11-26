@@ -109,3 +109,40 @@ describe('✦ Criar dashboard com IA', () => {
     expect(raiz.querySelector('textarea')).toBeNull();
   });
 });
+
+describe('✦ Criar com IA — pedido sem dados', () => {
+  let raiz2: HTMLDivElement;
+  beforeEach(() => { raiz2 = document.createElement('div'); document.body.appendChild(raiz2); });
+  afterEach(() => { ReactDOM.unmountComponentAtNode(raiz2); raiz2.remove(); });
+
+  it('mostra a explicação e o que falta, sem mensagem de erro', async () => {
+    const dataverse = {
+      executarCustomApiJson: async () => ({ resumo: 'Esses dados vêm de uma planilha e não existem no portal.', semDados: ['Quadro de Metas', 'Plano de ações'], definicao: '' })
+    } as unknown as DataverseService;
+    await act(async () => {
+      ReactDOM.render(
+        <CriarDashboardIaModal
+          dataverseService={dataverse}
+          dashboardService={{} as DashboardService}
+          acesso={{ perfil: 'Administrador', veTodasAsAreas: true }}
+          areas={[]}
+          onSalvo={() => undefined}
+          onFechar={() => undefined}
+        />,
+        raiz2
+      );
+    });
+    const campo = raiz2.querySelector('textarea') as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value') as PropertyDescriptor;
+      (setter.set as (v: string) => void).call(campo, 'Planejamento estratégico Visão 2029');
+      campo.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const criar = Array.prototype.slice.call(raiz2.querySelectorAll('button')).filter((b: HTMLButtonElement) => /Criar painel/.test(b.textContent || ''))[0] as HTMLButtonElement;
+    await act(async () => { criar.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    const texto = raiz2.textContent || '';
+    expect(texto).toMatch(/Não há dados no portal para montar esse painel/);
+    expect(texto).toMatch(/Quadro de Metas/);
+    expect(texto).not.toMatch(/formato inesperado/);
+  });
+});

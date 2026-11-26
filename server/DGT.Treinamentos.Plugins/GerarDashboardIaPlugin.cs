@@ -244,18 +244,23 @@ namespace DGT.Treinamentos.Plugins
 
             // ---------------- Resposta ----------------
 
+            // Sem painel possível (nada do pedido existe no catálogo) é uma
+            // resposta válida: "dashboard": null + explicação. Texto livre
+            // (fora do JSON) também é repassado como explicação, em vez de erro.
             var envelope = ExtrairJson(texto);
-            if (envelope == null || !(envelope["dashboard"] is JObject))
+            if (envelope == null)
             {
-                tracing.Trace("Resposta fora do formato: {0}", IaComum.Cortar(texto, 500));
-                throw new InvalidPluginExecutionException("A IA devolveu um formato inesperado. Tente de novo, descrevendo o painel de outro jeito.");
+                tracing.Trace("Resposta fora do JSON (repassada como explicação): {0}", IaComum.Cortar(texto, 500));
+                envelope = new JObject { ["resumo"] = texto, ["semDados"] = new JArray() };
             }
+            var dashboard = envelope["dashboard"] as JObject;
 
             context.OutputParameters["ResultadoJson"] = JsonConvert.SerializeObject(new
             {
                 resumo = IaComum.Cortar((string)envelope["resumo"] ?? string.Empty, 1500),
                 semDados = (envelope["semDados"] as JArray ?? new JArray()).Select(s => IaComum.Cortar((string)s ?? string.Empty, 300)).Take(10).ToArray(),
-                definicao = ((JObject)envelope["dashboard"]).ToString(Formatting.None),
+                // Vazio = a IA não montou painel (ver resumo e semDados).
+                definicao = dashboard != null ? dashboard.ToString(Formatting.None) : string.Empty,
                 modelo = _modelo,
                 tokensEntrada = entrada,
                 tokensSaida = saida

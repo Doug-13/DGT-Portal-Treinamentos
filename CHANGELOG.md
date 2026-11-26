@@ -1,7 +1,9 @@
 # Histórico de versões do Portal DGT
 
 Anote as mudanças em "Não publicado" enquanto desenvolve, uma por linha,
+
 começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
+
 `.\Gerar-Versao.ps1` elas passam para a nova versão e aparecem em "Novidades".
 
 ## [Não publicado]
@@ -12,6 +14,27 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 - Melhoria: Processos — no pacote JSON, destinatário de notificação do tipo Área aceita a sigla ("area": "SUY"), como os responsáveis.
 - Correção: Fornecedores — as notificações configuradas no processo SUP-HOM não eram enviadas (o serviço da homologação não usava o despachante de notificações do motor).
 - Atenção (deploy): Fornecedores — rodar de novo scripts/dataverse/criar-tabelas-fornecedores.ps1 (tipos de colaborador, relatórios, remetente na fila); aplicar as notificações no SUP-HOM (reimportar o pacote ou "Aplicar alterações" no editor); Criar e Ler (nível Usuário) em dgt_implemail para Suprimentos e Jurídico, com o fluxo de e-mail central ativo; Jurídico: permissões nas tabelas, módulo liberado, gravação na pasta Contratos Fornecedores e perfil de campo do CNPJ (docs/fornecedores.md, seção 3).
+
+## [1.4.32] - 2026-11-25
+
+- Melhoria: Arquitetura de Soluções — Cálculo de HH: ao responder "Sim", o valor HH de desenvolvimento vem preenchido com R$ 350,00 e o valor do ponto da manutenção com R$ 96,92 (editáveis).
+- Melhoria: Arquitetura de Soluções — Cálculo de HH do B.O.M. e componente de HH dos fluxos não mostram mais HH por ponto, pontos e HH dos pontos (derivam de salários). Os cálculos continuam; "Cobre o HH?" mostra só Sim/Não, sem a diferença em R$.
+- Correção: Arquitetura de Soluções — B.O.M. pronto: o botão "Baixar PDF" gera e baixa o arquivo .pdf na hora (jsPDF), com capa, indicadores, itens, alterações nos kits, integração/manutenção, totais do projeto e numeração de páginas. Antes abria uma janela de impressão, bloqueada como pop-up e sem download.
+- Novo: Arquitetura de Soluções — o Cálculo de HH usa o valor total dos itens da Seleção de kit (preços do CIGAM) no lugar do custo digitado: calcula o valor pelo % fixo de Implantação (7%) e Supply (0,5%), mostra se esse valor cobre o HH dos pontos e soma os "Totais do projeto" (itens + Implantação + Supply + integração + manutenção). Os totais aparecem no B.O.M. pronto (indicador, tela e PDF) e são congelados no envio para aprovação.
+- Novo: Arquitetura de Soluções — Cálculo de HH: perguntas "Tem integração?" (nº de horas × valor HH de desenvolvimento + taxa BDI) e "Tem contrato de manutenção?" (nº de pontos × valor do ponto). Com "Sim", abrem as colunas para preencher e o total. As respostas ficam gravadas no B.O.M. (quem salvou e quando), são obrigatórias para avançar e aparecem no B.O.M. pronto e no PDF.
+- Melhoria: Arquitetura de Soluções — na tabela do Cálculo de HH do B.O.M., as áreas passam a ser Implantação (% fixo 7%) e Supply (% fixo 0,5%). O menu Cálculo de HH não muda.
+- Novo: Arquitetura de Soluções — Seleção de kit: cada item do kit gerado pode ser trocado por outro (do catálogo ou informado à mão) ou cancelado, com motivo obrigatório. O item removido aparece riscado e o novo destacado, com quem fez e quando; quantidade igual à do item removido (acompanha o kit) ou outra por ponto.
+- Novo: Arquitetura de Soluções — histórico das alterações de itens por ponto (quem, data e hora, motivo, situação). Desfazer não apaga: a alteração fica registrada como desfeita, com quem desfez e quando. Alteração cujo item saiu do kit (configuração mudou) fica como "não aplicada", com aviso.
+- Novo: Arquitetura de Soluções — B.O.M. pronto mostra, no kit de cada ponto, o item removido e o adicionado com o histórico; selo "substituto" na lista de itens; seção "Alterações nos kits" na tela e no PDF. O histórico é congelado junto no envio para aprovação.
+- Novo: dashboards criados pela IA respeitam o acesso de quem cria — a IA só monta indicadores com as fontes de dados que o usuário pode ver.
+- Melhoria: ajustes na criação de dashboards pela IA (instruções do assistente, tela de criação e exibição na página Indicadores).
+
+- Novo: Kits e B.O.M. — consulta e atualização de preços de itens pela integração com o CIGAM, com plugin no servidor, testes e documentação das APIs de consulta.
+- Novo: Processos — tela Desenhos de Processo, com componentes de desenho e serviço para armazenamento e consulta dos desenhos vinculados aos processos.
+- Melhoria: Arquitetura de Soluções — montagem do B.O.M. e catálogo de itens atualizados para contemplar os valores provenientes do CIGAM.
+- Melhoria: testes da montagem do B.O.M., dos complementos de HH e da integração de preços com o CIGAM.
+- Melhoria: navegação e permissões de rota atualizadas para contemplar Desenhos de Processo.
+- Novo: script scripts/dataverse/criar-tabela-desenhos-processo.ps1 para criação da estrutura de armazenamento dos desenhos no Dataverse.
 
 ## [1.4.30] - 2026-11-23
 
@@ -217,7 +240,7 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 - Novo: Arquitetura de Soluções — Modalidade com Dispensa de Licitação, Inexigibilidade e MIP; "Proposta direta" passa a "Proposta Técnica". A modalidade depende do canal: Público com as modalidades de proposta, Privado só com Proposta Comercial (preenchida automaticamente). Requer scripts/dataverse/atualizar-opcoes-bom.ps1.
 - Novo: Tipo de projeto com "Locação 48 meses".
-- Novo: anexos na Matriz Go/No-Go (SharePoint, biblioteca "Arquitetura de Soluções", pasta Go-No-Go/<B.O.M.>).
+- Novo: anexos na Matriz Go/No-Go (SharePoint, biblioteca "Arquitetura de Soluções", pasta Go-No-Go/\<B.O.M.>).
 - Melhoria: removidos os campos "Tipo de entrega" e "Pontos estimados" dos Dados da demanda (os valores já gravados são mantidos); a Modalidade passa a ser obrigatória para concluir a etapa.
 
 - Novo: regra de exibição dos campos no editor de fluxo — "Obrigatório quando…" e "Opcional quando…", com "Mostrar quando [campo] for [valor]" editável (ex.: a justificativa da dispensa só aparece quando "Esta revisão exige treinamento?" = Não).

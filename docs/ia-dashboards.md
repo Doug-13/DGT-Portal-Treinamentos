@@ -141,3 +141,21 @@ e consideram "ativo" vazio como ativo, igual ao restante do portal.
   `largura`/`altura`, que continuam valendo). Em telas estreitas (< 900 px) cada visual ocupa a linha inteira.
 - Na tela: alça ◢ no canto de cada gráfico/tabela (arrastar) e deslizantes de Largura e Altura no ✎.
 
+## Áreas por fonte (Administrador do módulo)
+
+Quem não vê todas as áreas (Administrador do portal ou do módulo Indicadores) vê só as áreas de que participa —
+**exceto nas fontes dos módulos que administra**, onde vê todas, como no próprio módulo
+(`services/dashboards/acessoFontes.ts`). Ex.: a Controladoria, Administradora do Planejamento orçamentário,
+vê o orçamento de todas as áreas, e continua vendo só a CTL em treinamentos ou documentos.
+
+| Fonte | Módulo |
+|---|---|
+| orcamento.* | orcamento |
+| documentos.* | documentos |
+| treinamentos.* | treinamentos |
+| licitacoes.* | licitacoes |
+| fornecedores.* | fornecedores |
+
+O Dataverse continua valendo: o perfil de segurança precisa permitir ler as planilhas de todas as áreas
+(o mesmo que a página de Planejamento orçamentário já exige para o Administrador do módulo).
+

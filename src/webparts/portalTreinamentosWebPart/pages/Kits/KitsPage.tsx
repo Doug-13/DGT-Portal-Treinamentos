@@ -35,7 +35,8 @@ import VisaoGeralKits from './VisaoGeralKits';
 import WikiKitsView, { DestinoWiki } from './WikiKitsView';
 
 import {
-  TipoItemKit
+  TipoItemKit,
+  sincronizacaoEmCurso
 } from '../../services/bom/esquemaKits';
 
 import {
@@ -160,9 +161,42 @@ const KitsPage: React.FC<IKitsPageProps> = ({ dataverseService, contexto }) => {
       return;
     }
     await servico.solicitarAtualizacaoValores(usuarioNome);
-    await carregar();
-    avisar('Atualização pedida. Os valores aparecem aqui quando o fluxo terminar (recarregue a página em alguns minutos).');
+    const ultima = await servico.obterUltimaSincronizacao().catch(() => undefined);
+    setCatalogo(c => (c ? { ...c, ultimaSincronizacao: ultima } : c));
+    avisar('Atualização pedida. O CIGAM é consultado item a item; a tela atualiza sozinha ao terminar.');
   };
+
+  // Enquanto houver pedido em curso, consulta a situação a cada 8 s e,
+  // ao terminar, recarrega o catálogo com os valores novos.
+  const ultimaSinc = catalogo ? catalogo.ultimaSincronizacao : undefined;
+  const acompanhando = !!ultimaSinc && sincronizacaoEmCurso(ultimaSinc.situacao, ultimaSinc.solicitadoEm);
+  React.useEffect(() => {
+    if (!servico || !acompanhando) {
+      return undefined;
+    }
+    let ativo = true;
+    const id = window.setInterval(() => {
+      servico.obterUltimaSincronizacao()
+        .then(u => {
+          if (!ativo || !u) {
+            return;
+          }
+          if (!sincronizacaoEmCurso(u.situacao, u.solicitadoEm)) {
+            ativo = false;
+            window.clearInterval(id);
+            carregar()
+              .then(() => avisar(u.situacao === 'Erro'
+                ? `Atualização de valores com erro: ${u.mensagem || 'veja a mensagem na barra de valores.'}`
+                : `Valores do CIGAM atualizados: ${u.mensagem || `${u.itensAtualizados} itens.`}`))
+              .catch(() => undefined);
+          } else {
+            setCatalogo(c => (c ? { ...c, ultimaSincronizacao: u } : c));
+          }
+        })
+        .catch(() => undefined);
+    }, 8000);
+    return () => { ativo = false; window.clearInterval(id); };
+  }, [servico, acompanhando, carregar]);
 
   const salvarItem = async (item: IItemKit, anterior: IItemKit | undefined, motivo: string): Promise<void> => {
     if (!servico) {

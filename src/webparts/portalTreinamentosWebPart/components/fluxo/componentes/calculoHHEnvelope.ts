@@ -5,7 +5,8 @@ import {
 } from '../../../services/bom/montadorBom';
 
 import {
-  hhParaBom
+  hhParaBom,
+  nomeAreaBom
 } from '../../../services/hh/calculoHH';
 
 import {
@@ -83,9 +84,6 @@ export const kitDoRegistro = (
   };
 };
 
-const moeda = (valor: number): string =>
-  `R$ ${Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 export const envelopeDoHH = (
   kit: IKitDoRegistro,
   custoTotal: number,
@@ -103,7 +101,7 @@ export const envelopeDoHH = (
         const r = hhParaBom(area.chave, vigente.dados, kit.pontos, custoTotal);
         return {
           area: area.chave,
-          nome: area.nome,
+          nome: nomeAreaBom(area.chave, area.nome),
           versaoId: vigente.versao.id,
           versao: vigente.versao.versao,
           mesReferencia: vigente.versao.mesReferencia,
@@ -145,7 +143,8 @@ export const envelopeDoHH = (
     valido: erros.length === 0,
     erros,
     resumo: areas.length > 0
-      ? `HH dos pontos ${moeda(totalHHPontos)} · ${kit.pontos} ponto(s) · ${areas.map(item => `${item.nome} v${item.versao}`).join(', ')}`
+      // Sem valores de HH no resumo visível (derivam de salários).
+      ? `${kit.pontos} ponto(s) · ${areas.map(item => `${item.nome} v${item.versao}`).join(', ')}`
       : 'Sem HH vigente'
   };
 };

@@ -24,6 +24,11 @@ import {
   envelopeDoMontador
 } from './montadorBomEnvelope';
 
+import {
+  MapaPrecos,
+  mapaPrecosDoCatalogo
+} from '../../../services/bom/valoresBom';
+
 // ============================================================
 // COMPONENTE NATIVO "Montador de B.O.M."
 //
@@ -34,7 +39,7 @@ import {
 // ============================================================
 
 // Catálogo carregado nesta sessão (o montador usa o catálogo do módulo).
-const estadoCatalogo: { promessa?: Promise<void> } = {};
+const estadoCatalogo: { promessa?: Promise<void>; precos?: MapaPrecos } = {};
 
 const garantirCatalogo = (props: IPropsComponenteNativo): Promise<void> => {
   if (!props.dataverseService) {
@@ -44,7 +49,7 @@ const garantirCatalogo = (props: IPropsComponenteNativo): Promise<void> => {
     estadoCatalogo.promessa =
       new KitsService(props.dataverseService)
         .carregar()
-        .then(dados => aplicarNoMontador(dados))
+        .then(dados => { aplicarNoMontador(dados); estadoCatalogo.precos = mapaPrecosDoCatalogo(dados.itens); })
         .catch(erro => {
           estadoCatalogo.promessa = undefined;
           console.error('[Montador de B.O.M.] Catálogo da aba Kits não carregado; usando o padrão.', erro);
@@ -88,6 +93,7 @@ const ComponenteMontadorBom: React.FC<IPropsComponenteNativo> = (props) => {
       // Sem a barra própria: quem grava e conclui é a etapa do fluxo.
       modoSimulacao={true}
       onSalvar={() => Promise.resolve()}
+      precos={estadoCatalogo.precos}
       onAlterar={(selecao: ISelecaoKit) => props.onAlterar(gravarEnvelopeComponente(envelopeDoMontador(selecao)))}
     />
   );

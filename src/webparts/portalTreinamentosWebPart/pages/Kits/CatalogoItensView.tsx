@@ -12,6 +12,8 @@ import {
 
 import {
   ehTipoServidor,
+  MINUTOS_SEM_RESPOSTA_CIGAM,
+  sincronizacaoEmCurso,
   SITUACOES_ITEM,
   SituacaoItemKit,
   TIPOS_ITEM,
@@ -394,8 +396,11 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
 
   // ---- integração de valores com o CIGAM
   const ultima = catalogo.ultimaSincronizacao;
-  const emCurso = !!ultima && (ultima.situacao === 'Pendente' || ultima.situacao === 'Em andamento');
+  const emCurso = !!ultima && sincronizacaoEmCurso(ultima.situacao, ultima.solicitadoEm);
+  // Pedido Pendente/Em andamento sem resposta há mais de 15 min: travado.
+  const travado = !!ultima && !emCurso && (ultima.situacao === 'Pendente' || ultima.situacao === 'Em andamento');
   const comCodigo = itensCatalogo.filter(i => i.ativo && i.codigo.trim());
+  const semCodigo = itensCatalogo.filter(i => i.ativo && !i.codigo.trim());
   const comValor = comCodigo.filter(i => i.valor !== undefined && !isNaN(i.valor as number));
 
   const pedirAtualizacao = (): void => {
@@ -420,19 +425,23 @@ const CatalogoItensView: React.FC<ICatalogoItensViewProps> = ({ catalogo, podeEd
       <div style={{ ...painel, padding: '10px 14px', marginBottom: '14px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', fontSize: '13.5px' }}>
         <span>
           <strong>Valores do CIGAM:</strong> {comValor.length} de {comCodigo.length} itens com código têm valor.
+          {semCodigo.length > 0 && <span style={{ color: COR.texto2 }}> {semCodigo.length} sem código não são consultados.</span>}
         </span>
         {ultima && (
           <span style={{ color: ultima.situacao === 'Erro' ? COR.indigo : COR.texto2 }}>
             Última atualização: {ultima.situacao}
             {ultima.situacao === 'Concluída' && ` em ${dataCurta(ultima.concluidoEm || ultima.solicitadoEm)} (${ultima.itensAtualizados} atualizados${ultima.itensSemPreco ? `, ${ultima.itensSemPreco} sem preço` : ''})`}
-            {emCurso && ` — pedida por ${ultima.solicitadoPor || '—'} em ${dataCurta(ultima.solicitadoEm)}`}
+            {(emCurso || travado) && ` — pedida por ${ultima.solicitadoPor || '—'} em ${dataCurta(ultima.solicitadoEm)}`}
+            {emCurso && ' · buscando no CIGAM, a tela atualiza sozinha'}
+            {travado && ` · sem resposta há mais de ${MINUTOS_SEM_RESPOSTA_CIGAM} min: confira se o plugin está registrado e peça de novo`}
             {ultima.situacao === 'Erro' && ultima.mensagem ? `: ${ultima.mensagem}` : ''}
+            {ultima.situacao === 'Concluída' && ultima.mensagem ? ` · ${ultima.mensagem}` : ''}
           </span>
         )}
         {podeEditar && aoAtualizarValores && catalogo.sincronizacaoDisponivel && (
           <button type="button" style={{ ...botao('secundario', pedindo || emCurso), marginLeft: 'auto' }} disabled={pedindo || emCurso} onClick={pedirAtualizacao}
-            title={emCurso ? 'Já há uma atualização em andamento' : 'O fluxo de integração busca os preços no CIGAM e grava aqui'}>
-            {pedindo ? 'Pedindo…' : emCurso ? 'Atualização em andamento…' : '↻ Atualizar valores do CIGAM'}
+            title={emCurso ? 'Já há uma atualização em andamento' : 'Busca no CIGAM o preço de cada item com código CIGAM e grava aqui. Itens sem código não são consultados.'}>
+            {pedindo ? 'Pedindo…' : emCurso ? 'Atualizando…' : travado ? '↻ Pedir de novo' : '↻ Atualizar valores do CIGAM'}
           </button>
         )}
         {erroPedido && <span style={{ color: COR.indigo, width: '100%' }}>{erroPedido}</span>}

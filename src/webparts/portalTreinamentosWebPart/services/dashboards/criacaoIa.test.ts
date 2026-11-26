@@ -1,4 +1,4 @@
-import { fontesPermitidas, gerarDashboard } from './criacaoIa';
+import { SemPainelPossivel, fontesPermitidas, gerarDashboard } from './criacaoIa';
 import { CATALOGO_DASHBOARD } from './fontesDashboard';
 import { EXEMPLOS_DASHBOARD } from './exemplosDashboard';
 import { DataverseService } from '../DataverseService';
@@ -72,6 +72,21 @@ describe('Geração com validação e correção automática', () => {
     const { dataverse, chamadas } = simulado([{ definicao: '{}' }, { definicao: '{}' }, { definicao: '{}' }]);
     await expect(gerarDashboard(dataverse, { pedido: 'x', catalogo: catalogoGestor })).rejects.toThrow(/não conseguiu montar um painel válido/);
     expect(chamadas).toHaveLength(3);
+  });
+
+  it('pedido sem dados no portal: explicação da IA, sem erro e sem gastar correções', async () => {
+    const { dataverse, chamadas } = simulado([
+      { resumo: 'O Quadro de Metas e o plano de ações não existem no portal.', semDados: ['Quadro de Metas', 'Plano de ações'], definicao: '' }
+    ]);
+    let recebido: unknown;
+    try {
+      await gerarDashboard(dataverse, { pedido: 'Planejamento estratégico Visão 2029', catalogo: catalogoGestor });
+    } catch (falha) {
+      recebido = falha;
+    }
+    expect(recebido).toBeInstanceOf(SemPainelPossivel);
+    expect((recebido as SemPainelPossivel).semDados).toEqual(['Quadro de Metas', 'Plano de ações']);
+    expect(chamadas).toHaveLength(1);
   });
 
   it('resposta vazia = passo do plugin não registrado (mensagem clara)', async () => {

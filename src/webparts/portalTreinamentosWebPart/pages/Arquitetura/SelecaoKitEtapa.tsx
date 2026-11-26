@@ -14,6 +14,8 @@ import {
 
 import {
   IAlertaBom,
+  IAlteracaoAplicada,
+  IAlteracaoItemKit,
   IItemBom,
   IPontoKit,
   ISelecaoKit,
@@ -23,8 +25,10 @@ import {
   csvDoBom,
   ehBridgefy,
   kitsAplicados,
+  mesmoItem,
   montarBom,
   nomeKitDoPonto,
+  novoIdAlteracao,
   normalizarSelecao,
   parametrosDoPonto,
   novoPonto,
@@ -45,6 +49,20 @@ import {
 } from './IconesKit';
 
 import SeletorServidor from './SeletorServidor';
+
+import {
+  MapaPrecos,
+  formatarMoeda,
+  totalizarItens,
+  valorDoItem
+} from '../../services/bom/valoresBom';
+
+import {
+  HistoricoAlteracoes,
+  IDadosAlteracaoItem,
+  ModalAlterarItem,
+  quemQuando
+} from './AlteracoesItensKit';
 
 // ============================================================
 // ETAPA 3 — SELEÇÃO DE KIT (montador de B.O.M.)
@@ -71,6 +89,12 @@ export interface ISelecaoKitEtapaProps {
   // Uso dentro de uma etapa de fluxo (campo "Componente"): avisa a
   // cada alteração; o fluxo grava e conclui pelos botões da etapa.
   onAlterar?: (selecao: ISelecaoKit) => void;
+  // Quem está usando: vai para o histórico das trocas de itens.
+  usuarioNome?: string;
+  usuarioId?: string;
+  // Valores unitários do CIGAM por código (aba Kits). Sem o mapa, a
+  // tela não mostra as colunas de valor.
+  precos?: MapaPrecos;
 }
 
 const VERDE = '#107C10';
@@ -278,37 +302,173 @@ const ListaAlertas: React.FC<{ alertas: IAlertaBom[]; mostrarOrigem?: boolean }>
   </div>
 );
 
-const TabelaItens: React.FC<{ itens: IItemBom[]; mostrarOrigem: boolean }> = ({ itens, mostrarOrigem }) => (
-  <div style={{ overflowX: 'auto', border: `1px solid ${COR.borda}`, borderRadius: '10px' }}>
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-      <thead>
-        <tr style={{ background: COR.fundo, color: COR.azul, textAlign: 'left' }}>
-          <th style={{ padding: '9px 12px' }}>Código</th>
-          <th style={{ padding: '9px 12px' }}>Item</th>
-          <th style={{ padding: '9px 12px', textAlign: 'right' }}>Qtd.</th>
-        </tr>
-      </thead>
-      <tbody>
-        {itens.map((i, n) => (
-          <tr key={n} style={{ borderTop: `1px solid ${COR.borda}`, background: i.pendente ? '#FFF8EC' : undefined }}>
-            <td style={{ padding: '8px 12px', fontFamily: 'Consolas, monospace', fontSize: '12px', color: COR.texto2, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
-              {i.codigo || <span style={{ color: AMBAR, fontWeight: 700, fontFamily: FONTE }}>sem código</span>}
-            </td>
-            <td style={{ padding: '8px 12px' }}>
-              <div style={{ color: COR.azul, fontWeight: 600 }}>{i.descricao}</div>
-              <div style={{ fontSize: '11.5px', color: COR.texto2, marginTop: '1px' }}>
-                {i.categoria}{mostrarOrigem ? ` · ${i.origem}` : ''}
-              </div>
-            </td>
-            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: COR.azul, verticalAlign: 'top' }}>
-              {i.quantidade.toLocaleString('pt-BR')}
-            </td>
+// Tabela de itens. Na visão do ponto mostra também os itens
+// removidos (riscados, logo acima do que entrou no lugar) e o botão
+// de trocar/cancelar cada item.
+// Botão quadrado das ações por linha (trocar, cancelar, desfazer).
+// Declarado antes de TabelaItens por causa da regra no-use-before-define.
+const botaoLinha = (desabilitado: boolean): React.CSSProperties => ({
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: '30px', height: '30px', borderRadius: '7px',
+  border: `1px solid ${COR.borda}`, background: '#FFFFFF', color: COR.indigo,
+  cursor: desabilitado ? 'not-allowed' : 'pointer', opacity: desabilitado ? 0.5 : 1
+});
+
+const TabelaItens: React.FC<{
+  itens: IItemBom[];
+  mostrarOrigem: boolean;
+  alteracoes?: IAlteracaoAplicada[];
+  onTrocar?: (item: IItemBom) => void;
+  onDesfazer?: (registro: IAlteracaoAplicada) => void;
+  bloqueado?: boolean;
+  precos?: MapaPrecos;
+}> = ({ itens, mostrarOrigem, alteracoes, onTrocar, onDesfazer, bloqueado, precos }) => {
+
+  const comValores = !!precos;
+  const numero: React.CSSProperties = { padding: '8px 12px', verticalAlign: 'top', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' };
+  const semValorCel = (texto: string): React.ReactElement => <span style={{ color: AMBAR, fontSize: '11.5px', fontWeight: 700 }}>{texto}</span>;
+  const totais = totalizarItens(itens, precos);
+
+  const aplicadas = (alteracoes || []).filter(a => a.situacao === 'aplicada');
+  const comAcoes = !!onTrocar || !!onDesfazer;
+  const usadas: string[] = [];
+
+  // Removidos cujo substituto é esta linha.
+  const removidosAntes = (item: IItemBom): IAlteracaoAplicada[] => {
+    if (!item.substituto) {
+      return [];
+    }
+    const lista = aplicadas.filter(a =>
+      usadas.indexOf(a.alteracao.id) < 0 && a.alteracao.adicionado && mesmoItem(a.alteracao.adicionado, item));
+    lista.forEach(a => usadas.push(a.alteracao.id));
+    return lista;
+  };
+
+  const celula: React.CSSProperties = { padding: '8px 12px', verticalAlign: 'top' };
+  const codigo: React.CSSProperties = { ...celula, fontFamily: 'Consolas, monospace', fontSize: '12px', color: COR.texto2, whiteSpace: 'nowrap' };
+
+  const linhaRemovida = (a: IAlteracaoAplicada): React.ReactElement => (
+    <tr key={`rem-${a.alteracao.id}`} style={{ borderTop: `1px solid ${COR.borda}`, background: '#FEF6F5' }}>
+      <td style={{ ...codigo, textDecoration: 'line-through' }}>{a.alteracao.removido.codigo || 'sem código'}</td>
+      <td style={celula}>
+        <div style={{ color: COR.texto2, fontWeight: 600, textDecoration: 'line-through' }}>{a.alteracao.removido.descricao}</div>
+        <div style={{ fontSize: '11.5px', color: VERMELHO, marginTop: '2px' }}>
+          {a.alteracao.acao === 'substituir' ? 'Removido · substituído' : 'Cancelado'} por {quemQuando(a.alteracao.por, a.alteracao.em)}
+        </div>
+        <div style={{ fontSize: '11.5px', color: COR.texto2 }}>Motivo: {a.alteracao.motivo}</div>
+      </td>
+      <td style={{ ...celula, textAlign: 'right', fontWeight: 700, color: COR.texto2, textDecoration: 'line-through' }}>
+        {a.quantidadeRemovida.toLocaleString('pt-BR')}
+      </td>
+      {comValores && (() => {
+        const v = valorDoItem(precos, a.alteracao.removido.codigo);
+        return (
+          <>
+            <td style={{ ...numero, color: COR.texto2, textDecoration: 'line-through' }}>{v !== undefined ? formatarMoeda(v) : '—'}</td>
+            <td style={{ ...numero, color: COR.texto2, textDecoration: 'line-through' }} title="Fora do total: item removido">{v !== undefined ? formatarMoeda(v * a.quantidadeRemovida) : '—'}</td>
+          </>
+        );
+      })()}
+      {comAcoes && (
+        <td style={{ ...celula, textAlign: 'right' }}>
+          {onDesfazer && (
+            <button type="button" title="Desfazer: o item volta ao kit" aria-label={`Desfazer alteração de ${a.alteracao.removido.descricao}`} disabled={bloqueado} onClick={() => onDesfazer(a)} style={botaoLinha(!!bloqueado)}>
+              <IconeKit nome="desfazer" tamanho={14} />
+            </button>
+          )}
+        </td>
+      )}
+    </tr>
+  );
+
+  const linhas: React.ReactElement[] = [];
+  itens.forEach((i, n) => {
+    removidosAntes(i).forEach(a => linhas.push(linhaRemovida(a)));
+    const origemSubstituto = i.substituto
+      ? aplicadas.filter(a => a.alteracao.adicionado && mesmoItem(a.alteracao.adicionado, i))
+      : [];
+    linhas.push(
+      <tr key={`item-${n}`} style={{ borderTop: `1px solid ${COR.borda}`, background: i.substituto ? '#EEF8F0' : i.pendente ? '#FFF8EC' : undefined }}>
+        <td style={codigo}>
+          {i.codigo || <span style={{ color: AMBAR, fontWeight: 700, fontFamily: FONTE }}>sem código</span>}
+        </td>
+        <td style={celula}>
+          <div style={{ color: COR.azul, fontWeight: 600 }}>{i.descricao}</div>
+          <div style={{ fontSize: '11.5px', color: COR.texto2, marginTop: '1px' }}>
+            {i.categoria}{mostrarOrigem ? ` · ${i.origem}` : ''}
+          </div>
+          {i.substituto && (
+            <div style={{ fontSize: '11.5px', color: VERDE, marginTop: '2px', fontWeight: 600 }}>
+              {origemSubstituto.length > 0
+                ? origemSubstituto.map(a => `Adicionado no lugar de ${a.alteracao.removido.descricao} por ${quemQuando(a.alteracao.por, a.alteracao.em)}`).join(' · ')
+                : 'Entrou por substituição manual'}
+            </div>
+          )}
+        </td>
+        <td style={{ ...celula, textAlign: 'right', fontWeight: 800, color: COR.azul }}>
+          {i.quantidade.toLocaleString('pt-BR')}
+        </td>
+        {comValores && (() => {
+          const v = i.codigo && !i.pendente ? valorDoItem(precos, i.codigo) : undefined;
+          return (
+            <>
+              <td style={{ ...numero, color: COR.azul }}>{v !== undefined ? formatarMoeda(v) : semValorCel(i.codigo && !i.pendente ? 'sem valor' : '—')}</td>
+              <td style={{ ...numero, color: COR.azul, fontWeight: 700 }}>{v !== undefined ? formatarMoeda(v * i.quantidade) : '—'}</td>
+            </>
+          );
+        })()}
+        {comAcoes && (
+          <td style={{ ...celula, textAlign: 'right', whiteSpace: 'nowrap' }}>
+            {i.substituto
+              ? (onDesfazer && origemSubstituto.length === 1 && (
+                <button type="button" title="Desfazer a substituição" aria-label={`Desfazer substituição por ${i.descricao}`} disabled={bloqueado} onClick={() => onDesfazer(origemSubstituto[0])} style={botaoLinha(!!bloqueado)}>
+                  <IconeKit nome="desfazer" tamanho={14} />
+                </button>
+              ))
+              : (onTrocar && (
+                <button type="button" title="Trocar ou cancelar este item" aria-label={`Trocar ou cancelar ${i.descricao}`} disabled={bloqueado} onClick={() => onTrocar(i)} style={botaoLinha(!!bloqueado)}>
+                  <IconeKit nome="trocar" tamanho={14} />
+                </button>
+              ))}
+          </td>
+        )}
+      </tr>
+    );
+  });
+  // Cancelados sem substituto (ou cujo substituto somou em outra linha).
+  aplicadas.filter(a => usadas.indexOf(a.alteracao.id) < 0).forEach(a => linhas.push(linhaRemovida(a)));
+
+  return (
+    <div style={{ overflowX: 'auto', border: `1px solid ${COR.borda}`, borderRadius: '10px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+        <thead>
+          <tr style={{ background: COR.fundo, color: COR.azul, textAlign: 'left' }}>
+            <th style={{ padding: '9px 12px' }}>Código</th>
+            <th style={{ padding: '9px 12px' }}>Item</th>
+            <th style={{ padding: '9px 12px', textAlign: 'right' }}>Qtd.</th>
+            {comValores && <th style={{ padding: '9px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>Valor unit.</th>}
+            {comValores && <th style={{ padding: '9px 12px', textAlign: 'right' }}>Total</th>}
+            {comAcoes && <th style={{ padding: '9px 12px', width: '1%' }}><span style={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Ações</span></th>}
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
+        </thead>
+        <tbody>{linhas}</tbody>
+        {comValores && itens.length > 0 && (
+          <tfoot>
+            <tr style={{ borderTop: `2px solid ${COR.azul}`, background: COR.fundo }}>
+              <td colSpan={4} style={{ padding: '9px 12px', fontSize: '12.5px', color: COR.texto2 }}>
+                <strong style={{ color: COR.azul }}>Total</strong>
+                {totais.semValor > 0 && ` · ${totais.semValor} item(ns) sem valor do CIGAM não somados`}
+                {totais.semCodigo > 0 && ` · ${totais.semCodigo} sem código`}
+              </td>
+              <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 800, color: COR.azul, whiteSpace: 'nowrap' }}>{formatarMoeda(totais.total)}</td>
+              {comAcoes && <td />}
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+};
 
 const botaoIcone = (desabilitado: boolean, perigo?: boolean): React.CSSProperties => ({
   ...botao('secundario', desabilitado),
@@ -332,7 +492,10 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   somenteLeitura,
   onSalvar,
   modoSimulacao,
-  onAlterar
+  onAlterar,
+  usuarioNome,
+  usuarioId,
+  precos
 }) => {
 
   const [selecao, setSelecao] = React.useState<ISelecaoKit>(() => normalizarSelecao(selecaoInicial || selecaoVazia()));
@@ -340,6 +503,8 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   const [alterado, setAlterado] = React.useState(false);
   const [visaoKit, setVisaoKit] = React.useState<'ponto' | 'projeto'>('ponto');
   const [menuNovo, setMenuNovo] = React.useState(false);
+  const [trocando, setTrocando] = React.useState<IItemBom | undefined>();
+  const [verHistorico, setVerHistorico] = React.useState(false);
   const [largo, setLargo] = React.useState<boolean>(typeof window !== 'undefined' ? window.innerWidth >= 1100 : true);
 
   React.useEffect(() => {
@@ -356,6 +521,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   }, [selecaoInicial]);
 
   const resultado = React.useMemo(() => montarBom(selecao), [selecao]);
+  const totalProjeto = React.useMemo(() => totalizarItens(resultado.itens, precos), [resultado, precos]);
 
   // Campo "Componente" do fluxo: repassa cada alteração (não a 1ª carga).
   const primeiraCarga = React.useRef(true);
@@ -470,6 +636,55 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
     }
 
     mudarPonto(parcial);
+  };
+
+  // ---------------- trocar / cancelar itens do kit ----------------
+
+  const registrarAlteracao = (dados: IDadosAlteracaoItem): void => {
+    if (!ponto || !trocando) {
+      return;
+    }
+    const nova: IAlteracaoItemKit = {
+      id: novoIdAlteracao(),
+      acao: dados.acao,
+      removido: { codigo: trocando.codigo, descricao: trocando.descricao, categoria: trocando.categoria },
+      ...(dados.adicionado ? { adicionado: dados.adicionado } : {}),
+      ...(dados.quantidadePorPonto !== undefined ? { quantidadePorPonto: dados.quantidadePorPonto } : {}),
+      motivo: dados.motivo,
+      por: usuarioNome || '',
+      ...(usuarioId ? { porId: usuarioId } : {}),
+      em: new Date().toISOString()
+    };
+    mudarPonto({ alteracoes: [...(ponto.alteracoes || []), nova] });
+    setTrocando(undefined);
+  };
+
+  // Desfazer não apaga: marca a alteração como desfeita (quem, quando).
+  const desfazerAlteracao = (registro: IAlteracaoAplicada): void => {
+    if (!ponto) {
+      return;
+    }
+    const a = registro.alteracao;
+    const motivo = window.prompt(
+      `Desfazer a ${a.acao === 'substituir' ? 'substituição' : 'remoção'} de "${a.removido.descricao}"? O item volta ao kit e a alteração fica no histórico como desfeita.\n\nMotivo (opcional):`,
+      ''
+    );
+    if (motivo === null) {
+      return;
+    }
+    mudarPonto({
+      alteracoes: (ponto.alteracoes || []).map(x => (x.id === a.id
+        ? {
+          ...x,
+          desfeita: {
+            por: usuarioNome || '',
+            ...(usuarioId ? { porId: usuarioId } : {}),
+            em: new Date().toISOString(),
+            ...(motivo.trim() ? { motivo: motivo.trim() } : {})
+          }
+        }
+        : x))
+    });
   };
 
   const baixarCsv = (): void => {
@@ -836,6 +1051,11 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
   const errosPontoAtual = alertasPonto.filter(a => a.nivel === 'erro').length;
   const valido = visaoKit === 'ponto' ? errosPontoAtual === 0 : erros.length === 0;
 
+  // Mais recentes primeiro.
+  const historicoPonto: IAlteracaoAplicada[] = grupoPonto && grupoPonto.alteracoes
+    ? grupoPonto.alteracoes.slice().reverse()
+    : [];
+
   const renderizarResumoPonto = (): React.ReactElement | null => {
     if (!ponto || !grupoPonto) {
       return (
@@ -886,7 +1106,47 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
         </div>
 
         {alertasPonto.length > 0 ? <ListaAlertas alertas={alertasPonto} /> : <div style={{ height: '12px' }} />}
-        <TabelaItens itens={grupoPonto.itens} mostrarOrigem={false} />
+        <TabelaItens
+          itens={grupoPonto.itens}
+          mostrarOrigem={false}
+          alteracoes={grupoPonto.alteracoes}
+          onTrocar={somenteLeitura ? undefined : setTrocando}
+          onDesfazer={somenteLeitura ? undefined : desfazerAlteracao}
+          bloqueado={bloqueado}
+          precos={precos}
+        />
+        {!somenteLeitura && (
+          <div style={{ ...dica, display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <IconeKit nome="trocar" tamanho={13} /> Use o botão ao lado de cada item para trocá-lo por outro ou cancelá-lo neste ponto.
+          </div>
+        )}
+
+        {historicoPonto.length > 0 && (
+          <div style={{ marginTop: '14px', borderTop: `1px solid ${COR.borda}`, paddingTop: '12px' }}>
+            <button
+              type="button"
+              aria-expanded={verHistorico}
+              onClick={() => setVerHistorico(!verHistorico)}
+              style={{ display: 'flex', alignItems: 'center', gap: '7px', width: '100%', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: FONTE, color: COR.azul, fontWeight: 800, fontSize: '13.5px' }}
+            >
+              <IconeKit nome="relogio" tamanho={16} cor={COR.indigo} />
+              Histórico de alterações deste ponto
+              <span style={{ fontWeight: 600, fontSize: '12px', color: COR.texto2 }}>
+                {historicoPonto.filter(h => h.situacao !== 'desfeita').length} em vigor · {historicoPonto.length} no total
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: '12px', color: COR.indigo }}>{verHistorico ? 'Ocultar' : 'Ver'}</span>
+            </button>
+            {verHistorico && (
+              <div style={{ marginTop: '10px' }}>
+                <HistoricoAlteracoes
+                  registros={historicoPonto}
+                  onDesfazer={somenteLeitura ? undefined : desfazerAlteracao}
+                  desabilitado={bloqueado}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </>
     );
   };
@@ -932,7 +1192,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
           </div>
           {resultado.alertas.length > 0 ? <ListaAlertas alertas={resultado.alertas} mostrarOrigem /> : <div style={{ height: '12px' }} />}
           {resultado.itens.length > 0
-            ? <TabelaItens itens={resultado.itens} mostrarOrigem />
+            ? <TabelaItens itens={resultado.itens} mostrarOrigem precos={precos} />
             : <div style={{ fontSize: '13px', color: COR.texto2 }}>Nenhum item ainda.</div>}
         </>
       )}
@@ -951,6 +1211,22 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
         </div>
       )}
 
+      {precos && (
+        <div style={{ ...painel, marginBottom: '14px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', borderLeft: `4px solid ${VERDE}` }}>
+          <div>
+            <div style={{ fontSize: '11.5px', fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: COR.texto2 }}>Total do projeto (valores do CIGAM)</div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: COR.azul, lineHeight: 1.15 }}>{formatarMoeda(totalProjeto.total)}</div>
+          </div>
+          <div style={{ fontSize: '12.5px', color: COR.texto2, lineHeight: 1.5 }}>
+            Soma de valor unitário × quantidade de todos os pontos ({resultado.totais.pontos} ponto(s), {resultado.itens.length} itens).
+            <br />
+            <strong style={{ color: COR.azul }}>{totalProjeto.comValor}</strong> com valor
+            {totalProjeto.semValor > 0 && <span style={{ color: AMBAR, fontWeight: 700 }}> · {totalProjeto.semValor} sem valor do CIGAM (não somados)</span>}
+            {totalProjeto.semCodigo > 0 && <span> · {totalProjeto.semCodigo} sem código</span>}
+            {totalProjeto.comValor === 0 && resultado.itens.length > 0 && <span> · atualize os valores na aba Kits</span>}
+          </div>
+        </div>
+      )}
       {blocoProjeto}
       <SeletorServidor
         selecao={selecao}
@@ -963,6 +1239,18 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
         {renderizarConfigurar()}
         {blocoKit}
       </div>
+
+      {trocando && ponto && (
+        <ModalAlterarItem
+          item={trocando}
+          nomePonto={ponto.nome}
+          quantidadePorPonto={trocando.quantidade / Math.max(1, ponto.quantidade)}
+          pontosIguais={Math.max(1, ponto.quantidade)}
+          usuarioNome={usuarioNome}
+          onConfirmar={registrarAlteracao}
+          onFechar={() => setTrocando(undefined)}
+        />
+      )}
 
       {/* barra de ações */}
       {!somenteLeitura && !modoSimulacao && (
@@ -977,6 +1265,7 @@ const SelecaoKitEtapa: React.FC<ISelecaoKitEtapaProps> = ({
           <span style={{ fontSize: '12.5px', color: COR.texto2 }}>
             <strong style={{ color: COR.azul }}>{resultado.totais.pontos}</strong> ponto(s) ·{' '}
             <strong style={{ color: COR.azul }}>{resultado.itens.length}</strong> itens
+            {precos && <> · <strong style={{ color: COR.azul }}>{formatarMoeda(totalProjeto.total)}</strong></>}
             {erros.length > 0 && <span style={{ color: VERMELHO, fontWeight: 700 }}> · {erros.length} erro(s) para corrigir</span>}
             {alterado && <span style={{ color: AMBAR, fontWeight: 700 }}> · alterações não salvas</span>}
           </span>

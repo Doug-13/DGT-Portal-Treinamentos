@@ -18,6 +18,7 @@
     <Compile Include="..\DGT.Treinamentos.Plugins\TarefaLicitacaoClickUp.cs" Link="Regras\TarefaLicitacaoClickUp.cs" />
     <Compile Include="..\DGT.Treinamentos.Plugins\DocumentosRecebidosFornecedor.cs" Link="Regras\DocumentosRecebidosFornecedor.cs" />
     <Compile Include="..\DGT.Treinamentos.Plugins\HomologacaoFornecedor.cs" Link="Regras\HomologacaoFornecedor.cs" />
+    <Compile Include="..\DGT.Treinamentos.Plugins\PrecosCigam.cs" Link="Regras\PrecosCigam.cs" />
   </ItemGroup>
 
   <ItemGroup>

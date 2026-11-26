@@ -32,6 +32,14 @@ import {
 } from './catalogoServidores';
 
 import {
+  IComplementosHH
+} from '../hh/complementosHH';
+
+import {
+  IResumoValoresBom
+} from '../hh/valoresProjeto';
+
+import {
   FINALIDADES,
   IAvaliacaoServidor,
   IContagemCameras,
@@ -131,6 +139,65 @@ export interface IPontoKit {
   controladorPorta: string;
   catracas: number;
   catracasPne: number;
+
+  // Itens do kit trocados ou cancelados à mão na Seleção de kit, com
+  // o histórico completo (quem, quando, por quê). Nada é apagado:
+  // desfazer só marca a alteração como desfeita.
+  alteracoes?: IAlteracaoItemKit[];
+}
+
+// ------------------------------------------------------------
+// Alterações manuais de itens do kit (substituir / cancelar)
+// ------------------------------------------------------------
+
+export interface IRefItemBom {
+  codigo: string;
+  descricao: string;
+  categoria: CategoriaItem;
+}
+
+export type AcaoAlteracaoItem = 'substituir' | 'remover';
+
+export interface IAlteracaoItemKit {
+  id: string;
+  acao: AcaoAlteracaoItem;
+  // Item do kit gerado que sai.
+  removido: IRefItemBom;
+  // Item que entra no lugar (só em "substituir").
+  adicionado?: IRefItemBom;
+  // Quantidade do novo item POR PONTO (antes de × pontos iguais).
+  // Vazio = a mesma quantidade do item removido (acompanha o kit se
+  // o número de câmeras mudar).
+  quantidadePorPonto?: number;
+  motivo: string;
+  // Quem fez e quando (ISO).
+  por: string;
+  porId?: string;
+  em: string;
+  // Desfeita: continua no histórico, mas não vale mais.
+  desfeita?: {
+    por: string;
+    porId?: string;
+    em: string;
+    motivo?: string;
+  };
+}
+
+export type SituacaoAlteracao = 'aplicada' | 'naoAplicada' | 'desfeita';
+
+// Alteração como ficou na montagem: quantidades já × pontos iguais.
+export interface IAlteracaoAplicada {
+  alteracao: IAlteracaoItemKit;
+  situacao: SituacaoAlteracao;
+  quantidadeRemovida: number;
+  quantidadeAdicionada: number;
+}
+
+// Linha do histórico do projeto (B.O.M. pronto e envio congelado).
+export interface IRegistroAlteracaoBom extends IAlteracaoAplicada {
+  pontoId: string;
+  pontoNome: string;
+  kit: string;
 }
 
 // Safe City = nuvem (sem servidor). Digifort e Milestone = on-premise:
@@ -160,6 +227,8 @@ export interface ISelecaoKit {
   servidores?: Partial<Record<FinalidadeServidor, ISelecaoServidor>>;
   atualizadoEm?: string;
   atualizadoPor?: string;
+  // Etapa 4 (Cálculo de HH): integração e contrato de manutenção.
+  complementosHH?: IComplementosHH;
   // Etapa 5: lista congelada no envio para aprovação. Depois do envio,
   // o B.O.M. mostra este retrato, e não o catálogo atual da aba Kits.
   bomEnviado?: IBomEnviado;
@@ -174,6 +243,11 @@ export interface IBomEnviado {
   // Código CIGAM → valor unitário (R$) usado no envio.
   precos: Record<string, number>;
   valorTotal: number;
+  // Itens trocados/cancelados nos kits, como estavam no envio.
+  alteracoes?: IRegistroAlteracaoBom[];
+  // Totais do projeto (itens + Implantação + Supply + integração +
+  // manutenção), como estavam no envio.
+  resumoValores?: IResumoValoresBom;
 }
 
 export interface IItemBom {
@@ -184,6 +258,8 @@ export interface IItemBom {
   origem: string;
   // Sem código no CIGAM: não orçável até ser cadastrado.
   pendente: boolean;
+  // Entrou por substituição manual na Seleção de kit.
+  substituto?: boolean;
 }
 
 export interface IAlertaBom {
@@ -194,7 +270,7 @@ export interface IAlertaBom {
 
 export interface IResultadoBom {
   itens: IItemBom[];
-  porPonto: Array<{ ponto: IPontoKit; itens: IItemBom[] }>;
+  porPonto: Array<{ ponto: IPontoKit; itens: IItemBom[]; alteracoes?: IAlteracaoAplicada[] }>;
   alertas: IAlertaBom[];
   totais: {
     pontos: number;
@@ -759,6 +835,128 @@ export const kitsAplicados = (ponto: IPontoKit): string[] => {
 };
 
 // ------------------------------------------------------------
+// Alterações manuais (substituir / cancelar item do kit)
+// ------------------------------------------------------------
+
+let contadorAlteracao = 0;
+
+export const novoIdAlteracao = (): string => {
+  contadorAlteracao++;
+  return `a${Date.now().toString(36)}${contadorAlteracao}`;
+};
+
+// O mesmo item: pelo código CIGAM; sem código, pela descrição.
+export const mesmoItem = (a: { codigo: string; descricao: string }, b: { codigo: string; descricao: string }): boolean =>
+  a.codigo ? a.codigo === b.codigo : !b.codigo && a.descricao === b.descricao;
+
+export const alteracaoAtiva = (a: IAlteracaoItemKit): boolean => !a.desfeita;
+
+// Aplica, na ordem em que foram feitas, as alterações ativas sobre
+// os itens de UM ponto (quantidades de um ponto, antes de × iguais).
+// Alteração cujo item já não está no kit (a configuração mudou)
+// não é aplicada e vira aviso — não some sem explicação.
+export const aplicarAlteracoes = (
+  ponto: IPontoKit,
+  itensEntrada: IItemBom[],
+  alertas: IAlertaBom[]
+): { itens: IItemBom[]; alteracoes: IAlteracaoAplicada[] } => {
+
+  const itens = itensEntrada.map(i => ({ ...i }));
+  const alteracoes: IAlteracaoAplicada[] = [];
+
+  (ponto.alteracoes || []).forEach(alteracao => {
+    if (!alteracaoAtiva(alteracao)) {
+      alteracoes.push({ alteracao, situacao: 'desfeita', quantidadeRemovida: 0, quantidadeAdicionada: 0 });
+      return;
+    }
+
+    const indice = itens.findIndex(i => !i.substituto && mesmoItem(alteracao.removido, i));
+    if (indice < 0) {
+      alertas.push({
+        nivel: 'aviso',
+        origem: ponto.nome,
+        mensagem: `${alteracao.acao === 'substituir' ? 'Substituição' : 'Cancelamento'} de “${alteracao.removido.descricao}” não aplicada: o item não está mais no kit deste ponto (a configuração mudou). Desfaça ou refaça a alteração.`
+      });
+      alteracoes.push({ alteracao, situacao: 'naoAplicada', quantidadeRemovida: 0, quantidadeAdicionada: 0 });
+      return;
+    }
+
+    const removido = itens[indice];
+    itens.splice(indice, 1);
+
+    let quantidadeAdicionada = 0;
+    if (alteracao.acao === 'substituir' && alteracao.adicionado) {
+      const novo = alteracao.adicionado;
+      quantidadeAdicionada = alteracao.quantidadePorPonto !== undefined && alteracao.quantidadePorPonto !== null
+        ? inteiro(alteracao.quantidadePorPonto)
+        : removido.quantidade;
+      if (quantidadeAdicionada > 0) {
+        const existente = itens.find(i => mesmoItem(novo, i));
+        if (existente) {
+          existente.quantidade += quantidadeAdicionada;
+          existente.substituto = true;
+        } else {
+          itens.push({
+            codigo: novo.codigo,
+            descricao: novo.descricao,
+            categoria: novo.categoria,
+            quantidade: quantidadeAdicionada,
+            origem: ponto.nome,
+            pendente: !novo.codigo,
+            substituto: true
+          });
+        }
+      }
+    }
+
+    alteracoes.push({ alteracao, situacao: 'aplicada', quantidadeRemovida: removido.quantidade, quantidadeAdicionada });
+  });
+
+  return { itens, alteracoes };
+};
+
+// Itens que podem entrar no lugar de outro: catálogo da aba Kits
+// (ativos), câmeras, switches e controladores — com a descrição
+// igual à que o montador usa, para somar com linhas iguais.
+export const catalogoParaSubstituicao = (): IRefItemBom[] => {
+  const lista: IRefItemBom[] = [];
+  const incluir = (ref: IRefItemBom): void => {
+    if (!ref.descricao || lista.some(r => mesmoItem(ref, r) && r.descricao === ref.descricao)) {
+      return;
+    }
+    lista.push(ref);
+  };
+  CAMERAS_VIDEO.forEach(c => incluir({ codigo: c.codigo, descricao: `Câmera ${c.modelo}`, categoria: 'Câmera' }));
+  CAMERAS_OCR.forEach(c => incluir({ codigo: c.codigo, descricao: `Câmera OCR/LPR ${c.modelo}`, categoria: 'Câmera' }));
+  SWITCHES.forEach(sw => incluir({ codigo: sw.codigo, descricao: `Switch ${sw.modelo}`, categoria: 'Equipamento' }));
+  CONTROLADORES_PORTA.concat([CONTROLADOR_PNE]).forEach(c =>
+    incluir({ codigo: c.codigo, descricao: `Controlador de acesso facial ${c.modelo}`, categoria: 'Equipamento' }));
+  Object.keys(ITENS).forEach(chave => {
+    const item = ITENS[chave];
+    if (item.ativo !== false) {
+      incluir({ codigo: item.codigo, descricao: item.descricao, categoria: item.categoria });
+    }
+  });
+  return lista.sort((a, b) => a.descricao.localeCompare(b.descricao));
+};
+
+// Histórico de todas as alterações do projeto (mais recentes primeiro).
+export const historicoAlteracoes = (resultado: IResultadoBom): IRegistroAlteracaoBom[] => {
+  const linhas: IRegistroAlteracaoBom[] = [];
+  resultado.porPonto.forEach(grupo => {
+    (grupo.alteracoes || []).forEach(a => linhas.push({
+      ...a,
+      pontoId: grupo.ponto.id,
+      pontoNome: grupo.ponto.nome,
+      kit: nomeKitDoPonto(grupo.ponto)
+    }));
+  });
+  const momento = (r: IRegistroAlteracaoBom): string =>
+    r.alteracao.desfeita ? r.alteracao.desfeita.em : r.alteracao.em;
+  return linhas.sort((a, b) => momento(b).localeCompare(momento(a)));
+};
+
+// ------------------------------------------------------------
 // Montagem completa
 // ------------------------------------------------------------
 
@@ -768,7 +966,7 @@ export const montarBom = (
 ): IResultadoBom => {
 
   const alertas: IAlertaBom[] = [];
-  const porPonto: Array<{ ponto: IPontoKit; itens: IItemBom[] }> = [];
+  const porPonto: IResultadoBom['porPonto'] = [];
   const selecao = normalizarSelecao(selecaoEntrada);
   const softwares = selecao.softwares;
 
@@ -782,16 +980,24 @@ export const montarBom = (
 
     const qtd = inteiro(ponto.quantidade, 1);
 
-    const itensUm =
+    const itensGerados =
       ehBridgefy(ponto.tipo)
         ? montarBridgefy(ponto, softwares, alertas, opcoes)
         : ponto.tipo === 'catraca'
           ? montarCatraca(ponto, alertas)
           : montarPorta(ponto, alertas, opcoes);
 
+    // Trocas e cancelamentos feitos à mão na Seleção de kit.
+    const { itens: itensUm, alteracoes } = aplicarAlteracoes(ponto, itensGerados, alertas);
+
     porPonto.push({
       ponto,
-      itens: itensUm.map(i => ({ ...i, quantidade: i.quantidade * qtd }))
+      itens: itensUm.map(i => ({ ...i, quantidade: i.quantidade * qtd })),
+      alteracoes: alteracoes.map(a => ({
+        ...a,
+        quantidadeRemovida: a.quantidadeRemovida * qtd,
+        quantidadeAdicionada: a.quantidadeAdicionada * qtd
+      }))
     });
 
     pontos += qtd;
@@ -901,6 +1107,7 @@ export const montarBom = (
       const existente = consolidado.find(c => c.codigo === i.codigo && c.descricao === i.descricao);
       if (existente) {
         existente.quantidade += i.quantidade;
+        existente.substituto = existente.substituto || i.substituto;
         if (existente.origem.indexOf(i.origem) < 0) {
           existente.origem = `${existente.origem}; ${i.origem}`;
         }

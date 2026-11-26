@@ -35,8 +35,8 @@ export const COL_ITEM = {
   ativo: 'dgt_ativo'
 };
 
-// Valor (R$) vindo do CIGAM. Quem grava é a integração (Power
-// Automate), NUNCA o portal: a tela só lê. Colunas criadas por
+// Valor (R$) vindo do CIGAM. Quem grava é o plugin
+// AtualizarValoresCigamPlugin, NUNCA o portal: a tela só lê. Colunas criadas por
 // scripts/dataverse/criar-colunas-valor-cigam.ps1.
 export const COL_ITEM_VALOR = {
   valor: 'dgt_valor',
@@ -45,9 +45,9 @@ export const COL_ITEM_VALOR = {
   situacao: 'dgt_valorsituacao'
 };
 
-// Pedidos de atualização de preços: o portal cria uma linha e o fluxo
-// do Power Automate ("Quando uma linha é adicionada") busca os preços
-// no CIGAM e devolve o resultado na mesma linha. Assim nenhuma
+// Pedidos de atualização de preços: o portal cria uma linha e o plugin
+// AtualizarValoresCigamPlugin (Create assíncrono) busca os preços no
+// CIGAM e devolve o resultado na mesma linha. Assim nenhuma
 // credencial do CIGAM passa pelo navegador.
 export const TABELA_SINCRONIZACAO_CIGAM = 'dgt_cigamsincronizacao';
 
@@ -64,6 +64,18 @@ export const COL_SINCRONIZACAO = {
 };
 
 export type SituacaoSincronizacao = 'Pendente' | 'Em andamento' | 'Concluída' | 'Erro';
+
+// Pedido Pendente/Em andamento sem resposta há mais que isto é tratado
+// como travado: o portal libera um novo pedido.
+export const MINUTOS_SEM_RESPOSTA_CIGAM = 15;
+
+export const sincronizacaoEmCurso = (situacao: SituacaoSincronizacao | undefined, solicitadoEm: string | undefined): boolean => {
+  if (situacao !== 'Pendente' && situacao !== 'Em andamento') {
+    return false;
+  }
+  const inicio = solicitadoEm ? new Date(solicitadoEm).getTime() : NaN;
+  return isNaN(inicio) || Date.now() - inicio < MINUTOS_SEM_RESPOSTA_CIGAM * 60000;
+};
 
 export const COL_KIT = {
   id: 'dgt_kitkitid',

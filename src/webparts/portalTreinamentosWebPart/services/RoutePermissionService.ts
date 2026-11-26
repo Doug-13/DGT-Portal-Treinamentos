@@ -114,6 +114,7 @@ const regras:
     // Editor e Administrador alteram fluxos (controlado na tela).
     { rota: 'processos', perfis: TODOS },
     { rota: 'fluxos', perfis: TODOS },
+    { rota: 'desenhosProcesso', perfis: TODOS },
 
     // Acompanhamento de pessoas (Editor, Gestor e Administrador; o
     // recorte pelas áreas de cada um é aplicado nos dados).

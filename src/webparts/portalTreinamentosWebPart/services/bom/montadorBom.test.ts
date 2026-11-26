@@ -5,8 +5,10 @@ import {
 } from './catalogoKits';
 
 import {
+  IAlteracaoItemKit,
   ISelecaoKit,
   IPontoKit,
+  historicoAlteracoes,
   montarBom,
   novoPonto,
   softwaresPadrao
@@ -74,5 +76,49 @@ describe('montador de B.O.M. — kit-base pela composição', () => {
     const simulado = montarBom(sel, { composicoes: { box: [] } });
     expect(simulado.itens.some(i => i.codigo === '6300050085')).toBe(false);
     expect(qtd(sel, '6300050085')).toBe(1);
+  });
+});
+
+describe('montador de B.O.M. — trocar e cancelar itens do kit', () => {
+
+  const FONTE = '3700010044';
+  const fonte = { codigo: FONTE, descricao: 'DGT fonte chaveada de mesa 12V DC 3,5A', categoria: 'Infraestrutura' as const };
+  const nova = { codigo: '123', descricao: 'Fonte nova', categoria: 'Infraestrutura' as const };
+  const alteracao = (parcial: Partial<IAlteracaoItemKit>): IAlteracaoItemKit => ({
+    id: 'a1', acao: 'substituir', removido: fonte, adicionado: nova, motivo: 'teste', por: 'Fulano', em: '2026-11-24T12:00:00.000Z', ...parcial
+  });
+
+  it('substituir: sai o item, entra o novo com a mesma quantidade (× pontos iguais)', () => {
+    const sel = selecao(ponto('torre', { quantidade: 2, alteracoes: [alteracao({})] }));
+    expect(qtd(sel, FONTE)).toBe(0);
+    expect(qtd(sel, '123')).toBe(6);  // 2 câmeras + giroled = 3 por ponto × 2
+    const hist = historicoAlteracoes(montarBom(sel));
+    expect(hist.length).toBe(1);
+    expect(hist[0].situacao).toBe('aplicada');
+    expect(hist[0].quantidadeRemovida).toBe(6);
+    expect(hist[0].quantidadeAdicionada).toBe(6);
+    expect(montarBom(sel).itens.filter(i => i.codigo === '123')[0].substituto).toBe(true);
+  });
+
+  it('substituir com quantidade própria e só cancelar', () => {
+    expect(qtd(selecao(ponto('torre', { alteracoes: [alteracao({ quantidadePorPonto: 1 })] })), '123')).toBe(1);
+    const sel = selecao(ponto('torre', { alteracoes: [alteracao({ acao: 'remover', adicionado: undefined })] }));
+    expect(qtd(sel, FONTE)).toBe(0);
+    expect(qtd(sel, '123')).toBe(0);
+  });
+
+  it('desfeita: o item volta e a alteração fica no histórico', () => {
+    const sel = selecao(ponto('torre', { alteracoes: [alteracao({ desfeita: { por: 'Ciclano', em: '2026-11-24T13:00:00.000Z' } })] }));
+    expect(qtd(sel, FONTE)).toBe(3);
+    expect(qtd(sel, '123')).toBe(0);
+    expect(historicoAlteracoes(montarBom(sel))[0].situacao).toBe('desfeita');
+  });
+
+  it('item que não está mais no kit: não aplicada, com aviso', () => {
+    const fora = { codigo: '000', descricao: 'Item que não existe', categoria: 'Infraestrutura' as const };
+    const resultado = montarBom(selecao(ponto('torre', { alteracoes: [alteracao({ removido: fora })] })));
+    expect(historicoAlteracoes(resultado)[0].situacao).toBe('naoAplicada');
+    expect(resultado.alertas.some(a => a.mensagem.indexOf('não aplicada') >= 0)).toBe(true);
+    expect(resultado.itens.some(i => i.codigo === '123')).toBe(false);
   });
 });
