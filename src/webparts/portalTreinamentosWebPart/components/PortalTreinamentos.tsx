@@ -6,6 +6,7 @@ import MenuUsuario from './common/MenuUsuario';
 import AvisosPortal from './common/AvisosPortal';
 import SinoNotificacoes from './common/SinoNotificacoes';
 import AdministrarIaModal from '../pages/Indicadores/AdministrarIaModal';
+import AdministrarIntegracoesModal from '../pages/Administracao/AdministrarIntegracoesModal';
 
 import {
   IEventoTreinamento,
@@ -963,6 +964,9 @@ const PortalTreinamentos:
 
     // Administrar IA (chave, preços, limites e áreas) — menu do usuário.
     const [administrandoIa, setAdministrandoIa] =
+      React.useState<boolean>(false);
+
+    const [administrandoIntegracoes, setAdministrandoIntegracoes] =
       React.useState<boolean>(false);
 
     const menuUsuarioRef =
@@ -4749,7 +4753,8 @@ const PortalTreinamentos:
                           { chave: 'meuPerfil' as Pagina, rotulo: 'Meu perfil', descricao: 'Seus dados, papéis e o que você acessa', icone: 'perfil' as const, visivel: true },
                           { chave: 'usuariosAcessos' as Pagina, rotulo: 'Usuários e acessos', descricao: 'Cadastro, perfis e módulos liberados', icone: 'usuarios' as const, visivel: podeAdministrarAcessos(autorizacao.contexto) },
                           { chave: 'gestaoAreas' as Pagina, rotulo: 'Áreas e acessos', descricao: 'Áreas, equipes e papéis por área', icone: 'areas' as const, visivel: autorizacao.contexto?.perfil === 'Administrador' },
-                          { chave: 'administrarIa', rotulo: 'Administrar IA', descricao: 'Chave, consumo, limites e áreas da IA', icone: 'ia' as const, visivel: autorizacao.contexto?.perfil === 'Administrador' }
+                          { chave: 'administrarIa', rotulo: 'Administrar IA', descricao: 'Chave, consumo, limites e áreas da IA', icone: 'ia' as const, visivel: autorizacao.contexto?.perfil === 'Administrador' },
+                          { chave: 'administrarIntegracoes', rotulo: 'Integrações', descricao: 'Endereços e segredos dos sistemas externos', icone: 'ia' as const, visivel: autorizacao.contexto?.perfil === 'Administrador' }
                         ]
                           .filter(item => item.visivel)
                           .map(item => ({
@@ -4761,6 +4766,8 @@ const PortalTreinamentos:
                               setMenuUsuarioAberto(false);
                               if (item.chave === 'administrarIa') {
                                 setAdministrandoIa(true);
+                              } else if (item.chave === 'administrarIntegracoes') {
+                                setAdministrandoIntegracoes(true);
                               } else {
                                 navegar(item.chave as Pagina);
                               }
@@ -4781,6 +4788,14 @@ const PortalTreinamentos:
             <AdministrarIaModal
               dataverseService={dataverseService}
               onFechar={() => setAdministrandoIa(false)}
+            />
+          )}
+
+          {/* Integrações (aberto pelo menu do usuário, só Administrador). */}
+          {administrandoIntegracoes && (
+            <AdministrarIntegracoesModal
+              dataverseService={dataverseService}
+              onFechar={() => setAdministrandoIntegracoes(false)}
             />
           )}
 

@@ -3,11 +3,13 @@ import * as React from 'react';
 import { DataverseService } from '../../services/DataverseService';
 import {
   IEnvioCigam,
+  andamentoEnvio,
   envioQueBloqueia,
+  horaCurta,
   lancarBomNoCigam,
   lerEnviosCigam
 } from '../../services/bom/envioCigam';
-import { COR, botao, cartao, formatarData } from './arquiteturaComum';
+import { COR, botao, cartao } from './arquiteturaComum';
 
 // ============================================================
 // LANÇAR NO CIGAM (Homologação)
@@ -15,9 +17,19 @@ import { COR, botao, cartao, formatarData } from './arquiteturaComum';
 // Painel aberto pelo botão "Lançar no CIGAM" da etapa B.O.M. pronto.
 // Só para B.O.M. enviado para aprovação (lista congelada), sem item
 // sem código e sem item sem preço. O cliente vem da demanda; o
-// representante, a unidade, o controle e a previsão são informados
-// aqui. Um segundo lançamento exige justificativa, porque cada
-// chamada cria outra oportunidade e outro pedido no CIGAM.
+// representante, a unidade, o controle e a previsão são informados aqui.
+//
+// Estados do painel:
+//   formulário ...... nunca lançado (ou última tentativa recusada)
+//   enviando ........ aguardando a resposta da MAAX (não fecha)
+//   processando ..... recebido: o CIGAM trabalha em segundo plano;
+//                     barra com a previsão de término (estimada)
+//   já lançado ...... concluído pela previsão; lançar de novo só
+//                     marcando "Preciso lançar de novo" + justificativa
+//
+// A proteção definitiva contra duplicidade está no plugin
+// (EnviarBomCigamPlugin trava a linha do B.O.M.); o painel só evita
+// o clique repetido e deixa claro o que está acontecendo.
 // ============================================================
 
 export interface ILancarCigamPainelProps {
@@ -50,6 +62,34 @@ const SITUACAO: Record<string, { texto: string; cor: string }> = {
   recusado: { texto: 'Recusado', cor: '#B42318' }
 };
 
+// Barra de andamento (estimado) de um envio recebido.
+const Andamento: React.FC<{ envio: IEnvioCigam; agora: Date }> = ({ envio, agora }) => {
+  const a = andamentoEnvio(envio, agora);
+  const restante = Math.max(0, Math.ceil((a.terminoPrevisto.getTime() - agora.getTime()) / 1000));
+  const min = Math.floor(restante / 60);
+  const seg = restante % 60;
+  return (
+    <div style={{ marginTop: '12px', background: a.emProcessamento ? '#E8F2FF' : '#E7F6EC', border: `1px solid ${a.emProcessamento ? '#0F6CBD' : '#107C10'}`, borderRadius: '8px', padding: '12px 14px', fontSize: '13px', color: COR.azul }}>
+      <strong style={{ color: a.emProcessamento ? '#0F6CBD' : '#107C10' }}>
+        {a.emProcessamento ? '⏳ O CIGAM está criando a oportunidade e o pedido…' : '✓ Pelo tempo previsto, o CIGAM já deve ter concluído.'}
+      </strong>
+      <div style={{ marginTop: '4px' }}>
+        Enviado às {horaCurta(new Date(envio.em))} · {envio.itens} item(ns) · {moeda(envio.valorTotal)} ·
+        {a.emProcessamento
+          ? ` previsão de término às ${horaCurta(a.terminoPrevisto)} (faltam ${min > 0 ? `${min} min ` : ''}${seg} s).`
+          : ` término previsto às ${horaCurta(a.terminoPrevisto)}.`}
+      </div>
+      <div style={{ height: '8px', background: '#fff', borderRadius: '4px', marginTop: '8px', overflow: 'hidden', border: `1px solid ${COR.borda}` }}>
+        <div style={{ width: `${a.percentual}%`, height: '100%', background: a.emProcessamento ? '#0F6CBD' : '#107C10', transition: 'width 1s linear' }} />
+      </div>
+      <div style={{ fontSize: '11.5px', color: COR.texto2, marginTop: '6px' }}>
+        O tempo é uma estimativa (cerca de 10 s por item): a MAAX ainda não devolve o número da oportunidade e do pedido ao portal.
+        Para confirmar, consulte o CIGAM de Homologação (Vendas/CRM, oportunidades do cliente). Você pode fechar esta janela; o CIGAM continua trabalhando.
+      </div>
+    </div>
+  );
+};
+
 const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
   const { dataverseService, bomId, numero, revisao, clienteCigam, linhas, semCodigo, semPreco, enviado, aoFechar, aoConcluir } = props;
 
@@ -63,18 +103,36 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
   const [unidade, setUnidade] = React.useState('001');
   const [controle, setControle] = React.useState('NA');
   const [previsao, setPrevisao] = React.useState(previsaoInicial);
+  const [relancar, setRelancar] = React.useState(false);
   const [justificativa, setJustificativa] = React.useState('');
   const [enviando, setEnviando] = React.useState(false);
   const [erro, setErro] = React.useState('');
+  const [recemEnviado, setRecemEnviado] = React.useState<IEnvioCigam | undefined>(undefined);
+  const [agora, setAgora] = React.useState(new Date());
+
+  // Impede um segundo envio antes de o React redesenhar o botão.
+  const emEnvio = React.useRef(false);
+  // Em funções separadas: atribuir emEnvio.current depois de um await
+  // dispara a regra require-atomic-updates do lint.
+  const ocupar = (): void => { emEnvio.current = true; };
+  const liberar = (): void => { emEnvio.current = false; };
+
+  const recarregar = async (): Promise<IEnvioCigam[] | undefined> => {
+    if (!dataverseService) {
+      return [];
+    }
+    const lista = await lerEnviosCigam(dataverseService, bomId);
+    setEnvios(lista);
+    return lista;
+  };
 
   React.useEffect(() => {
     if (!dataverseService) {
       setCarregando(false);
       return;
     }
-    lerEnviosCigam(dataverseService, bomId)
+    recarregar()
       .then(lista => {
-        setEnvios(lista);
         const ultimo = lista && lista.length ? lista[lista.length - 1] : undefined;
         if (ultimo) {
           setRepresentante(ultimo.representante || '');
@@ -87,6 +145,17 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
   }, [dataverseService, bomId]);
 
   const bloqueio = envios ? envioQueBloqueia(envios) : undefined;
+  const acompanhado = recemEnviado || bloqueio;
+  const processando = !!acompanhado && andamentoEnvio(acompanhado, agora).emProcessamento;
+
+  // Relógio só enquanto há envio em processamento.
+  React.useEffect(() => {
+    if (!acompanhado || !andamentoEnvio(acompanhado).emProcessamento) {
+      return undefined;
+    }
+    const relogio = window.setInterval(() => setAgora(new Date()), 1000);
+    return () => window.clearInterval(relogio);
+  }, [acompanhado]);
 
   const impedimentos = [
     !dataverseService ? 'Conexão com o Dataverse indisponível.' : '',
@@ -98,11 +167,12 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
   ].filter(Boolean);
 
   const camposOk = !!representante.trim() && !!unidade.trim() && !!controle.trim() && !!previsao && previsao >= hojeIso();
-  const justificativaOk = !bloqueio || justificativa.trim().length >= 10;
-  const podeEnviar = !carregando && !enviando && impedimentos.length === 0 && camposOk && justificativaOk;
+  const justificativaOk = !bloqueio || (relancar && justificativa.trim().length >= 10);
+  const mostrarFormulario = !recemEnviado && !processando && (!bloqueio || relancar);
+  const podeEnviar = !carregando && !enviando && mostrarFormulario && impedimentos.length === 0 && camposOk && justificativaOk;
 
   const lancar = async (): Promise<void> => {
-    if (!dataverseService || !podeEnviar) {
+    if (!dataverseService || !podeEnviar || emEnvio.current) {
       return;
     }
     const minutos = Math.max(1, Math.round((linhas * 10 + 10) / 60));
@@ -115,27 +185,43 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
     if (!ok) {
       return;
     }
+    ocupar();
     setEnviando(true);
     setErro('');
     try {
       const r = await lancarBomNoCigam(dataverseService, bomId, {
         representante, unidadeNegocio: unidade, controle, previsaoVenda: previsao,
-        reenviar: !!bloqueio, justificativa
+        reenviar: !!bloqueio && relancar, justificativa
       });
       if (r.jaEnviado) {
+        // Outro lançamento (outra aba, outra pessoa ou o fluxo) chegou antes.
         setErro(r.mensagem || 'Este B.O.M. já foi lançado no CIGAM.');
       } else if (r.ultimo && r.ultimo.situacao === 'recusado') {
         setErro(r.ultimo.mensagem);
-      } else {
-        aoConcluir(r.ultimo ? r.ultimo.mensagem : 'Lançamento enviado ao CIGAM.');
-        return;
+      } else if (r.ultimo) {
+        setRecemEnviado(r.ultimo);
+        setAgora(new Date());
+        setRelancar(false);
+        setJustificativa('');
       }
-      setEnvios(await lerEnviosCigam(dataverseService, bomId));
+      await recarregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally {
+      liberar();
       setEnviando(false);
     }
+  };
+
+  const fechar = (): void => {
+    if (enviando) {
+      return;
+    }
+    if (recemEnviado) {
+      aoConcluir(`BOM ${numero} ${revisao} enviado ao CIGAM; término previsto às ${horaCurta(andamentoEnvio(recemEnviado).terminoPrevisto)}.`);
+      return;
+    }
+    aoFechar();
   };
 
   const rotulo: React.CSSProperties = { display: 'block', fontSize: '12px', fontWeight: 700, color: COR.texto2, marginBottom: '4px' };
@@ -151,31 +237,53 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
           Cria a oportunidade e o pedido de venda com os itens; o número gerado não volta ao portal nesta versão.
         </p>
 
-        {impedimentos.length > 0 && (
-          <div style={{ background: '#FDECEC', border: '1px solid #B42318', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: '#B42318', marginBottom: '12px' }}>
-            {impedimentos.map((t, i) => <div key={i}>• {t}</div>)}
+        {carregando && <div style={{ fontSize: '13px', color: COR.texto2 }}>Verificando lançamentos anteriores…</div>}
+
+        {/* Enviado nesta abertura ou já em processamento */}
+        {!carregando && acompanhado && (recemEnviado || processando) && <Andamento envio={acompanhado} agora={agora} />}
+
+        {/* Já lançado e concluído (pela previsão): relançar é exceção */}
+        {!carregando && bloqueio && !recemEnviado && !processando && (
+          <div style={{ marginTop: '4px', background: '#FFF4E5', border: '1px solid #B45309', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: COR.azul }}>
+            <strong style={{ color: '#B45309' }}>Este B.O.M. já foi lançado em {new Date(bloqueio.em).toLocaleString('pt-BR')}.</strong>{' '}
+            Confira a oportunidade e o pedido no CIGAM antes de qualquer novo lançamento.
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '10px', cursor: 'pointer' }}>
+              <input type="checkbox" checked={relancar} onChange={e => setRelancar(e.target.checked)} style={{ marginTop: '2px' }} />
+              <span>Preciso lançar de novo — sei que isso cria <strong>outra</strong> oportunidade e <strong>outro</strong> pedido no CIGAM (o anterior não é alterado nem removido).</span>
+            </label>
+            {relancar && (
+              <label style={{ display: 'block', marginTop: '8px' }}><span style={rotulo}>Justificativa do novo lançamento * (mín. 10 caracteres)</span>
+                <textarea style={{ ...campo, minHeight: '60px' }} value={justificativa} maxLength={500} onChange={e => setJustificativa(e.target.value)} /></label>
+            )}
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
-          <label><span style={rotulo}>Representante *</span>
-            <input style={campo} value={representante} maxLength={30} onChange={e => setRepresentante(e.target.value)} placeholder="código CIGAM" /></label>
-          <label><span style={rotulo}>Unidade de negócio *</span>
-            <input style={campo} value={unidade} maxLength={30} onChange={e => setUnidade(e.target.value)} /></label>
-          <label><span style={rotulo}>Controle *</span>
-            <input style={campo} value={controle} maxLength={10} onChange={e => setControle(e.target.value.toUpperCase())} /></label>
-          <label><span style={rotulo}>Previsão de venda *</span>
-            <input style={campo} type="date" min={hojeIso()} value={previsao} onChange={e => setPrevisao(e.target.value)} /></label>
-        </div>
-        <p style={{ fontSize: '11.5px', color: COR.texto2, margin: '6px 0 0' }}>
-          O controle precisa estar com “Publicar dados na web” no CIGAM (na Homologação, NA funciona).
-        </p>
+        {!carregando && mostrarFormulario && (
+          <>
+            {impedimentos.length > 0 && (
+              <div style={{ background: '#FDECEC', border: '1px solid #B42318', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: '#B42318', margin: '12px 0' }}>
+                {impedimentos.map((t, i) => <div key={i}>• {t}</div>)}
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginTop: '12px' }}>
+              <label><span style={rotulo}>Representante *</span>
+                <input style={campo} value={representante} maxLength={30} disabled={enviando} onChange={e => setRepresentante(e.target.value)} placeholder="código CIGAM" /></label>
+              <label><span style={rotulo}>Unidade de negócio *</span>
+                <input style={campo} value={unidade} maxLength={30} disabled={enviando} onChange={e => setUnidade(e.target.value)} /></label>
+              <label><span style={rotulo}>Controle *</span>
+                <input style={campo} value={controle} maxLength={10} disabled={enviando} onChange={e => setControle(e.target.value.toUpperCase())} /></label>
+              <label><span style={rotulo}>Previsão de venda *</span>
+                <input style={campo} type="date" min={hojeIso()} value={previsao} disabled={enviando} onChange={e => setPrevisao(e.target.value)} /></label>
+            </div>
+            <p style={{ fontSize: '11.5px', color: COR.texto2, margin: '6px 0 0' }}>
+              O controle precisa estar com “Publicar dados na web” no CIGAM (na Homologação, NA funciona).
+            </p>
+          </>
+        )}
 
-        {bloqueio && (
-          <div style={{ marginTop: '12px', background: '#FFF4E5', border: '1px solid #B45309', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: COR.azul }}>
-            <strong style={{ color: '#B45309' }}>Já lançado em {formatarData(bloqueio.em.substring(0, 10))}.</strong> Um novo lançamento cria outra oportunidade e outro pedido; o anterior não é alterado.
-            <label style={{ display: 'block', marginTop: '8px' }}><span style={rotulo}>Justificativa do novo lançamento * (mín. 10 caracteres)</span>
-              <textarea style={{ ...campo, minHeight: '60px' }} value={justificativa} maxLength={500} onChange={e => setJustificativa(e.target.value)} /></label>
+        {enviando && (
+          <div role="status" style={{ marginTop: '12px', background: '#E8F2FF', border: '1px solid #0F6CBD', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: '#0F6CBD', fontWeight: 700 }}>
+            ⏳ Enviando o B.O.M. à MAAX… não feche esta janela nem clique de novo.
           </div>
         )}
 
@@ -183,7 +291,7 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
 
         {envios && envios.length > 0 && (
           <div style={{ marginTop: '14px' }}>
-            <div style={rotulo}>Lançamentos anteriores</div>
+            <div style={rotulo}>Lançamentos deste B.O.M.</div>
             {envios.slice().reverse().map((e, i) => (
               <div key={i} style={{ fontSize: '12.5px', color: COR.azul, padding: '6px 0', borderBottom: `1px dashed ${COR.borda}` }}>
                 <strong style={{ color: (SITUACAO[e.situacao] || SITUACAO.recusado).cor }}>{(SITUACAO[e.situacao] || SITUACAO.recusado).texto}</strong>
@@ -195,10 +303,14 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
         )}
 
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px', flexWrap: 'wrap' }}>
-          <button type="button" style={botao('secundario', enviando)} disabled={enviando} onClick={aoFechar}>Cancelar</button>
-          <button type="button" style={botao('principal', !podeEnviar)} disabled={!podeEnviar} onClick={() => { lancar().catch(() => undefined); }}>
-            {enviando ? 'Lançando…' : bloqueio ? 'Lançar de novo' : 'Lançar no CIGAM'}
+          <button type="button" style={botao('secundario', enviando)} disabled={enviando} onClick={fechar}>
+            {recemEnviado || (bloqueio && !relancar) ? 'Fechar' : 'Cancelar'}
           </button>
+          {mostrarFormulario && (
+            <button type="button" style={botao('principal', !podeEnviar)} disabled={!podeEnviar} onClick={() => { lancar().catch(() => undefined); }}>
+              {enviando ? 'Enviando…' : bloqueio ? 'Lançar de novo' : 'Lançar no CIGAM'}
+            </button>
+          )}
         </div>
       </div>
     </div>

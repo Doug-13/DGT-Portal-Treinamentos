@@ -26,6 +26,9 @@ import {
 //   consultar → só fontes liberadas (tabela + colunas), igualdade
 //   http      → só HTTPS para endereços liberados, sem credenciais
 //   log       → guardado para o teste
+//   servidor  → só as ações que a TELA do registro oferece (ex.: B.O.M.
+//               → lancarBomCigam). O script não escolhe o registro nem
+//               vê credenciais: a ação roda no servidor (Custom API).
 // Ao fim (ou no tempo limite) o quadro é removido.
 // ============================================================
 
@@ -41,13 +44,19 @@ interface IMensagemScript {
   url?: string;
   opcoes?: { metodo?: string; corpo?: unknown };
   texto?: string;
+  acao?: string;
+  dados?: Record<string, unknown>;
   resultado?: { valores?: unknown; mensagem?: unknown; erro?: unknown };
 }
+
+// Ações de servidor que a tela oferece ao script (nome → execução).
+export type AcoesServidorScript = Record<string, (dados: Record<string, unknown>) => Promise<unknown>>;
 
 export const executarScriptIsolado = (
   config: IConfigScript,
   entrada: IEntradaScript,
-  dataverseService?: DataverseService
+  dataverseService?: DataverseService,
+  acoesServidor?: AcoesServidorScript
 ): Promise<IResultadoScript> =>
   new Promise<IResultadoScript>(resolve => {
 
@@ -146,6 +155,28 @@ export const executarScriptIsolado = (
             ok: false,
             erro: `Falha ao chamar ${url}: ${erro instanceof Error ? erro.message : String(erro)} (a API precisa aceitar chamadas do navegador — CORS).`
           }));
+        return;
+      }
+
+      if (m.tipo === 'servidor') {
+        const nome = String(m.acao || '');
+        const executarAcao = acoesServidor && Object.prototype.hasOwnProperty.call(acoesServidor, nome)
+          ? acoesServidor[nome]
+          : undefined;
+        if (!executarAcao) {
+          responder({
+            tipo: 'resposta',
+            id: m.id,
+            ok: false,
+            erro: acoesServidor
+              ? `A ação "${nome}" não está disponível nesta tela.`
+              : `Ações de servidor ("${nome}") não rodam no teste do editor: teste pelo registro em Homologação.`
+          });
+          return;
+        }
+        executarAcao(m.dados && typeof m.dados === 'object' ? m.dados : {})
+          .then(dados => responder({ tipo: 'resposta', id: m.id, ok: true, dados }))
+          .catch((erro: unknown) => responder({ tipo: 'resposta', id: m.id, ok: false, erro: erro instanceof Error ? erro.message : String(erro) }));
         return;
       }
 

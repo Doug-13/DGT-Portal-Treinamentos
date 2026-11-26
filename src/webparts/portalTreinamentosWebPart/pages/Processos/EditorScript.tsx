@@ -141,7 +141,7 @@ const EditorScript: React.FC<IEditorScriptProps> = ({ config, editavel, nomeTare
       />
       <div style={{ fontSize: '11.5px', color: COR_TEXTO2, marginTop: '4px', lineHeight: '17px' }}>
         Corpo de uma função assíncrona. Use <code>entrada.valores.campo</code>, <code>await DGT.consultar(&apos;fonte&apos;, {'{ coluna: valor }'})</code>,{' '}
-        <code>await DGT.http(&apos;https://...&apos;)</code> e <code>DGT.log(...)</code>. Termine com{' '}
+        <code>await DGT.http(&apos;https://...&apos;)</code>, <code>await DGT.servidor(&apos;acao&apos;, {'{ ... }'})</code> (ações da tela, ex.: <code>lancarBomCigam</code> no B.O.M.) e <code>DGT.log(...)</code>. Termine com{' '}
         <code>return {'{ valores: { campo: valor }, mensagem }'}</code> ou <code>return {'{ erro: \'motivo\' }'}</code> para não deixar concluir.
         Roda isolado: sem acesso ao login nem ao portal.
       </div>

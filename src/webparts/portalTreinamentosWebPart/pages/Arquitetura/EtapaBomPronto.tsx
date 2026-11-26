@@ -45,6 +45,14 @@ import { gerarJsonBom, nomeArquivoJsonBom } from './jsonBom';
 import LancarCigamPainel from './LancarCigamPainel';
 
 import {
+  IEnvioCigam,
+  andamentoEnvio,
+  envioQueBloqueia,
+  horaCurta,
+  lerEnviosCigam
+} from '../../services/bom/envioCigam';
+
+import {
   COR,
   DECISAO,
   FONTE,
@@ -88,8 +96,10 @@ export interface IEtapaBomProntoProps {
   // versões da ArquiteturaPage mais novas que este componente).
   [outra: string]: unknown;
   onEnviar: (congelado: IBomEnviado) => Promise<void>;
-  aoVoltarKit: () => void;
-  aoVoltarHH: () => void;
+  // Texto abaixo do título da situação (ex.: "Aprovado em 26/11/2026.").
+  textoSituacao?: string;
+  aoVoltarKit?: () => void;
+  aoVoltarHH?: () => void;
 }
 
 const moeda = (v: number): string =>
@@ -102,13 +112,41 @@ const ORDEM_CATEGORIA = ['Estrutura', 'Câmera', 'Equipamento', 'Infraestrutura'
 // ------------------------------------------------------------
 
 const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
-  bom, demanda, analise, selecao, resultado, precos, dataverseService, dataEnvio, salvando, podeEnviar = true, tituloSituacao, onEnviar, aoVoltarKit, aoVoltarHH
+  bom, demanda, analise, selecao, resultado, precos, dataverseService, dataEnvio, salvando, podeEnviar = true, tituloSituacao, textoSituacao, onEnviar, aoVoltarKit, aoVoltarHH
 }) => {
 
   const congelado = selecao ? selecao.bomEnviado : undefined;
   const enviado = bom.etapa === 'Enviado para aprovação' || !!congelado;
   const [aviso, setAviso] = React.useState('');
   const [lancandoCigam, setLancandoCigam] = React.useState(false);
+
+  // Lançamentos no CIGAM deste B.O.M. (situação no topo da etapa).
+  const [enviosCigam, setEnviosCigam] = React.useState<IEnvioCigam[]>([]);
+  const [agoraCigam, setAgoraCigam] = React.useState(new Date());
+
+  const lerEnvios = React.useCallback((): void => {
+    if (!dataverseService || !bom.id) {
+      return;
+    }
+    lerEnviosCigam(dataverseService, bom.id)
+      .then(lista => { setEnviosCigam(lista || []); setAgoraCigam(new Date()); })
+      .catch(() => undefined);
+  }, [dataverseService, bom.id]);
+
+  React.useEffect(() => { lerEnvios(); }, [lerEnvios]);
+
+  const ultimoEnvioCigam = enviosCigam.length ? enviosCigam[enviosCigam.length - 1] : undefined;
+  const lancadoCigam = envioQueBloqueia(enviosCigam);
+  const andamentoCigam = lancadoCigam ? andamentoEnvio(lancadoCigam, agoraCigam) : undefined;
+
+  // Atualiza a situação a cada 5 s enquanto o CIGAM processa (estimado).
+  React.useEffect(() => {
+    if (!andamentoCigam || !andamentoCigam.emProcessamento) {
+      return undefined;
+    }
+    const relogio = window.setInterval(() => setAgoraCigam(new Date()), 5000);
+    return () => window.clearInterval(relogio);
+  }, [andamentoCigam ? andamentoCigam.emProcessamento : false]);
 
   // Depois do envio vale a lista congelada; antes, o montador.
   const itensBase: IItemBom[] = congelado ? congelado.itens : resultado ? resultado.itens : [];
@@ -298,7 +336,7 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
       <div style={{ ...cartao, textAlign: 'center' }}>
         <h3 style={{ margin: '0 0 6px', color: COR.azul }}>🔒 Conclua a seleção de kit</h3>
         <p style={{ fontSize: '13px', color: COR.texto2 }}>O B.O.M. pronto é montado a partir dos pontos da seleção de kit.</p>
-        <button type="button" style={botao('principal')} onClick={aoVoltarKit}>Ir para a Seleção de kit</button>
+        {aoVoltarKit && <button type="button" style={botao('principal')} onClick={aoVoltarKit}>Ir para a Seleção de kit</button>}
       </div>
     );
   }
@@ -313,10 +351,22 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
             {tituloSituacao || (enviado ? `✓ BOM ${numero} ${bom.revisao} enviado para aprovação` : `BOM ${numero} ${bom.revisao} pronto para revisão e envio`)}
           </strong>
           <div style={{ fontSize: '12.5px', color: COR.texto2, marginTop: '3px' }}>
-            {enviado
+            {textoSituacao ? `${textoSituacao} ` : ''}{enviado
               ? `Lista de itens congelada${congelado ? ` em ${formatarData(congelado.em.substring(0, 10))}` : ''}${dataEnvio ? ` · data de envio ${formatarData(dataEnvio)}` : ''}. Mudanças na aba Kits não alteram este B.O.M.`
               : 'Lista calculada com o catálogo atual da aba Kits. Ao enviar para aprovação, os itens e valores são congelados.'}
           </div>
+          {enviado && lancadoCigam && andamentoCigam && (
+            <div style={{ fontSize: '12.5px', marginTop: '6px', fontWeight: 700, color: andamentoCigam.emProcessamento ? '#0F6CBD' : '#107C10' }}>
+              {andamentoCigam.emProcessamento
+                ? `⏳ Lançado no CIGAM às ${horaCurta(new Date(lancadoCigam.em))} · o CIGAM está criando a oportunidade e o pedido (previsão ${horaCurta(andamentoCigam.terminoPrevisto)}, ${andamentoCigam.percentual}%)`
+                : `✓ Lançado no CIGAM em ${new Date(lancadoCigam.em).toLocaleString('pt-BR')} · concluído pela previsão (confira no CIGAM)`}
+            </div>
+          )}
+          {enviado && !lancadoCigam && ultimoEnvioCigam && ultimoEnvioCigam.situacao === 'recusado' && (
+            <div style={{ fontSize: '12.5px', marginTop: '6px', fontWeight: 700, color: '#B42318' }}>
+              ✕ Última tentativa de lançamento recusada ({new Date(ultimoEnvioCigam.em).toLocaleString('pt-BR')}): {ultimoEnvioCigam.mensagem}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button type="button" style={botao('secundario')} onClick={copiarCigam}>Copiar para o CIGAM</button>
@@ -325,7 +375,14 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
           <button type="button" style={botao('secundario')} onClick={baixarJson} title="Baixa o B.O.M. em JSON (dgt-portal/bom@1) para lançamento via API">Gerar JSON</button>
           <button type="button" style={botao('secundario')} onClick={copiarJson} title="Copia o JSON para colar no Postman ou em outro integrador">Copiar JSON</button>
           {enviado && (
-            <button type="button" style={botao('principal')} onClick={() => setLancandoCigam(true)} title="Cria a oportunidade e o pedido de venda no CIGAM (Homologação)">Lançar no CIGAM</button>
+            <button
+              type="button"
+              style={botao(lancadoCigam ? 'secundario' : 'principal')}
+              onClick={() => setLancandoCigam(true)}
+              title={lancadoCigam ? 'Ver o andamento e os lançamentos deste B.O.M. no CIGAM' : 'Cria a oportunidade e o pedido de venda no CIGAM (Homologação)'}
+            >
+              {lancadoCigam ? (andamentoCigam && andamentoCigam.emProcessamento ? '⏳ Acompanhar lançamento' : 'Ver lançamento no CIGAM') : 'Lançar no CIGAM'}
+            </button>
           )}
           {!enviado && podeEnviar && (
             <button type="button" style={botao('principal', salvando || !resultado || resultado.itens.length === 0)} disabled={salvando || !resultado || resultado.itens.length === 0} onClick={() => { enviar().catch(() => undefined); }}>
@@ -347,8 +404,8 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
           semCodigo={semCodigo}
           semPreco={semPreco}
           enviado={enviado && !!congelado}
-          aoFechar={() => setLancandoCigam(false)}
-          aoConcluir={(mensagem: string) => { setLancandoCigam(false); mostrar(mensagem); }}
+          aoFechar={() => { setLancandoCigam(false); lerEnvios(); }}
+          aoConcluir={(mensagem: string) => { setLancandoCigam(false); lerEnvios(); mostrar(mensagem); }}
         />
       )}
 
@@ -545,8 +602,8 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
       />
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' }}>
-        <button type="button" style={botao('secundario')} onClick={aoVoltarKit}>← Ver a Seleção de kit</button>
-        <button type="button" style={botao('secundario')} onClick={aoVoltarHH}>Ver o Cálculo de HH</button>
+        {aoVoltarKit && <button type="button" style={botao('secundario')} onClick={aoVoltarKit}>← Ver a Seleção de kit</button>}
+        {aoVoltarHH && <button type="button" style={botao('secundario')} onClick={aoVoltarHH}>Ver o Cálculo de HH</button>}
       </div>
     </div>
   );

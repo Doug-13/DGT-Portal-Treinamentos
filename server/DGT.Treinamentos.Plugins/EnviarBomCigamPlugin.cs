@@ -25,6 +25,10 @@ namespace DGT.Treinamentos.Plugins
     // e o pedido são criados em segundo plano (~10 s por item). Cada
     // tentativa fica registrada em dgt_bom_bom.dgt_bom_cigamenvio (JSON).
     //
+    // CONFIGURAÇÃO: endereço e token vêm de Integrações › CIGAM-BOM no portal
+    // (dgt_integracaoconfiguracao, coluna protegida). A Configuração do passo
+    // abaixo continua valendo como alternativa quando o portal está vazio.
+    //
     // REGISTRO (Plugin Registration Tool):
     //   Message dgt_EnviarBomCigam · PostOperation · Synchronous
     //   Secure Configuration   = o token do webhook (entregue pela MAAX)
@@ -72,13 +76,20 @@ namespace DGT.Treinamentos.Plugins
             // Leitura e gravação com o usuário que clicou: respeita os perfis de segurança.
             var servico = fabrica.CreateOrganizationService(context.InitiatingUserId);
 
-            if (string.IsNullOrWhiteSpace(_token))
+            // Endereço e token: primeiro os salvos no portal (Integrações › CIGAM-BOM,
+            // coluna protegida lida como SYSTEM); sem eles, a Configuração do passo.
+            var integracao = IntegracaoComum.Ler(fabrica.CreateOrganizationService(null), IntegracaoComum.CigamBom, tracing);
+            var token = IntegracaoComum.Escolher(integracao.Segredo, _token);
+            var url = IntegracaoComum.Escolher(integracao.Url, _url);
+            var ambiente = IntegracaoComum.Escolher(integracao.Ambiente, _ambiente);
+
+            if (string.IsNullOrWhiteSpace(token))
             {
-                throw new InvalidPluginExecutionException("Token do webhook não configurado: informe-o na Configuração segura do passo do EnviarBomCigamPlugin.");
+                throw new InvalidPluginExecutionException("Token do webhook não configurado: informe-o em Integrações › CIGAM-BOM no portal (ou na Configuração segura do passo do EnviarBomCigamPlugin).");
             }
-            if (!_url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || _url.IndexOf('?') >= 0)
+            if (IntegracaoComum.ValidarUrl(url).Length > 0)
             {
-                throw new InvalidPluginExecutionException("Endereço do webhook não configurado (ou com parâmetros): informe { \"url\": \"https://...\" } na Configuração não segura do passo.");
+                throw new InvalidPluginExecutionException("Endereço do webhook não configurado (ou com parâmetros): informe-o em Integrações › CIGAM-BOM no portal (ou na Configuração não segura do passo).");
             }
 
             JObject entrada;
@@ -107,7 +118,15 @@ namespace DGT.Treinamentos.Plugins
             }
             var demanda = servico.Retrieve(TabelaDemanda, demandaRef.Id, new ColumnSet("dgt_name", "dgt_bom_numero", "dgt_bom_codigocigam"));
 
-            var envios = LerEnvios(bom.GetAttributeValue<string>(ColunaEnvio));
+            // TRAVA: grava a própria coluna de envios (mesmo valor) para travar a
+            // linha do B.O.M. até o fim desta transação. Um segundo lançamento
+            // simultâneo (dois cliques, duas abas, botão + script do fluxo) espera
+            // este terminar e, ao reler abaixo, já enxerga o envio registrado —
+            // então recebe "já lançado" em vez de criar outra oportunidade.
+            servico.Update(new Entity(TabelaBom, bomId) { [ColunaEnvio] = bom.GetAttributeValue<string>(ColunaEnvio) });
+            var envioAtual = servico.Retrieve(TabelaBom, bomId, new ColumnSet(ColunaEnvio));
+
+            var envios = LerEnvios(envioAtual.GetAttributeValue<string>(ColunaEnvio));
             var bloqueio = BomCigam.EnvioQueBloqueia(envios);
             if (bloqueio != null && !reenviar)
             {
@@ -146,7 +165,7 @@ namespace DGT.Treinamentos.Plugins
 
             int codigo;
             string resposta;
-            Postar(montagem.Corpo, out codigo, out resposta);
+            Postar(url, token, montagem.Corpo, out codigo, out resposta);
             var situacao = BomCigam.Situacao(codigo);
             tracing.Trace("Webhook BOM {0} {1}: HTTP {2} ({3}), {4} itens.", numero, revisao, codigo, situacao, montagem.Itens);
 
@@ -154,7 +173,7 @@ namespace DGT.Treinamentos.Plugins
             {
                 ["em"] = DateTime.UtcNow.ToString("o"),
                 ["porId"] = context.InitiatingUserId.ToString(),
-                ["ambiente"] = _ambiente,
+                ["ambiente"] = ambiente,
                 ["situacao"] = situacao,
                 ["http"] = codigo,
                 ["mensagem"] = Mensagem(codigo, resposta),
@@ -189,15 +208,15 @@ namespace DGT.Treinamentos.Plugins
         }
 
         // Sem repetição automática: o webhook não protege contra duplicidade.
-        private void Postar(JObject corpo, out int codigo, out string conteudo)
+        private static void Postar(string url, string token, JObject corpo, out int codigo, out string conteudo)
         {
             codigo = 0;
             conteudo = string.Empty;
             try
             {
-                using (var requisicao = new HttpRequestMessage(HttpMethod.Post, _url))
+                using (var requisicao = new HttpRequestMessage(HttpMethod.Post, url))
                 {
-                    requisicao.Headers.TryAddWithoutValidation("x-webhook-token", _token);
+                    requisicao.Headers.TryAddWithoutValidation("x-webhook-token", token);
                     requisicao.Content = new StringContent(corpo.ToString(Formatting.None), Encoding.UTF8, "application/json");
                     using (var resposta = Http.SendAsync(requisicao).GetAwaiter().GetResult())
                     {

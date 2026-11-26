@@ -1,4 +1,12 @@
 import {
+  executarScriptIsolado
+} from '../../components/fluxo/executarScriptIsolado';
+
+import {
+  lancarBomNoCigam
+} from './envioCigam';
+
+import {
   DataverseService
 } from '../DataverseService';
 
@@ -497,6 +505,34 @@ export class BomFluxoService {
       resolverResponsaveis: (responsaveis, valores) =>
         resolverResponsaveis(responsaveis, this.dadosResponsaveis(bom, { ...(valores || {}), ...(valoresModulo || {}) }), this.vinculosLista),
       rotuloRevisao: `B.O.M. ${bom.numero} ${bom.revisao}`,
+      // Tarefa "Executar script": roda isolada. Ação de servidor oferecida
+      // ao script: lancarBomCigam → Custom API dgt_EnviarBomCigam (o plugin
+      // lê a lista congelada e o token da integração CIGAM-BOM; o B.O.M. é
+      // SEMPRE este registro, nunca um id vindo do script).
+      executarScript: async (elemento, instancia) =>
+        elemento.script
+          ? executarScriptIsolado(
+            elemento.script,
+            {
+              valores: this.valoresConsolidados(instancia, valoresModulo),
+              registro: { codigo: bom.numero, titulo: `B.O.M. ${bom.numero} ${bom.revisao}` },
+              usuario: { id: '', nome: '' }
+            },
+            this.dataverse,
+            {
+              lancarBomCigam: async (dados: Record<string, unknown>) => {
+                const texto = (chave: string): string => String(dados[chave] === undefined || dados[chave] === null ? '' : dados[chave]).trim();
+                return lancarBomNoCigam(this.dataverse, bom.id, {
+                  representante: texto('representante'),
+                  unidadeNegocio: texto('unidadeNegocio'),
+                  controle: texto('controle'),
+                  previsaoVenda: texto('previsaoVenda').substring(0, 10),
+                  reenviar: false
+                });
+              }
+            }
+          )
+          : { valores: {}, erros: ['o script não está configurado.'], log: [] },
       // O fluxo do B.O.M. não publica documentos.
       executarAcoesSistema: async () => undefined
     };

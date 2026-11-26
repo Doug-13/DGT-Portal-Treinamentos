@@ -17,6 +17,12 @@ import {
 //   DGT.consultar(fonte, { coluna: valor })  → linhas de fonte LIBERADA
 //   DGT.http(url, { metodo, corpo })          → só endereços LIBERADOS
 //   DGT.log(texto)                            → aparece no teste
+//   DGT.servidor(acao, dados)                 → ação de SERVIDOR que a tela
+//                                               do registro oferece (ex.: no
+//                                               B.O.M., 'lancarBomCigam'). O
+//                                               registro é fixado pela tela, não
+//                                               pelo script; no teste do editor
+//                                               não há ações (nada é gravado).
 // e devolve:
 //   return { valores: { campo: 'valor' }, mensagem: '...' }
 //   return { erro: 'mensagem' }   → a ação NÃO é concluída
@@ -189,6 +195,7 @@ export const montarDocumentoScript = (codigo: string): string => {
   var DGT = {
     consultar: function (fonte, filtros) { return pedir('consultar', { fonte: fonte, filtros: filtros || {} }); },
     http: function (url, opcoes) { return pedir('http', { url: url, opcoes: opcoes || {} }); },
+    servidor: function (acao, dados) { return pedir('servidor', { acao: String(acao || ''), dados: dados || {} }); },
     log: function (texto) { enviar({ tipo: 'log', texto: String(texto) }); }
   };
   function executar(entrada) {
