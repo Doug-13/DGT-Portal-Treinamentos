@@ -21,7 +21,11 @@
 //
 // ITEM:
 //  cartao  { tipo, titulo, fonte, medida, agregacao, filtro?, formato?,
-//            comparar?: { medida, agregacao?, rotulo?, direcao? } }
+//            comparar?: { medida, agregacao?, rotulo?, direcao?, filtro? } }
+//            comparar.filtro: filtro da referência ({} = todas as linhas). Sem ele,
+//            comparando a MESMA medida do cartão, a referência é o total sem o
+//            filtro do cartão (ex.: concluídos × total); medida diferente usa o
+//            mesmo filtro do cartão (ex.: executado × orçado).
 //  grafico { tipo, grafico: barras|barrasEmpilhadas|barrasHorizontais|linhas|rosca,
 //            titulo, fonte, dimensao, series: [{ medida, agregacao?, rotulo? }],
 //            serieDimensao?, filtro?, formato?, ordenar?, limite?, largura?,
@@ -57,6 +61,12 @@ export interface ICampoFonte {
   descricao?: string;
   // Valores aceitos em filtros (quando a lista é fechada).
   valores?: string[];
+  // Campo de referência (ex.: contas do orçamento): na criação com IA, o
+  // portal envia os valores que EXISTEM nos dados do usuário (só nomes,
+  // nunca números), para a IA filtrar por um item específico.
+  listarValores?: boolean;
+  // Preenchido só na criação com IA (ver listarValores).
+  valoresExistentes?: string[];
 }
 
 export interface IDescricaoFonte {
@@ -65,6 +75,38 @@ export interface IDescricaoFonte {
   descricao: string;
   campos: ICampoFonte[];
 }
+
+// ------------------------------------------------------------
+// FONTES EMBUTIDAS: dados que vêm dentro do próprio JSON (ex.: uma
+// planilha que não está no Dataverse). O id começa com "planilha.".
+// Não passam pelo filtro de área (não há área no Dataverse para elas):
+// quem vê o painel vê os dados — controle pelo "Quem vê" e pelas áreas
+// do dashboard. Com o campo "ano", seguem o filtro de ano.
+// ------------------------------------------------------------
+
+export interface IFonteEmbutida extends IDescricaoFonte {
+  linhas: Linha[];
+}
+
+export const PREFIXO_FONTE_EMBUTIDA = 'planilha.';
+export const LIMITE_LINHAS_EMBUTIDAS = 5000;
+const TIPOS_CAMPO = ['texto', 'numero', 'mes', 'data'];
+
+// Catálogo do painel: o do portal + as fontes embutidas (sem as linhas).
+export const catalogoDoPainel = (definicao: IDefinicaoDashboard | undefined, catalogo: IDescricaoFonte[]): IDescricaoFonte[] =>
+  catalogo.concat(((definicao && definicao.fontesEmbutidas) || []).map(fonte => ({
+    id: fonte.id, nome: fonte.nome, descricao: fonte.descricao || '', campos: fonte.campos
+  })));
+
+// Linhas de uma fonte embutida para o ano do painel.
+export const linhasEmbutidas = (definicao: IDefinicaoDashboard, fonteId: string, ano?: number): Linha[] | undefined => {
+  const fonte = (definicao.fontesEmbutidas || []).filter(item => item.id === fonteId)[0];
+  if (!fonte) {
+    return undefined;
+  }
+  const temAno = fonte.campos.some(campo => campo.chave === 'ano');
+  return temAno && ano ? fonte.linhas.filter(linha => Number(linha.ano) === ano) : fonte.linhas;
+};
 
 export type Agregacao = 'soma' | 'media' | 'contagem' | 'contagemDistinta' | 'minimo' | 'maximo';
 export type FormatoValor = 'moeda' | 'numero' | 'percentual' | 'inteiro';
@@ -116,7 +158,7 @@ export interface IItemCartao {
   // Compara com outra medida (ex.: executado × orçado) e mostra o farol:
   // verde ≥ 80%, amarelo 70–79%, vermelho < 70% (direcao "menor": a
   // relação é invertida, como em custos).
-  comparar?: IMedida & { direcao?: 'maior' | 'menor' };
+  comparar?: IMedida & { direcao?: 'maior' | 'menor'; filtro?: Filtro };
 }
 
 export interface IItemGrafico {
@@ -221,6 +263,8 @@ export interface IDefinicaoDashboard {
   filtros?: { ano?: boolean; area?: boolean; anoPadrao?: 'atual' | 'proximo' | number; periodo?: boolean; campos?: string[] };
   secoes: ISecaoDashboard[];
   assistente?: IAssistenteDashboard;
+  // Dados que vêm no próprio JSON (ids "planilha.…").
+  fontesEmbutidas?: IFonteEmbutida[];
 }
 
 export const LIMITE_ESCOPO_ASSISTENTE = 2000;
@@ -313,9 +357,12 @@ export interface IResultadoValidacao {
   avisos: string[];
 }
 
+const semAcento = (texto: string): string =>
+  texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
 export const validarDashboard = (
   entrada: string | unknown,
-  catalogo: IDescricaoFonte[]
+  catalogoDoPortal: IDescricaoFonte[]
 ): IResultadoValidacao => {
 
   const erros: string[] = [];
@@ -331,6 +378,69 @@ export const validarDashboard = (
   if (!bruto || typeof bruto !== 'object') {
     return { erros: ['O conteúdo não é um objeto JSON.'], avisos };
   }
+
+  // Fontes embutidas: validadas e somadas ao catálogo deste painel.
+  const embutidas: IFonteEmbutida[] = [];
+  if (bruto.fontesEmbutidas !== undefined) {
+    if (!Array.isArray(bruto.fontesEmbutidas)) {
+      erros.push('"fontesEmbutidas" deve ser uma lista.');
+    } else {
+      bruto.fontesEmbutidas.forEach((fonte, f) => {
+        const onde = `fontesEmbutidas[${f}]`;
+        if (!fonte || typeof fonte !== 'object') {
+          erros.push(`${onde}: deve ser um objeto.`);
+          return;
+        }
+        if (typeof fonte.id !== 'string' || !/^planilha\.[A-Za-z0-9_-]+$/.test(fonte.id)) {
+          erros.push(`${onde}: "id" deve começar com "${PREFIXO_FONTE_EMBUTIDA}" e ter só letras, números, _ ou - (ex.: "planilha.acoes").`);
+          return;
+        }
+        if (catalogoDoPortal.some(item => item.id === fonte.id) || embutidas.some(item => item.id === fonte.id)) {
+          erros.push(`${onde}: id "${fonte.id}" repetido.`);
+          return;
+        }
+        if (!fonte.nome || !String(fonte.nome).trim()) {
+          erros.push(`${onde}: informe o "nome".`);
+        }
+        if (!Array.isArray(fonte.campos) || fonte.campos.length === 0) {
+          erros.push(`${onde}: "campos" deve ter pelo menos um campo.`);
+          return;
+        }
+        const chaves: string[] = [];
+        let camposOk = true;
+        fonte.campos.forEach((campo, c) => {
+          if (!campo || typeof campo.chave !== 'string' || !campo.chave || typeof campo.rotulo !== 'string' || TIPOS_CAMPO.indexOf(campo.tipo) < 0) {
+            erros.push(`${onde}.campos[${c}]: informe "chave", "rotulo" e "tipo" (${TIPOS_CAMPO.join(', ')}).`);
+            camposOk = false;
+          } else {
+            chaves.push(campo.chave);
+          }
+        });
+        if (!Array.isArray(fonte.linhas)) {
+          erros.push(`${onde}: "linhas" deve ser uma lista.`);
+          return;
+        }
+        if (fonte.linhas.length > LIMITE_LINHAS_EMBUTIDAS) {
+          erros.push(`${onde}: no máximo ${LIMITE_LINHAS_EMBUTIDAS} linhas.`);
+        }
+        const desconhecidos: string[] = [];
+        fonte.linhas.forEach(linha => {
+          Object.keys(linha || {}).forEach(chave => {
+            if (chaves.indexOf(chave) < 0 && desconhecidos.indexOf(chave) < 0) {
+              desconhecidos.push(chave);
+            }
+          });
+        });
+        if (desconhecidos.length > 0) {
+          erros.push(`${onde}: as linhas usam campos não declarados: ${desconhecidos.join(', ')}.`);
+        }
+        if (camposOk) {
+          embutidas.push(fonte);
+        }
+      });
+    }
+  }
+  const catalogo = catalogoDoPortal.concat(embutidas.map(fonte => ({ id: fonte.id, nome: fonte.nome, descricao: fonte.descricao || '', campos: fonte.campos })));
   if (bruto.formato !== FORMATO_DASHBOARD) {
     erros.push(`"formato" deve ser "${FORMATO_DASHBOARD}".`);
   }
@@ -374,6 +484,18 @@ export const validarDashboard = (
         (Array.isArray(esperado) ? esperado : [esperado]).forEach(valor => {
           if ((descricao.valores as string[]).indexOf(String(valor)) < 0) {
             erros.push(`${onde}.filtro: "${String(valor)}" não é um valor de "${campo}". Valores: ${(descricao.valores as string[]).join(', ')}.`);
+          }
+        });
+      }
+      // Na criação com IA: o valor precisa existir nos dados (texto exato).
+      if (descricao && descricao.valoresExistentes && descricao.valoresExistentes.length > 0) {
+        const esperado = (filtro as Filtro)[campo];
+        (Array.isArray(esperado) ? esperado : [esperado]).forEach(valor => {
+          if ((descricao.valoresExistentes as string[]).indexOf(String(valor)) < 0) {
+            const parecidos = (descricao.valoresExistentes as string[])
+              .filter(item => semAcento(item).indexOf(semAcento(String(valor))) >= 0 || semAcento(String(valor)).indexOf(semAcento(item)) >= 0)
+              .slice(0, 5);
+            erros.push(`${onde}.filtro: "${String(valor)}" não existe em "${campo}". Use o texto exato de valoresExistentes${parecidos.length ? ` (parecidos: ${parecidos.join(' | ')})` : ''}.`);
           }
         });
       }
@@ -442,6 +564,9 @@ export const validarDashboard = (
         validarMedida(onde, fonte, { medida: item.medida, agregacao: item.agregacao });
         if (item.comparar) {
           validarMedida(`${onde}.comparar`, fonte, item.comparar);
+          if (item.comparar.filtro !== undefined) {
+            validarFiltro(`${onde}.comparar`, fonte, item.comparar.filtro);
+          }
         }
       } else if (item.tipo === 'grafico') {
         if (GRAFICOS.indexOf(item.grafico) < 0) {
@@ -610,6 +735,20 @@ export const agrupar = (linhas: Linha[], campos: string[]): IGrupo[] => {
 
 // Farol: verde ≥ 80%, amarelo 70–79%, vermelho < 70%.
 export type Farol = 'verde' | 'amarelo' | 'vermelho' | 'semDado';
+
+// Linhas da referência do farol de um cartão (ver comparar.filtro).
+export const linhasDaReferencia = (
+  linhas: Linha[],
+  item: { medida: string; filtro?: Filtro; comparar?: { medida: string; filtro?: Filtro } }
+): Linha[] => {
+  if (!item.comparar) {
+    return [];
+  }
+  if (item.comparar.filtro !== undefined) {
+    return aplicarFiltro(linhas, item.comparar.filtro);
+  }
+  return item.comparar.medida === item.medida ? linhas : aplicarFiltro(linhas, item.filtro);
+};
 
 export const farolDe = (valor: number, referencia: number, direcao: 'maior' | 'menor' = 'maior'): { farol: Farol; percentual?: number } => {
   const a = Math.abs(valor);

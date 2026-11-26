@@ -171,9 +171,9 @@ const regras:
     // Fornecedores: entrada controlada pelo módulo "fornecedores".
     { rota: 'fornecedores', perfis: TODOS },
 
-    // Implantações: todos entram na página; quem usa o painel e o que
-    // faz é definido pelo cadastro do próprio painel
-    // (services/implantacoes/permissoesImplantacoes.ts).
+    // Implantações: entrada controlada pelo módulo "implantacoes".
+    // O que cada um faz no painel é definido pelo cadastro do próprio
+    // painel (services/implantacoes/permissoesImplantacoes.ts).
     { rota: 'implantacoes', perfis: TODOS },
 
     // Cálculo de HH: entrada controlada pelo módulo "hh".

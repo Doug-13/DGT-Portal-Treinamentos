@@ -40,6 +40,10 @@ import {
   solucoesDoPonto
 } from './pdfBom';
 
+import { gerarJsonBom, nomeArquivoJsonBom } from './jsonBom';
+
+import LancarCigamPainel from './LancarCigamPainel';
+
 import {
   COR,
   DECISAO,
@@ -75,6 +79,9 @@ export interface IEtapaBomProntoProps {
   dataverseService?: DataverseService;
   dataEnvio?: string;
   salvando: boolean;
+  // Quem pode enviar para aprovação (definido pela página).
+  // Sem a propriedade, o botão segue liberado como antes.
+  podeEnviar?: boolean;
   onEnviar: (congelado: IBomEnviado) => Promise<void>;
   aoVoltarKit: () => void;
   aoVoltarHH: () => void;
@@ -90,12 +97,13 @@ const ORDEM_CATEGORIA = ['Estrutura', 'Câmera', 'Equipamento', 'Infraestrutura'
 // ------------------------------------------------------------
 
 const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
-  bom, demanda, analise, selecao, resultado, precos, dataverseService, dataEnvio, salvando, onEnviar, aoVoltarKit, aoVoltarHH
+  bom, demanda, analise, selecao, resultado, precos, dataverseService, dataEnvio, salvando, podeEnviar = true, onEnviar, aoVoltarKit, aoVoltarHH
 }) => {
 
   const congelado = selecao ? selecao.bomEnviado : undefined;
   const enviado = bom.etapa === 'Enviado para aprovação' || !!congelado;
   const [aviso, setAviso] = React.useState('');
+  const [lancandoCigam, setLancandoCigam] = React.useState(false);
 
   // Depois do envio vale a lista congelada; antes, o montador.
   const itensBase: IItemBom[] = congelado ? congelado.itens : resultado ? resultado.itens : [];
@@ -205,8 +213,29 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
     }
   };
 
+  // Gera o JSON do B.O.M. (formato dgt-portal/bom@1) para lançamento via API.
+  const montarJson = (): string => JSON.stringify(gerarJsonBom({
+    bom, demanda, analise, selecao, linhas, valorTotal, semPreco, semCodigo, alertas, enviado,
+    congeladoEm: congelado ? congelado.em : undefined,
+    dataEnvio, historico, resumoValores, totais
+  }), null, 2);
+
+  const baixarJson = (): void => {
+    try {
+      const blob = new Blob([montarJson()], { type: 'application/json;charset=utf-8' });
+      baixarBlob(blob, nomeArquivoJsonBom(bom));
+      mostrar('JSON gerado e baixado.');
+    } catch (erro) {
+      mostrar(`Não foi possível gerar o JSON: ${(erro as Error).message || String(erro)}`);
+    }
+  };
+
+  const copiarJson = (): void => {
+    copiarTexto(montarJson(), 'JSON copiado para a área de transferência.');
+  };
+
   const enviar = async (): Promise<void> => {
-    if (!selecao || !resultado) {
+    if (!selecao || !resultado || !podeEnviar) {
       return;
     }
     const pend = [
@@ -288,13 +317,35 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
           <button type="button" style={botao('secundario')} onClick={copiarCigam}>Copiar para o CIGAM</button>
           <button type="button" style={botao('secundario')} onClick={baixarCsv}>Baixar CSV</button>
           <button type="button" style={botao('secundario', gerandoPdf)} disabled={gerandoPdf} onClick={() => { gerarPdf().catch(() => undefined); }}>{gerandoPdf ? 'Gerando PDF…' : 'Baixar PDF'}</button>
-          {!enviado && (
+          <button type="button" style={botao('secundario')} onClick={baixarJson} title="Baixa o B.O.M. em JSON (dgt-portal/bom@1) para lançamento via API">Gerar JSON</button>
+          <button type="button" style={botao('secundario')} onClick={copiarJson} title="Copia o JSON para colar no Postman ou em outro integrador">Copiar JSON</button>
+          {enviado && (
+            <button type="button" style={botao('principal')} onClick={() => setLancandoCigam(true)} title="Cria a oportunidade e o pedido de venda no CIGAM (Homologação)">Lançar no CIGAM</button>
+          )}
+          {!enviado && podeEnviar && (
             <button type="button" style={botao('principal', salvando || !resultado || resultado.itens.length === 0)} disabled={salvando || !resultado || resultado.itens.length === 0} onClick={() => { enviar().catch(() => undefined); }}>
               {salvando ? 'Enviando…' : 'Enviar para aprovação →'}
             </button>
           )}
         </div>
       </div>
+
+      {lancandoCigam && (
+        <LancarCigamPainel
+          dataverseService={dataverseService}
+          bomId={bom.id}
+          numero={numero}
+          revisao={bom.revisao}
+          clienteCigam={demanda.codigoCigam || ''}
+          prazoEntrega={demanda.prazoEntrega}
+          linhas={linhas.length}
+          semCodigo={semCodigo}
+          semPreco={semPreco}
+          enviado={enviado && !!congelado}
+          aoFechar={() => setLancandoCigam(false)}
+          aoConcluir={(mensagem: string) => { setLancandoCigam(false); mostrar(mensagem); }}
+        />
+      )}
 
       {aviso && <div role="status" style={{ ...cartao, padding: '10px 14px', background: '#E7F6EC', borderColor: '#107C10', color: '#107C10', fontWeight: 700 }}>{aviso}</div>}
 

@@ -550,6 +550,30 @@ const AdicionarUsuariosModal: React.FC<{
   const [resultado, setResultado] = React.useState<{ ok: number; falhas: string[] } | undefined>(undefined);
 
   const marcados = pendentes.filter(p => selecao[p.systemUserId] && selecao[p.systemUserId].marcado);
+  const todosMarcados = pendentes.length > 0 && marcados.length === pendentes.length;
+  const algunsMarcados = marcados.length > 0 && !todosMarcados;
+
+  // Checkbox do cabeçalho em estado "parcial" quando só parte está marcada
+  const refMarcarTodos = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    if (refMarcarTodos.current) {
+      refMarcarTodos.current.indeterminate = algunsMarcados;
+    }
+  }, [algunsMarcados]);
+
+  // Marca todos se houver algum desmarcado; senão, desmarca todos
+  const alternarTodos = (): void => {
+    const marcar = !todosMarcados;
+    setSelecao(atual => {
+      const proximo: Record<string, ISelecaoCadastro> = { ...atual };
+      pendentes.forEach(p => {
+        if (proximo[p.systemUserId]) {
+          proximo[p.systemUserId] = { ...proximo[p.systemUserId], marcado: marcar };
+        }
+      });
+      return proximo;
+    });
+  };
 
   const alterar = (id: string, parcial: Partial<ISelecaoCadastro>): void =>
     setSelecao(atual => ({ ...atual, [id]: { ...atual[id], ...parcial } }));
@@ -639,11 +663,35 @@ const AdicionarUsuariosModal: React.FC<{
           )
           : (
             <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <button
+                  type="button"
+                  onClick={alternarTodos}
+                  disabled={processando || pendentes.length === 0}
+                  style={botao(false, processando || pendentes.length === 0)}
+                >
+                  {todosMarcados ? 'Desmarcar todos' : 'Marcar todos'}
+                </button>
+                <span style={{ fontSize: '12px', color: COR_TEXTO_2 }}>
+                  {marcados.length} de {pendentes.length} selecionado(s)
+                </span>
+              </div>
+
               <div style={{ overflowX: 'auto', border: `1px solid ${COR_BORDA}`, borderRadius: '10px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>
                   <thead>
                     <tr>
-                      {['', 'Usuário', 'Situação', 'Perfil no portal', 'Área', 'Papel na área'].map(coluna => (
+                      <th style={{ textAlign: 'left', padding: '8px 10px', background: '#F8FAFC', borderBottom: `1px solid ${COR_BORDA}`, width: '32px' }}>
+                        <input
+                          ref={refMarcarTodos}
+                          type="checkbox"
+                          aria-label={todosMarcados ? 'Desmarcar todos' : 'Marcar todos'}
+                          checked={todosMarcados}
+                          disabled={processando || pendentes.length === 0}
+                          onChange={alternarTodos}
+                        />
+                      </th>
+                      {['Usuário', 'Situação', 'Perfil no portal', 'Área', 'Papel na área'].map(coluna => (
                         <th key={coluna} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '12px', color: COR_TEXTO_2, background: '#F8FAFC', borderBottom: `1px solid ${COR_BORDA}` }}>{coluna}</th>
                       ))}
                     </tr>

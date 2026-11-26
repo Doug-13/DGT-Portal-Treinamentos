@@ -4,6 +4,9 @@ import {
   agrupar,
   aplicarFiltro,
   alturaDoGrafico,
+  catalogoDoPainel,
+  linhasDaReferencia,
+  linhasEmbutidas,
   anoInicialDoDashboard,
   colunasDoItem,
   aplicarFiltrosTela,
@@ -163,5 +166,44 @@ describe('Dashboards do portal', () => {
     expect(validarDashboard(comTamanho({ larguraGrade: 9, alturaPx: 420 }), CATALOGO_DASHBOARD).erros).toEqual([]);
     expect(validarDashboard(comTamanho({ larguraGrade: 2 }), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/larguraGrade/);
     expect(validarDashboard(comTamanho({ alturaPx: 1200 }), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/alturaPx/);
+  });
+
+  it('fontes embutidas: dados no JSON, validados, com filtro de ano', () => {
+    const painel = {
+      formato: 'dgt-portal/dashboard@1',
+      titulo: 'Plano de ações',
+      fontesEmbutidas: [{
+        id: 'planilha.acoes', nome: 'Plano de ações', descricao: '',
+        campos: [{ chave: 'situacao', rotulo: 'Situação', tipo: 'texto', valores: ['Concluído', 'Atrasado'] }, { chave: 'acoes', rotulo: 'Ações', tipo: 'numero' }, { chave: 'ano', rotulo: 'Ano', tipo: 'numero' }],
+        linhas: [{ situacao: 'Concluído', acoes: 1, ano: 2026 }, { situacao: 'Atrasado', acoes: 1, ano: 2026 }, { situacao: 'Concluído', acoes: 1, ano: 2025 }]
+      }],
+      secoes: [{ titulo: 'Ações', itens: [{ tipo: 'cartao', titulo: 'Concluídas', fonte: 'planilha.acoes', medida: 'acoes', agregacao: 'soma', filtro: { situacao: 'Concluído' }, comparar: { medida: 'acoes', rotulo: 'Total' } }] }]
+    };
+    const v = validarDashboard(JSON.stringify(painel), CATALOGO_DASHBOARD);
+    expect(v.erros).toEqual([]);
+    expect(catalogoDoPainel(v.definicao, CATALOGO_DASHBOARD).some(f => f.id === 'planilha.acoes')).toBe(true);
+    expect(linhasEmbutidas(v.definicao!, 'planilha.acoes', 2026)).toHaveLength(2);
+    expect(linhasEmbutidas(v.definicao!, 'orcamento.dre', 2026)).toBeUndefined();
+    // Valor fora da lista fechada no filtro é recusado, como nas fontes do portal.
+    const filtroRuim = JSON.parse(JSON.stringify(painel));
+    filtroRuim.secoes[0].itens[0].filtro = { situacao: 'Talvez' };
+    expect(validarDashboard(JSON.stringify(filtroRuim), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/Talvez/);
+    // id fora do padrão e campos não declarados.
+    const ruim = JSON.parse(JSON.stringify(painel));
+    ruim.fontesEmbutidas[0].id = 'acoes';
+    expect(validarDashboard(JSON.stringify(ruim), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/planilha\./);
+    const extra = JSON.parse(JSON.stringify(painel));
+    extra.fontesEmbutidas[0].linhas.push({ situacao: 'Concluído', acoes: 1, ano: 2026, dono: 'X' });
+    expect(validarDashboard(JSON.stringify(extra), CATALOGO_DASHBOARD).erros.join(' ')).toMatch(/não declarados: dono/);
+  });
+
+  it('farol: mesma medida compara com o total sem o filtro do cartão; comparar.filtro manda', () => {
+    const linhas = [{ s: 'C', n: 1 }, { s: 'C', n: 1 }, { s: 'A', n: 1 }, { s: 'A', n: 1 }];
+    const concluidas = { medida: 'n', filtro: { s: 'C' }, comparar: { medida: 'n' } };
+    expect(linhasDaReferencia(linhas, concluidas)).toHaveLength(4);
+    // Medida diferente (executado × orçado): mesmo filtro do cartão.
+    expect(linhasDaReferencia(linhas, { medida: 'x', filtro: { s: 'C' }, comparar: { medida: 'n' } })).toHaveLength(2);
+    // Filtro explícito da referência.
+    expect(linhasDaReferencia(linhas, { ...concluidas, comparar: { medida: 'n', filtro: { s: 'A' } } })).toHaveLength(2);
   });
 });

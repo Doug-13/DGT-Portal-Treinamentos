@@ -8,6 +8,19 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Melhoria: Arquitetura de Soluções — histórico do B.O.M. sempre visível no fim da tela (ações, decisões, devoluções, comentários, etapas iniciadas com responsáveis e prazo, quem e quando).
+- Melhoria: Arquitetura de Soluções — fora da atividade atual, as telas ficam só para consulta (inclusive notas, justificativas, parecer e anexos da Matriz Go/No-Go). Removidos os botões de atalho entre telas ("Ver a Seleção de kit", "Ver o Cálculo de HH", "Ir para…"): a navegação é pela barra de etapas.
+
+- Melhoria: Arquitetura de Soluções — fluxo ARQ-SOL refeito com decisões: cada atividade tem uma única saída e uma decisão (gateway) distribui os caminhos (avançar, voltar, ajustar, encerrar, aprovar, devolver). Botão "Atualizar o fluxo em Processos" cria a nova versão para quem já tinha o modelo antigo.
+- Melhoria: Arquitetura de Soluções — o B.O.M. segue sempre o fluxo publicado: ao publicar uma versão nova, os B.O.M. em andamento passam para ela na mesma etapa (prazo, valores e histórico mantidos). Com o fluxo ativo, nenhuma tela altera dados fora do fluxo, nem quando o fluxo do B.O.M. não pôde ser lido.
+
+- Novo: Arquitetura de Soluções — botão "Criar o fluxo em Processos" (Administrador): cria o processo ARQ-SOL, os campos e o fluxo padrão do B.O.M. pelo importador de Processos, publicado ou como rascunho. O fluxo passa a aparecer em Processos → Fluxos, onde é alterado pelo editor. A visão geral mostra o que falta (processo, fluxo publicado, coluna) e o atalho "Abrir em Processos".
+
+- Novo: Arquitetura de Soluções — o B.O.M. passa a seguir o fluxo do processo ARQ-SOL (motor de fluxos): cada B.O.M. tem a própria instância, com etapa atual, responsáveis, prazo em dias úteis (selo de atraso) e histórico de ações, comentários e decisões. As telas do módulo continuam sendo o lugar de preencher; o botão de conclusão de cada tela grava os dados e avança o fluxo no mesmo clique.
+- Novo: Arquitetura de Soluções — aprovação do B.O.M.: o envio deixa o B.O.M. "Aguardando aprovação"; o aprovador (configurável no editor do fluxo, padrão: Gestor da área) aprova ou devolve com comentário obrigatório para B.O.M. pronto, Seleção de kit ou Cálculo de HH. A devolução libera a lista congelada e guarda o envio anterior.
+- Novo: Arquitetura de Soluções — Go/No-Go no fluxo: o resultado calculado pelo módulo direciona GO, GO com restrição (parecer obrigatório para liberar o kit) e NO-GO (encerrar a demanda ou reabrir a análise).
+- Melhoria: Arquitetura de Soluções — visão geral com os filtros "Aguardando você", "Aguardando aprovação" e "Aprovados" e a coluna "Prazo da etapa". Só os responsáveis pela etapa atual alteram os dados dela; ações simultâneas na mesma etapa são gravadas uma só vez.
+
 ## [1.4.32] - 2026-11-25
 
 - Melhoria: Arquitetura de Soluções — Cálculo de HH: ao responder "Sim", o valor HH de desenvolvimento vem preenchido com R$ 350,00 e o valor do ponto da manutenção com R$ 96,92 (editáveis).

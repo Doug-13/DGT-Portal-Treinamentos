@@ -39,6 +39,12 @@ export interface IDadosDemandaEtapaProps {
   // Já existe análise Go/No-Go: o canal fica travado.
   canalTravado: boolean;
   salvando: boolean;
+  // Fluxo do B.O.M.: só quem responde pela etapa "Dados da demanda"
+  // altera os dados (os demais veem sem editar).
+  somenteLeitura?: boolean;
+  avisoSomenteLeitura?: string;
+  // Texto do botão de conclusão (fluxo: sempre conclui a etapa).
+  rotuloConcluir?: string;
   onSalvar: (
     demanda: IDemandaBom,
     responsaveis: string[],
@@ -84,7 +90,10 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
   membrosArea,
   canalTravado,
   salvando,
-  onSalvar
+  onSalvar,
+  somenteLeitura,
+  avisoSomenteLeitura,
+  rotuloConcluir
 }) => {
 
   const [d, setD] = React.useState<IDemandaBom>(demanda);
@@ -189,7 +198,11 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
   );
 
   return (
+    <fieldset disabled={!!somenteLeitura} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
     <div>
+      {somenteLeitura && avisoSomenteLeitura && (
+        <div role="status" style={{ ...cartao, background: '#F8FAFC', fontSize: '13px', color: COR.texto2, padding: '10px 14px' }}>🔒 {avisoSomenteLeitura}</div>
+      )}
       <p style={{ margin: '0 0 14px', fontSize: '13px', color: COR.texto2 }}>
         Preencha as informações da demanda antes da análise Go/No-Go. Campos com <strong>*</strong> são obrigatórios
         para concluir a etapa. Canal e soluções de interesse serão usados na seleção de kit. A modalidade depende do canal: no privado, é sempre Proposta Comercial.
@@ -339,10 +352,11 @@ const DadosDemandaEtapa: React.FC<IDadosDemandaEtapaProps> = ({
           Salvar rascunho
         </button>
         <button type="button" style={botao('principal', salvando)} disabled={salvando} onClick={() => salvar(true)}>
-          {salvando ? 'Salvando…' : d.cadastroCompleto ? 'Salvar alterações' : 'Concluir e ir para o Go/No-Go →'}
+          {salvando ? 'Salvando…' : rotuloConcluir || (d.cadastroCompleto ? 'Salvar alterações' : 'Concluir e ir para o Go/No-Go →')}
         </button>
       </div>
     </div>
+    </fieldset>
   );
 };
 

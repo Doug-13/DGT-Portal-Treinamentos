@@ -3525,6 +3525,7 @@ const PortalRouter:
             contexto={props.contextoAcesso}
             spHttpClient={props.spHttpClient}
             siteUrl={props.siteUrl}
+            onAbrirProcessos={() => props.navegar('fluxos')}
           />
         );
 

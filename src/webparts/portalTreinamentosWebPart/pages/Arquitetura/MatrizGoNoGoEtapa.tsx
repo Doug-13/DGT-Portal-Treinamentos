@@ -50,6 +50,10 @@ export interface IMatrizGoNoGoEtapaProps {
   numeroBom?: string;
   spHttpClient?: SPHttpClient;
   siteUrl?: string;
+  // Fluxo do B.O.M.: só o responsável pela etapa Matriz Go/No-Go
+  // registra a análise; os demais consultam.
+  somenteLeitura?: boolean;
+  avisoSomenteLeitura?: string;
   onRegistrar: (
     notas: { [criterioId: string]: number },
     justificativas: { [criterioId: string]: string },
@@ -97,7 +101,9 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
   numeroBom,
   spHttpClient,
   siteUrl,
-  onRegistrar
+  onRegistrar,
+  somenteLeitura,
+  avisoSomenteLeitura
 }) => {
 
   const ativos = criterios.filter(item => item.ativo);
@@ -113,14 +119,25 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
   };
 
   const [notas, setNotas] = React.useState<{ [id: string]: number }>(notasIniciais);
-  const [justificativas, setJustificativas] = React.useState<{ [id: string]: string }>({});
+  // Justificativas da última análise (consulta e ponto de partida).
+  const justificativasIniciais = (): { [id: string]: string } => {
+    const mapa: { [id: string]: string } = {};
+    (ultima ? ultima.notas : []).forEach(nota => {
+      if (nota.justificativa) {
+        mapa[nota.criterioId] = nota.justificativa;
+      }
+    });
+    return mapa;
+  };
+
+  const [justificativas, setJustificativas] = React.useState<{ [id: string]: string }>(justificativasIniciais);
   const [parecer, setParecer] = React.useState<string>(ultima ? ultima.parecer : '');
   const [verHistorico, setVerHistorico] = React.useState<string>('');
 
   React.useEffect(() => {
     setNotas(notasIniciais());
     setParecer(ultima ? ultima.parecer : '');
-    setJustificativas({});
+    setJustificativas(justificativasIniciais());
   }, [criterios, analises]);
 
   const somaPesos =
@@ -148,7 +165,7 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
     perdas.reduce((soma, item) => soma + item.perda, 0);
 
   const registrar = (): void => {
-    if (!pesosValidos || salvando) {
+    if (!pesosValidos || salvando || somenteLeitura) {
       return;
     }
     onRegistrar(notas, justificativas, parecer).catch(() => undefined);
@@ -196,7 +213,8 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
                         <input
                           aria-label={`Justificativa de ${criterio.nome}`}
                           style={{ ...campo, marginTop: '6px', padding: '5px 8px', fontSize: '12px' }}
-                          placeholder="Justificativa (opcional)"
+                          placeholder={somenteLeitura ? '' : 'Justificativa (opcional)'}
+                          disabled={!!somenteLeitura}
                           value={justificativas[criterio.id] || ''}
                           onChange={e => setJustificativas({ ...justificativas, [criterio.id]: e.target.value })}
                         />
@@ -210,9 +228,10 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
                                 type="button"
                                 aria-label={`Nota ${valor}`}
                                 aria-pressed={nota === valor}
+                                disabled={!!somenteLeitura}
                                 onClick={() => setNotas({ ...notas, [criterio.id]: valor })}
                                 style={{
-                                  width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '13px',
+                                  width: '32px', height: '32px', borderRadius: '8px', cursor: somenteLeitura ? 'default' : 'pointer', fontWeight: 800, fontSize: '13px',
                                   border: `1.5px solid ${nota === valor ? COR_NOTA[valor].cor : COR_NOTA[valor].cor + '55'}`,
                                   background: nota === valor ? COR_NOTA[valor].cor : COR_NOTA[valor].claro,
                                   color: nota === valor ? COR_NOTA[valor].texto : COR_NOTA[valor].cor,
@@ -307,6 +326,7 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
               style={{ ...campo, resize: 'vertical', borderRadius: '10px', ...(exigeParecer ? { borderColor: '#EE8A12' } : {}) }}
               placeholder={decisao === 'GO com restrição' ? 'Descreva as restrições e condições para seguir…' : 'Observações da análise…'}
               value={parecer}
+              disabled={!!somenteLeitura}
               onChange={e => setParecer(e.target.value)}
             />
 
@@ -315,10 +335,11 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
                 numeroBom={numeroBom}
                 spHttpClient={spHttpClient}
                 siteUrl={siteUrl}
+                somenteLeitura={somenteLeitura}
               />
             )}
 
-            <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '10px', fontSize: '12.5px', fontWeight: 600, background: libera ? '#E6F6EF' : exigeParecer ? '#FEF1E8' : '#FDECEC', color: libera ? '#0E7C56' : exigeParecer ? '#B45309' : '#B42318' }}>
+            {!somenteLeitura && <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '10px', fontSize: '12.5px', fontWeight: 600, background: libera ? '#E6F6EF' : exigeParecer ? '#FEF1E8' : '#FDECEC', color: libera ? '#0E7C56' : exigeParecer ? '#B45309' : '#B42318' }}>
               {
                 libera
                   ? '✓ Ao registrar, a seleção de kit fica liberada.'
@@ -326,11 +347,17 @@ const MatrizGoNoGoEtapa: React.FC<IMatrizGoNoGoEtapaProps> = ({
                     ? '! Preencha o parecer para liberar a seleção de kit.'
                     : '🔒 Com esta pontuação, a seleção de kit fica bloqueada.'
               }
-            </div>
+            </div>}
 
+            {somenteLeitura ? (
+              <div role="status" style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '10px', fontSize: '12.5px', background: '#F1F5F9', color: COR.texto2 }}>
+                🔒 {avisoSomenteLeitura || 'A análise não pode ser registrada nesta etapa.'}
+              </div>
+            ) : (
             <button type="button" style={{ ...botao('principal', salvando || !pesosValidos), width: '100%', marginTop: '12px', borderRadius: '10px', padding: '11px 14px' }} disabled={salvando || !pesosValidos} onClick={registrar}>
               {salvando ? 'Registrando…' : 'Registrar análise'}
             </button>
+            )}
           </div>
 
           {/* ---------- Onde a demanda perde pontos ---------- */}

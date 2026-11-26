@@ -74,6 +74,14 @@ describe('Geração com validação e correção automática', () => {
     expect(chamadas).toHaveLength(3);
   });
 
+  it('a IA não pode embutir dados (inventaria números): pede correção', async () => {
+    const comDados = JSON.stringify({ ...EXEMPLOS_DASHBOARD.treinamentos, fontesEmbutidas: [] });
+    const { dataverse, chamadas } = simulado([{ definicao: comDados }, { definicao: valido }]);
+    const resultado = await gerarDashboard(dataverse, { pedido: 'x', catalogo: catalogoGestor });
+    expect(resultado.correcoes).toBe(1);
+    expect((chamadas[1].erros as string[])[0]).toMatch(/fontesEmbutidas/);
+  });
+
   it('pedido sem dados no portal: explicação da IA, sem erro e sem gastar correções', async () => {
     const { dataverse, chamadas } = simulado([
       { resumo: 'O Quadro de Metas e o plano de ações não existem no portal.', semDados: ['Quadro de Metas', 'Plano de ações'], definicao: '' }

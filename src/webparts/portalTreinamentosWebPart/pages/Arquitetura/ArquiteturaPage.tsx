@@ -57,6 +57,52 @@ import {
 import EtapaBomPronto from './EtapaBomPronto';
 
 import {
+  BomFluxoService,
+  IDisponibilidadeFluxoBom,
+  IEstadoFluxoBom,
+  IExecucaoFluxoBom
+} from '../../services/bom/BomFluxoService';
+
+import {
+  IEntradaValoresBom,
+  PAPEIS_COM_TELA,
+  PapelEtapaBom,
+  abaDoPapel,
+  configAvaliacaoDaDefinicao,
+  etapaBomDaInstancia,
+  papelAtual,
+  papelDaEtapaLegada,
+  papelDoElemento,
+  situacaoFluxoBom,
+  tarefaPendenteBom,
+  valoresDoBom
+} from '../../services/bom/fluxoBom';
+
+import {
+  IFluxoInstancia
+} from '../../models/Fluxo';
+
+import {
+  obterElementoAtual
+} from '../../services/fluxo/FluxoEngine';
+
+import {
+  IUsuarioAreaAdmin
+} from '../../services/AreaAdminService';
+
+import PainelFluxoOrcamento from '../Orcamento/PainelFluxoOrcamento';
+
+import HistoricoFluxoBom from './HistoricoFluxoBom';
+
+import {
+  SeloPrazo
+} from '../Orcamento/orcamentoComum';
+
+import {
+  situacaoPrazo
+} from '../../services/orcamento/diasUteis';
+
+import {
   mapaPrecosDoCatalogo,
   totalizarItens
 } from '../../services/bom/valoresBom';
@@ -71,6 +117,7 @@ import {
   botao,
   campo,
   cartao,
+  envioFechado,
   formatarData,
   formatarNumero
 } from './arquiteturaComum';
@@ -92,17 +139,22 @@ export interface IArquiteturaPageProps {
   // Anexos do Go/No-Go (SharePoint).
   spHttpClient?: SPHttpClient;
   siteUrl?: string;
+  // Abre Processos → Fluxos (editar o fluxo do B.O.M.).
+  onAbrirProcessos?: () => void;
 }
 
-type Filtro = 'todos' | 'demandaGo' | 'bloqueados' | 'kit' | 'hhPronto' | 'enviados';
+type Filtro = 'todos' | 'aguardando' | 'demandaGo' | 'bloqueados' | 'kit' | 'hhPronto' | 'enviados' | 'aprovados';
 
 const FILTROS: Array<{ id: Filtro; rotulo: string; etapas: EtapaBom[] }> = [
   { id: 'todos', rotulo: 'Todos os B.O.M.', etapas: [] },
+  // Fluxo do B.O.M.: etapa atual com pendência para o usuário.
+  { id: 'aguardando', rotulo: 'Aguardando você', etapas: [] },
   { id: 'demandaGo', rotulo: 'Demanda ou Go/No-Go pendente', etapas: ['Dados da demanda', 'Go/No-Go pendente'] },
-  { id: 'bloqueados', rotulo: 'Bloqueados no Go/No-Go', etapas: ['Bloqueado no Go/No-Go'] },
+  { id: 'bloqueados', rotulo: 'Bloqueados ou encerrados no Go/No-Go', etapas: ['Bloqueado no Go/No-Go', 'Encerrado (NO-GO)'] },
   { id: 'kit', rotulo: 'Em seleção de kit', etapas: ['Seleção de kit'] },
   { id: 'hhPronto', rotulo: 'HH ou B.O.M. pronto', etapas: ['Cálculo de HH', 'B.O.M. pronto'] },
-  { id: 'enviados', rotulo: 'Enviados p/ aprovação', etapas: ['Enviado para aprovação'] }
+  { id: 'enviados', rotulo: 'Aguardando aprovação', etapas: ['Enviado para aprovação'] },
+  { id: 'aprovados', rotulo: 'Aprovados', etapas: ['Aprovado'] }
 ];
 
 // ------------------------------------------------------------
@@ -153,6 +205,16 @@ const ICONE_FILTRO: Record<Filtro, React.ReactNode> = {
     <svg {...svgBase}>
       <path d="M21 3L10 14" /><path d="M21 3l-7 18-4-7-7-4z" />
     </svg>
+  ),
+  aguardando: (
+    <svg {...svgBase}>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" />
+    </svg>
+  ),
+  aprovados: (
+    <svg {...svgBase}>
+      <circle cx="12" cy="12" r="9" /><polyline points="8 12.5 11 15.5 16.5 9" />
+    </svg>
   )
 };
 
@@ -162,7 +224,9 @@ const VISUAL_FILTRO: Record<Filtro, { fundo: string; icone: string }> = {
   bloqueados: { fundo: '#3D1F2B', icone: '#F2707A' },
   kit:        { fundo: '#2E2152', icone: '#A57CF2' },
   hhPronto:   { fundo: '#1E2A52', icone: '#5B8DEF' },
-  enviados:   { fundo: '#0F3A2C', icone: '#1FCB8A' }
+  enviados:   { fundo: '#12343D', icone: '#38BDF8' },
+  aguardando: { fundo: '#1E2A52', icone: '#F5A84A' },
+  aprovados:  { fundo: '#0F3A2C', icone: '#1FCB8A' }
 };
 
 const guid = (valor?: string): string =>
@@ -209,11 +273,11 @@ const ABA_DO_PASSO: Record<number, AbaBom> = { 1: 'demanda', 2: 'gonogo', 3: 'ki
 const abaDaEtapa = (etapa: EtapaBom): AbaBom =>
   etapa === 'Dados da demanda'
     ? 'demanda'
-    : etapa === 'Go/No-Go pendente' || etapa === 'Bloqueado no Go/No-Go'
+    : etapa === 'Go/No-Go pendente' || etapa === 'Bloqueado no Go/No-Go' || etapa === 'Encerrado (NO-GO)'
       ? 'gonogo'
       : etapa === 'Seleção de kit'
         ? 'kit'
-        : etapa === 'B.O.M. pronto' || etapa === 'Enviado para aprovação'
+        : etapa === 'B.O.M. pronto' || etapa === 'Enviado para aprovação' || etapa === 'Aprovado'
           ? 'pronto'
           : 'hh';
 
@@ -228,7 +292,7 @@ const CabecalhoBom: React.FC<{
 }> = ({ bom, demanda, etapa, ultima, aba, onAba, onVoltar }) => {
 
   const atual = ETAPAS[etapa].passo;
-  const bloqueado = etapa === 'Bloqueado no Go/No-Go';
+  const bloqueado = etapa === 'Bloqueado no Go/No-Go' || etapa === 'Encerrado (NO-GO)';
 
   const titulo =
     demanda.nome && demanda.nome !== 'Nova demanda (sem título)'
@@ -263,7 +327,7 @@ const CabecalhoBom: React.FC<{
       return atual >= 4 ? 'Prévia com o HH vigente' : 'Aguardando o kit';
     }
     if (atual > 5) {
-      return 'Enviado para aprovação';
+      return etapa === 'Aprovado' ? 'Aprovado' : 'Aguardando aprovação';
     }
     return atual === 5 ? 'Pronto para envio' : atual === 4 ? 'Disponível para revisão' : 'Aguardando o kit';
   };
@@ -488,7 +552,8 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
   dataverseService,
   contexto,
   spHttpClient,
-  siteUrl
+  siteUrl,
+  onAbrirProcessos
 }) => {
 
   const servico = React.useMemo(() => (dataverseService ? new BomService(dataverseService) : undefined), [dataverseService]);
@@ -521,6 +586,22 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
   const [complementosAlterados, setComplementosAlterados] = React.useState(false);
   const [analises, setAnalises] = React.useState<IAnaliseGoNoGo[]>([]);
 
+  // Fluxo do B.O.M. (processo ARQ-SOL, motor de fluxos).
+  const fluxoServico = React.useMemo(
+    () => (dataverseService && servico ? new BomFluxoService(dataverseService, servico) : undefined),
+    [dataverseService, servico]
+  );
+  const [fluxoDisp, setFluxoDisp] = React.useState<IDisponibilidadeFluxoBom | undefined>(undefined);
+  const [estadosFluxo, setEstadosFluxo] = React.useState<{ [bomId: string]: IFluxoInstancia }>({});
+  const [vinculos, setVinculos] = React.useState<IUsuarioAreaAdmin[]>([]);
+  const [estadoFluxo, setEstadoFluxo] = React.useState<IEstadoFluxoBom | undefined>(undefined);
+  const [fluxoCarregadoDe, setFluxoCarregadoDe] = React.useState<string>('');
+  const [avisoFluxo, setAvisoFluxo] = React.useState<string>('');
+  // Criação do processo/fluxo em Processos (Administrador).
+  const [criandoFluxo, setCriandoFluxo] = React.useState(false);
+  const [publicarAgora, setPublicarAgora] = React.useState(true);
+  const [passosCriacao, setPassosCriacao] = React.useState<Array<{ ok: boolean; texto: string }>>([]);
+
   const avisar = (texto: string): void => {
     setMensagem(texto);
     window.setTimeout(() => setMensagem(''), 4000);
@@ -547,13 +628,20 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
       setMembrosArea(arq ? vinculos.filter(v => v.ativo && guid(v.areaId) === guid(arq.id)).map(v => guid(v.usuarioId)) : []);
       setUsuarios(listaUsuarios.map(item => ({ id: guid(item.id), nome: item.nome })).sort((a, b) => a.nome.localeCompare(b.nome)));
       setCriterios(listaCriterios);
+      setVinculos(vinculos);
+      if (fluxoServico) {
+        fluxoServico.definirContexto(arq ? arq.id : '', vinculos);
+        const [disponibilidade, estados] = await Promise.all([fluxoServico.verificar(), fluxoServico.lerEstados()]);
+        setFluxoDisp(disponibilidade);
+        setEstadosFluxo(estados);
+      }
       setVisao(dados);
     } catch (error) {
       setErro(`Não foi possível carregar a Arquitetura de Soluções: ${(error as Error).message}. Confira se as tabelas dgt_bom_* existem e se o seu perfil de segurança permite lê-las.`);
     } finally {
       setCarregando(false);
     }
-  }, [servico, areas]);
+  }, [servico, areas, fluxoServico]);
 
   React.useEffect(() => {
     carregar().catch(() => undefined);
@@ -592,10 +680,191 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
     servico.carregarAnalises(demanda.id).then(setAnalises).catch(error => setErro((error as Error).message));
   }, [servico, demanda ? demanda.id : '']);
 
-  const etapaDe = (item: IBomRegistro): EtapaBom =>
+  const etapaSemFluxo = (item: IBomRegistro): EtapaBom =>
     visao
       ? etapaCalculada(visao.demandas.find(d => d.id === item.demandaId), visao.ultimaAnalise[item.demandaId], item.etapa)
       : item.etapa;
+
+  // Com o fluxo ativo, a etapa é a do fluxo (a do B.O.M. aberto é a
+  // mais recente; as demais vêm da lista).
+  const fluxoAtivo = !!fluxoDisp && fluxoDisp.ativo;
+
+  const etapaDe = (item: IBomRegistro): EtapaBom => {
+    if (fluxoAtivo && estadoFluxo && item.id === bomId) {
+      return etapaBomDaInstancia(estadoFluxo.instancia);
+    }
+    const instancia = fluxoAtivo ? estadosFluxo[item.id] : undefined;
+    return instancia ? etapaBomDaInstancia(instancia) : etapaSemFluxo(item);
+  };
+
+  // ----------------------------------------------------------
+  // Fluxo do B.O.M. aberto
+  // ----------------------------------------------------------
+
+  const ultimaDoBom = visao && demanda ? visao.ultimaAnalise[demanda.id] : undefined;
+
+  // Dados atuais do módulo como valores dos campos do fluxo.
+  const entradaValores = (): IEntradaValoresBom | undefined => {
+    if (!bom || !demanda) {
+      return undefined;
+    }
+    const selecao = selecaoKit && kitCarregado === bom.id ? selecaoKit : undefined;
+    const resultadoKit = selecao && !selecao.bomEnviado ? montarBom(selecao) : undefined;
+    const custo =
+      selecao && selecao.bomEnviado
+        ? selecao.bomEnviado.valorTotal
+        : resultadoKit ? totalizarItens(resultadoKit.itens, precos).total : undefined;
+    return {
+      bom,
+      demanda,
+      analise: ultimaDoBom,
+      usuarios,
+      selecao,
+      custoProjeto: custo,
+      configGoNoGo: configAvaliacaoDaDefinicao(estadoFluxo ? estadoFluxo.definicao : undefined)
+    };
+  };
+
+  const valoresTela: Record<string, string> = React.useMemo(() => {
+    const entrada = entradaValores();
+    return entrada ? valoresDoBom(entrada) : {};
+  }, [bom, demanda, ultimaDoBom, usuarios, selecaoKit, kitCarregado, precos, estadoFluxo]);
+
+  // Carrega (ou inicia) o fluxo ao abrir um B.O.M.
+  React.useEffect(() => {
+    setEstadoFluxo(undefined);
+    setAvisoFluxo('');
+    setFluxoCarregadoDe('');
+    if (!fluxoServico || !bom || !demanda || !fluxoAtivo) {
+      return;
+    }
+    let vivo = true;
+    (async () => {
+      let estado = await fluxoServico.carregar(bom.id);
+      // Versão nova do fluxo publicada: o B.O.M. passa para ela, na
+      // mesma etapa (o processo segue sempre o fluxo publicado).
+      if (estado && contexto && contexto.usuarioId && estado.instancia.status === 'emAndamento') {
+        const entrada = entradaValores();
+        const atualizacao = await fluxoServico.atualizarVersao(bom, contexto, entrada ? valoresDoBom(entrada) : undefined);
+        if (atualizacao.atualizado) {
+          estado = await fluxoServico.carregar(bom.id);
+          if (vivo) {
+            avisar(atualizacao.mensagem);
+          }
+        } else if (atualizacao.mensagem && vivo) {
+          setAvisoFluxo(atualizacao.mensagem);
+        }
+      }
+      if (!estado && contexto && contexto.usuarioId) {
+        const entrada = entradaValores();
+        const resultado =
+          await fluxoServico.iniciar(
+            bom,
+            contexto,
+            entrada ? valoresDoBom(entrada) : {},
+            papelDaEtapaLegada(etapaSemFluxo(bom), ultimaDoBom)
+          );
+        if (!resultado.ok && vivo) {
+          setAvisoFluxo(`O fluxo deste B.O.M. não foi iniciado: ${resultado.erros.join(' ')}`);
+        }
+        estado = resultado.estado;
+        if (resultado.ok && vivo) {
+          setEstadosFluxo(await fluxoServico.lerEstados());
+        }
+      }
+      if (vivo) {
+        setEstadoFluxo(estado);
+        setFluxoCarregadoDe(bom.id);
+      }
+    })().catch(error => {
+      if (vivo) {
+        setAvisoFluxo(`Não foi possível ler o fluxo deste B.O.M.: ${(error as Error).message}`);
+        setFluxoCarregadoDe(bom.id);
+      }
+    });
+    return () => { vivo = false; };
+  }, [fluxoServico, bomId, fluxoAtivo, demanda ? demanda.id : '']);
+
+  // Fluxo ativo: TODA alteração passa pelo fluxo. Sem a instância (não
+  // iniciada ou ilegível), nada é alterado — a tela fica só para consulta.
+  const comFluxo = fluxoAtivo;
+  const elementoFluxo = estadoFluxo ? obterElementoAtual(estadoFluxo.definicao, estadoFluxo.instancia) : undefined;
+  const papelFluxo: PapelEtapaBom | undefined =
+    estadoFluxo && estadoFluxo.instancia.status === 'emAndamento' ? papelDoElemento(elementoFluxo) : undefined;
+  const podeAgirFluxo =
+    !!estadoFluxo && !!bom && !!fluxoServico && fluxoServico.podeAgir(estadoFluxo, bom, contexto, valoresTela);
+  // Fluxo ativo, mas o estado deste B.O.M. ainda está carregando: a
+  // tela espera (ninguém age fora do fluxo).
+  const fluxoCarregando = fluxoAtivo && !!bom && fluxoCarregadoDe !== bom.id;
+
+  // A tela da etapa pode ser alterada? Sem fluxo: regra antiga.
+  const editavel = (papel: PapelEtapaBom): boolean =>
+    !comFluxo || (!!estadoFluxo && papelFluxo === papel && podeAgirFluxo);
+
+  const avisoEdicao = (papel: PapelEtapaBom): string =>
+    !estadoFluxo
+      ? (comFluxo ? 'O fluxo deste B.O.M. não está disponível (veja o aviso acima): os dados ficam só para consulta.' : '')
+      : estadoFluxo.instancia.status !== 'emAndamento'
+        ? 'O fluxo deste B.O.M. foi concluído: os dados ficam só para consulta.'
+        : papelFluxo !== papel
+          ? `Esta etapa não está em andamento (etapa atual: ${elementoFluxo ? elementoFluxo.nome : '—'}). Para alterá-la, use as ações de devolução do fluxo.`
+          : 'Somente os responsáveis pela etapa atual podem alterar estes dados.';
+
+  // Executa uma ação do fluxo (botão da tela ou do painel).
+  const acaoFluxo = async (
+    opcoes: Omit<IExecucaoFluxoBom, 'bom' | 'contexto' | 'comentario' | 'valores'> & {
+      comentario?: string;
+      valores?: IExecucaoFluxoBom['valores'];
+      sucesso: string;
+      mostrarErro?: boolean;
+    }
+  ): Promise<string[]> => {
+    if (!fluxoServico || !bom || !contexto) {
+      return ['O fluxo do B.O.M. não está disponível.'];
+    }
+    setSalvando(true);
+    setErro('');
+    try {
+      const { sucesso, mostrarErro, comentario, valores, ...resto } = opcoes;
+      const resultado =
+        await fluxoServico.executar({
+          ...resto,
+          bom,
+          contexto,
+          comentario: comentario || '',
+          valores: valores || (() => valoresTela)
+        });
+      if (!resultado.ok) {
+        if (mostrarErro !== false) {
+          setErro(resultado.erros.join(' '));
+        }
+        return resultado.erros;
+      }
+      if (resultado.estado) {
+        setEstadoFluxo(resultado.estado);
+        const situacao = situacaoFluxoBom(resultado.estado.instancia);
+        const proxima =
+          situacao === 'encerrado' ? 'gonogo' : situacao === 'aprovado' ? 'pronto' : abaDoPapel(papelAtual(resultado.estado.instancia));
+        if (proxima) {
+          setAba(proxima);
+        }
+      }
+      // A lista de itens pode ter sido liberada (devolução): relê.
+      setKitCarregado('');
+      await carregar();
+      avisar(resultado.avisos.length > 0 ? `${sucesso} ${resultado.avisos.join(' ')}` : sucesso);
+      window.scrollTo(0, 0);
+      return [];
+    } catch (error) {
+      const texto = (error as Error).message || String(error);
+      if (opcoes.mostrarErro !== false) {
+        setErro(texto);
+      }
+      return [texto];
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   // Carrega a seleção de kit ao abrir a etapa 3 ou 4.
   React.useEffect(() => {
@@ -670,15 +939,99 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
         {mensagem && <div role="status" style={{ ...cartao, background: '#E7F6EC', borderColor: '#107C10', color: '#107C10', fontWeight: 700, padding: '10px 14px' }}>✓ {mensagem}</div>}
         {erro && <div role="alert" style={{ ...cartao, background: '#FDE7E9', borderColor: '#B42318', color: COR.azul, padding: '10px 14px', fontSize: '13px' }}>{erro}</div>}
 
+        {avisoFluxo && <div role="alert" style={{ ...cartao, background: '#FFF4E5', borderColor: '#B45309', color: '#7C2D12', padding: '10px 14px', fontSize: '13px' }}>{avisoFluxo}</div>}
+
+        {fluxoCarregando && <div style={{ ...cartao, color: COR.texto2, fontSize: '13px' }}>Carregando o fluxo do B.O.M.…</div>}
+
         {
-          aba === 'demanda' && (
+          estadoFluxo && fluxoServico && (() => {
+            const situacao = situacaoFluxoBom(estadoFluxo.instancia);
+            const comTela = !!papelFluxo && PAPEIS_COM_TELA.indexOf(papelFluxo) >= 0;
+            const principal = comTela && elementoFluxo ? elementoFluxo.acoes.find(item => item.principal) : undefined;
+            const ROTULO_TELA: Partial<Record<PapelEtapaBom, string>> = {
+              demanda: 'Concluir e ir para o Go/No-Go',
+              goNoGo: 'Registrar análise',
+              kit: 'Concluir seleção de kit',
+              hh: 'Avançar para B.O.M. pronto',
+              bomPronto: 'Enviar para aprovação'
+            };
+            return (
+              <div style={{ marginBottom: '16px' }}>
+                <PainelFluxoOrcamento
+                  estado={estadoFluxo}
+                  dadosResponsaveis={fluxoServico.dadosResponsaveis(bom, { ...estadoFluxo.instancia.valores, ...valoresTela })}
+                  vinculos={vinculos}
+                  usuarios={usuarios}
+                  podeAgir={podeAgirFluxo}
+                  processando={salvando}
+                  diagramaAberto={false}
+                  rotuloFluxo="Fluxo do B.O.M."
+                  ocultarHistorico
+                  textoConcluido={situacao === 'encerrado' ? '✕ Demanda encerrada no Go/No-Go — fluxo concluído' : '✓ B.O.M. aprovado — fluxo concluído'}
+                  valoresExternos={valoresTela}
+                  // Etapas com tela no módulo: os campos são preenchidos lá.
+                  // Parecer da restrição / bloqueio: o painel mostra o parecer.
+                  camposOcultos={comTela || papelFluxo === 'aprovacao' ? 'todos' : ['goNoGo']}
+                  acoesOcultas={principal ? [principal.chave] : []}
+                  observacaoAcoesOcultas={
+                    principal && papelFluxo
+                      ? `Para concluir esta etapa, use “${ROTULO_TELA[papelFluxo] || principal.rotulo}” na tela abaixo: os dados são gravados e a etapa avança no mesmo clique.`
+                      : undefined
+                  }
+                  dataverseService={dataverseService}
+                  onExecutar={(acaoChave, comentario, valoresPainel) =>
+                    acaoFluxo({
+                      acaoChave,
+                      comentario,
+                      valores: () => ({ ...valoresTela, ...valoresPainel }),
+                      sucesso: 'Ação registrada no fluxo do B.O.M.',
+                      mostrarErro: false
+                    })
+                  }
+                />
+              </div>
+            );
+          })()
+        }
+
+        {
+          !fluxoCarregando && aba === 'demanda' && (
             <DadosDemandaEtapa
               demanda={demanda}
               usuarios={usuarios}
               membrosArea={membrosArea}
               canalTravado={analises.length > 0}
               salvando={salvando}
+              somenteLeitura={comFluxo && !editavel('demanda')}
+              avisoSomenteLeitura={avisoEdicao('demanda')}
+              rotuloConcluir={comFluxo ? 'Concluir e ir para o Go/No-Go →' : undefined}
               onSalvar={async (dados, responsaveis, principal, concluir) => {
+                if (comFluxo) {
+                  if (!editavel('demanda')) {
+                    setErro(avisoEdicao('demanda'));
+                    return;
+                  }
+                  if (!concluir) {
+                    await executar(() => servico.salvarDemanda(dados, responsaveis, principal), 'Rascunho salvo.');
+                    return;
+                  }
+                  const nomeDe = (id: string): string => {
+                    const achado = usuarios.find(item => item.id === guid(id));
+                    return achado ? achado.nome : '';
+                  };
+                  const demandaNova: IDemandaBom = {
+                    ...dados,
+                    responsaveis: responsaveis.map(id => ({ usuarioId: guid(id), nome: nomeDe(id), principal: guid(id) === guid(principal), ativo: true }))
+                  };
+                  const entrada = entradaValores();
+                  await acaoFluxo({
+                    papelEsperado: 'demanda',
+                    valores: () => (entrada ? valoresDoBom({ ...entrada, demanda: demandaNova }) : {}),
+                    preparar: () => servico.salvarDemanda(dados, responsaveis, principal),
+                    sucesso: 'Dados da demanda concluídos.'
+                  });
+                  return;
+                }
                 await executar(async () => {
                   await servico.salvarDemanda(dados, responsaveis, principal);
                   const novaEtapa = etapaCalculada(dados, ultima, bom.etapa);
@@ -696,13 +1049,12 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
         }
 
         {
-          aba === 'gonogo' && (
+          !fluxoCarregando && aba === 'gonogo' && (
             !demanda.cadastroCompleto
               ? (
                 <div style={{ ...cartao, textAlign: 'center' }}>
                   <h3 style={{ margin: '0 0 6px', color: COR.azul }}>🔒 Conclua os dados da demanda</h3>
                   <p style={{ fontSize: '13px', color: COR.texto2 }}>A Matriz Go/No-Go é liberada depois que os campos obrigatórios da demanda forem preenchidos.</p>
-                  <button type="button" style={botao('principal')} onClick={() => setAba('demanda')}>Ir para Dados da demanda</button>
                 </div>
               )
               : (
@@ -716,9 +1068,43 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                     numeroBom={bom.numero}
                     spHttpClient={spHttpClient}
                     siteUrl={siteUrl}
+                    somenteLeitura={comFluxo && !editavel('goNoGo')}
+                    avisoSomenteLeitura={avisoEdicao('goNoGo')}
                     onRegistrar={async (notas, justificativas, parecer) => {
                       if (!contexto || !contexto.usuarioId) {
                         setErro('Não foi possível identificar o seu usuário para registrar a análise.');
+                        return;
+                      }
+                      if (comFluxo) {
+                        if (!editavel('goNoGo')) {
+                          setErro(avisoEdicao('goNoGo'));
+                          return;
+                        }
+                        // A análise é registrada (histórico do módulo) e o
+                        // resultado já calculado — GO, GO com restrição ou
+                        // NO-GO — decide o caminho do fluxo.
+                        let nova: IAnaliseGoNoGo | undefined;
+                        await acaoFluxo({
+                          papelEsperado: 'goNoGo',
+                          valoresDependemDoPreparo: true,
+                          preparar: async () => {
+                            nova = await servico.registrarAnalise({
+                              demandaId: demanda.id,
+                              bomId: bom.id,
+                              avaliadorId: contexto.usuarioId as string,
+                              criterios,
+                              notas,
+                              justificativas,
+                              parecer
+                            });
+                            setAnalises(await servico.carregarAnalises(demanda.id));
+                          },
+                          valores: () => {
+                            const entrada = entradaValores();
+                            return entrada ? valoresDoBom({ ...entrada, analise: nova || entrada.analise }) : {};
+                          },
+                          sucesso: 'Análise Go/No-Go registrada.'
+                        });
                         return;
                       }
                       await executar(async () => {
@@ -736,12 +1122,9 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                     }}
                   />
                   {
-                    ultima && ultima.liberaKit && (
+                    (comFluxo ? ETAPAS[etapa].passo >= 3 && etapa !== 'Encerrado (NO-GO)' : ultima && ultima.liberaKit) && (
                       <div style={{ ...cartao, background: '#E8F2FF', borderColor: '#0F6CBD', fontSize: '13px', color: COR.azul }}>
-                        <strong>Seleção de kit liberada.</strong> Monte os pontos e as soluções do projeto na etapa 3.
-                        <div style={{ marginTop: '8px' }}>
-                          <button type="button" style={botao('principal')} onClick={() => { setAba('kit'); window.scrollTo(0, 0); }}>Ir para a Seleção de kit →</button>
-                        </div>
+                        <strong>Seleção de kit liberada.</strong> Monte os pontos e as soluções do projeto na etapa 3 (barra de etapas acima).
                       </div>
                     )
                   }
@@ -751,7 +1134,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
         }
 
         {
-          aba === 'kit' && (
+          !fluxoCarregando && aba === 'kit' && (
             kitCarregado !== bom.id
               ? <div style={{ ...cartao, color: COR.texto2 }}>Carregando a seleção de kit...</div>
               : (
@@ -760,11 +1143,36 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                   semColuna={kitSemColuna}
                   canal={demanda.canal}
                   salvando={salvando}
-                  somenteLeitura={etapa === 'Enviado para aprovação'}
+                  somenteLeitura={envioFechado(etapa) || (comFluxo && !editavel('kit'))}
                   usuarioNome={contexto && contexto.nome ? contexto.nome : ''}
                   usuarioId={contexto && contexto.usuarioId ? contexto.usuarioId : undefined}
                   precos={precos}
                   onSalvar={async (selecao, concluir) => {
+                    if (comFluxo) {
+                      if (!editavel('kit')) {
+                        setErro(avisoEdicao('kit'));
+                        return;
+                      }
+                      const nome = contexto && contexto.nome ? contexto.nome : '';
+                      if (!concluir) {
+                        await executar(async () => {
+                          await servico.salvarSelecaoKit(bom.id, selecao, nome);
+                          setSelecaoKit(selecao);
+                        }, 'Seleção de kit salva.');
+                        return;
+                      }
+                      const entrada = entradaValores();
+                      await acaoFluxo({
+                        papelEsperado: 'kit',
+                        valores: () => (entrada ? valoresDoBom({ ...entrada, selecao }) : {}),
+                        preparar: async () => {
+                          await servico.salvarSelecaoKit(bom.id, selecao, nome);
+                          setSelecaoKit(selecao);
+                        },
+                        sucesso: 'Seleção de kit concluída.'
+                      });
+                      return;
+                    }
                     await executar(async () => {
                       await servico.salvarSelecaoKit(bom.id, selecao, contexto && contexto.nome ? contexto.nome : '');
                       setSelecaoKit(selecao);
@@ -783,7 +1191,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
         }
 
         {
-          aba === 'hh' && (
+          !fluxoCarregando && aba === 'hh' && (
             <>
               {(() => {
                 // Valor dos itens da Seleção de kit (preços do CIGAM): base
@@ -798,17 +1206,17 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                 custoFixo={!!valores}
                 notaCusto="total dos itens da Seleção de kit, valores do CIGAM"
                 itensSemPreco={valores ? valores.semValor + valores.semCodigo : 0}
-                aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
                 complementos={complementosHH}
-                somenteLeitura={etapa === 'Enviado para aprovação' || !selecaoKit || ETAPAS[etapa].passo < 4}
+                somenteLeitura={envioFechado(etapa) || !selecaoKit || ETAPAS[etapa].passo < 4 || (comFluxo && !editavel('hh'))}
                 onAlterarComplementos={c => { setComplementosHH(c); setComplementosAlterados(true); }}
               />
                 );
               })()}
               {
                 selecaoKit && selecaoKit.pontos.length > 0 && ETAPAS[etapa].passo >= 4 && (() => {
-                  const enviado = etapa === 'Enviado para aprovação';
+                  const enviado = envioFechado(etapa) || (comFluxo && !editavel('hh'));
                   const pendencias = pendenciasComplementos(complementosHH);
+                  const avancarNoFluxo = comFluxo && editavel('hh');
                   // Grava as respostas na seleção de kit (mesmo JSON do B.O.M.).
                   const salvarComplementos = async (): Promise<void> => {
                     if (!complementosAlterados || enviado) {
@@ -844,6 +1252,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                           Salvar respostas
                         </button>
                       )}
+                      {(!comFluxo || avancarNoFluxo) && (
                       <button
                         type="button"
                         style={botao('principal', salvando || (!enviado && pendencias.length > 0))}
@@ -851,6 +1260,30 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                         title={!enviado && pendencias.length > 0 ? 'Responda as perguntas de integração e manutenção' : undefined}
                         onClick={() => {
                           (async () => {
+                            if (comFluxo) {
+                              if (!avancarNoFluxo) {
+                                setAba('pronto');
+                                window.scrollTo(0, 0);
+                                return;
+                              }
+                              const nome = contexto && contexto.nome ? contexto.nome : '';
+                              const selecaoNova: ISelecaoKit = complementosAlterados
+                                ? { ...selecaoKit, complementosHH: { ...complementosHH, atualizadoEm: new Date().toISOString(), atualizadoPor: nome } }
+                                : selecaoKit;
+                              const entrada = entradaValores();
+                              await acaoFluxo({
+                                papelEsperado: 'hh',
+                                valores: () => (entrada ? valoresDoBom({ ...entrada, selecao: selecaoNova }) : {}),
+                                preparar: async () => {
+                                  if (complementosAlterados) {
+                                    await servico.salvarSelecaoKit(bom.id, selecaoNova, nome);
+                                    setSelecaoKit(selecaoNova);
+                                  }
+                                },
+                                sucesso: 'B.O.M. pronto para revisão e envio.'
+                              });
+                              return;
+                            }
                             if (complementosAlterados || ETAPAS[etapa].passo === 4) {
                               await executar(async () => {
                                 await salvarComplementos();
@@ -866,6 +1299,7 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                       >
                         Avançar para B.O.M. pronto →
                       </button>
+                      )}
                     </div>
                   );
                 })()
@@ -875,28 +1309,69 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
         }
 
         {
-          aba === 'pronto' && (
+          !fluxoCarregando && aba === 'pronto' && (
             kitCarregado !== bom.id
               ? <div style={{ ...cartao, color: COR.texto2 }}>Carregando o B.O.M....</div>
               : (
                 <EtapaBomPronto
                   bom={{ ...bom, etapa }}
                   demanda={demanda}
-                  analise={ultima}
+                  analise={
+                    // Parecer dado na etapa "Parecer da restrição" do fluxo.
+                    ultima && !ultima.parecer && estadoFluxo && estadoFluxo.instancia.valores.parecer
+                      ? { ...ultima, parecer: estadoFluxo.instancia.valores.parecer }
+                      : ultima
+                  }
                   selecao={selecaoKit}
                   resultado={selecaoKit && !selecaoKit.bomEnviado ? montarBom(selecaoKit) : undefined}
                   precos={precos}
                   dataverseService={dataverseService}
                   dataEnvio={dataEnvio}
                   salvando={salvando}
-                  aoVoltarKit={() => { setAba('kit'); window.scrollTo(0, 0); }}
-                  aoVoltarHH={() => { setAba('hh'); window.scrollTo(0, 0); }}
+                  podeEnviar={!comFluxo || editavel('bomPronto')}
+                  tituloSituacao={
+                    etapa === 'Aprovado'
+                      ? `✓ BOM ${bom.numero.replace(/^BOM\s*/i, '')} ${bom.revisao} aprovado`
+                      : etapa === 'Enviado para aprovação' && comFluxo
+                        ? `BOM ${bom.numero.replace(/^BOM\s*/i, '')} ${bom.revisao} aguardando aprovação`
+                        : undefined
+                  }
+                  textoSituacao={
+                    comFluxo && estadoFluxo && estadoFluxo.instancia.status === 'concluido' && estadoFluxo.instancia.concluidoEm
+                      ? `Aprovado em ${formatarData(estadoFluxo.instancia.concluidoEm.substring(0, 10))}.`
+                      : undefined
+                  }
                   onEnviar={async (congelado: IBomEnviado) => {
                     if (!selecaoKit) {
                       return;
                     }
                     const nome = contexto && contexto.nome ? contexto.nome : '';
                     const selecao: ISelecaoKit = { ...selecaoKit, bomEnviado: { ...congelado, por: nome } };
+                    if (comFluxo) {
+                      if (!editavel('bomPronto')) {
+                        setErro(avisoEdicao('bomPronto'));
+                        return;
+                      }
+                      const anterior = selecaoKit;
+                      const entrada = entradaValores();
+                      await acaoFluxo({
+                        papelEsperado: 'bomPronto',
+                        valores: () => (entrada ? valoresDoBom({ ...entrada, selecao, itensConferidos: true }) : {}),
+                        // Congela a lista; se o fluxo recusar, volta como estava.
+                        preparar: async () => {
+                          await servico.enviarParaAprovacao(bom.id, selecao, nome);
+                          setSelecaoKit(selecao);
+                          setDataEnvio(await servico.lerDataEnvio(bom.id));
+                        },
+                        desfazer: async () => {
+                          await servico.salvarSelecaoKit(bom.id, anterior, nome);
+                          await servico.atualizarEtapa(bom.id, 'B.O.M. pronto');
+                          setSelecaoKit(anterior);
+                        },
+                        sucesso: `BOM ${bom.numero.replace(/^BOM\s*/i, '')} enviado para aprovação.`
+                      });
+                      return;
+                    }
                     await executar(async () => {
                       await servico.enviarParaAprovacao(bom.id, selecao, nome);
                       setSelecaoKit(selecao);
@@ -906,6 +1381,12 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                   }}
                 />
               )
+          )
+        }
+
+        {
+          !fluxoCarregando && estadoFluxo && (
+            <HistoricoFluxoBom instancia={estadoFluxo.instancia} />
           )
         }
       </section>
@@ -926,17 +1407,30 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
       }))
       : [];
 
-  const contar = (f: Filtro): number => {
-    const def = FILTROS.find(item => item.id === f);
-    return !def || def.etapas.length === 0 ? linhas.length : linhas.filter(l => def.etapas.indexOf(l.etapa) >= 0).length;
+  const meuId = contexto && contexto.usuarioId ? contexto.usuarioId : '';
+
+  const aguardaVoce = (item: IBomRegistro): boolean => {
+    const instancia = fluxoAtivo ? estadosFluxo[item.id] : undefined;
+    return !!instancia && !!fluxoServico && fluxoServico.aguardaUsuario(instancia, meuId);
   };
+
+  const noFiltro = (f: Filtro, l: { bom: IBomRegistro; etapa: EtapaBom }): boolean => {
+    if (f === 'aguardando') {
+      return aguardaVoce(l.bom);
+    }
+    const def = FILTROS.find(item => item.id === f);
+    return !def || def.etapas.length === 0 || def.etapas.indexOf(l.etapa) >= 0;
+  };
+
+  const contar = (f: Filtro): number =>
+    linhas.filter(l => noFiltro(f, l)).length;
 
   const termo = busca.trim().toLowerCase();
   const filtroAtual = FILTROS.find(item => item.id === filtro) as typeof FILTROS[number];
 
   const visiveis =
     linhas.filter(l =>
-      (filtroAtual.etapas.length === 0 || filtroAtual.etapas.indexOf(l.etapa) >= 0) &&
+      noFiltro(filtroAtual.id, l) &&
       (!termo || `${l.bom.numero} ${l.demanda ? l.demanda.nome : ''} ${l.demanda ? l.demanda.cliente : ''} ${l.bom.responsavelNome}`.toLowerCase().indexOf(termo) >= 0)
     );
 
@@ -1039,13 +1533,13 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>
             <thead>
               <tr>
-                {['B.O.M.', 'Demanda', 'Responsável', 'Etapa atual', 'Go/No-Go', 'Atualizado', ''].map(coluna => (
+                {['B.O.M.', 'Demanda', 'Responsável', 'Etapa atual', 'Prazo da etapa', 'Go/No-Go', 'Atualizado', ''].map(coluna => (
                   <th key={coluna} style={{ textAlign: 'left', padding: '10px 12px', fontSize: '12px', color: COR.texto2, background: '#F8FAFC', borderBottom: `1px solid ${COR.borda}` }}>{coluna}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {carregando && <tr><td colSpan={7} style={{ padding: '18px', fontSize: '13px', color: COR.texto2 }}>Carregando…</td></tr>}
+              {carregando && <tr><td colSpan={8} style={{ padding: '18px', fontSize: '13px', color: COR.texto2 }}>Carregando…</td></tr>}
               {
                 !carregando && visiveis.map(l => {
                   const est = ETAPAS[l.etapa];
@@ -1065,6 +1559,16 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                       <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COR.borda}` }}>
                         <span style={{ fontSize: '11px', color: COR.texto2, marginRight: '6px' }}>{est.passo}/5</span>
                         <Selo texto={est.texto} cor={est.cor} fundo={est.fundo} />
+                        {aguardaVoce(l.bom) && <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#B45309', marginTop: '3px' }}>● Aguardando você</div>}
+                      </td>
+                      <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COR.borda}` }}>
+                        {(() => {
+                          const instancia = fluxoAtivo ? estadosFluxo[l.bom.id] : undefined;
+                          const tarefa = instancia ? tarefaPendenteBom(instancia) : undefined;
+                          return tarefa && tarefa.prazo
+                            ? <SeloPrazo prazo={tarefa.prazo} situacao={situacaoPrazo(tarefa.prazo, tarefa.criadaEm)} />
+                            : <span style={{ fontSize: '12px', color: COR.texto2 }}>—</span>;
+                        })()}
                       </td>
                       <td style={{ padding: '10px 12px', borderBottom: `1px solid ${COR.borda}` }}>
                         {l.analise ? <Selo texto={`${DECISAO[l.analise.decisao].texto} · ${formatarNumero(l.analise.pontuacao)}`} cor={DECISAO[l.analise.decisao].cor} fundo={DECISAO[l.analise.decisao].fundo} /> : <span style={{ fontSize: '12px', color: COR.texto2 }}>Sem análise</span>}
@@ -1079,16 +1583,138 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                   );
                 })
               }
-              {!carregando && visiveis.length === 0 && <tr><td colSpan={7} style={{ padding: '22px', textAlign: 'center', fontSize: '13px', color: COR.texto2 }}>Nenhum B.O.M. neste filtro.</td></tr>}
+              {!carregando && visiveis.length === 0 && <tr><td colSpan={8} style={{ padding: '22px', textAlign: 'center', fontSize: '13px', color: COR.texto2 }}>Nenhum B.O.M. neste filtro.</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
       <p style={{ fontSize: '12px', color: COR.texto2 }}>
-        Etapas: 1 · Dados da demanda · 2 · Matriz Go/No-Go · 3 · Seleção de kit · 4 · Cálculo de HH · 5 · B.O.M. pronto
-        (a etapa 4 aguarda as planilhas de HH; a 5 está em definição).
+        Etapas: 1 · Dados da demanda · 2 · Matriz Go/No-Go · 3 · Seleção de kit · 4 · Cálculo de HH · 5 · B.O.M. pronto → aprovação.
+        {fluxoAtivo && fluxoDisp && fluxoDisp.processo ? ` Responsáveis, prazos e aprovações seguem o fluxo publicado do processo ${fluxoDisp.processo.codigo || fluxoDisp.processo.nome}.` : ''}
       </p>
+
+      {
+        fluxoDisp && contexto && (contexto.perfil === 'Administrador' || (contexto.modulosAdministrados || []).indexOf('arquitetura') >= 0) && (
+          fluxoDisp.ativo
+            ? (
+              <div style={{ ...cartao, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '12.5px', padding: '10px 14px' }}>
+                <span style={{ color: COR.texto2, flex: 1, minWidth: '240px' }}>
+                  Fluxo do B.O.M.: processo <strong style={{ color: COR.azul }}>{fluxoDisp.processo ? `${fluxoDisp.processo.codigo} — ${fluxoDisp.processo.nome}` : ''}</strong>.
+                  Para mudar etapas, responsáveis, prazos ou ações: Processos → Fluxos → abra o processo → nova versão → publicar.
+                  B.O.M. em andamento continuam na versão em que começaram.
+                </span>
+                {onAbrirProcessos && <button type="button" style={botao('secundario')} onClick={onAbrirProcessos}>Abrir em Processos →</button>}
+                {
+                  fluxoDisp.fluxoSemDecisoes && fluxoServico && (
+                    <div style={{ flexBasis: '100%', marginTop: '6px', padding: '10px 12px', borderRadius: '8px', background: '#FFF4E5', color: '#7C2D12' }}>
+                      <strong>O fluxo publicado (v{fluxoDisp.versaoPublicada}) tem atividades com mais de uma saída sem decisão.</strong>{' '}
+                      Atualize para o modelo em que cada atividade tem uma saída e uma decisão distribui os caminhos. É criada uma nova versão;
+                      a atual fica no histórico e os B.O.M. em andamento passam para a nova versão na mesma etapa ao serem abertos.
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginTop: '8px' }}>
+                        <button
+                          type="button"
+                          style={botao('principal', criandoFluxo)}
+                          disabled={criandoFluxo}
+                          onClick={() => {
+                            if (!window.confirm('Criar uma nova versão do fluxo ARQ-SOL com o modelo padrão (com decisões)? Alterações feitas à mão na versão atual não são levadas; um rascunho existente é substituído. As versões publicadas ficam no histórico.')) {
+                              return;
+                            }
+                            setCriandoFluxo(true);
+                            setPassosCriacao([]);
+                            fluxoServico.criarFluxoEmProcessos(publicarAgora, true)
+                              .then(resultado => {
+                                setPassosCriacao(resultado.passos);
+                                return carregar();
+                              })
+                              .catch(error => setPassosCriacao([{ ok: false, texto: (error as Error).message }]))
+                              .then(() => setCriandoFluxo(false))
+                              .catch(() => undefined);
+                          }}
+                        >
+                          {criandoFluxo ? 'Atualizando…' : 'Atualizar o fluxo em Processos'}
+                        </button>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={publicarAgora} disabled={criandoFluxo} onChange={e => setPublicarAgora(e.target.checked)} />
+                          Publicar agora (sem marcar, fica como rascunho para revisar no editor)
+                        </label>
+                      </div>
+                    </div>
+                  )
+                }
+                {
+                  passosCriacao.length > 0 && (
+                    <ul style={{ flexBasis: '100%', margin: '6px 0 0', paddingLeft: '18px' }}>
+                      {passosCriacao.map((passo, indice) => (
+                        <li key={indice} style={{ color: passo.ok ? '#107C10' : '#B42318' }}>{passo.ok ? '✓' : '✕'} {passo.texto}</li>
+                      ))}
+                    </ul>
+                  )
+                }
+              </div>
+            )
+            : (
+              <div role="status" style={{ ...cartao, background: '#FFF4E5', borderColor: '#B45309', color: '#7C2D12', fontSize: '12.5px', padding: '12px 14px' }}>
+                <strong style={{ display: 'block', fontSize: '13.5px', marginBottom: '6px' }}>Fluxo de aprovação do B.O.M. inativo</strong>
+                <div style={{ display: 'grid', gap: '3px', marginBottom: '8px' }}>
+                  <span>{fluxoDisp.processoEncontrado ? '✓' : '✕'} Processo {fluxoDisp.processo ? `${fluxoDisp.processo.codigo} — ${fluxoDisp.processo.nome}` : 'ARQ-SOL'} em Processos</span>
+                  <span>{fluxoDisp.fluxoPublicado ? '✓' : '✕'} Fluxo publicado{fluxoDisp.temRascunho && !fluxoDisp.fluxoPublicado ? ' (há um rascunho: abra em Processos e publique)' : ''}</span>
+                  <span>{fluxoDisp.colunaCriada ? '✓' : '✕'} Coluna do estado do fluxo no B.O.M. (scripts/dataverse/criar-fluxo-bom.ps1)</span>
+                </div>
+                <div style={{ marginBottom: '8px' }}>{fluxoDisp.motivo}</div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {
+                    !fluxoDisp.fluxoPublicado && !fluxoDisp.temRascunho && fluxoServico && (
+                      <>
+                        <button
+                          type="button"
+                          style={botao('principal', criandoFluxo)}
+                          disabled={criandoFluxo}
+                          onClick={() => {
+                            const texto = fluxoDisp.processoEncontrado
+                              ? 'Criar o fluxo padrão do B.O.M. no processo existente? Os campos do processo são mantidos; nada é apagado.'
+                              : 'Criar o processo ARQ-SOL com os campos e o fluxo padrão do B.O.M. em Processos? Nenhum ambiente é criado.';
+                            if (!window.confirm(texto)) {
+                              return;
+                            }
+                            setCriandoFluxo(true);
+                            setPassosCriacao([]);
+                            fluxoServico.criarFluxoEmProcessos(publicarAgora)
+                              .then(resultado => {
+                                setPassosCriacao(resultado.passos);
+                                return carregar();
+                              })
+                              .catch(error => setPassosCriacao([{ ok: false, texto: (error as Error).message }]))
+                              .then(() => setCriandoFluxo(false))
+                              .catch(() => undefined);
+                          }}
+                        >
+                          {criandoFluxo ? 'Criando…' : 'Criar o fluxo em Processos'}
+                        </button>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={publicarAgora} disabled={criandoFluxo} onChange={e => setPublicarAgora(e.target.checked)} />
+                          Publicar agora (sem marcar, fica como rascunho para revisar no editor)
+                        </label>
+                      </>
+                    )
+                  }
+                  {onAbrirProcessos && (fluxoDisp.processoEncontrado || passosCriacao.length > 0) && (
+                    <button type="button" style={botao('secundario')} onClick={onAbrirProcessos}>Abrir em Processos →</button>
+                  )}
+                </div>
+                {
+                  passosCriacao.length > 0 && (
+                    <ul style={{ margin: '10px 0 0', paddingLeft: '18px' }}>
+                      {passosCriacao.map((passo, indice) => (
+                        <li key={indice} style={{ color: passo.ok ? '#107C10' : '#B42318' }}>{passo.ok ? '✓' : '✕'} {passo.texto}</li>
+                      ))}
+                    </ul>
+                  )
+                }
+              </div>
+            )
+        )
+      }
 
       {
         novoAberto && servico && (

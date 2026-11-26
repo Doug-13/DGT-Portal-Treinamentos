@@ -5,6 +5,9 @@ import {
 import {
   IAssistenteDashboard,
   IDefinicaoDashboard,
+  IDescricaoFonte,
+  catalogoDoPainel,
+  linhasDaReferencia,
   IItemCartao,
   Linha,
   LIMITE_PERGUNTAS_SUGERIDAS,
@@ -89,8 +92,8 @@ interface ICampoVisivel {
   numerico: boolean;
 }
 
-const camposVisiveis = (fonteId: string, ocultos: string[]): ICampoVisivel[] => {
-  const fonte = CATALOGO_DASHBOARD.filter(item => item.id === fonteId)[0];
+const camposVisiveis = (fonteId: string, ocultos: string[], catalogo: IDescricaoFonte[]): ICampoVisivel[] => {
+  const fonte = catalogo.filter(item => item.id === fonteId)[0];
   if (!fonte) {
     return [];
   }
@@ -154,7 +157,7 @@ const resumoCartoes = (definicao: IDefinicaoDashboard, dados: { [fonte: string]:
     const valor = agregar(filtradas, { medida: cartao.medida, agregacao: cartao.agregacao });
     let texto = `- ${secao.titulo} › ${cartao.titulo}: ${Math.round(valor * 100) / 100}`;
     if (cartao.comparar) {
-      const referencia = agregar(filtradas, cartao.comparar);
+      const referencia = agregar(linhasDaReferencia(dados[cartao.fonte] || [], cartao), cartao.comparar);
       texto += ` (${cartao.comparar.rotulo || cartao.comparar.medida}: ${Math.round(referencia * 100) / 100})`;
     }
     linhas.push(texto);
@@ -177,6 +180,8 @@ export const montarContextoDados = (
 ): IContextoMontado => {
 
   const fontes = fontesDoAssistente(definicao);
+  // Catálogo do painel (inclui fontes embutidas no JSON).
+  const catalogo = catalogoDoPainel(definicao, CATALOGO_DASHBOARD);
   const ocultos = (definicao.assistente && definicao.assistente.camposOcultos) || [];
   const partes: string[] = [];
   let linhasEnviadas = 0;
@@ -196,8 +201,8 @@ export const montarContextoDados = (
   // as maiores (que podem ser somadas no ano ou cortadas).
   const preparadas = fontes
     .map(fonteId => {
-      const descricao = CATALOGO_DASHBOARD.filter(item => item.id === fonteId)[0];
-      const campos = camposVisiveis(fonteId, ocultos);
+      const descricao = catalogo.filter(item => item.id === fonteId)[0];
+      const campos = camposVisiveis(fonteId, ocultos, catalogo);
       const linhas = dados[fonteId] || [];
       return { fonteId, descricao, campos, linhas, tamanho: descricao && campos.length > 0 ? paraCsv(linhas, campos).length : 0 };
     })

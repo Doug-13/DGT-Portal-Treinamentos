@@ -20,6 +20,10 @@ import {
   fontesUsadas,
   anoInicialDoDashboard,
   aplicarFiltrosTela,
+  linhasDaReferencia,
+  catalogoDoPainel,
+  linhasEmbutidas,
+  IDescricaoFonte,
   alturaDoGrafico,
   colunasDoItem,
   COLUNAS_MAX,
@@ -115,17 +119,20 @@ const formatador = (formato?: FormatoValor): ((valor: number) => string) => (val
   return valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 };
 
-const campoDe = (fonte: string, campo: string): { tipo: string; rotulo: string } => {
-  const descricao = CATALOGO_DASHBOARD.filter(item => item.id === fonte)[0];
+// Catálogo do painel aberto (portal + fontes embutidas no JSON).
+const CatalogoDoPainel = React.createContext<IDescricaoFonte[]>(CATALOGO_DASHBOARD);
+
+const campoDe = (fonte: string, campo: string, catalogo: IDescricaoFonte[] = CATALOGO_DASHBOARD): { tipo: string; rotulo: string } => {
+  const descricao = catalogo.filter(item => item.id === fonte)[0];
   const encontrado = descricao ? descricao.campos.filter(item => item.chave === campo)[0] : undefined;
   return encontrado ? { tipo: encontrado.tipo, rotulo: encontrado.rotulo } : { tipo: 'texto', rotulo: campo };
 };
 
-const rotuloValor = (fonte: string, campo: string, valor: unknown): string => {
-  if (campoDe(fonte, campo).tipo === 'mes') {
+const rotuloValor = (fonte: string, campo: string, valor: unknown, catalogo: IDescricaoFonte[] = CATALOGO_DASHBOARD): string => {
+  if (campoDe(fonte, campo, catalogo).tipo === 'mes') {
     return rotuloMes(valor);
   }
-  if (campoDe(fonte, campo).tipo === 'data' && valor) {
+  if (campoDe(fonte, campo, catalogo).tipo === 'data' && valor) {
     const data = new Date(String(valor).length <= 10 ? `${valor}T12:00:00` : String(valor));
     return isNaN(data.getTime()) ? String(valor) : data.toLocaleDateString('pt-BR');
   }
@@ -144,13 +151,14 @@ const cartaoEstilo: React.CSSProperties = {
 // ------------------------------------------------------------
 
 const Cartao: React.FC<{ item: IItemCartao; linhas: Linha[] }> = ({ item, linhas }) => {
+  const catalogo = React.useContext(CatalogoDoPainel);
   const filtradas = aplicarFiltro(linhas, item.filtro);
   const valor = agregar(filtradas, { medida: item.medida, agregacao: item.agregacao });
   const formatar = formatador(item.formato);
   const comparacao =
     item.comparar
       ? (() => {
-        const referencia = agregar(filtradas, item.comparar as IItemCartao['comparar'] & { medida: string });
+        const referencia = agregar(linhasDaReferencia(linhas, item), item.comparar as IItemCartao['comparar'] & { medida: string });
         return { referencia, ...farolDe(valor, referencia, item.comparar ? item.comparar.direcao : 'maior') };
       })()
       : undefined;
@@ -162,7 +170,7 @@ const Cartao: React.FC<{ item: IItemCartao; linhas: Linha[] }> = ({ item, linhas
       {comparacao && item.comparar && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '11.5px', color: COR.muted }}>
-            {item.comparar.rotulo || campoDe(item.fonte, item.comparar.medida).rotulo}: {formatar(comparacao.referencia)}
+            {item.comparar.rotulo || campoDe(item.fonte, item.comparar.medida, catalogo).rotulo}: {formatar(comparacao.referencia)}
             {comparacao.percentual !== undefined ? ` · ${comparacao.percentual.toLocaleString('pt-BR')}%` : ''}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 700, padding: '2px 9px', borderRadius: '999px', background: `${COR_FAROL[comparacao.farol]}22`, color: COR_FAROL[comparacao.farol] }}>
@@ -203,11 +211,12 @@ const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'O
 
 
 const GraficoMedido: React.FC<{ item: IItemGrafico; linhas: Linha[]; largura: number }> = ({ item, linhas, largura }) => {
+  const catalogo = React.useContext(CatalogoDoPainel);
   const filtradas = aplicarFiltro(linhas, item.filtro);
   const formatar = formatador(item.formato);
-  const ehMes = campoDe(item.fonte, item.dimensao).tipo === 'mes';
+  const ehMes = campoDe(item.fonte, item.dimensao, catalogo).tipo === 'mes';
   let grupos = agrupar(filtradas, [item.dimensao]).map(grupo => ({
-    rotulo: rotuloValor(item.fonte, item.dimensao, grupo.valores[item.dimensao]),
+    rotulo: rotuloValor(item.fonte, item.dimensao, grupo.valores[item.dimensao], catalogo),
     ordem: ehMes ? Number(grupo.valores[item.dimensao]) : undefined,
     valor: agregar(grupo.linhas, item.series[0]),
     linhas: grupo.linhas
@@ -221,12 +230,12 @@ const GraficoMedido: React.FC<{ item: IItemGrafico; linhas: Linha[]; largura: nu
   if (item.serieDimensao) {
     const valoresSerie = agrupar(filtradas, [item.serieDimensao]).map(grupo => grupo.valores[(item.serieDimensao as string)]);
     series = valoresSerie.map(valorSerie => ({
-      nome: rotuloValor(item.fonte, item.serieDimensao as string, valorSerie),
+      nome: rotuloValor(item.fonte, item.serieDimensao as string, valorSerie, catalogo),
       valores: grupos.map(grupo => agregar(grupo.linhas.filter(linha => String(linha[item.serieDimensao as string]) === String(valorSerie)), item.series[0]))
     }));
   } else {
     series = item.series.map(serie => ({
-      nome: serie.rotulo || campoDe(item.fonte, serie.medida).rotulo,
+      nome: serie.rotulo || campoDe(item.fonte, serie.medida, catalogo).rotulo,
       valores: grupos.map(grupo => agregar(grupo.linhas, serie))
     }));
   }
@@ -261,6 +270,7 @@ const Grafico: React.FC<{ item: IItemGrafico; linhas: Linha[] }> = ({ item, linh
 };
 
 const Tabela: React.FC<{ item: IItemTabela; linhas: Linha[] }> = ({ item, linhas }) => {
+  const catalogo = React.useContext(CatalogoDoPainel);
   const filtradas = aplicarFiltro(linhas, item.filtro);
   const formatar = formatador(item.formato);
   const cabecalho: React.CSSProperties = { background: COR.navy, color: '#FFFFFF', textAlign: 'left', padding: '9px 10px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' };
@@ -282,16 +292,16 @@ const Tabela: React.FC<{ item: IItemTabela; linhas: Linha[] }> = ({ item, linhas
     return (
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{item.colunas.map(coluna => <th key={coluna} style={cabecalho}>{campoDe(item.fonte, coluna).rotulo}</th>)}</tr></thead>
+          <thead><tr>{item.colunas.map(coluna => <th key={coluna} style={cabecalho}>{campoDe(item.fonte, coluna, catalogo).rotulo}</th>)}</tr></thead>
           <tbody>
             {lista.map((linha, i) => (
               <tr key={i}>
                 {(item.colunas as string[]).map(coluna => {
-                  const numerico = campoDe(item.fonte, coluna).tipo === 'numero';
+                  const numerico = campoDe(item.fonte, coluna, catalogo).tipo === 'numero';
                   const valor = linha[coluna];
                   return (
                     <td key={coluna} style={{ ...celula, textAlign: numerico ? 'right' : 'left', color: numerico && Number(valor) < 0 ? COR.vermelho : COR.texto }}>
-                      {numerico ? formatar(Number(valor)) : rotuloValor(item.fonte, coluna, valor)}
+                      {numerico ? formatar(Number(valor)) : rotuloValor(item.fonte, coluna, valor, catalogo)}
                     </td>
                   );
                 })}
@@ -307,8 +317,8 @@ const Tabela: React.FC<{ item: IItemTabela; linhas: Linha[] }> = ({ item, linhas
   const dimensoes = item.dimensoes || [];
   const medidas = item.medidas || [];
   let grupos = agrupar(filtradas, dimensoes).map(grupo => ({
-    rotulo: dimensoes.map(d => rotuloValor(item.fonte, d, grupo.valores[d])).join(' · '),
-    ordem: dimensoes.length === 1 && campoDe(item.fonte, dimensoes[0]).tipo === 'mes' ? Number(grupo.valores[dimensoes[0]]) : undefined,
+    rotulo: dimensoes.map(d => rotuloValor(item.fonte, d, grupo.valores[d], catalogo)).join(' · '),
+    ordem: dimensoes.length === 1 && campoDe(item.fonte, dimensoes[0], catalogo).tipo === 'mes' ? Number(grupo.valores[dimensoes[0]]) : undefined,
     valor: medidas[0] ? agregar(grupo.linhas, medidas[0]) : 0,
     grupo
   }));
@@ -318,14 +328,14 @@ const Tabela: React.FC<{ item: IItemTabela; linhas: Linha[] }> = ({ item, linhas
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            {dimensoes.map(d => <th key={d} style={cabecalho}>{campoDe(item.fonte, d).rotulo}</th>)}
-            {medidas.map((m, i) => <th key={i} style={{ ...cabecalho, textAlign: 'right' }}>{m.rotulo || campoDe(item.fonte, m.medida).rotulo}</th>)}
+            {dimensoes.map(d => <th key={d} style={cabecalho}>{campoDe(item.fonte, d, catalogo).rotulo}</th>)}
+            {medidas.map((m, i) => <th key={i} style={{ ...cabecalho, textAlign: 'right' }}>{m.rotulo || campoDe(item.fonte, m.medida, catalogo).rotulo}</th>)}
           </tr>
         </thead>
         <tbody>
           {grupos.map(({ grupo }) => (
             <tr key={grupo.chave}>
-              {dimensoes.map(d => <td key={d} style={celula}>{rotuloValor(item.fonte, d, grupo.valores[d])}</td>)}
+              {dimensoes.map(d => <td key={d} style={celula}>{rotuloValor(item.fonte, d, grupo.valores[d], catalogo)}</td>)}
               {medidas.map((m, i) => {
                 const valor = agregar(grupo.linhas, m);
                 return <td key={i} style={{ ...celula, textAlign: 'right', color: valor < 0 ? COR.vermelho : COR.texto, fontVariantNumeric: 'tabular-nums' }}>{formatar(valor)}</td>;
@@ -353,6 +363,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
   const [salvando, setSalvando] = React.useState(false);
   const [avisoEdicao, setAvisoEdicao] = React.useState('');
   const alterado = JSON.stringify(definicao) !== JSON.stringify(props.definicao);
+  const catalogoPainel = React.useMemo(() => catalogoDoPainel(props.definicao, CATALOGO_DASHBOARD), [props.definicao]);
 
   const alterarItem = (secao: number, indice: number, novo: ItemDashboard): void => {
     setDefinicao(atual => ({
@@ -418,7 +429,13 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
       contextos[chave] = contextos[chave] || { dataverse: props.dataverseService, ano, areaIds };
       return contextos[chave];
     };
-    Promise.all(fontes.map(fonte => carregarFonte(fonte, contextoDa(fonte)).then(linhas => ({ fonte, linhas }))))
+    Promise.all(fontes.map(fonte => {
+      // Fonte embutida no JSON: os dados já estão na definição.
+      const embutidas = linhasEmbutidas(props.definicao, fonte, ano);
+      return embutidas
+        ? Promise.resolve({ fonte, linhas: embutidas })
+        : carregarFonte(fonte, contextoDa(fonte)).then(linhas => ({ fonte, linhas }));
+    }))
       .then(resultados => {
         if (!ativo) {
           return;
@@ -438,7 +455,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
   const filtrosDef = definicao.filtros || {};
   const camposFiltro = (filtrosDef.campos || []).slice(0, 4);
   const dadosFiltrados = React.useMemo(
-    () => aplicarFiltrosTela(dados, { mesInicio, mesFim, campos: valoresCampo }, CATALOGO_DASHBOARD),
+    () => aplicarFiltrosTela(dados, { mesInicio, mesFim, campos: valoresCampo }, catalogoPainel),
     [dados, mesInicio, mesFim, valoresCampo]
   );
   const filtroAtivo = mesInicio > 1 || mesFim < 12 || Object.keys(valoresCampo).some(campo => !!valoresCampo[campo]);
@@ -457,7 +474,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
   };
 
   const rotuloCampo = (campo: string): string => {
-    for (const fonte of CATALOGO_DASHBOARD) {
+    for (const fonte of catalogoPainel) {
       const encontrado = fonte.campos.filter(c => c.chave === campo)[0];
       if (encontrado) {
         return encontrado.rotulo.replace(/\s*\(.*\)$/, '');
@@ -556,6 +573,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
   const filtros = definicao.filtros || { ano: true, area: true };
 
   return (
+    <CatalogoDoPainel.Provider value={catalogoPainel}>
     <div style={{ fontFamily: "'Segoe UI', Barlow, Arial, sans-serif", color: COR.texto }}>
       {/* Telas estreitas: cada visual ocupa a linha inteira. */}
       <style>{'@media (max-width: 900px) { .dgt-grade-visuais > * { grid-column: 1 / -1 !important; } } @media print { .dgt-grade-visuais { display: block !important; } .dgt-grade-visuais > * { margin-bottom: 14px; } }'}</style>
@@ -750,6 +768,7 @@ const DashboardPortalView: React.FC<IDashboardPortalViewProps> = (props) => {
         </div>
       )}
     </div>
+    </CatalogoDoPainel.Provider>
   );
 };
 

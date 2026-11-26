@@ -159,3 +159,16 @@ vê o orçamento de todas as áreas, e continua vendo só a CTL em treinamentos 
 O Dataverse continua valendo: o perfil de segurança precisa permitir ler as planilhas de todas as áreas
 (o mesmo que a página de Planejamento orçamentário já exige para o Administrador do módulo).
 
+## Dados de planilha (fontes embutidas)
+
+O JSON pode trazer os dados em `fontesEmbutidas` (ids `planilha.…`): ver a referência do formato.
+Exemplo: Planejamento Estratégico — Visão 2029, gerado por
+`scripts/dashboards/gerar-dashboard-estrategia.py "<planilha 10. Acompanhamento da estratégia.xlsx>" 2026`
+(mesmas regras do painel HTML original). Atualizar = rodar o script com a planilha nova e carregar o JSON
+em Gerenciar dashboards › Editar.
+
+## Farol "parte × total"
+
+`comparar.filtro` define o filtro da referência (`{}` = todas as linhas). Sem ele, com a mesma medida do
+cartão, a referência é o total sem o filtro do cartão (corrige "concluídos × atribuídos", que antes dava 100%).
+

@@ -19,6 +19,7 @@
     <Compile Include="..\DGT.Treinamentos.Plugins\DocumentosRecebidosFornecedor.cs" Link="Regras\DocumentosRecebidosFornecedor.cs" />
     <Compile Include="..\DGT.Treinamentos.Plugins\HomologacaoFornecedor.cs" Link="Regras\HomologacaoFornecedor.cs" />
     <Compile Include="..\DGT.Treinamentos.Plugins\PrecosCigam.cs" Link="Regras\PrecosCigam.cs" />
+    <Compile Include="..\DGT.Treinamentos.Plugins\BomCigam.cs" Link="Regras\BomCigam.cs" />
   </ItemGroup>
 
   <ItemGroup>

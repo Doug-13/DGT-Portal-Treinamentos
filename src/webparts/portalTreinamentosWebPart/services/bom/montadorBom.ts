@@ -232,6 +232,10 @@ export interface ISelecaoKit {
   // Etapa 5: lista congelada no envio para aprovação. Depois do envio,
   // o B.O.M. mostra este retrato, e não o catálogo atual da aba Kits.
   bomEnviado?: IBomEnviado;
+  // Envios anteriores devolvidos pelo aprovador (fluxo ARQ-SOL): a
+  // lista congelada sai de bomEnviado e fica guardada aqui, nunca é
+  // apagada.
+  enviosAnteriores?: Array<IBomEnviado & { devolvidoEm?: string; devolvidoPor?: string; motivo?: string }>;
 }
 
 export interface IBomEnviado {

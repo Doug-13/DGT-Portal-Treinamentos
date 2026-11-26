@@ -4064,7 +4064,7 @@ const PortalTreinamentos:
             true
         },
 
-        // Implantações — visível para todos; o acesso é controlado dentro do painel.
+        // Implantações — visível só com o módulo "implantacoes" liberado.
         {
           label:
             'Implantações',

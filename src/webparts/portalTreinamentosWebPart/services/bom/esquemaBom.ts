@@ -66,7 +66,11 @@ export const BOM = {
   ativo: 'dgt_bom_ativo',
   // Etapa 3 — Seleção de kit (JSON: pontos + softwares).
   // Coluna criada por scripts/dataverse/criar-coluna-selecao-kit.ps1.
-  selecaoKit: 'dgt_bom_selecaokit'
+  selecaoKit: 'dgt_bom_selecaokit',
+  // Estado do fluxo do processo ARQ-SOL (JSON da instância do motor:
+  // etapa atual, pendência com responsáveis e prazo, valores e
+  // histórico). Coluna criada por scripts/dataverse/criar-fluxo-bom.ps1.
+  fluxoEstado: 'dgt_bom_fluxoestado'
 };
 
 export const CRITERIO = {
@@ -157,7 +161,9 @@ export const OPCOES_BOM = {
     'Locação 60 meses': 100000004
   } as Record<string, number>,
   origem: opcoes(['Portal', 'Planilha Go/No-Go', 'Licitações (PNCP)']),
-  etapa: opcoes(['Dados da demanda', 'Go/No-Go pendente', 'Bloqueado no Go/No-Go', 'Seleção de kit', 'Cálculo de HH', 'B.O.M. pronto', 'Enviado para aprovação']),
+  // 'Aprovado' e 'Encerrado (NO-GO)': fim do fluxo de aprovação
+  // (100000007 e 100000008, criados por criar-fluxo-bom.ps1).
+  etapa: opcoes(['Dados da demanda', 'Go/No-Go pendente', 'Bloqueado no Go/No-Go', 'Seleção de kit', 'Cálculo de HH', 'B.O.M. pronto', 'Enviado para aprovação', 'Aprovado', 'Encerrado (NO-GO)']),
   decisao: opcoes(['GO', 'GO com restrição', 'NO-GO'])
 };
 

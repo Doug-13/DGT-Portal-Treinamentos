@@ -52,7 +52,8 @@ namespace DGT.Treinamentos.Plugins
         private const string Recurso = "DGT.Treinamentos.Plugins.InstrucoesDashboardIa.md";
 
         private const int LimitePedido = 2000;
-        private const int LimiteCatalogo = 60000;
+        // Catálogo + valores existentes dos campos de referência (contas etc.).
+        private const int LimiteCatalogo = 150000;
         private const int LimitePainel = 80000;
 
         // O plugin síncrono tem até 2 minutos no total.

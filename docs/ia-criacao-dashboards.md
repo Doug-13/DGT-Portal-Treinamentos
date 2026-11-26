@@ -53,3 +53,13 @@ perfis de segurança. Pessoais: a tabela `dgt_dashboard` é UserOwned — com Cr
 
 Ajustar o comportamento da IA = editar `InstrucoesDashboardIa.md` e recompilar os plugins (sem mexer no código).
 Consumo: registrado em "Consumo de IA" como Dashboards · Criação com IA, na área principal do usuário.
+
+## Contas e itens específicos (valores existentes)
+
+Campos de referência marcados com `listarValores` no catálogo (grupo, código e conta do orçamento; tipo e
+processo de documento; treinamento, trilha e origem; ambiente e etapa) têm os **valores existentes** enviados à
+IA na criação — só nomes, nunca números, e só os que o usuário vê (mesma regra de áreas dos painéis; ano atual
+e seguinte). Assim um pedido como "dash de RECEITA DE LOCAÇÃO" filtra a conta 3.1.1.02.01.001. Na criação, um
+filtro com texto que não existe é recusado com sugestão do nome exato (correção automática). Limite enviado:
+400 valores por campo e ~45 mil caracteres no total.
+

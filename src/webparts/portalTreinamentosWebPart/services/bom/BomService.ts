@@ -43,7 +43,10 @@ export type EtapaBom =
   | 'Seleção de kit'
   | 'Cálculo de HH'
   | 'B.O.M. pronto'
-  | 'Enviado para aprovação';
+  | 'Enviado para aprovação'
+  // Fluxo de aprovação (processo ARQ-SOL): fim do processo.
+  | 'Aprovado'
+  | 'Encerrado (NO-GO)';
 
 export interface IResponsavelDemanda {
   id?: string;
@@ -154,7 +157,12 @@ export const etapaCalculada = (
 
   // Etapas posteriores (kit, HH, pronto, enviado) são definidas
   // pelas próprias telas, quando existirem.
-  if (['Seleção de kit', 'Cálculo de HH', 'B.O.M. pronto', 'Enviado para aprovação'].indexOf(etapaGravada) >= 0 && analise && analise.liberaKit) {
+  if (['Seleção de kit', 'Cálculo de HH', 'B.O.M. pronto', 'Enviado para aprovação', 'Aprovado'].indexOf(etapaGravada) >= 0 && analise && analise.liberaKit) {
+    return etapaGravada;
+  }
+
+  // Encerrada no fluxo (NO-GO): fica encerrada.
+  if (etapaGravada === 'Encerrado (NO-GO)') {
     return etapaGravada;
   }
 

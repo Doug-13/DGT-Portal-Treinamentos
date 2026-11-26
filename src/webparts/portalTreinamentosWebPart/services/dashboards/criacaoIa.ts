@@ -9,8 +9,13 @@ import {
 } from './dashboardModelo';
 
 import {
-  CATALOGO_DASHBOARD
+  CATALOGO_DASHBOARD,
+  carregarFonte
 } from './fontesDashboard';
+
+import {
+  areasDaFonte
+} from './acessoFontes';
 
 import {
   ChaveModuloPortal,
@@ -80,6 +85,79 @@ export class SemPainelPossivel extends Error {
     Object.setPrototypeOf(this, SemPainelPossivel.prototype);
   }
 }
+
+// ------------------------------------------------------------
+// Valores existentes dos campos de referência (listarValores)
+// ------------------------------------------------------------
+// Ex.: contas e subcontas do orçamento ("RECEITA DE LOCAÇÃO"), tipos de
+// documento, treinamentos. Só NOMES (nunca números), carregados com as
+// mesmas regras de área dos painéis: a IA só conhece o que a pessoa vê.
+
+const MAX_VALORES_POR_CAMPO = 400;
+const MAX_TAMANHO_VALOR = 90;
+const MAX_CARACTERES_VALORES = 45000;
+
+export interface IAcessoDados {
+  ano: number;
+  areasPermitidas?: string[];
+  modulosAdministrados?: string[];
+}
+
+export const incluirValoresExistentes = async (
+  dataverse: DataverseService,
+  catalogo: IDescricaoFonte[],
+  acesso: IAcessoDados
+): Promise<IDescricaoFonte[]> => {
+  let restante = MAX_CARACTERES_VALORES;
+  const resultado: IDescricaoFonte[] = [];
+  for (const fonte of catalogo) {
+    const campos = fonte.campos.filter(campo => campo.listarValores);
+    if (campos.length === 0 || restante <= 0) {
+      resultado.push(fonte);
+      continue;
+    }
+    const linhas: Array<Record<string, unknown>> = [];
+    // Ano atual e o seguinte (o orçamento é planejado para o próximo ano).
+    for (const ano of [acesso.ano, acesso.ano + 1]) {
+      try {
+        const lidas = await carregarFonte(fonte.id, {
+          dataverse,
+          ano,
+          areaIds: areasDaFonte(fonte.id, '', acesso.areasPermitidas, acesso.modulosAdministrados)
+        });
+        lidas.forEach(linha => linhas.push(linha));
+      } catch {
+        // Sem acesso ou fonte indisponível: a IA segue sem os valores.
+      }
+    }
+    resultado.push({
+      ...fonte,
+      campos: fonte.campos.map(campo => {
+        if (!campo.listarValores || restante <= 0) {
+          return campo;
+        }
+        const vistos: string[] = [];
+        linhas.forEach(linha => {
+          const valor = linha[campo.chave];
+          const texto = valor === undefined || valor === null ? '' : String(valor).trim().substring(0, MAX_TAMANHO_VALOR);
+          if (texto && vistos.indexOf(texto) < 0) {
+            vistos.push(texto);
+          }
+        });
+        const valores = vistos.sort((a, b) => a.localeCompare(b, 'pt-BR')).slice(0, MAX_VALORES_POR_CAMPO);
+        const cabem: string[] = [];
+        valores.forEach(valor => {
+          if (restante - valor.length - 3 > 0) {
+            cabem.push(valor);
+            restante -= valor.length + 3;
+          }
+        });
+        return cabem.length > 0 ? { ...campo, valoresExistentes: cabem } : campo;
+      })
+    });
+  }
+  return resultado;
+};
 
 export interface IResultadoCriacao {
   definicao: IDefinicaoDashboard;
@@ -161,6 +239,11 @@ export const gerarDashboard = async (dataverse: DataverseService, entrada: IPedi
     }
     // Mesmo catálogo FILTRADO: fonte fora das permissões é erro.
     const validacao = validarDashboard(texto, entrada.catalogo);
+    // A IA não recebe dados: não pode embutir dados no painel (inventaria).
+    if (/"fontesEmbutidas"\s*:/.test(texto)) {
+      validacao.definicao = undefined;
+      validacao.erros.unshift('Não use "fontesEmbutidas": use só as fontes do catálogo recebido.');
+    }
     if (validacao.definicao) {
       return {
         definicao: validacao.definicao,

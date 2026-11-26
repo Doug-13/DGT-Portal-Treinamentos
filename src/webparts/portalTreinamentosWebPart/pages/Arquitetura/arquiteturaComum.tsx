@@ -91,8 +91,14 @@ export const ETAPAS: Record<EtapaBom, { passo: number; texto: string; cor: strin
   'Seleção de kit': { passo: 3, texto: 'Seleção de kit', cor: '#0F6CBD', fundo: '#E8F2FF' },
   'Cálculo de HH': { passo: 4, texto: 'Cálculo de HH', cor: '#6B4FBB', fundo: '#F1ECFB' },
   'B.O.M. pronto': { passo: 5, texto: 'B.O.M. pronto para lançar', cor: '#0F6CBD', fundo: '#E8F2FF' },
-  'Enviado para aprovação': { passo: 6, texto: 'Enviado para aprovação', cor: '#107C10', fundo: '#E7F6EC' }
+  'Enviado para aprovação': { passo: 6, texto: 'Aguardando aprovação', cor: '#0E7490', fundo: '#E0F2F7' },
+  'Aprovado': { passo: 7, texto: 'B.O.M. aprovado', cor: '#107C10', fundo: '#E7F6EC' },
+  'Encerrado (NO-GO)': { passo: 2, texto: 'Encerrado (NO-GO)', cor: '#6B7280', fundo: '#F1F5F9' }
 };
+
+// Lista congelada: enviado, aprovado ou encerrado (sem edição).
+export const envioFechado = (etapa: EtapaBom): boolean =>
+  etapa === 'Enviado para aprovação' || etapa === 'Aprovado' || etapa === 'Encerrado (NO-GO)';
 
 export const DECISAO: Record<DecisaoGoNoGo, { texto: string; cor: string; fundo: string }> = {
   GO: { texto: '✓ GO', cor: '#107C10', fundo: '#E7F6EC' },

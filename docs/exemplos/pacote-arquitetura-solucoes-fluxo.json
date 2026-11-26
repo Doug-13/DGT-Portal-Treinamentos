@@ -1,0 +1,1022 @@
+{
+  "formato": "dgt-portal/pacote-processo@1",
+  "processo": {
+    "codigo": "ARQ-SOL",
+    "nome": "B.O.M. — Arquitetura de Soluções",
+    "descricao": "Da demanda ao B.O.M. aprovado: dados da demanda, Matriz Go/No-Go (GO / GO com restrição com parecer / NO-GO), seleção de kit (montador de B.O.M.), cálculo de HH, envio e aprovação. Executado pelo módulo Arquitetura de Soluções (menu Arquitetura), que alimenta os campos com os dados das próprias telas.",
+    "area": "ARQ"
+  },
+  "metadados": [
+    {
+      "chave": "cliente",
+      "rotulo": "Cliente",
+      "tipo": "texto"
+    },
+    {
+      "chave": "codigoCigam",
+      "rotulo": "Código do cliente no CIGAM",
+      "tipo": "texto"
+    },
+    {
+      "chave": "municipio",
+      "rotulo": "Município",
+      "tipo": "texto"
+    },
+    {
+      "chave": "uf",
+      "rotulo": "UF",
+      "tipo": "lista",
+      "opcoes": [
+        "RS",
+        "SC",
+        "PR",
+        "SP",
+        "Outro"
+      ]
+    },
+    {
+      "chave": "numeroCrm",
+      "rotulo": "Nº da oportunidade no CRM",
+      "tipo": "texto"
+    },
+    {
+      "chave": "canal",
+      "rotulo": "Canal",
+      "tipo": "lista",
+      "opcoes": [
+        "Público",
+        "Privado"
+      ],
+      "ajuda": "Canal privado: a modalidade é sempre Proposta Comercial."
+    },
+    {
+      "chave": "modalidade",
+      "rotulo": "Modalidade",
+      "tipo": "lista",
+      "opcoes": [
+        "Edital / licitação",
+        "Adesão a ata",
+        "Dispensa de Licitação",
+        "Inexigibilidade",
+        "MIP",
+        "Proposta Técnica",
+        "POC / demonstração",
+        "Aditivo de contrato"
+      ],
+      "exibirQuando": {
+        "campo": "canal",
+        "valor": "Público"
+      }
+    },
+    {
+      "chave": "executivoVendas",
+      "rotulo": "Executivo de vendas",
+      "tipo": "usuario"
+    },
+    {
+      "chave": "responsavelPrincipal",
+      "rotulo": "Responsável principal na Arquitetura de Soluções",
+      "tipo": "usuario",
+      "ajuda": "Executa as etapas Go/No-Go, Seleção de kit, Cálculo de HH e B.O.M. pronto."
+    },
+    {
+      "chave": "responsaveisApoio",
+      "rotulo": "Demais responsáveis na Arquitetura de Soluções",
+      "tipo": "tabela",
+      "colunas": [
+        {
+          "chave": "usuario",
+          "rotulo": "Responsável",
+          "tipo": "usuario",
+          "obrigatoria": true
+        }
+      ]
+    },
+    {
+      "chave": "dataEntrada",
+      "rotulo": "Data de entrada",
+      "tipo": "data"
+    },
+    {
+      "chave": "prazoEntrega",
+      "rotulo": "Prazo de entrega",
+      "tipo": "data"
+    },
+    {
+      "chave": "statusDemanda",
+      "rotulo": "Status da demanda",
+      "tipo": "lista",
+      "opcoes": [
+        "Lead qualificado",
+        "Na fila",
+        "Em andamento",
+        "Concluído"
+      ]
+    },
+    {
+      "chave": "observacaoEtapa",
+      "rotulo": "Etapa / observação",
+      "tipo": "texto"
+    },
+    {
+      "chave": "tipoEntrega",
+      "rotulo": "Tipo de entrega",
+      "tipo": "lista",
+      "opcoes": [
+        "POC — Prova de conceito",
+        "AT — Análise técnica",
+        "PT — Proposta técnica",
+        "BOM — Bill of Materials"
+      ]
+    },
+    {
+      "chave": "solucoesInteresse",
+      "rotulo": "Soluções de interesse",
+      "tipo": "tabela",
+      "colunas": [
+        {
+          "chave": "solucao",
+          "rotulo": "Solução",
+          "tipo": "lista",
+          "obrigatoria": true,
+          "opcoes": [
+            "Safe City",
+            "Smart Detect",
+            "Face Detect",
+            "Safe Way",
+            "Bridgefy Data",
+            "Bridgefy Go",
+            "Crime Report"
+          ]
+        }
+      ],
+      "ajuda": "Inclua uma linha para cada solução."
+    },
+    {
+      "chave": "tipoProjeto",
+      "rotulo": "Tipo de projeto",
+      "tipo": "lista",
+      "opcoes": [
+        "Aquisição",
+        "Locação 12 meses",
+        "Locação 24 meses",
+        "Locação 36 meses",
+        "Locação 48 meses",
+        "Locação 60 meses"
+      ]
+    },
+    {
+      "chave": "pontosEstimados",
+      "rotulo": "Pontos estimados",
+      "tipo": "numero"
+    },
+    {
+      "chave": "linkEdital",
+      "rotulo": "Link do edital ou termo de referência",
+      "tipo": "texto"
+    },
+    {
+      "chave": "escopo",
+      "rotulo": "Descrição do escopo",
+      "tipo": "textoLongo"
+    },
+    {
+      "chave": "goNoGo",
+      "rotulo": "Matriz Go/No-Go",
+      "tipo": "avaliacao",
+      "avaliacao": {
+        "criterios": [
+          {
+            "chave": "aderencia",
+            "rotulo": "Aderência ao Portfólio",
+            "descricao": "Grau de compatibilidade com soluções e capacidades da DGT",
+            "peso": 20
+          },
+          {
+            "chave": "tecnica",
+            "rotulo": "Viabilidade Técnica",
+            "descricao": "Capacidade real de implementação da solução",
+            "peso": 20
+          },
+          {
+            "chave": "financeira",
+            "rotulo": "Viabilidade Financeira",
+            "descricao": "Margem, orçamento e sustentabilidade comercial",
+            "peso": 15
+          },
+          {
+            "chave": "prazo",
+            "rotulo": "Prazo",
+            "descricao": "Tempo disponível para elaboração da proposta",
+            "peso": 10
+          },
+          {
+            "chave": "competitividade",
+            "rotulo": "Competitividade",
+            "descricao": "Posicionamento frente à concorrência",
+            "peso": 10
+          },
+          {
+            "chave": "risco",
+            "rotulo": "Risco Jurídico/Editalício",
+            "descricao": "Risco de inabilitação ou exigências críticas",
+            "peso": 10
+          },
+          {
+            "chave": "capacidade",
+            "rotulo": "Capacidade Operacional",
+            "descricao": "Disponibilidade do time e áreas internas",
+            "peso": 10
+          },
+          {
+            "chave": "estrategico",
+            "rotulo": "Impacto Estratégico",
+            "descricao": "Relevância para posicionamento e crescimento",
+            "peso": 5
+          }
+        ],
+        "escala": {
+          "minimo": 1,
+          "maximo": 5,
+          "rotulos": [
+            "Muito desfavorável / alto risco",
+            "Desfavorável",
+            "Aceitável",
+            "Favorável",
+            "Muito favorável"
+          ]
+        },
+        "calculo": "ponderada",
+        "faixas": [
+          {
+            "chave": "go",
+            "rotulo": "GO",
+            "minimo": 80,
+            "cor": "#107C10"
+          },
+          {
+            "chave": "restricao",
+            "rotulo": "GO com restrição",
+            "minimo": 60,
+            "cor": "#B45309"
+          },
+          {
+            "chave": "nogo",
+            "rotulo": "NO-GO",
+            "minimo": 0,
+            "cor": "#B42318"
+          }
+        ]
+      }
+    },
+    {
+      "chave": "parecer",
+      "rotulo": "Parecer",
+      "tipo": "textoLongo",
+      "ajuda": "Obrigatório para GO com restrição: descreva as restrições, o que precisa ser confirmado e quem acompanha."
+    },
+    {
+      "chave": "selecaoKit",
+      "rotulo": "Seleção de kit",
+      "tipo": "componente",
+      "componente": {
+        "tipo": "nativo",
+        "nativo": "montadorBom",
+        "parametros": {
+          "campoCanal": "canal"
+        }
+      }
+    },
+    {
+      "chave": "custoProjeto",
+      "rotulo": "Custo total do projeto (R$)",
+      "tipo": "numero",
+      "ajuda": "Usado na alocação de horas de Analista de Projetos e Suprimentos."
+    },
+    {
+      "chave": "calculoHH",
+      "rotulo": "Cálculo de HH",
+      "tipo": "componente",
+      "componente": {
+        "tipo": "nativo",
+        "nativo": "calculoHH",
+        "parametros": {
+          "campoKit": "selecaoKit",
+          "campoCusto": "custoProjeto",
+          "exigirCusto": "nao"
+        }
+      }
+    },
+    {
+      "chave": "revisaoBom",
+      "rotulo": "Revisão do B.O.M.",
+      "tipo": "lista",
+      "opcoes": [
+        "RV00",
+        "RV01",
+        "RV02",
+        "RV03",
+        "RV04",
+        "RV05"
+      ]
+    },
+    {
+      "chave": "itensConferidos",
+      "rotulo": "Itens conferidos (códigos CIGAM, quantidades e valores)",
+      "tipo": "simNao"
+    },
+    {
+      "chave": "observacoesBom",
+      "rotulo": "Observações do B.O.M.",
+      "tipo": "textoLongo"
+    }
+  ],
+  "fluxo": {
+    "elementos": [
+      {
+        "id": "inicio",
+        "tipo": "inicio",
+        "nome": "Início"
+      },
+      {
+        "id": "demanda",
+        "tipo": "tarefaHumana",
+        "nome": "Dados da demanda",
+        "prazoDiasUteis": 2,
+        "responsaveis": [
+          {
+            "tipo": "autorRevisao"
+          }
+        ],
+        "instrucoes": "Preencha as informações da demanda antes da análise Go/No-Go. O título do registro é o nome do projeto/demanda.",
+        "campos": [
+          {
+            "chave": "cliente",
+            "obrigatorio": true
+          },
+          {
+            "chave": "codigoCigam"
+          },
+          {
+            "chave": "municipio"
+          },
+          {
+            "chave": "uf"
+          },
+          {
+            "chave": "numeroCrm"
+          },
+          {
+            "chave": "canal",
+            "obrigatorio": true
+          },
+          {
+            "chave": "modalidade",
+            "obrigatorio": true
+          },
+          {
+            "chave": "executivoVendas"
+          },
+          {
+            "chave": "responsavelPrincipal",
+            "obrigatorio": true
+          },
+          {
+            "chave": "responsaveisApoio"
+          },
+          {
+            "chave": "dataEntrada",
+            "obrigatorio": true
+          },
+          {
+            "chave": "prazoEntrega",
+            "obrigatorio": true
+          },
+          {
+            "chave": "statusDemanda"
+          },
+          {
+            "chave": "observacaoEtapa"
+          },
+          {
+            "chave": "solucoesInteresse",
+            "obrigatorio": true
+          },
+          {
+            "chave": "tipoEntrega"
+          },
+          {
+            "chave": "tipoProjeto"
+          },
+          {
+            "chave": "pontosEstimados"
+          },
+          {
+            "chave": "linkEdital"
+          },
+          {
+            "chave": "escopo"
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "concluir",
+            "rotulo": "Concluir e avançar para o Go/No-Go",
+            "resultado": "concluido",
+            "principal": true
+          }
+        ]
+      },
+      {
+        "id": "goNoGo",
+        "tipo": "tarefaHumana",
+        "nome": "Matriz Go/No-Go",
+        "prazoDiasUteis": 2,
+        "responsaveis": [
+          {
+            "tipo": "campoUsuario",
+            "campo": "responsavelPrincipal"
+          }
+        ],
+        "anexoArquivo": "opcional",
+        "instrucoes": "Nota de 1 a 5 por critério. 80 ou mais é GO; de 60 a 79 é GO com restrição (exige parecer para liberar a seleção de kit); abaixo de 60 é NO-GO.",
+        "campos": [
+          {
+            "chave": "cliente",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "canal",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "escopo",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "goNoGo",
+            "obrigatorio": true
+          },
+          {
+            "chave": "parecer"
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "registrar",
+            "rotulo": "Registrar análise",
+            "resultado": "concluido",
+            "principal": true
+          },
+          {
+            "chave": "voltarDemanda",
+            "rotulo": "Voltar aos dados da demanda",
+            "resultado": "devolvido",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
+        ]
+      },
+      {
+        "id": "gwAnalise",
+        "tipo": "gateway",
+        "nome": "Análise registrada?"
+      },
+      {
+        "id": "decisaoGoNoGo",
+        "tipo": "gateway",
+        "nome": "Resultado do Go/No-Go?"
+      },
+      {
+        "id": "restricao",
+        "tipo": "tarefaHumana",
+        "nome": "Parecer da restrição",
+        "prazoDiasUteis": 1,
+        "responsaveis": [
+          {
+            "tipo": "campoUsuario",
+            "campo": "responsavelPrincipal"
+          }
+        ],
+        "instrucoes": "GO com restrição: descreva as restrições no parecer para liberar a seleção de kit.",
+        "campos": [
+          {
+            "chave": "goNoGo",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "parecer",
+            "obrigatorio": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "liberar",
+            "rotulo": "Liberar a seleção de kit",
+            "resultado": "liberado",
+            "principal": true
+          },
+          {
+            "chave": "reavaliar",
+            "rotulo": "Refazer a análise",
+            "resultado": "devolvido",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
+        ]
+      },
+      {
+        "id": "gwRestricao",
+        "tipo": "gateway",
+        "nome": "Restrição liberada?"
+      },
+      {
+        "id": "bloqueado",
+        "tipo": "tarefaHumana",
+        "nome": "Bloqueado no Go/No-Go",
+        "responsaveis": [
+          {
+            "tipo": "campoUsuario",
+            "campo": "responsavelPrincipal"
+          },
+          {
+            "tipo": "gestorArea"
+          }
+        ],
+        "instrucoes": "A demanda teve NO-GO. Encerre a demanda ou reabra a análise.",
+        "campos": [
+          {
+            "chave": "goNoGo",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "parecer",
+            "somenteLeitura": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "encerrar",
+            "rotulo": "Encerrar demanda",
+            "resultado": "encerrado",
+            "exigeComentario": true,
+            "mensagemConfirmacao": "Encerrar esta demanda? O registro fica no histórico como concluído sem B.O.M."
+          },
+          {
+            "chave": "reabrir",
+            "rotulo": "Reabrir a análise",
+            "resultado": "devolvido",
+            "exigeComentario": true
+          }
+        ]
+      },
+      {
+        "id": "gwBloqueado",
+        "tipo": "gateway",
+        "nome": "Encerrar ou reabrir?"
+      },
+      {
+        "id": "kit",
+        "tipo": "tarefaHumana",
+        "nome": "Seleção de kit",
+        "prazoDiasUteis": 5,
+        "responsaveis": [
+          {
+            "tipo": "campoUsuario",
+            "campo": "responsavelPrincipal"
+          }
+        ],
+        "instrucoes": "Monte os pontos (estrutura, câmeras, soluções, switch) com o catálogo da aba Kits. Erros do montador bloqueiam a conclusão.",
+        "campos": [
+          {
+            "chave": "canal",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "solucoesInteresse",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "pontosEstimados",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "selecaoKit",
+            "obrigatorio": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "concluir",
+            "rotulo": "Concluir seleção de kit",
+            "resultado": "concluido",
+            "principal": true
+          },
+          {
+            "chave": "voltarGoNoGo",
+            "rotulo": "Voltar ao Go/No-Go",
+            "resultado": "devolvido",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
+        ]
+      },
+      {
+        "id": "gwKit",
+        "tipo": "gateway",
+        "nome": "Seleção de kit concluída?"
+      },
+      {
+        "id": "hh",
+        "tipo": "tarefaHumana",
+        "nome": "Cálculo de HH",
+        "prazoDiasUteis": 2,
+        "responsaveis": [
+          {
+            "tipo": "campoUsuario",
+            "campo": "responsavelPrincipal"
+          }
+        ],
+        "instrucoes": "Prévia com o HH vigente de cada área (menu Cálculo de HH) aplicado aos pontos do kit.",
+        "campos": [
+          {
+            "chave": "custoProjeto"
+          },
+          {
+            "chave": "calculoHH",
+            "obrigatorio": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "concluir",
+            "rotulo": "Avançar para B.O.M. pronto",
+            "resultado": "concluido",
+            "principal": true
+          },
+          {
+            "chave": "ajustarKit",
+            "rotulo": "Ajustar a seleção de kit",
+            "resultado": "devolvido",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
+        ]
+      },
+      {
+        "id": "gwHH",
+        "tipo": "gateway",
+        "nome": "Cálculo de HH concluído?"
+      },
+      {
+        "id": "bomPronto",
+        "tipo": "tarefaHumana",
+        "nome": "B.O.M. pronto",
+        "prazoDiasUteis": 2,
+        "responsaveis": [
+          {
+            "tipo": "campoUsuario",
+            "campo": "responsavelPrincipal"
+          }
+        ],
+        "anexoArquivo": "opcional",
+        "instrucoes": "Revise o B.O.M. (itens com código CIGAM, quantidades e HH) e envie para aprovação. A lista de itens é congelada no envio e só volta a ser editável se o aprovador devolver.",
+        "campos": [
+          {
+            "chave": "selecaoKit",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "calculoHH",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "revisaoBom",
+            "obrigatorio": true
+          },
+          {
+            "chave": "itensConferidos",
+            "obrigatorio": true,
+            "validarNosResultados": [
+              "enviado"
+            ]
+          },
+          {
+            "chave": "observacoesBom"
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "enviar",
+            "rotulo": "Enviar para aprovação",
+            "resultado": "enviado",
+            "principal": true,
+            "mensagemConfirmacao": "Enviar o B.O.M. para aprovação? A lista de itens é congelada e o registro fica aguardando o aprovador."
+          },
+          {
+            "chave": "ajustarKit",
+            "rotulo": "Ajustar a seleção de kit",
+            "resultado": "ajustarKit",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          },
+          {
+            "chave": "ajustarHH",
+            "rotulo": "Ajustar o cálculo de HH",
+            "resultado": "ajustarHH",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
+        ]
+      },
+      {
+        "id": "gwBomPronto",
+        "tipo": "gateway",
+        "nome": "Enviar ou ajustar?"
+      },
+      {
+        "id": "aprovacao",
+        "tipo": "tarefaHumana",
+        "nome": "Aprovação do B.O.M.",
+        "prazoDiasUteis": 2,
+        "responsaveis": [
+          {
+            "tipo": "gestorArea"
+          }
+        ],
+        "instrucoes": "Confira o B.O.M. congelado no envio (itens, quantidades, valores do CIGAM e HH). Aprovar conclui o processo. Para devolver, informe o motivo no comentário e escolha a etapa que precisa de ajuste.",
+        "campos": [
+          {
+            "chave": "revisaoBom",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "selecaoKit",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "calculoHH",
+            "somenteLeitura": true
+          },
+          {
+            "chave": "observacoesBom",
+            "somenteLeitura": true
+          }
+        ],
+        "acoes": [
+          {
+            "chave": "aprovar",
+            "rotulo": "Aprovar B.O.M.",
+            "resultado": "aprovado",
+            "principal": true,
+            "mensagemConfirmacao": "Aprovar este B.O.M.? O processo é concluído e a lista de itens enviada fica como a versão aprovada."
+          },
+          {
+            "chave": "devolverBom",
+            "rotulo": "Devolver para ajuste do B.O.M.",
+            "resultado": "devolvido",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          },
+          {
+            "chave": "devolverKit",
+            "rotulo": "Devolver para ajuste da seleção de kit",
+            "resultado": "ajustarKit",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          },
+          {
+            "chave": "devolverHH",
+            "rotulo": "Devolver para ajuste do cálculo de HH",
+            "resultado": "ajustarHH",
+            "exigeComentario": true,
+            "dispensaCampos": true
+          }
+        ]
+      },
+      {
+        "id": "gwAprovacao",
+        "tipo": "gateway",
+        "nome": "Resultado da aprovação?"
+      },
+      {
+        "id": "fim",
+        "tipo": "fim",
+        "nome": "B.O.M. aprovado"
+      },
+      {
+        "id": "fimEncerrado",
+        "tipo": "fim",
+        "nome": "Demanda encerrada (NO-GO)"
+      }
+    ],
+    "transicoes": [
+      {
+        "de": "inicio",
+        "para": "demanda"
+      },
+      {
+        "de": "demanda",
+        "para": "goNoGo"
+      },
+      {
+        "de": "goNoGo",
+        "para": "gwAnalise"
+      },
+      {
+        "de": "gwAnalise",
+        "para": "decisaoGoNoGo",
+        "quando": {
+          "resultado": "concluido"
+        },
+        "rotulo": "Análise registrada"
+      },
+      {
+        "de": "gwAnalise",
+        "para": "demanda",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Voltar aos dados",
+        "excecao": true
+      },
+      {
+        "de": "decisaoGoNoGo",
+        "para": "bloqueado",
+        "quando": {
+          "campo": "goNoGo",
+          "valor": "nogo"
+        },
+        "rotulo": "NO-GO"
+      },
+      {
+        "de": "decisaoGoNoGo",
+        "para": "restricao",
+        "quando": {
+          "campo": "goNoGo",
+          "valor": "restricao"
+        },
+        "rotulo": "GO com restrição"
+      },
+      {
+        "de": "decisaoGoNoGo",
+        "para": "kit",
+        "rotulo": "GO",
+        "padrao": true
+      },
+      {
+        "de": "restricao",
+        "para": "gwRestricao"
+      },
+      {
+        "de": "gwRestricao",
+        "para": "kit",
+        "quando": {
+          "resultado": "liberado"
+        },
+        "rotulo": "Liberado com parecer"
+      },
+      {
+        "de": "gwRestricao",
+        "para": "goNoGo",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Refazer a análise",
+        "excecao": true
+      },
+      {
+        "de": "bloqueado",
+        "para": "gwBloqueado"
+      },
+      {
+        "de": "gwBloqueado",
+        "para": "fimEncerrado",
+        "quando": {
+          "resultado": "encerrado"
+        },
+        "rotulo": "Encerrar"
+      },
+      {
+        "de": "gwBloqueado",
+        "para": "goNoGo",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Reabrir a análise",
+        "excecao": true
+      },
+      {
+        "de": "kit",
+        "para": "gwKit"
+      },
+      {
+        "de": "gwKit",
+        "para": "hh",
+        "quando": {
+          "resultado": "concluido"
+        },
+        "rotulo": "Concluída"
+      },
+      {
+        "de": "gwKit",
+        "para": "goNoGo",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Voltar ao Go/No-Go",
+        "excecao": true
+      },
+      {
+        "de": "hh",
+        "para": "gwHH"
+      },
+      {
+        "de": "gwHH",
+        "para": "bomPronto",
+        "quando": {
+          "resultado": "concluido"
+        },
+        "rotulo": "Concluído"
+      },
+      {
+        "de": "gwHH",
+        "para": "kit",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Ajustar kit",
+        "excecao": true
+      },
+      {
+        "de": "bomPronto",
+        "para": "gwBomPronto"
+      },
+      {
+        "de": "gwBomPronto",
+        "para": "aprovacao",
+        "quando": {
+          "resultado": "enviado"
+        },
+        "rotulo": "Enviado para aprovação"
+      },
+      {
+        "de": "gwBomPronto",
+        "para": "kit",
+        "quando": {
+          "resultado": "ajustarKit"
+        },
+        "rotulo": "Ajustar kit",
+        "excecao": true
+      },
+      {
+        "de": "gwBomPronto",
+        "para": "hh",
+        "quando": {
+          "resultado": "ajustarHH"
+        },
+        "rotulo": "Ajustar HH",
+        "excecao": true
+      },
+      {
+        "de": "aprovacao",
+        "para": "gwAprovacao"
+      },
+      {
+        "de": "gwAprovacao",
+        "para": "fim",
+        "quando": {
+          "resultado": "aprovado"
+        },
+        "rotulo": "Aprovado"
+      },
+      {
+        "de": "gwAprovacao",
+        "para": "bomPronto",
+        "quando": {
+          "resultado": "devolvido"
+        },
+        "rotulo": "Devolver: B.O.M.",
+        "excecao": true
+      },
+      {
+        "de": "gwAprovacao",
+        "para": "kit",
+        "quando": {
+          "resultado": "ajustarKit"
+        },
+        "rotulo": "Devolver: kit",
+        "excecao": true
+      },
+      {
+        "de": "gwAprovacao",
+        "para": "hh",
+        "quando": {
+          "resultado": "ajustarHH"
+        },
+        "rotulo": "Devolver: HH",
+        "excecao": true
+      }
+    ]
+  }
+}

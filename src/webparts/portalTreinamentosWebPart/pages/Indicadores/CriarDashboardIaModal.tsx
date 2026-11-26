@@ -14,7 +14,8 @@ import {
   IResultadoCriacao,
   SemPainelPossivel,
   fontesPermitidas,
-  gerarDashboard
+  gerarDashboard,
+  incluirValoresExistentes
 } from '../../services/dashboards/criacaoIa';
 
 import DashboardPortalView from './DashboardPortalView';
@@ -75,6 +76,20 @@ const CriarDashboardIaModal: React.FC<ICriarDashboardIaModalProps> = (props) => 
 
   const painelBase = resultado ? resultado.texto : (props.existente ? props.existente.definicao : '');
 
+  // Catálogo com os valores existentes (contas, tipos, treinamentos…):
+  // carregado na 1ª geração e reaproveitado nos ajustes.
+  const catalogoComValores = React.useRef<Promise<typeof catalogo> | undefined>(undefined);
+  const obterCatalogo = (): Promise<typeof catalogo> => {
+    if (!catalogoComValores.current) {
+      catalogoComValores.current = incluirValoresExistentes(props.dataverseService, catalogo, {
+        ano: new Date().getFullYear(),
+        areasPermitidas: props.areasPermitidas,
+        modulosAdministrados: props.modulosAdministrados
+      }).catch(() => catalogo);
+    }
+    return catalogoComValores.current;
+  };
+
   const gerar = async (texto: string, ajustar: boolean): Promise<void> => {
     const limpo = texto.trim();
     if (!limpo || gerando) {
@@ -86,7 +101,7 @@ const CriarDashboardIaModal: React.FC<ICriarDashboardIaModalProps> = (props) => 
     try {
       const novo = await gerarDashboard(props.dataverseService, {
         pedido: limpo,
-        catalogo,
+        catalogo: await obterCatalogo(),
         painelAtual: ajustar ? painelBase : undefined
       });
       setResultado(novo);

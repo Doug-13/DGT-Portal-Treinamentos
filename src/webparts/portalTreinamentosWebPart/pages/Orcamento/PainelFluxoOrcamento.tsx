@@ -98,6 +98,16 @@ export interface IPainelFluxoOrcamentoProps {
   onCancelarEdicaoAdmin?: () => void;
   // Campos do tipo Componente (dados do Dataverse).
   dataverseService?: DataverseService;
+  // Módulo com telas próprias (Arquitetura de Soluções): valores dos
+  // campos lidos das telas do módulo — entram na validação e na
+  // exibição, mas são preenchidos lá, não no painel.
+  valoresExternos?: Record<string, string>;
+  // Campos que não aparecem no painel ('todos' = nenhum campo).
+  camposOcultos?: 'todos' | string[];
+  // Ações executadas por botões da própria tela do módulo.
+  acoesOcultas?: string[];
+  // Texto no lugar das ações ocultas (ex.: onde concluir a etapa).
+  observacaoAcoesOcultas?: string;
 }
 
 const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
@@ -122,7 +132,15 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
     setErros([]);
   }, [instancia.elementoAtualId, instancia.historico.length]);
 
-  const valoresConsolidados = { ...instancia.valores, ...valores };
+  const valoresConsolidados = { ...instancia.valores, ...(props.valoresExternos || {}), ...valores };
+
+  const camposExibidos =
+    !elemento || props.camposOcultos === 'todos'
+      ? []
+      : elemento.campos.filter(item => (props.camposOcultos || []).indexOf(item.chave) < 0);
+
+  const acoesExibidas =
+    elemento ? elemento.acoes.filter(acao => (props.acoesOcultas || []).indexOf(acao.chave) < 0) : [];
 
   const responsaveis =
     tarefa
@@ -348,10 +366,10 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
             </div>
           )}
 
-          {elemento.campos.length > 0 && (
+          {camposExibidos.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px', marginBottom: '10px' }}>
               {/* Regra de exibição: campo condicional só com a condição atendida. */}
-              {elemento.campos.filter(item => campoVisivel(item, valoresConsolidados)).map(item => (
+              {camposExibidos.filter(item => campoVisivel(item, valoresConsolidados)).map(item => (
                 <label key={item.chave} style={{ display: 'block', gridColumn: item.tipo === 'tabela' || item.tipo === 'textoLongo' || item.tipo === 'avaliacao' || item.tipo === 'componente' ? '1 / -1' : undefined }}>
                   <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: COR.azul, marginBottom: '4px' }}>
                     {item.rotulo}{item.obrigatorio || item.obrigatorioQuando ? ' *' : ''}
@@ -410,9 +428,10 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
             </div>
           ) : props.podeAgir && props.onExecutar ? (
             <>
+              {acoesExibidas.length > 0 && (
               <label style={{ display: 'block', marginBottom: '10px' }}>
                 <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: COR.azul, marginBottom: '4px' }}>
-                  Comentário {elemento.acoes.some(acao => acao.exigeComentario) ? '(obrigatório para algumas ações)' : '(opcional)'}
+                  Comentário {acoesExibidas.some(acao => acao.exigeComentario) ? '(obrigatório para algumas ações)' : '(opcional)'}
                 </span>
                 <textarea
                   rows={3}
@@ -423,15 +442,20 @@ const PainelFluxoOrcamento: React.FC<IPainelFluxoOrcamentoProps> = (props) => {
                   style={{ ...campo, resize: 'vertical' }}
                 />
               </label>
+              )}
 
               {erros.length > 0 && <CaixaMensagem tipo="erro" texto={erros.join('\n')} />}
+
+              {props.observacaoAcoesOcultas && (props.acoesOcultas || []).length > 0 && (
+                <div style={{ fontSize: '12.5px', color: COR.azul, background: '#EEF4FA', borderRadius: '6px', padding: '8px 10px', marginBottom: '8px' }}>{props.observacaoAcoesOcultas}</div>
+              )}
 
               {props.observacaoAcoes && (
                 <div style={{ fontSize: '12px', color: COR.texto2, marginBottom: '8px' }}>{props.observacaoAcoes}</div>
               )}
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {elemento.acoes.map(acao => {
+                {acoesExibidas.map(acao => {
                   const devolucao = ehAcaoDeDevolucao(acao);
                   return (
                     <button
