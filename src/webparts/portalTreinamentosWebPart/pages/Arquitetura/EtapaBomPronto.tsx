@@ -82,6 +82,11 @@ export interface IEtapaBomProntoProps {
   // Quem pode enviar para aprovação (definido pela página).
   // Sem a propriedade, o botão segue liberado como antes.
   podeEnviar?: boolean;
+  // Título da faixa de situação definido pela página (opcional).
+  tituloSituacao?: string;
+  // Aceita propriedades extras que a página passe (compatibilidade com
+  // versões da ArquiteturaPage mais novas que este componente).
+  [outra: string]: unknown;
   onEnviar: (congelado: IBomEnviado) => Promise<void>;
   aoVoltarKit: () => void;
   aoVoltarHH: () => void;
@@ -97,7 +102,7 @@ const ORDEM_CATEGORIA = ['Estrutura', 'Câmera', 'Equipamento', 'Infraestrutura'
 // ------------------------------------------------------------
 
 const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
-  bom, demanda, analise, selecao, resultado, precos, dataverseService, dataEnvio, salvando, podeEnviar = true, onEnviar, aoVoltarKit, aoVoltarHH
+  bom, demanda, analise, selecao, resultado, precos, dataverseService, dataEnvio, salvando, podeEnviar = true, tituloSituacao, onEnviar, aoVoltarKit, aoVoltarHH
 }) => {
 
   const congelado = selecao ? selecao.bomEnviado : undefined;
@@ -305,7 +310,7 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
       <div style={{ ...cartao, background: enviado ? '#E7F6EC' : '#E8F2FF', borderColor: enviado ? '#107C10' : '#0F6CBD', display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: '260px' }}>
           <strong style={{ color: COR.azul, fontSize: '15px' }}>
-            {enviado ? `✓ BOM ${numero} ${bom.revisao} enviado para aprovação` : `BOM ${numero} ${bom.revisao} pronto para revisão e envio`}
+            {tituloSituacao || (enviado ? `✓ BOM ${numero} ${bom.revisao} enviado para aprovação` : `BOM ${numero} ${bom.revisao} pronto para revisão e envio`)}
           </strong>
           <div style={{ fontSize: '12.5px', color: COR.texto2, marginTop: '3px' }}>
             {enviado
