@@ -10,7 +10,7 @@ import { IFornecedor } from './modeloFornecedores';
 import {
   assuntoPedidoDocumentos,
   corpoPedidoDocumentos,
-  destinatarioPadrao,
+  destinatarioPedido,
   emailValido,
   validarPedidoDocumentos
 } from './pedidoDocumentos';
@@ -69,10 +69,9 @@ describe('Pedido de documentos (regras)', () => {
     expect(emailValido('a@c.com.')).toBe(false);
   });
 
-  it('destinatário: contato comercial; sem ele, e-mail de pedidos / NF', () => {
-    expect(destinatarioPadrao(fornecedor())).toBe('comercial@exemplo.com.br');
-    expect(destinatarioPadrao(fornecedor({ contatoComercial: contato('') }))).toBe('nf@exemplo.com.br');
-    expect(destinatarioPadrao(fornecedor({ contatoComercial: contato('x'), emailPedidos: '' }))).toBe('');
+  it('destinatário: sempre o e-mail para pedidos / NF, nunca o contato comercial', () => {
+    expect(destinatarioPedido(fornecedor())).toBe('nf@exemplo.com.br');
+    expect(destinatarioPedido(fornecedor({ emailPedidos: '' }))).toBe('');
   });
 
   it('assunto com o protocolo e corpo escapado, sem CNPJ', () => {
@@ -86,11 +85,11 @@ describe('Pedido de documentos (regras)', () => {
     expect(corpo).not.toContain('00000000000000');
   });
 
-  it('exige protocolo, e-mail válido e ao menos um documento', () => {
-    expect(validarPedidoDocumentos(fornecedor({ protocolo: '' }), 'a@b.com', ['X']).ok).toBe(false);
-    expect(validarPedidoDocumentos(fornecedor(), 'f', ['X']).ok).toBe(false);
-    expect(validarPedidoDocumentos(fornecedor(), 'a@b.com', []).ok).toBe(false);
-    expect(validarPedidoDocumentos(fornecedor(), 'a@b.com', ['X']).ok).toBe(true);
+  it('exige protocolo, e-mail de pedidos / NF válido e ao menos um documento', () => {
+    expect(validarPedidoDocumentos(fornecedor({ protocolo: '' }), ['X']).ok).toBe(false);
+    expect(validarPedidoDocumentos(fornecedor({ emailPedidos: 'f' }), ['X']).ok).toBe(false);
+    expect(validarPedidoDocumentos(fornecedor(), []).ok).toBe(false);
+    expect(validarPedidoDocumentos(fornecedor(), ['X']).ok).toBe(true);
   });
 });
 
@@ -98,33 +97,32 @@ describe('Pedido de documentos (serviço)', () => {
 
   it('grava na fila com remetente "fornecedores" e registra o histórico sem o endereço', async () => {
     const { servico, criados } = montar();
-    await servico.solicitarDocumentos(fornecedor(), 'comercial@exemplo.com.br', ['Contrato social'], '', 'Admin');
+    await servico.solicitarDocumentos(fornecedor(), ['Contrato social'], '', 'Admin');
 
     const fila = criados.find(c => c.tabela === 'dgt_implemail');
     expect(fila).toBeDefined();
     expect(fila!.dados.dgt_status).toBe('Pendente');
     expect(fila!.dados.dgt_tipo).toBe('fornecedorPedidoDocumentos');
     expect(fila!.dados.dgt_remetente).toBe('fornecedores');
-    expect(fila!.dados.dgt_para).toBe('comercial@exemplo.com.br');
+    expect(fila!.dados.dgt_para).toBe('nf@exemplo.com.br');
     expect(String(fila!.dados.dgt_name)).toContain('[FORN-2026-0042]');
 
     const hist = criados.find(c => c.tabela === 'dgt_fornecedorhistorico');
     expect(hist!.dados.dgt_name).toBe('Documentos solicitados por e-mail');
-    expect(String(hist!.dados.dgt_descricao)).toContain('contato comercial');
-    expect(String(hist!.dados.dgt_descricao)).not.toContain('@');
+    expect(String(hist!.dados.dgt_descricao)).toContain('Para: e-mail para pedidos / NF');
+    expect(String(hist!.dados.dgt_descricao)).not.toContain('nf@exemplo.com.br');
   });
 
-  it('sem a coluna dgt_remetente, grava de novo sem ela', async () => {
+  it('sem a coluna dgt_remetente, não grava (sairia de outra caixa)', async () => {
     const { servico, criados } = montar(true);
-    await servico.solicitarDocumentos(fornecedor(), 'nf@exemplo.com.br', ['Alvará'], '', 'Admin');
-    const fila = criados.find(c => c.tabela === 'dgt_implemail');
-    expect(fila!.dados.dgt_remetente).toBeUndefined();
+    await expect(servico.solicitarDocumentos(fornecedor(), ['Alvará'], '', 'Admin')).rejects.toThrow(/dgt_remetente/);
+    expect(criados).toHaveLength(0);
   });
 
   it('não grava nada com e-mail inválido ou CPF na mensagem', async () => {
     const { servico, criados } = montar();
-    await expect(servico.solicitarDocumentos(fornecedor(), 'f', ['X'], '', 'Admin')).rejects.toThrow(/e-mail válido/);
-    await expect(servico.solicitarDocumentos(fornecedor(), 'a@b.com', ['X'], 'CPF 111.444.777-35', 'Admin')).rejects.toThrow();
+    await expect(servico.solicitarDocumentos(fornecedor({ emailPedidos: 'f' }), ['X'], '', 'Admin')).rejects.toThrow(/pedidos \/ NF/);
+    await expect(servico.solicitarDocumentos(fornecedor(), ['X'], 'CPF 111.444.777-35', 'Admin')).rejects.toThrow();
     expect(criados).toHaveLength(0);
   });
 });

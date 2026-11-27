@@ -35,6 +35,7 @@ import {
   CodigoCertidao,
   Criticidade,
   IDadosBancarios,
+  EMAIL_DOCUMENTOS_FORNECEDORES,
   IDeclaracoesFicha,
   IdVerificacao,
   IQuadroSocietario,
@@ -88,6 +89,7 @@ import {
   TIPO_EMAIL_PEDIDO_DOCUMENTOS,
   assuntoPedidoDocumentos,
   corpoPedidoDocumentos,
+  destinatarioPedido,
   validarPedidoDocumentos
 } from './pedidoDocumentos';
 
@@ -757,21 +759,20 @@ export class FornecedoresService {
   // ==========================================================
   // PEDIDO DE DOCUMENTOS (botão do administrador, aba Ficha)
   //
-  // Grava o e-mail na fila padrão (o fluxo central envia, de
-  // fornecedores@). O histórico registra a lista e o contato, sem o
-  // endereço de e-mail.
+  // Grava o e-mail na fila padrão (o fluxo central envia). Para: sempre
+  // o "E-mail para pedidos / NF"; de: sempre fornecedores@ (sem a coluna
+  // do remetente, não grava). O histórico não leva o endereço.
   // ==========================================================
 
   public async solicitarDocumentos(
     fornecedor: IFornecedor,
-    destinatario: string,
     documentos: string[],
     observacao: string,
     usuarioNome: string
   ): Promise<void> {
-    const para = (destinatario || '').trim();
+    const para = destinatarioPedido(fornecedor);
     const lista = documentos.map(d => limitar(d, 200)).filter(Boolean);
-    const validacao = validarPedidoDocumentos(fornecedor, para, lista);
+    const validacao = validarPedidoDocumentos(fornecedor, lista);
     if (!validacao.ok) {
       throw new Error(validacao.erro);
     }
@@ -792,9 +793,8 @@ export class FornecedoresService {
     } catch (erro) {
       const m = erro instanceof Error ? erro.message : String(erro);
       if (/dgt_remetente/i.test(m)) {
-        // Coluna do remetente ainda não criada: grava sem ela (sai pela conta padrão).
-        delete linha.dgt_remetente;
-        await this.dataverse.criarRegistro('dgt_implemail', linha);
+        // Sem a coluna, o e-mail sairia pela conta padrão, não de fornecedores@.
+        throw new Error('A fila de e-mails ainda não tem a coluna do remetente (dgt_remetente). Rode scripts/dataverse/criar-tabelas-fornecedores.ps1.');
       } else if (/403|privilege|prvCreate|permiss/i.test(m)) {
         throw new Error('Sem permissão para gravar na fila de e-mails (dgt_implemail). Peça ao administrador o privilégio Criar nessa tabela.');
       } else {
@@ -802,13 +802,8 @@ export class FornecedoresService {
       }
     }
 
-    const contato = para.toLowerCase() === ((fornecedor.contatoComercial && fornecedor.contatoComercial.email) || '').trim().toLowerCase()
-      ? 'contato comercial'
-      : para.toLowerCase() === (fornecedor.emailPedidos || '').trim().toLowerCase()
-        ? 'e-mail para pedidos / NF'
-        : 'e-mail informado no envio';
     await this.registrarHistorico(fornecedor.id, 'Documentos solicitados por e-mail',
-      `Para: ${contato}\nDocumentos:\n${lista.map(d => `• ${d}`).join('\n')}` +
+      `De: ${EMAIL_DOCUMENTOS_FORNECEDORES} · Para: e-mail para pedidos / NF\nDocumentos:\n${lista.map(d => `• ${d}`).join('\n')}` +
       (observacao.trim() ? `\nObservação: ${limitar(observacao, 1000)}` : ''), usuarioNome);
   }
 

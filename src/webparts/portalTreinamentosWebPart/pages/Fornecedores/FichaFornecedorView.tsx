@@ -25,7 +25,7 @@ import {
 } from '../../services/fornecedores/modeloFornecedores';
 
 import {
-  destinatarioPadrao,
+  destinatarioPedido,
   emailValido
 } from '../../services/fornecedores/pedidoDocumentos';
 
@@ -480,7 +480,7 @@ const SolicitarDocumentosModal: React.FC<{
   fornecedor: IFornecedor;
   pendentes?: string[];
   fechar: () => void;
-  enviar: (destinatario: string, documentos: string[], observacao: string) => Promise<void>;
+  enviar: (documentos: string[], observacao: string) => Promise<void>;
 }> = ({ fornecedor, pendentes, fechar, enviar }) => {
   const lista = pendentes || [];
   const [marcados, setMarcados] = React.useState<Record<string, boolean>>(() => {
@@ -489,7 +489,7 @@ const SolicitarDocumentosModal: React.FC<{
     return m;
   });
   const [outros, setOutros] = React.useState('');
-  const [destinatario, setDestinatario] = React.useState(destinatarioPadrao(fornecedor));
+  const destinatario = destinatarioPedido(fornecedor);
   const [observacao, setObservacao] = React.useState('');
   const [gravando, setGravando] = React.useState(false);
   const [erro, setErro] = React.useState('');
@@ -502,7 +502,7 @@ const SolicitarDocumentosModal: React.FC<{
     setGravando(true);
     setErro('');
     try {
-      await enviar(destinatario.trim(), documentos, observacao);
+      await enviar(documentos, observacao);
     } catch (e) {
       setErro(String((e as Error)?.message || e));
       setGravando(false);
@@ -527,9 +527,11 @@ const SolicitarDocumentosModal: React.FC<{
       {erro && <Aviso tipo="alerta">{erro}</Aviso>}
       {!fornecedor.protocolo && <Aviso tipo="alerta">Fornecedor sem protocolo: a resposta não teria como ser vinculada a ele.</Aviso>}
 
-      <label style={rotulo} htmlFor="sd-para">E-mail do fornecedor</label>
-      <input id="sd-para" style={campo} value={destinatario} onChange={e => setDestinatario(e.target.value)} />
-      <div style={ajuda}>Padrão: contato comercial; sem ele, o e-mail para pedidos / NF.</div>
+      <Linha titulo="De">{EMAIL_DOCUMENTOS_FORNECEDORES}</Linha>
+      <Linha titulo="Para (E-mail para pedidos / NF)">{destinatario}</Linha>
+      {!emailValido(destinatario) && (
+        <Aviso tipo="alerta">O &quot;E-mail para pedidos / NF&quot; da ficha está vazio ou inválido. Corrija em &quot;Editar dados da ficha&quot; antes de enviar.</Aviso>
+      )}
 
       <div style={{ ...rotulo, marginTop: '12px' }}>Documentos pendentes</div>
       {pendentes === undefined && <div style={ajuda}>Carregando a situação dos documentos…</div>}
@@ -806,8 +808,8 @@ const FichaFornecedorView: React.FC<{
           fornecedor={f}
           pendentes={documentosPendentes}
           fechar={() => setEditar('')}
-          enviar={async (destinatario, documentos, observacao) => {
-            await servico.solicitarDocumentos(f, destinatario, documentos, observacao, usuarioNome);
+          enviar={async (documentos, observacao) => {
+            await servico.solicitarDocumentos(f, documentos, observacao, usuarioNome);
             setEditar('');
             await aoAlterar('Pedido de documentos colocado na fila de e-mails (registrado no histórico).');
           }}

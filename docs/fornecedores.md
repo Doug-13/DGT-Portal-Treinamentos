@@ -459,7 +459,9 @@ externo). Os documentos chegam por e-mail com o protocolo.
 *Compor* o JSON abaixo → Dataverse › *Executar uma ação não associada*
 `dgt_ConsultarFornecedor`, `PayloadJson` =
 `{"acao":"receberFicha","ficha": @{outputs('Compor')}}` → *Analisar JSON* do
-`ResultadoJson` → *Enviar um e-mail (V2)* ao contato do fornecedor:
+`ResultadoJson` → *Enviar um email de uma caixa de correio compartilhada (V2)*, de
+**fornecedores@dgt.com.br**, **para o "E-mail para pedidos / NF"** da ficha (nunca os
+contatos principais):
 
 - Assunto: `[@{protocolo}] Documentos para cadastro na DGT — @{razaoSocial}`
 - Corpo: a lista `documentosPendentes` e o pedido para **responder este e-mail**
@@ -666,9 +668,11 @@ a área Supply. A ficha nova é avisada pelo plugin (e-mail "Nova ficha" na fila
 **Ao fornecedor: desligado.** O pedido de documentos é sempre o primeiro e-mail (Fluxo 1,
 quando a ficha chega). Para pedir de novo, o administrador do módulo usa o botão
 **Solicitar documentos** na aba Ficha: escolhe os documentos (os pendentes vêm
-marcados), confere o e-mail do fornecedor (contato comercial; sem ele, o de pedidos /
-NF) e o portal grava o e-mail na fila (`fornecedorPedidoDocumentos`, remetente
+marcados) e o portal grava o e-mail na fila (`fornecedorPedidoDocumentos`, remetente
 `fornecedores`), com o protocolo no assunto e linha no histórico (sem o endereço).
+**Para: sempre o "E-mail para pedidos / NF" da ficha** (nunca os contatos principais;
+vazio ou inválido → corrigir em "Editar dados da ficha"). **De: sempre
+fornecedores@** — sem a coluna `dgt_remetente`, o portal não grava o pedido.
 Desligue o fluxo D2 no Power Automate para o fornecedor não receber dois pedidos.
 
 Referência (desenho antigo do D2, não usar) — etapa `documentos-pendentes`, pela **caixa

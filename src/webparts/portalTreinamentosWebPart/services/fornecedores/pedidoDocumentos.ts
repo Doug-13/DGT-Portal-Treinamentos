@@ -26,15 +26,9 @@ export const emailValido = (valor: string): boolean => {
     /^[^.]+(\.[^.]+)+$/.test(partes[1]);
 };
 
-// Contato comercial; sem ele, o e-mail para pedidos / NF (mesma regra do Fluxo 1).
-export const destinatarioPadrao = (f: IFornecedor): string => {
-  const comercial = ((f.contatoComercial && f.contatoComercial.email) || '').trim();
-  if (emailValido(comercial)) {
-    return comercial;
-  }
-  const pedidos = (f.emailPedidos || '').trim();
-  return emailValido(pedidos) ? pedidos : '';
-};
+// Destinatário: SEMPRE o "E-mail para pedidos / NF" da ficha, nunca os
+// contatos principais. Remetente: SEMPRE fornecedores@ (dgt_remetente).
+export const destinatarioPedido = (f: IFornecedor): string => (f.emailPedidos || '').trim();
 
 export const assuntoPedidoDocumentos = (f: IFornecedor): string =>
   `[${f.protocolo}] Documentos para cadastro na DGT — ${f.razaoSocial}`.substring(0, 200);
@@ -68,12 +62,12 @@ export interface IValidacaoPedido {
   erro?: string;
 }
 
-export const validarPedidoDocumentos = (f: IFornecedor, destinatario: string, documentos: string[]): IValidacaoPedido => {
+export const validarPedidoDocumentos = (f: IFornecedor, documentos: string[]): IValidacaoPedido => {
   if (!(f.protocolo || '').trim()) {
     return { ok: false, erro: 'Fornecedor sem protocolo: a resposta não teria como ser vinculada a ele.' };
   }
-  if (!emailValido(destinatario)) {
-    return { ok: false, erro: 'Informe um e-mail válido para o fornecedor.' };
+  if (!emailValido(destinatarioPedido(f))) {
+    return { ok: false, erro: 'O "E-mail para pedidos / NF" da ficha está vazio ou inválido. Corrija em "Editar dados da ficha".' };
   }
   if (documentos.length === 0) {
     return { ok: false, erro: 'Selecione ao menos um documento.' };
