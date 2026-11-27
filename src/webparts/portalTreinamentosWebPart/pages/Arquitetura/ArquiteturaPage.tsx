@@ -1329,6 +1329,8 @@ const ArquiteturaPage: React.FC<IArquiteturaPageProps> = ({
                   dataEnvio={dataEnvio}
                   salvando={salvando}
                   podeEnviar={!comFluxo || editavel('bomPronto')}
+                  /* Com fluxo, o CIGAM é lançado pela tarefa "Lançar no CIGAM" depois da aprovação: o botão manual vira só consulta. */
+                  lancamentoPeloFluxo={comFluxo}
                   tituloSituacao={
                     etapa === 'Aprovado'
                       ? `✓ BOM ${bom.numero.replace(/^BOM\s*/i, '')} ${bom.revisao} aprovado`

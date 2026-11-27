@@ -3,6 +3,10 @@ import {
 } from '../../components/fluxo/executarScriptIsolado';
 
 import {
+  IResultadoScript
+} from '../fluxo/scriptFluxo';
+
+import {
   lancarBomNoCigam
 } from './envioCigam';
 
@@ -510,7 +514,9 @@ export class BomFluxoService {
       // lê a lista congelada e o token da integração CIGAM-BOM; o B.O.M. é
       // SEMPRE este registro, nunca um id vindo do script).
       executarScript: async (elemento, instancia) =>
-        elemento.script
+        elemento.script && elemento.script.acaoNativa === 'lancarBomCigam'
+          ? this.lancarCigamPeloFluxo(bom, elemento.script.parametros || {}, this.valoresConsolidados(instancia, valoresModulo))
+          : elemento.script
           ? executarScriptIsolado(
             elemento.script,
             {
@@ -536,6 +542,50 @@ export class BomFluxoService {
       // O fluxo do B.O.M. não publica documentos.
       executarAcoesSistema: async () => undefined
     };
+  }
+
+  // Tarefa nativa "Lançar B.O.M. no CIGAM": chama a Custom API direto
+  // (sem quadro isolado — não depende do CSP do SharePoint). Metadados
+  // representanteCigam / unidadeNegocioCigam / controleCigam, se
+  // preenchidos, têm prioridade sobre os valores da tarefa.
+  private async lancarCigamPeloFluxo(
+    bom: IBomRegistro,
+    parametros: Record<string, string>,
+    valores: Record<string, string>
+  ): Promise<IResultadoScript> {
+    const log: string[] = [];
+    const escolher = (chaveValor: string, chaveParametro: string, padrao: string): string =>
+      String(valores[chaveValor] || parametros[chaveParametro] || padrao).trim();
+    const representante = escolher('representanteCigam', 'representante', '');
+    const unidadeNegocio = escolher('unidadeNegocioCigam', 'unidadeNegocio', '001');
+    const controle = escolher('controleCigam', 'controle', 'NA').toUpperCase();
+    if (!representante) {
+      return { valores: {}, erros: ['informe o representante do CIGAM na tarefa "Lançar no CIGAM" (ou no metadado representanteCigam).'], log };
+    }
+
+    // Previsão de venda: prazo de entrega, se futuro; senão, hoje + 30 dias.
+    const isoHoje = new Date().toISOString().substring(0, 10);
+    let previsaoVenda = String(valores.prazoEntrega || '').substring(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(previsaoVenda) || previsaoVenda < isoHoje) {
+      previsaoVenda = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
+    }
+    log.push(`Lançando ${bom.numero}: unidade ${unidadeNegocio}, controle ${controle}, previsão ${previsaoVenda}.`);
+
+    let r;
+    try {
+      r = await lancarBomNoCigam(this.dataverse, bom.id, { representante, unidadeNegocio, controle, previsaoVenda, reenviar: false });
+    } catch (erro) {
+      return { valores: {}, erros: [`não foi possível lançar no CIGAM: ${erro instanceof Error ? erro.message : String(erro)}`], log };
+    }
+    if (r.jaEnviado) {
+      return { valores: {}, erros: [], mensagem: 'B.O.M. já estava lançado no CIGAM; nada foi reenviado.', log };
+    }
+    if (!r.enviado) {
+      return { valores: {}, erros: [`o CIGAM recusou o lançamento: ${(r.ultimo && r.ultimo.mensagem) || r.mensagem || 'motivo não informado'}`], log };
+    }
+    const minutos = Math.max(1, Math.round((r.segundosEstimados || 60) / 60));
+    const situacao = r.ultimo && r.ultimo.situacao === 'indeterminado' ? 'enviado sem confirmação (confira no CIGAM)' : 'recebido pela MAAX';
+    return { valores: {}, erros: [], mensagem: `B.O.M. ${situacao}. Oportunidade e pedido em cerca de ${minutos} min.`, log };
   }
 
   // Valores para conferir responsáveis: os do fluxo + os atuais do módulo.

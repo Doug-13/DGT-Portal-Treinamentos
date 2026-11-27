@@ -9,6 +9,8 @@ import {
 } from '../../services/DataverseService';
 
 import {
+  ACOES_NATIVAS,
+  AcaoNativaScript,
   IConfigScript,
   IResultadoScript,
   MODELO_SCRIPT_CEP,
@@ -111,10 +113,80 @@ const EditorScript: React.FC<IEditorScriptProps> = ({ config, editavel, nomeTare
     }
   };
 
+  // Tipo da tarefa: JavaScript (quadro isolado) ou ação nativa do portal.
+  const seletorTipo = (
+    <>
+      <div style={{ ...titulo, marginTop: 0 }}>Tipo de execução</div>
+      <select
+        aria-label="Tipo de execução"
+        value={atual.acaoNativa || ''}
+        disabled={!editavel}
+        onChange={evento => {
+          const valor = evento.target.value as AcaoNativaScript | '';
+          alterar(valor
+            ? { acaoNativa: valor, parametros: { unidadeNegocio: '001', controle: 'NA', ...(atual.parametros || {}) } }
+            : { acaoNativa: undefined });
+        }}
+        style={entrada}
+      >
+        <option value="">Script em JavaScript (roda isolado)</option>
+        {ACOES_NATIVAS.map(item => <option key={item.valor} value={item.valor}>Ação do portal: {item.rotulo}</option>)}
+      </select>
+    </>
+  );
+
+  if (atual.acaoNativa) {
+    const nativa = ACOES_NATIVAS.filter(item => item.valor === atual.acaoNativa)[0];
+    const parametros = atual.parametros || {};
+    const alterarParametro = (chave: string, valor: string): void =>
+      alterar({ parametros: { ...parametros, [chave]: valor } });
+    return (
+      <div style={{ padding: '10px 12px', border: `1px dashed ${COR_BORDA}`, borderRadius: '8px', background: '#FAFBFC', color: COR_AZUL }}>
+        {seletorTipo}
+        <div style={{ fontSize: '12px', color: COR_TEXTO2, marginTop: '6px', lineHeight: '17px' }}>
+          {nativa ? nativa.descricao : ''} Executada direto pelo portal (sem JavaScript); o token fica em Integrações › CIGAM-BOM.
+        </div>
+        {atual.acaoNativa === 'lancarBomCigam' && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px', marginTop: '8px' }}>
+              <label>
+                <div style={titulo}>Representante *</div>
+                <input aria-label="Representante" value={parametros.representante || ''} disabled={!editavel} placeholder="código no CIGAM, ex.: 004791" onChange={e => alterarParametro('representante', e.target.value)} style={entrada} />
+              </label>
+              <label>
+                <div style={titulo}>Unidade de negócio *</div>
+                <input aria-label="Unidade de negócio" value={parametros.unidadeNegocio || ''} disabled={!editavel} onChange={e => alterarParametro('unidadeNegocio', e.target.value)} style={entrada} />
+              </label>
+              <label>
+                <div style={titulo}>Controle *</div>
+                <input aria-label="Controle" value={parametros.controle || ''} disabled={!editavel} onChange={e => alterarParametro('controle', e.target.value.toUpperCase())} style={entrada} />
+              </label>
+            </div>
+            <div style={{ fontSize: '11.5px', color: COR_TEXTO2, marginTop: '6px', lineHeight: '17px' }}>
+              Previsão de venda: o prazo de entrega da demanda (se futuro) ou hoje + 30 dias. Se o processo tiver os metadados{' '}
+              <code>representanteCigam</code>, <code>unidadeNegocioCigam</code> ou <code>controleCigam</code> preenchidos, eles têm prioridade.
+              Na Homologação, o controle NA funciona; 05 é recusado.
+            </div>
+          </>
+        )}
+        {problemas.length > 0 && (
+          <div style={{ marginTop: '10px', padding: '8px 10px', borderRadius: '6px', background: '#FDECEC', color: '#B42318', fontSize: '12.5px' }}>
+            {problemas.map((item, indice) => <div key={indice}>• {item}</div>)}
+          </div>
+        )}
+        <div style={{ fontSize: '11.5px', color: COR_TEXTO2, marginTop: '8px' }}>
+          Não há teste no editor: a ação grava no CIGAM. Teste aprovando um B.O.M. em Homologação.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '10px 12px', border: `1px dashed ${COR_BORDA}`, borderRadius: '8px', background: '#FAFBFC', color: COR_AZUL }}>
 
-      <div style={{ ...titulo, marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {seletorTipo}
+
+      <div style={{ ...titulo, display: 'flex', alignItems: 'center', gap: '8px' }}>
         <span style={{ flex: 1 }}>Script (JavaScript)</span>
         {editavel && (
           <button

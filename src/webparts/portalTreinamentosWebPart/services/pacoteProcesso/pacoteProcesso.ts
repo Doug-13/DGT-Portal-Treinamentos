@@ -757,6 +757,13 @@ export const interpretarPacote = (
         if (item.acaoSistema === 'executarScript') {
           const script = item.script || ({} as IConfigScript);
           elemento.script = {
+            acaoNativa: script.acaoNativa === 'lancarBomCigam' ? script.acaoNativa : undefined,
+            parametros: script.parametros && typeof script.parametros === 'object'
+              ? Object.keys(script.parametros).reduce((saida: Record<string, string>, chave) => {
+                saida[chave] = texto((script.parametros as Record<string, unknown>)[chave]);
+                return saida;
+              }, {})
+              : undefined,
             codigo: texto(script.codigo),
             camposSaida: Array.isArray(script.camposSaida) ? script.camposSaida.map(String) : [],
             fontes: script.fontes,

@@ -58,7 +58,17 @@ export const executarScriptIsolado = (
   dataverseService?: DataverseService,
   acoesServidor?: AcoesServidorScript
 ): Promise<IResultadoScript> =>
-  new Promise<IResultadoScript>(resolve => {
+  config.acaoNativa
+    // Ação nativa não roda no quadro isolado: quem a executa é a tela do
+    // registro (ex.: BomFluxoService). Chegar aqui = tela sem suporte.
+    ? Promise.resolve<IResultadoScript>({
+      valores: {},
+      erros: [acoesServidor
+        ? `a ação "${config.acaoNativa}" não está disponível nesta tela.`
+        : `a ação "${config.acaoNativa}" não roda no teste do editor: teste pelo registro em Homologação.`],
+      log: []
+    })
+    : new Promise<IResultadoScript>(resolve => {
 
     const log: string[] = [];
     const quadro = document.createElement('iframe');
@@ -69,6 +79,15 @@ export const executarScriptIsolado = (
 
     let terminado = false;
     let relogio = 0;
+    // Tempo limite conta só o tempo do SCRIPT. Enquanto uma ação de
+    // servidor (DGT.servidor, ex.: lançar no CIGAM) roda, o relógio fica
+    // PAUSADO: quem limita a ação é o próprio servidor (plugin do
+    // Dataverse, no máximo 2 min; chamada HTTP do plugin, 30 s). Cortar
+    // aqui faria o fluxo parar sem saber se o servidor concluiu.
+    let restanteMs = 0;
+    let iniciadoEm = 0;
+    let acoesEmAndamento = 0;
+    const segundosLimite = config.tempoLimiteSegundos || TEMPO_LIMITE_PADRAO;
     // Definido abaixo; declarado aqui para "terminar" poder removê-lo.
     let ouvir: (evento: MessageEvent) => void = () => undefined;
 
@@ -83,6 +102,27 @@ export const executarScriptIsolado = (
         quadro.parentNode.removeChild(quadro);
       }
       resolve(resultado);
+    };
+
+    const armarRelogio = (): void => {
+      iniciadoEm = Date.now();
+      relogio = window.setTimeout(
+        () => terminar({ valores: {}, erros: [`passou do tempo limite (${segundosLimite} s, sem contar as ações de servidor).`], log }),
+        Math.max(0, restanteMs)
+      );
+    };
+    const pausarRelogio = (): void => {
+      if (acoesEmAndamento === 0) {
+        window.clearTimeout(relogio);
+        restanteMs -= Date.now() - iniciadoEm;
+      }
+      acoesEmAndamento++;
+    };
+    const retomarRelogio = (): void => {
+      acoesEmAndamento = Math.max(0, acoesEmAndamento - 1);
+      if (acoesEmAndamento === 0 && !terminado) {
+        armarRelogio();
+      }
     };
 
     const responder = (mensagem: Record<string, unknown>): void => {
@@ -174,9 +214,10 @@ export const executarScriptIsolado = (
           });
           return;
         }
+        pausarRelogio();
         executarAcao(m.dados && typeof m.dados === 'object' ? m.dados : {})
-          .then(dados => responder({ tipo: 'resposta', id: m.id, ok: true, dados }))
-          .catch((erro: unknown) => responder({ tipo: 'resposta', id: m.id, ok: false, erro: erro instanceof Error ? erro.message : String(erro) }));
+          .then(dados => { retomarRelogio(); responder({ tipo: 'resposta', id: m.id, ok: true, dados }); })
+          .catch((erro: unknown) => { retomarRelogio(); responder({ tipo: 'resposta', id: m.id, ok: false, erro: erro instanceof Error ? erro.message : String(erro) }); });
         return;
       }
 
@@ -195,11 +236,8 @@ export const executarScriptIsolado = (
       }
     };
 
-    const segundos = config.tempoLimiteSegundos || TEMPO_LIMITE_PADRAO;
-    relogio = window.setTimeout(
-      () => terminar({ valores: {}, erros: [`passou do tempo limite (${segundos} s).`], log }),
-      segundos * 1000
-    );
+    restanteMs = segundosLimite * 1000;
+    armarRelogio();
 
     window.addEventListener('message', ouvir);
     document.body.appendChild(quadro);

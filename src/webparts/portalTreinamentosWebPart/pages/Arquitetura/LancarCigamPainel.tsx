@@ -43,6 +43,9 @@ export interface ILancarCigamPainelProps {
   semCodigo: number;
   semPreco: number;
   enviado: boolean;
+  // B.O.M. com fluxo: o lançamento é feito pela tarefa do fluxo depois
+  // da aprovação. O painel só mostra o andamento e os lançamentos.
+  somenteConsulta?: boolean;
   aoFechar: () => void;
   aoConcluir: (mensagem: string) => void;
 }
@@ -92,6 +95,7 @@ const Andamento: React.FC<{ envio: IEnvioCigam; agora: Date }> = ({ envio, agora
 
 const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
   const { dataverseService, bomId, numero, revisao, clienteCigam, linhas, semCodigo, semPreco, enviado, aoFechar, aoConcluir } = props;
+  const somenteConsulta = !!props.somenteConsulta;
 
   const previsaoInicial = props.prazoEntrega && props.prazoEntrega.substring(0, 10) >= hojeIso()
     ? props.prazoEntrega.substring(0, 10)
@@ -168,7 +172,7 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
 
   const camposOk = !!representante.trim() && !!unidade.trim() && !!controle.trim() && !!previsao && previsao >= hojeIso();
   const justificativaOk = !bloqueio || (relancar && justificativa.trim().length >= 10);
-  const mostrarFormulario = !recemEnviado && !processando && (!bloqueio || relancar);
+  const mostrarFormulario = !somenteConsulta && !recemEnviado && !processando && (!bloqueio || relancar);
   const podeEnviar = !carregando && !enviando && mostrarFormulario && impedimentos.length === 0 && camposOk && justificativaOk;
 
   const lancar = async (): Promise<void> => {
@@ -243,7 +247,14 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
         {!carregando && acompanhado && (recemEnviado || processando) && <Andamento envio={acompanhado} agora={agora} />}
 
         {/* Já lançado e concluído (pela previsão): relançar é exceção */}
-        {!carregando && bloqueio && !recemEnviado && !processando && (
+        {!carregando && somenteConsulta && (
+          <div style={{ marginTop: '4px', background: '#E8F2FF', border: '1px solid #0F6CBD', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: COR.azul }}>
+            Este B.O.M. segue o fluxo de aprovação: o lançamento no CIGAM é feito pela tarefa <strong>Lançar no CIGAM</strong>, automaticamente, depois da aprovação.
+            {bloqueio ? ' Abaixo, o andamento e o histórico.' : ' Ainda não há lançamento.'}
+          </div>
+        )}
+
+        {!carregando && !somenteConsulta && bloqueio && !recemEnviado && !processando && (
           <div style={{ marginTop: '4px', background: '#FFF4E5', border: '1px solid #B45309', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: COR.azul }}>
             <strong style={{ color: '#B45309' }}>Este B.O.M. já foi lançado em {new Date(bloqueio.em).toLocaleString('pt-BR')}.</strong>{' '}
             Confira a oportunidade e o pedido no CIGAM antes de qualquer novo lançamento.
@@ -304,7 +315,7 @@ const LancarCigamPainel: React.FC<ILancarCigamPainelProps> = (props) => {
 
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px', flexWrap: 'wrap' }}>
           <button type="button" style={botao('secundario', enviando)} disabled={enviando} onClick={fechar}>
-            {recemEnviado || (bloqueio && !relancar) ? 'Fechar' : 'Cancelar'}
+            {somenteConsulta || recemEnviado || (bloqueio && !relancar) ? 'Fechar' : 'Cancelar'}
           </button>
           {mostrarFormulario && (
             <button type="button" style={botao('principal', !podeEnviar)} disabled={!podeEnviar} onClick={() => { lancar().catch(() => undefined); }}>

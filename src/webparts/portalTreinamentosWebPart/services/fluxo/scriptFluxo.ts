@@ -32,7 +32,31 @@ import {
 
 export const ACAO_SCRIPT = 'executarScript';
 
+// AÇÃO NATIVA: em vez de JavaScript, a tarefa executa uma ação pronta
+// do portal, direto (sem quadro isolado). Não depende da política de
+// segurança (CSP) do SharePoint, que bloqueia scripts embutidos.
+//   lancarBomCigam → Custom API dgt_EnviarBomCigam (só no fluxo do B.O.M.)
+export type AcaoNativaScript = 'lancarBomCigam';
+
+export const ACOES_NATIVAS: Array<{ valor: AcaoNativaScript; rotulo: string; descricao: string }> = [
+  {
+    valor: 'lancarBomCigam',
+    rotulo: 'Lançar B.O.M. no CIGAM',
+    descricao: 'Cria a oportunidade e o pedido de venda no CIGAM com a lista congelada do B.O.M. (Integrações › CIGAM-BOM). Não lança duas vezes: se já foi lançado, só segue.'
+  }
+];
+
+export interface IParametrosLancarBomCigam {
+  representante: string;
+  unidadeNegocio: string;
+  controle: string;
+}
+
 export interface IConfigScript {
+  // Vazio/ausente = script em JavaScript (codigo).
+  acaoNativa?: AcaoNativaScript;
+  // Parâmetros da ação nativa (lancarBomCigam: representante, unidade, controle).
+  parametros?: Record<string, string>;
   codigo: string;
   // Metadados que o script pode preencher.
   camposSaida: string[];
@@ -117,6 +141,20 @@ export const validarConfigScript = (
   config: IConfigScript | undefined,
   metadados: Array<{ chave: string; tipo: string }>
 ): string[] => {
+  if (config && config.acaoNativa) {
+    if (config.acaoNativa === 'lancarBomCigam') {
+      const p = config.parametros || {};
+      const faltando = [
+        !(p.representante || '').trim() ? 'representante' : '',
+        !(p.unidadeNegocio || '').trim() ? 'unidade de negócio' : '',
+        !(p.controle || '').trim() ? 'controle' : ''
+      ].filter(Boolean);
+      return faltando.length > 0
+        ? [`Tarefa "${nome}": informe ${faltando.join(', ')} para lançar no CIGAM.`]
+        : [];
+    }
+    return [`Tarefa "${nome}": ação "${config.acaoNativa}" desconhecida.`];
+  }
   if (!config || !(config.codigo || '').trim()) {
     return [`Escreva o script da tarefa "${nome}".`];
   }
@@ -173,7 +211,17 @@ export const filtrarSaidaScript = (
 export const montarDocumentoScript = (codigo: string): string => {
   // "</script" no código do usuário fecharia a tag.
   const seguro = (codigo || '').replace(/<\/script/gi, '<\\/script');
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><script>
+  // Erro de SINTAXE no script impede o bloco inteiro de rodar: sem este
+  // aviso o portal só veria o tempo limite. window.onerror (num bloco
+  // separado) devolve a mensagem e a linha do script do usuário.
+  const avisoErro = `<script>
+window.onerror = function (msg, src, linha) {
+  var l = Number(linha || 0) - __DESLOCAMENTO__;
+  parent.postMessage({ canal: 'dgt-script', tipo: 'fim', resultado: { erro: 'Erro no script' + (l > 0 ? ' (linha ' + l + ')' : '') + ': ' + String(msg) } }, '*');
+  return true;
+};
+</script>`;
+  const documento = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${avisoErro}<script>
 (function () {
   var pendentes = {}, sequencia = 0;
   function enviar(m) { m.canal = 'dgt-script'; parent.postMessage(m, '*'); }
@@ -210,4 +258,8 @@ ${seguro}
   enviar({ tipo: 'pronto' });
 })();
 </script></body></html>`;
+  // Linha 1 do script do usuário = linhas do documento antes dele + 1.
+  const antes = documento.substring(0, documento.indexOf(seguro === '' ? '\n    };' : seguro));
+  const deslocamento = antes.split('\n').length - 1;
+  return documento.replace('__DESLOCAMENTO__', String(deslocamento));
 };

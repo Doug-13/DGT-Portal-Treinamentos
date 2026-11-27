@@ -98,6 +98,9 @@ export interface IEtapaBomProntoProps {
   onEnviar: (congelado: IBomEnviado) => Promise<void>;
   // Texto abaixo do título da situação (ex.: "Aprovado em 26/11/2026.").
   textoSituacao?: string;
+  // true = o B.O.M. segue o fluxo: o lançamento no CIGAM é feito pela
+  // tarefa do fluxo depois da aprovação. Aqui só se consulta.
+  lancamentoPeloFluxo?: boolean;
   aoVoltarKit?: () => void;
   aoVoltarHH?: () => void;
 }
@@ -112,7 +115,7 @@ const ORDEM_CATEGORIA = ['Estrutura', 'Câmera', 'Equipamento', 'Infraestrutura'
 // ------------------------------------------------------------
 
 const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
-  bom, demanda, analise, selecao, resultado, precos, dataverseService, dataEnvio, salvando, podeEnviar = true, tituloSituacao, textoSituacao, onEnviar, aoVoltarKit, aoVoltarHH
+  bom, demanda, analise, selecao, resultado, precos, dataverseService, dataEnvio, salvando, podeEnviar = true, tituloSituacao, textoSituacao, lancamentoPeloFluxo = false, onEnviar, aoVoltarKit, aoVoltarHH
 }) => {
 
   const congelado = selecao ? selecao.bomEnviado : undefined;
@@ -362,6 +365,11 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
                 : `✓ Lançado no CIGAM em ${new Date(lancadoCigam.em).toLocaleString('pt-BR')} · concluído pela previsão (confira no CIGAM)`}
             </div>
           )}
+          {enviado && !lancadoCigam && lancamentoPeloFluxo && (
+            <div style={{ fontSize: '12.5px', marginTop: '6px', color: COR.texto2 }}>
+              O lançamento no CIGAM é feito pelo fluxo, automaticamente, depois da aprovação do B.O.M.
+            </div>
+          )}
           {enviado && !lancadoCigam && ultimoEnvioCigam && ultimoEnvioCigam.situacao === 'recusado' && (
             <div style={{ fontSize: '12.5px', marginTop: '6px', fontWeight: 700, color: '#B42318' }}>
               ✕ Última tentativa de lançamento recusada ({new Date(ultimoEnvioCigam.em).toLocaleString('pt-BR')}): {ultimoEnvioCigam.mensagem}
@@ -374,14 +382,16 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
           <button type="button" style={botao('secundario', gerandoPdf)} disabled={gerandoPdf} onClick={() => { gerarPdf().catch(() => undefined); }}>{gerandoPdf ? 'Gerando PDF…' : 'Baixar PDF'}</button>
           <button type="button" style={botao('secundario')} onClick={baixarJson} title="Baixa o B.O.M. em JSON (dgt-portal/bom@1) para lançamento via API">Gerar JSON</button>
           <button type="button" style={botao('secundario')} onClick={copiarJson} title="Copia o JSON para colar no Postman ou em outro integrador">Copiar JSON</button>
-          {enviado && (
+          {enviado && (!lancamentoPeloFluxo || enviosCigam.length > 0) && (
             <button
               type="button"
-              style={botao(lancadoCigam ? 'secundario' : 'principal')}
+              style={botao(lancadoCigam || lancamentoPeloFluxo ? 'secundario' : 'principal')}
               onClick={() => setLancandoCigam(true)}
               title={lancadoCigam ? 'Ver o andamento e os lançamentos deste B.O.M. no CIGAM' : 'Cria a oportunidade e o pedido de venda no CIGAM (Homologação)'}
             >
-              {lancadoCigam ? (andamentoCigam && andamentoCigam.emProcessamento ? '⏳ Acompanhar lançamento' : 'Ver lançamento no CIGAM') : 'Lançar no CIGAM'}
+              {lancadoCigam
+                ? (andamentoCigam && andamentoCigam.emProcessamento ? '⏳ Acompanhar lançamento' : 'Ver lançamento no CIGAM')
+                : lancamentoPeloFluxo ? 'Ver tentativas no CIGAM' : 'Lançar no CIGAM'}
             </button>
           )}
           {!enviado && podeEnviar && (
@@ -394,6 +404,7 @@ const EtapaBomPronto: React.FC<IEtapaBomProntoProps> = ({
 
       {lancandoCigam && (
         <LancarCigamPainel
+          somenteConsulta={lancamentoPeloFluxo}
           dataverseService={dataverseService}
           bomId={bom.id}
           numero={numero}
