@@ -219,12 +219,61 @@ const WikiKitsView: React.FC<IWikiKitsViewProps> = ({ abrir }) => {
           Consolida dados de ERP, CRM, sistemas legados e do próprio ecossistema em dashboards e análises georreferenciadas.
           <strong> Não é licença que se entrega pronta:</strong> indicadores novos podem exigir modelagem e desenvolvimento específicos por cliente.
         </P>
+        <P>Comercializado em três pacotes de licença (Basic, Business, Enterprise), com cobrança inicial de implantação (Start) mais mensalidade recorrente, que já cobre manutenção, SAC e sustentação de infraestrutura.</P>
+        <Tabela
+          cabecalho={['', 'Basic (Básica)', 'Business (Intermediária)', 'Enterprise (Avançada)']}
+          linhas={[
+            ['Consultoria para mapeamento de variáveis', '20h', '35h', '43h'],
+            ['Abas com 4 indicadores', '1', '2', '3*'],
+            ['Conexões/leitura com banco de dados', '1', '2', '3'],
+            ['Usuários inclusos', 'Até 3', 'Até 5', 'Até 8'],
+            ['Frequência de atualização dos dados', '2h', '1h', '30 min'],
+            ['Treinamento operacional', '4h', '6h', '8h']
+          ]}
+        />
+        <P>*No Enterprise, uma das abas de indicadores pode ser trocada por um mapa estático.</P>
+
+        <H3>Adicionais do Data (só para quem já tem plano ativo)</H3>
+        <Lista itens={[
+          'Pacotes extras de indicadores: 2, 4 ou 6 indicadores por aba, aba com mapa estático, ou aba com mapa interativo (até 3 interações) — contratação start + mensal.',
+          'Consultoria de análise de requisitos e mapeamento de variáveis — valor por hora, quantidade a orçar conforme o projeto.',
+          'Desenvolvimento e customização de layout ou de sistema — valor por hora, quantidade a orçar conforme o projeto.',
+          'Desenvolvimento de pipeline de coleta e tratamento de dados — valor por hora, quantidade a orçar conforme o projeto.',
+          'Desenvolvimento e manutenção/suporte de integrações — valor por hora.',
+          'Usuário adicional (avulso ou em pacote de 5) — contratação mensal.',
+          'Infraestrutura de armazenamento adicional (pacotes de 20 GB, local ou nuvem) e base de dados adicional — contratação mensal.',
+          'Infraestrutura Cloud — contratação por unidade, a orçar conforme o projeto.'
+        ]} />
 
         <H3>Go</H3>
         <P>
-          Gestão de ocorrências: central de despacho, aplicativo do agente em campo e o módulo de proteção à mulher com acionamento emergencial.
+          Gestão de ocorrências: central de despacho, aplicativo do agente em campo e o módulo de proteção à mulher com acionamento emergencial, comercializado como <strong>Bridgefy Ela Segura</strong>.
           A integração com o CAD SINESP depende de formalização entre o Governo Federal e o órgão contratante; a DGT apoia, mas <strong>não controla o prazo</strong> — isso precisa constar na proposta.
         </P>
+        <P>
+          O Bridgefy Ela Segura é comercializado em modelo SaaS, por cessão de uso não exclusiva, com contrato de 12, 24 ou 36 meses (renovável).
+          A cobrança tem dois componentes: uma <strong>taxa de implantação única</strong> (configuração do ambiente, parametrização, cadastro inicial do órgão e treinamento das equipes)
+          e uma <strong>mensalidade ou anuidade recorrente</strong>, que cobre a plataforma web de gestão, o aplicativo móvel, o módulo de despacho, hospedagem em nuvem, backups e suporte técnico padrão.
+          A mensalidade varia por faixa de porte populacional do ente contratante (critério usual em govtech, correlacionado ao volume esperado de usuárias, de ocorrências e à capacidade de central necessária).
+        </P>
+
+        <H3>Portes do Bridgefy Ela Segura</H3>
+        <Tabela
+          cabecalho={['Porte', 'Faixa de habitantes', 'Perfil de operação', 'Usuárias incl. (referência)']}
+          linhas={[
+            ['I — Pequeno porte', 'Até 20.000', 'Central de baixo volume, equipe reduzida', 'Até 50'],
+            ['II — Pequeno porte', '20.001 a 50.000', 'Central de baixo/médio volume', 'Até 100'],
+            ['III — Médio porte', '50.001 a 100.000', 'Central de médio volume, operação estruturada', 'Até 200'],
+            ['IV — Grande porte I', '100.001 a 200.000', 'Central de volume elevado', 'Até 400'],
+            ['V — Grande porte II', '200.001 a 500.000', 'Central de alto volume, múltiplos órgãos integrados', 'Até 800'],
+            ['VI — Grande porte III', '500.001 a 1.000.000', 'Central de altíssimo volume', 'Até 1.500'],
+            ['VII — Metrópole', 'Acima de 1.000.000', 'Operação de larga escala, possível integração multi-órgão', 'Sob consulta']
+          ]}
+        />
+        <P>O número de usuárias por faixa é referência: o excedente é cotado à parte. Para a Faixa VII (metrópoles e estados), recomenda-se proposta técnica e comercial dedicada, dado o porte de integração institucional envolvido (múltiplos órgãos, alta concorrência de acesso, possíveis SLAs diferenciados).</P>
+        <Destaque>
+          Pesquisa em bases de contratação pública (PNCP) localizou um registro de solução equivalente — a Prefeitura de Aracaju (SE), ~664 mil habitantes (Faixa VI), contratou por inexigibilidade (fornecedor exclusivo) uma solução de app + painel web para a Patrulha Maria da Penha, cobrindo até 100 usuárias cadastradas — o que ajuda a validar o enquadramento de porte usado aqui.
+        </Destaque>
 
         <H3>Crime Report</H3>
         <P>
