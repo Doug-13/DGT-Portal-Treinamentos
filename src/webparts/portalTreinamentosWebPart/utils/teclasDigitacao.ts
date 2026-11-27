@@ -37,8 +37,25 @@ export function ehTeclaDeDigitacao(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'm
   return typeof e.key === 'string' && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
 }
 
+// Alvo real do evento. Dentro de uma shadow root (painel de
+// Implantações), e.target no <body> é o elemento hospedeiro, não o
+// campo: o primeiro item do composedPath() é o campo digitado.
+function alvoReal(e: Event): EventTarget | undefined {
+  const caminho = typeof e.composedPath === 'function' ? e.composedPath() : [];
+  return caminho.length > 0 ? caminho[0] : (e.target || undefined);
+}
+
+// Tecla física do "/" americano (keyCode 191 / code "Slash") que NÃO
+// produziu "/" nem "?": é o ";" / ":" do ABNT2. O SharePoint confunde
+// com "?" mesmo fora de campo. O "?" de verdade (outra tecla no ABNT2)
+// continua abrindo os atalhos.
+export function ehDoisPontosAbnt(e: Pick<KeyboardEvent, 'key' | 'keyCode' | 'code'>): boolean {
+  const teclaBarra = e.keyCode === 191 || e.code === 'Slash';
+  return teclaBarra && e.key !== '/' && e.key !== '?';
+}
+
 function aoTeclar(e: KeyboardEvent): void {
-  if (ehTeclaDeDigitacao(e) && ehCampoEditavel(e.target)) {
+  if (ehDoisPontosAbnt(e) || (ehTeclaDeDigitacao(e) && ehCampoEditavel(alvoReal(e)))) {
     e.stopPropagation();
   }
 }

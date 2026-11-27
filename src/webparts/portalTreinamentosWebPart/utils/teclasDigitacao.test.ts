@@ -3,6 +3,7 @@
  */
 import {
   ehCampoEditavel,
+  ehDoisPontosAbnt,
   ehTeclaDeDigitacao,
   protegerDigitacaoDosAtalhosDaPagina
 } from './teclasDigitacao';
@@ -54,6 +55,29 @@ describe('Digitação × atalhos da página', () => {
     teclar('botao', { key: '?', shiftKey: true });
     teclar('div', { key: ':', shiftKey: true });
     expect(vistosNoDocumento).toEqual(['?', ':']);
+  });
+
+  it('campo dentro de shadow root (painel de Implantações) também é protegido', () => {
+    const host = document.getElementById('div')!;
+    const raiz = host.attachShadow({ mode: 'open' });
+    raiz.innerHTML = '<input id="sombra" /><button id="sbotao"></button>';
+    const disparar = (el: Element, key: string): void => {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey: true, bubbles: true, composed: true }));
+    };
+    disparar(raiz.getElementById('sombra')!, ':');
+    disparar(raiz.getElementById('sbotao')!, '?');
+    expect(vistosNoDocumento).toEqual(['?']);
+  });
+
+  it('":" do ABNT2 (tecla do "/" americano) não chega ao documento nem fora de campo; "?" de verdade chega', () => {
+    teclar('div', { key: ':', code: 'Slash', keyCode: 191, shiftKey: true } as KeyboardEventInit);
+    teclar('botao', { key: ';', code: 'Slash', keyCode: 191 } as KeyboardEventInit);
+    teclar('div', { key: '?', code: 'Slash', keyCode: 191, shiftKey: true } as KeyboardEventInit);
+    teclar('div', { key: '?', code: 'IntlRo', keyCode: 193, shiftKey: true } as KeyboardEventInit);
+    expect(vistosNoDocumento).toEqual(['?', '?']);
+    expect(ehDoisPontosAbnt({ key: ':', keyCode: 191, code: 'Slash' })).toBe(true);
+    expect(ehDoisPontosAbnt({ key: '/', keyCode: 191, code: 'Slash' })).toBe(false);
+    expect(ehDoisPontosAbnt({ key: ':', keyCode: 186, code: 'Semicolon' })).toBe(false);
   });
 
   it('remover desfaz a proteção', () => {
