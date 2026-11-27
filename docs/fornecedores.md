@@ -14,10 +14,12 @@ Cadastro de Fornecedor SUP-CPL-01 v1.0 (11/11/2026).
    chama `receberFicha` → cadastro em **Em homologação** com protocolo
    `FORN-AAAA-NNNN` e um ciclo novo na etapa **Ficha recebida** (área Suprimentos).
 2. O fluxo responde ao fornecedor com o protocolo e a lista de documentos que ele
-   precisa mandar por e-mail para **vaneska@dgt.com.br** (o Forms não aceita anexo
-   de quem é externo). Ver seção 8.
+   precisa mandar por e-mail para **fornecedores@dgt.com.br** (o Forms não aceita anexo
+   de quem é externo). Ver seção 8. Esse é **o** pedido de documentos: novos pedidos
+   só pelo botão **Solicitar documentos** (aba Ficha, administrador do módulo).
 3. A analista revisa (aba **Ficha**) e roda as consultas (aba **Consultas**:
-   Receita, sanções e certidões).
+   Receita, sanções e certidões). O administrador do módulo corrige os dados da ficha
+   em **Editar dados da ficha** (antes → depois e motivo no histórico).
 4. Ficha consolidada **e Código de Conduta** assinados pelo fornecedor, no mesmo
    envelope Clicksign (aguardando o token — ver seção 9).
 5. Suprimentos envia ao **Jurídico**, que decide: **Aprovar**, **Aprovar com
@@ -180,7 +182,7 @@ campo. Sem o token, as certidões aparecem como "Não configurada" e o resto fun
 
 | Código | Certidão | Rota da Infosimples |
 |---|---|---|
-| `cnd_federal` | CND Federal (Receita/PGFN) | `receita-federal/pgfn` (com `preferencia_emissao=2via`) |
+| `cnd_federal` | CND Federal (Receita/PGFN) | `receita-federal/pgfn` (com `preferencia_emissao=2via`); se falhar por instabilidade, tenta `receita-federal/pgfn/nova` na mesma chamada |
 | `fgts` | CRF do FGTS (Caixa) | `caixa/regularidade` |
 | `cndt` | CNDT (TST) | `tst/cndt` |
 | `cnd_estadual` | CND Estadual | configurável por UF (`rotasEstaduais`) |
@@ -199,8 +201,18 @@ campo. Sem o token, as certidões aparecem como "Não configurada" e o resto fun
   configure, por exemplo:
   `"rotasEstaduais": { "SC": "<rota da SEFAZ/SC>?inscricao_estadual={ie}" }` e
   `"rotasMunicipais": { "SC/Florianópolis": "<rota da prefeitura>" }`.
-  `{cnpj}`, `{ie}` e `{im}` são trocados pelos dados do cadastro. Sem rota:
+  `{cnpj}`, `{uf}`, `{ie}` e `{im}` são trocados pelos dados do cadastro. Sem rota:
   "Sem cobertura" (emissão manual e registro em Documentos).
+  O catálogo da Infosimples tem rota de CND estadual para **todas as UFs**
+  (`sefaz/<uf>/certidao-debitos`, ex.: `sefaz/rs/certidao-debitos`) e uma
+  unificada (`sefaz/certidao-debitos`); municipais: `pref/<uf>/<cidade>/cnd` e a
+  unificada `pref/cnd`. **Confira os parâmetros na documentação logada** antes de
+  configurar (ex.: se a rota pede `inscricao_estadual={ie}` ou `uf={uf}`).
+- **Instabilidade da fonte** (códigos 600, 605, 609, 610, 611, 613, 614, 615 —
+  regra em `CertidoesInfosimples.Transitorio`): a consulta fica "Erro" com o aviso
+  "site do órgão instável, tente mais tarde", e o lote diário tenta de novo. A
+  CND Federal ainda tenta a rota alternativa na mesma chamada, se sobrar tempo
+  (≥ 40 s). A segunda tentativa pode ser cobrada se a fonte responder 611.
 - **Tempo:** cada certidão pode levar até ~1 min na fonte e o Dataverse encerra o
   plugin em 2 min. Por isso a tela pede **uma certidão por chamada**; o que não
   couber no tempo volta como "pulada".
@@ -451,7 +463,7 @@ externo). Os documentos chegam por e-mail com o protocolo.
 
 - Assunto: `[@{protocolo}] Documentos para cadastro na DGT — @{razaoSocial}`
 - Corpo: a lista `documentosPendentes` e o pedido para **responder este e-mail**
-  com os anexos para **vaneska@dgt.com.br**, mantendo o protocolo no assunto.
+  com os anexos para **fornecedores@dgt.com.br**, mantendo o protocolo no assunto.
 - Se `dadosBancariosAlterados` = true: avise Suprimentos/Financeiro (confirmação
   por telefone).
 
@@ -493,7 +505,7 @@ externo). Os documentos chegam por e-mail com o protocolo.
   "Em homologação".
 - A conta do fluxo precisa de Criar/Ler/Gravar nas tabelas de fornecedor.
 
-### Fluxo 2 — Documentos recebidos (caixa vaneska@dgt.com.br)
+### Fluxo 2 — Documentos recebidos (caixa fornecedores@dgt.com.br)
 
 *Quando um novo e-mail chegar (V3)* na caixa, filtro de assunto `FORN-`,
 "Incluir anexos" = Sim, "Somente com anexos" = Sim:
@@ -613,10 +625,12 @@ envio próprio do módulo.
 | Nova ficha recebida → membros da área **Supply** | Plugin (`receberFicha`, ao abrir o ciclo) | `fornecedorFichaRecebida` |
 | Etapas e resultado da homologação | Motor de fluxos — aba **Notificações** das atividades e evento "Resultado da homologação" (SUP-HOM) | `notificacaoFluxo` |
 | Vencimentos (documentos ao fornecedor; contratos para Supply) | Fluxo agendado do Power Automate (D3) | `fornecedorVencimento` / `fornecedorContrato` |
+| Novo pedido de documentos ao fornecedor (botão **Solicitar documentos**, administrador) | Portal (aba Ficha) | `fornecedorPedidoDocumentos` |
 
-O **e-mail ao fornecedor** na etapa "Documentos pendentes" é a exceção: fica no
-Power Automate (D2), enviado **da caixa monitorada**, para a resposta com os anexos
-cair no Fluxo 2.
+O **pedido de documentos ao fornecedor** é o primeiro e-mail, do Fluxo 1 (Power
+Automate, enviado **da caixa monitorada**, para a resposta com os anexos cair no
+Fluxo 2). Novos pedidos: botão **Solicitar documentos** (fila, remetente
+`fornecedores`). O D2 automático fica desligado.
 
 **Remetente.** Todas as linhas do módulo levam `dgt_remetente = fornecedores`
 (coluna criada pelo `criar-tabelas-fornecedores.ps1`). **Hoje o fluxo central ignora
@@ -649,8 +663,16 @@ Nunca vai no e-mail: CNPJ, CPF ou dados bancários.
 "Quando a atividade começar" nas 4 etapas e o evento "Resultado da homologação" para
 a área Supply. A ficha nova é avisada pelo plugin (e-mail "Nova ficha" na fila).
 
-**Ao fornecedor (Power Automate), etapa `documentos-pendentes`** — sai da **caixa
-monitorada** (a mesma do Fluxo 2), para a resposta com os anexos cair nela:
+**Ao fornecedor: desligado.** O pedido de documentos é sempre o primeiro e-mail (Fluxo 1,
+quando a ficha chega). Para pedir de novo, o administrador do módulo usa o botão
+**Solicitar documentos** na aba Ficha: escolhe os documentos (os pendentes vêm
+marcados), confere o e-mail do fornecedor (contato comercial; sem ele, o de pedidos /
+NF) e o portal grava o e-mail na fila (`fornecedorPedidoDocumentos`, remetente
+`fornecedores`), com o protocolo no assunto e linha no histórico (sem o endereço).
+Desligue o fluxo D2 no Power Automate para o fornecedor não receber dois pedidos.
+
+Referência (desenho antigo do D2, não usar) — etapa `documentos-pendentes`, pela **caixa
+monitorada**:
 
 1. *Quando uma linha é adicionada, modificada ou excluída* — **Modificada**, tabela
    **Ciclos de homologação**, escopo Organização, **Selecionar colunas** =

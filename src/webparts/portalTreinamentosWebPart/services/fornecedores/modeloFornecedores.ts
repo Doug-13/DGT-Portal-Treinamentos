@@ -100,7 +100,7 @@ export const VISIBILIDADES: Array<{ valor: Visibilidade; rotulo: string }> = [
 
 // Caixa que recebe os documentos do fornecedor (opção A: e-mail com
 // protocolo). O fluxo do Power Automate usa o mesmo endereço.
-export const EMAIL_DOCUMENTOS_FORNECEDORES = 'vaneska@dgt.com.br';
+export const EMAIL_DOCUMENTOS_FORNECEDORES = 'fornecedores@dgt.com.br';
 
 export const TIPOS_SOLICITACAO: string[] = [
   'Cadastro inicial',

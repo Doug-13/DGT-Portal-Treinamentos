@@ -83,6 +83,14 @@ import {
   normalizarCpf
 } from './colaboradores';
 
+import {
+  REMETENTE_FORNECEDORES,
+  TIPO_EMAIL_PEDIDO_DOCUMENTOS,
+  assuntoPedidoDocumentos,
+  corpoPedidoDocumentos,
+  validarPedidoDocumentos
+} from './pedidoDocumentos';
+
 // ============================================================
 // FORNECEDORES — SERVIÇO (Dataverse + SharePoint)
 //
@@ -602,6 +610,35 @@ export class FornecedoresService {
       }
     });
 
+    // Item 8 da ficha (declarações): antes → depois de cada campo.
+    const decNova = novo.declaracoes;
+    const decAntiga = anterior.declaracoes;
+    if (decNova && JSON.stringify(decNova) !== JSON.stringify(decAntiga || {})) {
+      const vazia: IDeclaracoesFicha = { aceitas: false, representante: '', cargo: '', local: '', data: '' };
+      const antes = { ...vazia, ...(decAntiga || {}) };
+      const limpa: IDeclaracoesFicha = {
+        aceitas: !!decNova.aceitas,
+        representante: limitar(decNova.representante, 200),
+        cargo: limitar(decNova.cargo, 120),
+        local: limitar(decNova.local, 120),
+        data: soData(decNova.data)
+      };
+      const rotulos: Array<{ chave: keyof IDeclaracoesFicha; rotulo: string }> = [
+        { chave: 'aceitas', rotulo: 'Declarações aceitas' },
+        { chave: 'representante', rotulo: 'Representante legal' },
+        { chave: 'cargo', rotulo: 'Cargo do representante' },
+        { chave: 'local', rotulo: 'Local das declarações' },
+        { chave: 'data', rotulo: 'Data das declarações' }
+      ];
+      const exibir = (v: unknown): string => (typeof v === 'boolean' ? (v ? 'Sim' : 'Não') : String(v || '').trim() || '—');
+      const diferencas = rotulos.filter(r => exibir(limpa[r.chave]) !== exibir(antes[r.chave]));
+      if (diferencas.length > 0) {
+        dados.dgt_declaracoes = JSON.stringify(limpa);
+        textosAlterados.push(limpa.representante, limpa.cargo, limpa.local);
+        diferencas.forEach(r => mudancas.push(`${r.rotulo}: "${exibir(antes[r.chave])}" → "${exibir(limpa[r.chave])}"`));
+      }
+    }
+
     verificarSensivel(...textosAlterados);
 
     if (novo.ativo !== anterior.ativo) {
@@ -715,6 +752,64 @@ export class FornecedoresService {
     await this.registrarHistorico(fornecedor.id, 'Dados bancários alterados',
       'Dados bancários alterados (valores na coluna protegida). Confirmar por contato telefônico independente antes de pagar.' +
       `\nMotivo: ${limitar(motivo, 1000)}`, usuarioNome);
+  }
+
+  // ==========================================================
+  // PEDIDO DE DOCUMENTOS (botão do administrador, aba Ficha)
+  //
+  // Grava o e-mail na fila padrão (o fluxo central envia, de
+  // fornecedores@). O histórico registra a lista e o contato, sem o
+  // endereço de e-mail.
+  // ==========================================================
+
+  public async solicitarDocumentos(
+    fornecedor: IFornecedor,
+    destinatario: string,
+    documentos: string[],
+    observacao: string,
+    usuarioNome: string
+  ): Promise<void> {
+    const para = (destinatario || '').trim();
+    const lista = documentos.map(d => limitar(d, 200)).filter(Boolean);
+    const validacao = validarPedidoDocumentos(fornecedor, para, lista);
+    if (!validacao.ok) {
+      throw new Error(validacao.erro);
+    }
+    verificarSensivel(observacao, ...lista);
+
+    const linha: Record<string, unknown> = {
+      dgt_name: assuntoPedidoDocumentos(fornecedor),
+      dgt_para: para.substring(0, 320),
+      dgt_corpo: corpoPedidoDocumentos(fornecedor, lista, limitar(observacao, 1500)),
+      dgt_tipo: TIPO_EMAIL_PEDIDO_DOCUMENTOS,
+      dgt_motivo: `pedidoDocs:${fornecedor.id}:${new Date().getTime()}`.substring(0, 200),
+      dgt_status: 'Pendente',
+      dgt_remetente: REMETENTE_FORNECEDORES
+    };
+
+    try {
+      await this.dataverse.criarRegistro('dgt_implemail', linha);
+    } catch (erro) {
+      const m = erro instanceof Error ? erro.message : String(erro);
+      if (/dgt_remetente/i.test(m)) {
+        // Coluna do remetente ainda não criada: grava sem ela (sai pela conta padrão).
+        delete linha.dgt_remetente;
+        await this.dataverse.criarRegistro('dgt_implemail', linha);
+      } else if (/403|privilege|prvCreate|permiss/i.test(m)) {
+        throw new Error('Sem permissão para gravar na fila de e-mails (dgt_implemail). Peça ao administrador o privilégio Criar nessa tabela.');
+      } else {
+        throw erro;
+      }
+    }
+
+    const contato = para.toLowerCase() === ((fornecedor.contatoComercial && fornecedor.contatoComercial.email) || '').trim().toLowerCase()
+      ? 'contato comercial'
+      : para.toLowerCase() === (fornecedor.emailPedidos || '').trim().toLowerCase()
+        ? 'e-mail para pedidos / NF'
+        : 'e-mail informado no envio';
+    await this.registrarHistorico(fornecedor.id, 'Documentos solicitados por e-mail',
+      `Para: ${contato}\nDocumentos:\n${lista.map(d => `• ${d}`).join('\n')}` +
+      (observacao.trim() ? `\nObservação: ${limitar(observacao, 1000)}` : ''), usuarioNome);
   }
 
   // ==========================================================

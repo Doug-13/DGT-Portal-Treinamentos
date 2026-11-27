@@ -8,6 +8,12 @@ começando por "- Novo:", "- Melhoria:" ou "- Correção:". No próximo
 
 ## [Não publicado]
 
+- Correção: digitar ":" (teclado ABNT2) ou "?" em campos do portal não abre mais o diálogo "Atalhos de teclado" do SharePoint.
+- Melhoria: Fornecedores — CND Federal: quando a PGFN está instável (Infosimples 611, 615 e similares), o plugin tenta de novo pela emissão nova na mesma chamada; a mensagem de instabilidade vale para todos esses códigos. Rotas estaduais aceitam {uf}.
+- Novo: Fornecedores — botão "Editar dados da ficha" (administrador do módulo): solicitação, dados declarados, contatos, enquadramento tributário, textos de integridade e declarações (item 8), com antes → depois e motivo no histórico.
+- Novo: Fornecedores — botão "Solicitar documentos" na aba Ficha (administrador do módulo): escolhe os documentos (pendentes já marcados) e o e-mail do fornecedor; o pedido vai pela fila de e-mails (remetente fornecedores, protocolo no assunto) e fica no histórico. O pedido automático é só o primeiro e-mail (Fluxo 1); desligar o D2 no Power Automate.
+- Melhoria: Fornecedores — e-mail dos documentos passa a ser fornecedores@dgt.com.br (tela da ficha e documentação).
+- Novo: script scripts/dataverse/limpar-fornecedores.ps1 para limpar os dados de teste do módulo Fornecedores (simula por padrão).
 - Novo: Fornecedores — notificações nativas da homologação (fila padrão de e-mails, dgt_implemail): "Quando a atividade começar" nas 4 etapas do SUP-HOM e evento "Resultado da homologação" para a área Supply, já no pacote; aviso "Nova ficha" para a área Supply gravado pelo plugin. Criação tardia da instância e migração de ciclo antigo não notificam. Os e-mails levam o remetente "fornecedores" (coluna nova dgt_remetente) para sair de fornecedores@ quando o fluxo central tiver a caixa.
 - Novo: Fornecedores — relatório de homologação em PDF: botão "Gerar relatório" no card (prévia com a fase atual) e geração automática na conclusão (relatório final, registrado como documento "Relatório de homologação"). Salvo na pasta do fornecedor › Homologação e listado em "Relatórios emitidos". Sem dados bancários e sem CPF; CNPJ só para quem tem o perfil de campo.
 - Novo: Fornecedores — tipos de documento de colaborador cadastráveis (Tipos de documento › Colaborador), cada um obrigatório para todos os colaboradores ou opcional. Pendência: obrigatório faltando ou vencido; opcional só quando vence. ASO e NR aplicável criados pelo script; registros antigos continuam valendo.

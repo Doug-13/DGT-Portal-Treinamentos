@@ -93,7 +93,7 @@ namespace DGT.Treinamentos.Plugins
     //   (TRT4, rota confirmada). UF sem rota: "Sem cobertura".
     //   Rotas estaduais/municipais: o caminho da consulta na Infosimples
     //   (depois de /consultas/), conforme o catálogo contratado. Depois do
-    //   "?" vão parâmetros extras; {cnpj}, {ie} e {im} são trocados pelos
+    //   "?" vão parâmetros extras; {cnpj}, {uf}, {ie} e {im} são trocados pelos
     //   dados do fornecedor. Sem rota: "Sem cobertura" (emissão manual).
     //   Sem a chave de uma fonte, a consulta dela responde "não
     //   configurada" e o resto funciona normalmente.
@@ -129,19 +129,24 @@ namespace DGT.Treinamentos.Plugins
 
         private sealed class Certidao
         {
-            public Certidao(string codigo, string tipo, string nome, string rota)
+            public Certidao(string codigo, string tipo, string nome, string rota, string rotaAlternativa = null)
             {
-                Codigo = codigo; Tipo = tipo; Nome = nome; Rota = rota;
+                Codigo = codigo; Tipo = tipo; Nome = nome; Rota = rota; RotaAlternativa = rotaAlternativa;
             }
             public string Codigo { get; }
             public string Tipo { get; }   // dgt_fornecedorconsulta.dgt_tipo
             public string Nome { get; }
             public string Rota { get; }   // null = estadual/municipal (configurável)
+            // Segunda tentativa, na mesma chamada, quando a 1ª falha por
+            // instabilidade da fonte (CertidoesInfosimples.Transitorio).
+            public string RotaAlternativa { get; }
         }
 
         private static readonly Certidao[] Certidoes =
         {
-            new Certidao("cnd_federal", "CND_FEDERAL", "CND Federal (Receita/PGFN)", "receita-federal/pgfn?preferencia_emissao=2via"),
+            // PGFN oscila (611 "dados incompletos", 615 fora do ar): se a
+            // 2ª via falhar por instabilidade, tenta emitir uma nova.
+            new Certidao("cnd_federal", "CND_FEDERAL", "CND Federal (Receita/PGFN)", "receita-federal/pgfn?preferencia_emissao=2via", "receita-federal/pgfn/nova"),
             new Certidao("fgts", "FGTS", "Certificado de Regularidade do FGTS (CRF)", "caixa/regularidade"),
             new Certidao("cndt", "CNDT", "Certidão Negativa de Débitos Trabalhistas (CNDT)", "tst/cndt"),
             new Certidao("cnd_estadual", "CND_ESTADUAL", "CND Estadual", null),
@@ -910,42 +915,37 @@ namespace DGT.Treinamentos.Plugins
                 return new JObject { ["ok"] = false, ["semCobertura"] = true, ["mensagem"] = $"Sem cobertura automática para {onde}." };
             }
 
-            var partes = rota.Split(new[] { '?' }, 2);
-            var caminho = partes[0].Trim().Trim('/');
-            var segundos = (int)Math.Max(10, Math.Min(_timeoutInfosimples, (prazo - DateTime.UtcNow).TotalSeconds - 10));
+            JObject resposta;
+            string erro;
+            var chamou = ChamarRotaCertidao(tracing, fornecedor, cnpj, rota, uf, prazo, out resposta, out erro);
+            var codigo = chamou ? ((int?)resposta["code"] ?? 0) : 0;
 
-            var parametros = new List<KeyValuePair<string, string>>
+            // Fonte instável (PGFN oscila): uma segunda tentativa pela rota
+            // alternativa, se ainda houver tempo nesta chamada.
+            if ((!chamou || CertidoesInfosimples.Transitorio(codigo))
+                && !string.IsNullOrWhiteSpace(certidao.RotaAlternativa)
+                && (prazo - DateTime.UtcNow).TotalSeconds >= 40)
             {
-                new KeyValuePair<string, string>("token", _chaveInfosimples),
-                new KeyValuePair<string, string>("timeout", segundos.ToString(CultureInfo.InvariantCulture)),
-                new KeyValuePair<string, string>("cnpj", cnpj)
-            };
-
-            if (partes.Length > 1)
-            {
-                foreach (var par in partes[1].Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries))
+                tracing.Trace("{0}: 1ª tentativa falhou ({1}); tentando a rota alternativa.", certidao.Tipo, chamou ? codigo.ToString(CultureInfo.InvariantCulture) : "rede");
+                JObject resposta2;
+                string erro2;
+                if (ChamarRotaCertidao(tracing, fornecedor, cnpj, certidao.RotaAlternativa, uf, prazo, out resposta2, out erro2))
                 {
-                    var kv = par.Split(new[] { '=' }, 2);
-                    var chave = Uri.UnescapeDataString(kv[0].Trim());
-                    if (chave.Length == 0 || chave == "cnpj" || chave == "token" || chave == "timeout") { continue; }
-                    var valor = kv.Length > 1 ? Uri.UnescapeDataString(kv[1].Trim()) : string.Empty;
-                    valor = valor
-                        .Replace("{cnpj}", cnpj)
-                        .Replace("{ie}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaoestadual") ?? string.Empty, "[^0-9A-Za-z]", string.Empty))
-                        .Replace("{im}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaomunicipal") ?? string.Empty, "[^0-9A-Za-z]", string.Empty));
-                    parametros.Add(new KeyValuePair<string, string>(chave, valor));
+                    var codigo2 = (int?)resposta2["code"] ?? 0;
+                    // Fica com a 2ª resposta se deu certo ou se a 1ª nem chegou a responder.
+                    if (codigo2 == 200 || !chamou)
+                    {
+                        resposta = resposta2; codigo = codigo2; chamou = true; erro = string.Empty;
+                    }
                 }
             }
 
-            JObject resposta;
-            string erro;
-            if (!ChamarInfosimples(tracing, caminho, parametros, prazo, out resposta, out erro))
+            if (!chamou)
             {
                 RegistrarConsulta(sistema, fornecedor.Id, certidao.Tipo, "Erro", erro, Fonte, usuario);
                 return new JObject { ["ok"] = false, ["mensagem"] = erro };
             }
 
-            var codigo = (int?)resposta["code"] ?? 0;
             if (codigo != 200)
             {
                 var mensagem = Mascarar(Texto(resposta["code_message"], "a fonte não devolveu a certidão"));
@@ -953,10 +953,10 @@ namespace DGT.Treinamentos.Plugins
                 {
                     mensagem += " (verifique o token na Configuração segura do passo)";
                 }
-                else if (codigo == 605 || codigo == 615)
+                else if (CertidoesInfosimples.Transitorio(codigo))
                 {
-                    // Site do órgão fora do ar ou lento: não é erro do cadastro.
-                    mensagem += " O site do órgão está indisponível agora: tente de novo mais tarde (o lote diário tenta de novo sozinho).";
+                    // Site do órgão fora do ar, lento ou instável: não é erro do cadastro.
+                    mensagem += " O site do órgão está instável agora: tente de novo mais tarde (o lote diário tenta de novo sozinho).";
                 }
                 erro = Limitar($"Infosimples ({codigo}): {mensagem}", 1000);
                 tracing.Trace("{0}: Infosimples respondeu código {1}.", certidao.Tipo, codigo);
@@ -1030,7 +1030,9 @@ namespace DGT.Treinamentos.Plugins
 
             var certidaoCurta = Texto(d["certidao"], string.Empty);
             if (certidaoCurta.Length > 80) { certidaoCurta = string.Empty; }   // texto integral da certidão
-            a.Situacao = Mascarar(Juntar(" · ", Texto(d["tipo"], string.Empty), Texto(d["situacao"], string.Empty), certidaoCurta));
+            // titulo (prefeituras, ex.: Porto Alegre) e certidao_mensagem (SEFAZ RS).
+            a.Situacao = Mascarar(Juntar(" · ", Texto(d["tipo"], string.Empty), Texto(d["situacao"], string.Empty), certidaoCurta,
+                Texto(d["titulo"], string.Empty), Texto(d["certidao_mensagem"], string.Empty)));
             var chave = SemAcento(a.Situacao).ToUpperInvariant();
 
             var conseguiu = d["conseguiu_emitir_certidao_negativa"];
@@ -1059,8 +1061,10 @@ namespace DGT.Treinamentos.Plugins
             else if (consta != null && consta.Type == JTokenType.Boolean) { a.Regular = !(bool)consta; }
 
             a.Validade = PrimeiraData(d, "validade_data", "validade_fim_data", "normalizado_validade", "validade", "data_validade");
-            a.Emissao = PrimeiraData(d, "emissao_data", "validade_inicio_data", "normalizado_expedicao", "expedicao", "data_emissao", "datahora", "consulta_datahora");
-            a.Codigo = Limitar(Mascarar(Juntar(" ", Texto(d["certidao_codigo"], string.Empty), Texto(d["crf"], string.Empty), Texto(d["codigo_controle"], string.Empty))), 120);
+            a.Emissao = PrimeiraData(d, "emissao_data", "validade_inicio_data", "normalizado_expedicao", "expedicao", "data_emissao",
+                "normalizado_datahora_emissao", "datahora_emissao", "datahora", "consulta_datahora");
+            a.Codigo = Limitar(Mascarar(Juntar(" ", Texto(d["certidao_codigo"], string.Empty), Texto(d["crf"], string.Empty), Texto(d["codigo_controle"], string.Empty),
+                Texto(d["codigo_autenticidade"], string.Empty))), 120);
             a.Mensagem = Limitar(Mascarar(Juntar(" ", Texto(d["mensagem"], string.Empty), Texto(d["observacoes"], string.Empty))), 600);
             return a;
         }
@@ -1114,6 +1118,42 @@ namespace DGT.Treinamentos.Plugins
                 return DateTime.SpecifyKind(data.Date, DateTimeKind.Unspecified);
             }
             return null;
+        }
+
+        // Monta os parâmetros da rota ("caminho?extra=valor") e chama a
+        // Infosimples. {cnpj}, {ie}, {im} e {uf} são trocados pelos dados do
+        // fornecedor. O token vai no corpo, nunca na URL.
+        private bool ChamarRotaCertidao(ITracingService tracing, Entity fornecedor, string cnpj, string rota, string uf, DateTime prazo, out JObject resposta, out string erro)
+        {
+            var partes = rota.Split(new[] { '?' }, 2);
+            var caminho = partes[0].Trim().Trim('/');
+            var segundos = (int)Math.Max(10, Math.Min(_timeoutInfosimples, (prazo - DateTime.UtcNow).TotalSeconds - 10));
+
+            var parametros = new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>("token", _chaveInfosimples),
+                new KeyValuePair<string, string>("timeout", segundos.ToString(CultureInfo.InvariantCulture)),
+                new KeyValuePair<string, string>("cnpj", cnpj)
+            };
+
+            if (partes.Length > 1)
+            {
+                foreach (var par in partes[1].Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var kv = par.Split(new[] { '=' }, 2);
+                    var chave = Uri.UnescapeDataString(kv[0].Trim());
+                    if (chave.Length == 0 || chave == "cnpj" || chave == "token" || chave == "timeout") { continue; }
+                    var valor = kv.Length > 1 ? Uri.UnescapeDataString(kv[1].Trim()) : string.Empty;
+                    valor = valor
+                        .Replace("{cnpj}", cnpj)
+                        .Replace("{uf}", uf)
+                        .Replace("{ie}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaoestadual") ?? string.Empty, "[^0-9A-Za-z]", string.Empty))
+                        .Replace("{im}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaomunicipal") ?? string.Empty, "[^0-9A-Za-z]", string.Empty));
+                    parametros.Add(new KeyValuePair<string, string>(chave, valor));
+                }
+            }
+
+            return ChamarInfosimples(tracing, caminho, parametros, prazo, out resposta, out erro);
         }
 
         private bool ChamarInfosimples(ITracingService tracing, string caminho, List<KeyValuePair<string, string>> parametros, DateTime prazo, out JObject resposta, out string erro)

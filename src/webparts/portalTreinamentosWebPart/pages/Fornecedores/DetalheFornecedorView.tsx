@@ -36,6 +36,10 @@ import {
 } from '../../services/fornecedores/situacaoDocumental';
 
 import {
+  documentosManuaisPendentes
+} from '../../services/fornecedores/homologacao';
+
+import {
   formatarCnpj
 } from '../../utils/cnpj';
 
@@ -941,6 +945,8 @@ const DetalheFornecedorView: React.FC<{
           servico={servico}
           fornecedor={fornecedor}
           usuarioNome={usuarioNome}
+          administra={administra}
+          documentosPendentes={documentos ? documentosManuaisPendentes(situacao) : undefined}
           aoAlterar={async aviso => { setHistorico(undefined); await aoAlterar(aviso); }}
         />
       )}
