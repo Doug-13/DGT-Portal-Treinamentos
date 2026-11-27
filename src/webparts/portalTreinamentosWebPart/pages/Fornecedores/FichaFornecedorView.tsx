@@ -5,17 +5,33 @@ import {
 } from '../../services/fornecedores/FornecedoresService';
 
 import {
+  ANEXOS_SIMPLES,
   DECLARACOES_FICHA,
   EMAIL_DOCUMENTOS_FORNECEDORES,
+  FAIXAS_FATURAMENTO_SIMPLES,
   IContatoFornecedor,
   IDadosBancarios,
+  IDeclaracoesFicha,
   IFornecedor,
   IQuadroSocietario,
   ISocio,
+  PORTES_FICHA,
+  PREVISOES_MUDANCA_REGIME,
   QUESTOES_INTEGRIDADE,
+  REGIMES_TRIBUTARIOS,
   RESPOSTAS_QUESTIONARIO,
-  RespostaQuestionario
+  RespostaQuestionario,
+  TIPOS_SOLICITACAO
 } from '../../services/fornecedores/modeloFornecedores';
+
+import {
+  destinatarioPedido,
+  emailValido
+} from '../../services/fornecedores/pedidoDocumentos';
+
+import {
+  CampoContato
+} from './ListaFornecedoresView';
 
 import {
   pontosDeAtencao
@@ -290,6 +306,253 @@ const BancarioModal: React.FC<{
   );
 };
 
+// Administrador do módulo: corrige os dados da ficha (itens 0, 1, 2, 4,
+// 6 e 8). Grava pelo atualizarFornecedor: antes → depois no histórico.
+const opcoesCom = (lista: string[], atual: string): string[] =>
+  atual && lista.indexOf(atual) < 0 ? lista.concat([atual]) : lista;
+
+const DadosFichaModal: React.FC<{
+  fornecedor: IFornecedor;
+  fechar: () => void;
+  salvar: (novo: IFornecedor, motivo: string) => Promise<void>;
+}> = ({ fornecedor, fechar, salvar }) => {
+  const decInicial: IDeclaracoesFicha = fornecedor.declaracoes
+    ? { ...fornecedor.declaracoes }
+    : { aceitas: false, representante: '', cargo: '', local: '', data: '' };
+  const [f, setF] = React.useState<IFornecedor>({ ...fornecedor });
+  const [dec, setDec] = React.useState<IDeclaracoesFicha>(decInicial);
+  const [motivo, setMotivo] = React.useState('');
+  const [gravando, setGravando] = React.useState(false);
+  const [erro, setErro] = React.useState('');
+
+  const mudar = (parcial: Partial<IFornecedor>): void => setF(a => ({ ...a, ...parcial }));
+  const mudarDec = (parcial: Partial<IDeclaracoesFicha>): void => setDec(a => ({ ...a, ...parcial }));
+
+  const confirmar = async (): Promise<void> => {
+    setGravando(true);
+    setErro('');
+    try {
+      const decMudou = JSON.stringify(dec) !== JSON.stringify(decInicial);
+      await salvar({ ...f, declaracoes: decMudou ? dec : fornecedor.declaracoes }, motivo);
+    } catch (e) {
+      setErro(String((e as Error)?.message || e));
+      setGravando(false);
+    }
+  };
+
+  const grade: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px 14px' };
+  const secao = (titulo: string): React.ReactNode => (
+    <div style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', margin: '16px 0 6px', color: COR.texto2 }}>{titulo}</div>
+  );
+
+  return (
+    <Modal
+      titulo="Editar dados da ficha"
+      subtitulo="Administrador do módulo. Cada campo alterado fica no histórico (antes → depois) com o motivo."
+      aoFechar={() => { if (!gravando) { fechar(); } }}
+      largura={820}
+      rodape={(
+        <>
+          <button type="button" style={botao('secundario', gravando)} disabled={gravando} onClick={fechar}>Cancelar</button>
+          <button type="button" style={botao('principal', gravando || !motivo.trim())} disabled={gravando || !motivo.trim()} onClick={() => { confirmar().catch(() => undefined); }}>
+            {gravando ? 'Salvando…' : 'Salvar'}
+          </button>
+        </>
+      )}
+    >
+      {erro && <Aviso tipo="alerta">{erro}</Aviso>}
+
+      {secao('0 · Solicitação')}
+      <div style={grade}>
+        <div>
+          <label style={rotulo} htmlFor="fd-solicitacao">Tipo de solicitação</label>
+          <select id="fd-solicitacao" style={campo} value={f.tipoSolicitacao} onChange={e => mudar({ tipoSolicitacao: e.target.value })}>
+            {opcoesCom([''].concat(TIPOS_SOLICITACAO), f.tipoSolicitacao).map(t => <option key={t} value={t}>{t || 'Não informado'}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {secao('1 · Dados cadastrais declarados')}
+      <div style={grade}>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={rotulo} htmlFor="fd-catficha">Categoria de fornecimento</label>
+          <input id="fd-catficha" style={campo} value={f.categoriaFornecimento} onChange={e => mudar({ categoriaFornecimento: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-porte">Porte declarado</label>
+          <select id="fd-porte" style={campo} value={f.porteDeclarado} onChange={e => mudar({ porteDeclarado: e.target.value })}>
+            {opcoesCom(PORTES_FICHA, f.porteDeclarado).map(p => <option key={p} value={p}>{p || 'Não informado'}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-telefone">Telefone geral</label>
+          <input id="fd-telefone" style={campo} value={f.telefone} onChange={e => mudar({ telefone: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-site">Site</label>
+          <input id="fd-site" style={campo} value={f.site} onChange={e => mudar({ site: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-emailnf">E-mail para pedidos / NF</label>
+          <input id="fd-emailnf" style={campo} value={f.emailPedidos} onChange={e => mudar({ emailPedidos: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-cep">CEP</label>
+          <input id="fd-cep" style={campo} maxLength={9} value={f.cep} onChange={e => mudar({ cep: e.target.value })} />
+        </div>
+      </div>
+      <label style={rotulo} htmlFor="fd-descricao">Produtos e/ou serviços fornecidos</label>
+      <textarea id="fd-descricao" style={{ ...campo, resize: 'vertical' }} rows={2} value={f.descricaoFornecimento} onChange={e => mudar({ descricaoFornecimento: e.target.value })} />
+
+      {secao('2 · Contatos principais')}
+      <CampoContato titulo="Contato comercial" valor={f.contatoComercial} aoMudar={c => mudar({ contatoComercial: c })} />
+      <CampoContato titulo="Contato fiscal / contábil" valor={f.contatoFiscal} aoMudar={c => mudar({ contatoFiscal: c })} />
+      <CampoContato titulo="Contato financeiro / faturamento" valor={f.contatoFinanceiro} aoMudar={c => mudar({ contatoFinanceiro: c })} />
+      <CampoContato titulo="Contato integridade / compliance" valor={f.contatoIntegridade} aoMudar={c => mudar({ contatoIntegridade: c })} />
+
+      {secao('4 · Enquadramento tributário')}
+      <div style={grade}>
+        <div>
+          <label style={rotulo} htmlFor="fd-regime">Regime tributário</label>
+          <select id="fd-regime" style={campo} value={f.regimeTributario} onChange={e => mudar({ regimeTributario: e.target.value })}>
+            {opcoesCom(REGIMES_TRIBUTARIOS, f.regimeTributario).map(r => <option key={r} value={r}>{r || 'Não informado'}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-faixa">Faixa de faturamento (Simples)</label>
+          <select id="fd-faixa" style={campo} value={f.faixaFaturamento} onChange={e => mudar({ faixaFaturamento: e.target.value })}>
+            {opcoesCom(FAIXAS_FATURAMENTO_SIMPLES, f.faixaFaturamento).map(p => <option key={p} value={p}>{p || 'Não se aplica'}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-anexo">Anexo do Simples</label>
+          <select id="fd-anexo" style={campo} value={f.anexoSimples} onChange={e => mudar({ anexoSimples: e.target.value })}>
+            {opcoesCom(ANEXOS_SIMPLES, f.anexoSimples).map(p => <option key={p} value={p}>{p || 'Não se aplica'}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-mudanca">Mudança de regime prevista</label>
+          <select id="fd-mudanca" style={campo} value={f.previsaoMudancaRegime} onChange={e => mudar({ previsaoMudancaRegime: e.target.value })}>
+            {opcoesCom(PREVISOES_MUDANCA_REGIME, f.previsaoMudancaRegime).map(p => <option key={p} value={p}>{p || 'Não informado'}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {secao('6 · Integridade (textos)')}
+      <label style={rotulo} htmlFor="fd-cert">Certificações (ISO, Pró-Ética, outras)</label>
+      <textarea id="fd-cert" style={{ ...campo, resize: 'vertical' }} rows={2} value={f.certificacoes} onChange={e => mudar({ certificacoes: e.target.value })} />
+      <label style={rotulo} htmlFor="fd-detalhe">Detalhamento das respostas positivas</label>
+      <textarea id="fd-detalhe" style={{ ...campo, resize: 'vertical' }} rows={2} value={f.detalhamentoPositivas} onChange={e => mudar({ detalhamentoPositivas: e.target.value })} />
+      <div style={ajuda}>As respostas do questionário e o quadro societário têm o próprio botão Editar.</div>
+
+      {secao('8 · Declarações e compromissos')}
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', marginBottom: '8px' }}>
+        <input type="checkbox" checked={dec.aceitas} onChange={e => mudarDec({ aceitas: e.target.checked })} />
+        Declarações aceitas
+      </label>
+      <div style={grade}>
+        <div>
+          <label style={rotulo} htmlFor="fd-rep">Representante legal</label>
+          <input id="fd-rep" style={campo} value={dec.representante} onChange={e => mudarDec({ representante: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-cargo">Cargo</label>
+          <input id="fd-cargo" style={campo} value={dec.cargo} onChange={e => mudarDec({ cargo: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-local">Local</label>
+          <input id="fd-local" style={campo} value={dec.local} onChange={e => mudarDec({ local: e.target.value })} />
+        </div>
+        <div>
+          <label style={rotulo} htmlFor="fd-data">Data</label>
+          <input id="fd-data" type="date" style={campo} value={dec.data} onChange={e => mudarDec({ data: e.target.value })} />
+        </div>
+      </div>
+
+      <CampoMotivo valor={motivo} aoMudar={setMotivo} desabilitado={gravando} />
+    </Modal>
+  );
+};
+
+// Administrador do módulo: novo pedido de documentos por e-mail (o
+// primeiro pedido é o do Fluxo 1, quando a ficha chega).
+const SolicitarDocumentosModal: React.FC<{
+  fornecedor: IFornecedor;
+  pendentes?: string[];
+  fechar: () => void;
+  enviar: (documentos: string[], observacao: string) => Promise<void>;
+}> = ({ fornecedor, pendentes, fechar, enviar }) => {
+  const lista = pendentes || [];
+  const [marcados, setMarcados] = React.useState<Record<string, boolean>>(() => {
+    const m: Record<string, boolean> = {};
+    lista.forEach(d => { m[d] = true; });
+    return m;
+  });
+  const [outros, setOutros] = React.useState('');
+  const destinatario = destinatarioPedido(fornecedor);
+  const [observacao, setObservacao] = React.useState('');
+  const [gravando, setGravando] = React.useState(false);
+  const [erro, setErro] = React.useState('');
+
+  const documentos = lista.filter(d => marcados[d])
+    .concat(outros.split(/\r?\n/).map(l => l.trim()).filter(Boolean));
+  const pode = !gravando && documentos.length > 0 && emailValido(destinatario) && !!fornecedor.protocolo;
+
+  const confirmar = async (): Promise<void> => {
+    setGravando(true);
+    setErro('');
+    try {
+      await enviar(documentos, observacao);
+    } catch (e) {
+      setErro(String((e as Error)?.message || e));
+      setGravando(false);
+    }
+  };
+
+  return (
+    <Modal
+      titulo="Solicitar documentos por e-mail"
+      subtitulo={`Sai de ${EMAIL_DOCUMENTOS_FORNECEDORES} com o protocolo no assunto; a resposta com os anexos entra sozinha como "A conferir".`}
+      aoFechar={() => { if (!gravando) { fechar(); } }}
+      largura={700}
+      rodape={(
+        <>
+          <button type="button" style={botao('secundario', gravando)} disabled={gravando} onClick={fechar}>Cancelar</button>
+          <button type="button" style={botao('principal', !pode)} disabled={!pode} onClick={() => { confirmar().catch(() => undefined); }}>
+            {gravando ? 'Enviando…' : 'Enviar pedido'}
+          </button>
+        </>
+      )}
+    >
+      {erro && <Aviso tipo="alerta">{erro}</Aviso>}
+      {!fornecedor.protocolo && <Aviso tipo="alerta">Fornecedor sem protocolo: a resposta não teria como ser vinculada a ele.</Aviso>}
+
+      <Linha titulo="De">{EMAIL_DOCUMENTOS_FORNECEDORES}</Linha>
+      <Linha titulo="Para (E-mail para pedidos / NF)">{destinatario}</Linha>
+      {!emailValido(destinatario) && (
+        <Aviso tipo="alerta">O &quot;E-mail para pedidos / NF&quot; da ficha está vazio ou inválido. Corrija em &quot;Editar dados da ficha&quot; antes de enviar.</Aviso>
+      )}
+
+      <div style={{ ...rotulo, marginTop: '12px' }}>Documentos pendentes</div>
+      {pendentes === undefined && <div style={ajuda}>Carregando a situação dos documentos…</div>}
+      {pendentes !== undefined && lista.length === 0 && <div style={ajuda}>Nenhum documento pendente. Use o campo abaixo para pedir outro.</div>}
+      {lista.map(d => (
+        <label key={d} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', padding: '3px 0' }}>
+          <input type="checkbox" checked={!!marcados[d]} onChange={e => setMarcados(m => ({ ...m, [d]: e.target.checked }))} />
+          {d}
+        </label>
+      ))}
+
+      <label style={rotulo} htmlFor="sd-outros">Outros documentos (um por linha)</label>
+      <textarea id="sd-outros" style={{ ...campo, resize: 'vertical' }} rows={2} value={outros} onChange={e => setOutros(e.target.value)} />
+
+      <label style={rotulo} htmlFor="sd-obs">Mensagem adicional (opcional)</label>
+      <textarea id="sd-obs" style={{ ...campo, resize: 'vertical' }} rows={2} value={observacao} onChange={e => setObservacao(e.target.value)} />
+      <div style={ajuda}>Não escreva CNPJ, CPF ou dados bancários: o e-mail e o histórico não aceitam.</div>
+    </Modal>
+  );
+};
+
 // ------------------------------------------------------------
 // Ficha
 // ------------------------------------------------------------
@@ -298,10 +561,13 @@ const FichaFornecedorView: React.FC<{
   servico: FornecedoresService;
   fornecedor: IFornecedor;
   usuarioNome: string;
+  administra: boolean;
+  // Documentos manuais pendentes (undefined = ainda carregando).
+  documentosPendentes?: string[];
   aoAlterar: (aviso?: string) => Promise<void>;
-}> = ({ servico, fornecedor, usuarioNome, aoAlterar }) => {
+}> = ({ servico, fornecedor, usuarioNome, administra, documentosPendentes, aoAlterar }) => {
 
-  const [editar, setEditar] = React.useState<'' | 'questionario' | 'quadro' | 'bancario'>('');
+  const [editar, setEditar] = React.useState<'' | 'questionario' | 'quadro' | 'bancario' | 'dados' | 'pedido'>('');
   const [mostrarCpf, setMostrarCpf] = React.useState(false);
   const [mostrarConta, setMostrarConta] = React.useState(false);
 
@@ -315,6 +581,13 @@ const FichaFornecedorView: React.FC<{
 
   return (
     <div>
+      {administra && (
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap', marginBottom: '10px' }}>
+          <button type="button" style={botao('secundario')} onClick={() => setEditar('dados')}>Editar dados da ficha</button>
+          <button type="button" style={botao('principal')} onClick={() => setEditar('pedido')}>Solicitar documentos</button>
+        </div>
+      )}
+
       {!f.fichaRecebidaEm && (
         <Aviso tipo="info">
           Ficha ainda não recebida pelo formulário. Quando o fornecedor responder, os dados aparecem aqui e ele recebe
@@ -514,6 +787,31 @@ const FichaFornecedorView: React.FC<{
             await servico.salvarDadosBancarios(f, dados, motivo, usuarioNome);
             setEditar('');
             await aoAlterar('Dados bancários atualizados: confirme por telefone antes de pagar.');
+          }}
+        />
+      )}
+
+      {editar === 'dados' && administra && (
+        <DadosFichaModal
+          fornecedor={f}
+          fechar={() => setEditar('')}
+          salvar={async (novo, motivo) => {
+            await servico.atualizarFornecedor(novo, f, motivo, usuarioNome);
+            setEditar('');
+            await aoAlterar('Dados da ficha atualizados (registrado no histórico).');
+          }}
+        />
+      )}
+
+      {editar === 'pedido' && administra && (
+        <SolicitarDocumentosModal
+          fornecedor={f}
+          pendentes={documentosPendentes}
+          fechar={() => setEditar('')}
+          enviar={async (documentos, observacao) => {
+            await servico.solicitarDocumentos(f, documentos, observacao, usuarioNome);
+            setEditar('');
+            await aoAlterar('Pedido de documentos colocado na fila de e-mails (registrado no histórico).');
           }}
         />
       )}

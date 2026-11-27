@@ -516,6 +516,7 @@ New-Texto       $T 'dgt_Visibilidade'         'Visibilidade (Interno/Externo)' 2
 New-Inteiro     $T 'dgt_Ordem'                'Ordem'
 New-SimNao      $T 'dgt_Ativo'                'Ativo' $true
 New-Texto       $T 'dgt_CodigoConsulta'       'Consulta automática (código da certidão)' 30
+New-Texto       $T 'dgt_AplicaA'              'Aplica-se a (Empresa/Colaborador; vazio = Empresa)' 20
 
 Write-Host "`n4) Colunas de dgt_fornecedordocumento" -ForegroundColor Cyan
 $T = 'dgt_fornecedordocumento'
@@ -571,6 +572,7 @@ New-Texto       $T 'dgt_EtapaAtual'           'Etapa atual do fluxo (id)' 100
 New-DataHora    $T 'dgt_PrazoEtapa'           'Prazo da etapa'
 New-TextoLongo  $T 'dgt_ResponsaveisEtapa'    'Responsáveis da etapa (JSON)' 100000
 New-TextoLongo  $T 'dgt_DocumentosPendentes'  'Documentos pendentes (para o e-mail ao fornecedor)' 4000
+New-TextoLongo  $T 'dgt_RelatoriosJson'       'Relatórios de homologação emitidos (JSON)' 100000
 
 Write-Host "`n6c) Colunas de dgt_fornecedorcolaborador (dgt_name = nome)" -ForegroundColor Cyan
 $T = 'dgt_fornecedorcolaborador'
@@ -586,6 +588,7 @@ $T = 'dgt_colaboradordocumento'
 New-Lookup      $T 'dgt_Colaborador'          'Colaborador' 'dgt_fornecedorcolaborador' 'dgt_fornecedorcolaborador_dgt_colaboradordocumento'
 New-Texto       $T 'dgt_Tipo'                 'Tipo (ASO / NR aplicável)' 30
 New-Texto       $T 'dgt_Norma'                'Norma aplicável (ex.: NR-10)' 120
+New-Lookup      $T 'dgt_TipoDocumento'        'Tipo de documento (cadastrado)' 'dgt_tipodocumentofornecedor' 'dgt_tipodocumentofornecedor_dgt_colaboradordocumento'
 New-SomenteData $T 'dgt_DataEmissao'          'Emissão'
 New-SomenteData $T 'dgt_DataVencimento'       'Validade'
 New-TextoLongo  $T 'dgt_ArquivoUrl'           'Endereço do arquivo' 2000
@@ -611,6 +614,17 @@ New-Lookup      $T 'dgt_DocumentoOrigem'      'Arquivo de origem (fila A conferi
 New-DataHora    $T 'dgt_AvisoVencimentoEm'    'Aviso de vencimento enviado em'
 New-Texto       $T 'dgt_ResponsavelNome'      'Registrado por' 200
 
+# Fila padrão de e-mails do portal (dgt_implemail, criada pelo script das
+# Implantações): os e-mails do módulo gravam dgt_remetente = "fornecedores".
+# O fluxo central usa a coluna para escolher a caixa (Switch); sem a caixa
+# configurada, envia pela conta de automação.
+if (Test-Existe "EntityDefinitions(LogicalName='dgt_implemail')?`$select=LogicalName") {
+  Write-Host "`n6f) Coluna de remetente na fila de e-mails (dgt_implemail)" -ForegroundColor Cyan
+  New-Texto 'dgt_implemail' 'dgt_Remetente' 'Remetente (chave: vazio = padrão, fornecedores...)' 50
+} else {
+  Write-Host "  ! dgt_implemail não existe (rode criar-tabelas-implantacoes.ps1): os e-mails do módulo não serão enviados." -ForegroundColor Yellow
+}
+
 # ------------------------------------------------------------
 # 7) Publicação
 # ------------------------------------------------------------
@@ -618,8 +632,46 @@ New-Texto       $T 'dgt_ResponsavelNome'      'Registrado por' 200
 Write-Host "`n7) Publicando..." -ForegroundColor Cyan
 
 Invoke-Dv -Metodo 'POST' -Caminho 'PublishXml' -Corpo @{
-  ParameterXml = '<importexportxml><entities><entity>dgt_fornecedor</entity><entity>dgt_tipodocumentofornecedor</entity><entity>dgt_fornecedordocumento</entity><entity>dgt_fornecedorconsulta</entity><entity>dgt_fornecedorhistorico</entity><entity>dgt_fornecedorhomologacao</entity><entity>dgt_fornecedorcolaborador</entity><entity>dgt_colaboradordocumento</entity><entity>dgt_fornecedorcontrato</entity></entities></importexportxml>'
+  ParameterXml = '<importexportxml><entities><entity>dgt_fornecedor</entity><entity>dgt_tipodocumentofornecedor</entity><entity>dgt_fornecedordocumento</entity><entity>dgt_fornecedorconsulta</entity><entity>dgt_fornecedorhistorico</entity><entity>dgt_fornecedorhomologacao</entity><entity>dgt_fornecedorcolaborador</entity><entity>dgt_colaboradordocumento</entity><entity>dgt_fornecedorcontrato</entity><entity>dgt_implemail</entity></entities></importexportxml>'
 } | Out-Null
+
+# ------------------------------------------------------------
+# 7b) Tipos de documento iniciais (idempotente: pelo nome + aplica-se a)
+#     Colaborador: ASO (obrigatório para todos, 365 dias) e NR aplicável
+#     (opcional; pede a norma). Os demais (Integração, NR-35...) são
+#     cadastrados pela tela. Empresa: "Relatório de homologação" (o PDF
+#     final de cada ciclo; não obrigatório, sem validade, Interno).
+# ------------------------------------------------------------
+
+Write-Host "`n7b) Tipos de documento iniciais" -ForegroundColor Cyan
+
+function New-TipoDocumento {
+  param([string] $Nome, [string] $AplicaA, [bool] $Obrigatorio, [bool] $ExigeValidade, $ValidadeDias, [int] $Ordem, [string] $Descricao)
+  $nomeFiltro = $Nome.Replace("'", "''")
+  $existentes = Invoke-Dv -Metodo 'GET' -Caminho "dgt_tipodocumentofornecedors?`$select=dgt_name,dgt_aplicaa&`$filter=dgt_name eq '$nomeFiltro'"
+  $mesmo = @($existentes.value | Where-Object { ($(if ($_.dgt_aplicaa) { $_.dgt_aplicaa } else { 'Empresa' })) -eq $AplicaA })
+  if ($mesmo.Count -gt 0) {
+    Write-Host "  = tipo '$Nome' ($AplicaA) já existe"
+    return
+  }
+  Write-Host "  + tipo '$Nome' ($AplicaA)" -ForegroundColor Green
+  $corpo = @{
+    dgt_name          = $Nome
+    dgt_descricao     = $Descricao
+    dgt_aplicaa       = $AplicaA
+    dgt_obrigatorio   = $Obrigatorio
+    dgt_exigevalidade = $ExigeValidade
+    dgt_visibilidade  = 'Interno'
+    dgt_ordem         = $Ordem
+    dgt_ativo         = $true
+  }
+  if ($ValidadeDias) { $corpo.dgt_validadedias = [int]$ValidadeDias }
+  Invoke-Dv -Metodo 'POST' -Caminho 'dgt_tipodocumentofornecedors' -Corpo $corpo | Out-Null
+}
+
+New-TipoDocumento 'ASO' 'Colaborador' $true $true 365 10 'Atestado de Saúde Ocupacional. Obrigatório para todos os colaboradores.'
+New-TipoDocumento 'NR aplicável' 'Colaborador' $false $true $null 90 'Treinamento na NR que se aplica ao colaborador (informe qual, ex.: NR-10). Prefira cadastrar cada NR como tipo próprio quando for exigida de todos.'
+New-TipoDocumento 'Relatório de homologação' 'Empresa' $false $false $null 105 'PDF final do ciclo de homologação, gerado pelo portal na conclusão.'
 
 # ------------------------------------------------------------
 # 8) Perfil de segurança de campo do CNPJ

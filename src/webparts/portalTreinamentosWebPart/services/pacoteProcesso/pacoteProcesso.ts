@@ -775,7 +775,32 @@ export const interpretarPacote = (
     }
 
     if ((tipo === 'tarefaHumana' || tipo === 'eventoNotificacao') && Array.isArray(item.notificacoes) && item.notificacoes.length > 0) {
-      elemento.notificacoes = item.notificacoes;
+      // Destinatário do tipo Área pode vir pela SIGLA ("area": "SUY"),
+      // como nos responsáveis: vira o id da área deste ambiente. Com
+      // referenciaId (pacote exportado), segue como veio.
+      elemento.notificacoes = item.notificacoes.map((notificacao, n) => ({
+        ...notificacao,
+        destinatarios: (notificacao.destinatarios || []).map(destinatario => {
+          const sigla = texto((destinatario as { area?: string }).area);
+          if (destinatario.tipo !== 'area' || destinatario.referenciaId || !sigla) {
+            return destinatario;
+          }
+          const area = areaPorSigla(sigla);
+          if (!area) {
+            erros.push(`${onde} (${idOriginal}).notificacoes[${n}]: área "${sigla}" não encontrada. ${siglasDisponiveis}`);
+            return destinatario;
+          }
+          const convertido: IFluxoResponsavel = {
+            tipo: 'area',
+            referenciaId: area.id,
+            referenciaNome: area.nome,
+            descricao: texto(destinatario.descricao) || `${DESCRICAO_RESPONSAVEL.area}: ${area.nome}`,
+            somenteGestores: !!destinatario.somenteGestores,
+            papelTeste: destinatario.papelTeste || `area:${sigla}`
+          };
+          return convertido;
+        })
+      }));
     }
 
     if (tipo === 'eventoRevisao') {

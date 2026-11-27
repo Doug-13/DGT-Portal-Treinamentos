@@ -12,6 +12,7 @@ import {
   registrarDiagnosticoNoConsole
 } from './utils/diagnosticoDataverse';
 import { registrarFabricaCrm } from './services/crm/CrmConexao';
+import { protegerDigitacaoDosAtalhosDaPagina } from './utils/teclasDigitacao';
 
 export interface IPortalTreinamentosWebPartProps {
 }
@@ -19,7 +20,14 @@ export interface IPortalTreinamentosWebPartProps {
 export default class PortalTreinamentosWebPart
   extends BaseClientSideWebPart<IPortalTreinamentosWebPartProps> {
 
+  // Digitar ":" (ABNT2) ou "?" num campo não abre os atalhos do SharePoint.
+  private removerProtecaoDigitacao: (() => void) | undefined;
+
   public render(): void {
+    if (!this.removerProtecaoDigitacao) {
+      this.removerProtecaoDigitacao = protegerDigitacaoDosAtalhosDaPagina();
+    }
+
     this.domElement.style.width = '100%';
     this.domElement.style.maxWidth = 'none';
     this.domElement.style.margin = '0';
@@ -122,6 +130,10 @@ export default class PortalTreinamentosWebPart
   }
 
   protected onDispose(): void {
+    if (this.removerProtecaoDigitacao) {
+      this.removerProtecaoDigitacao();
+      this.removerProtecaoDigitacao = undefined;
+    }
     ReactDom.unmountComponentAtNode(
       this.domElement
     );

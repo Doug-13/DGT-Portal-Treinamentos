@@ -40,5 +40,46 @@ namespace DGT.Treinamentos.Plugins
                 }
             }.ToString(Newtonsoft.Json.Formatting.None);
         }
+
+        // ------------------------------------------------------------
+        // Aviso "Ficha recebida" para a área Supply, pela fila padrão de
+        // e-mails do portal (dgt_implemail, status Pendente) — o mesmo
+        // caminho das notificações do fluxo. Sem CNPJ, CPF ou dados
+        // bancários: só razão social e protocolo.
+        // ------------------------------------------------------------
+
+        public const string TipoEmailFichaRecebida = "fornecedorFichaRecebida";
+
+        public const string RemetenteFornecedores = "fornecedores";
+
+        public static string AssuntoFichaRecebida(string razaoSocial, string protocolo)
+        {
+            var texto = $"Nova ficha de fornecedor: {Limpo(razaoSocial)} ({Limpo(protocolo)})";
+            return texto.Length > 200 ? texto.Substring(0, 200) : texto;
+        }
+
+        public static string CorpoFichaRecebida(string razaoSocial, string protocolo, string motivo, string linkPortal)
+        {
+            var link = string.IsNullOrWhiteSpace(linkPortal)
+                ? "Acesse o portal: Fornecedores → Pendências."
+                : $"Acesse o portal: <a href=\"{Html(linkPortal.Trim())}\">Fornecedores → Pendências</a>.";
+            return "<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#1F2A44\">" +
+                   $"<p>Chegou uma ficha de cadastro pelo formulário: <strong>{Html(razaoSocial)}</strong>, protocolo <strong>{Html(protocolo)}</strong> ({Html(motivo)}).</p>" +
+                   "<p>O ciclo de homologação está na etapa <strong>Ficha recebida</strong>, aguardando a área Supply.</p>" +
+                   $"<p>{link}</p>" +
+                   "<p style=\"color:#5B6478;font-size:12px\">Não responda este e-mail.</p></div>";
+        }
+
+        // Chave do envio (dgt_motivo, 200): um aviso por ciclo e destinatário.
+        public static string MotivoFichaRecebida(Guid cicloId, string email)
+        {
+            var texto = $"forn-ficha:{cicloId:N}:{(email ?? string.Empty).Trim().ToLowerInvariant()}";
+            return texto.Length > 200 ? texto.Substring(0, 200) : texto;
+        }
+
+        private static string Limpo(string valor) => (valor ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
+
+        public static string Html(string valor) =>
+            (valor ?? string.Empty).Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
     }
 }

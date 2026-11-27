@@ -8,6 +8,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Messages;
+using Microsoft.Xrm.Sdk.Metadata;
+using Microsoft.Xrm.Sdk.Metadata.Query;
 using Microsoft.Xrm.Sdk.Query;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -83,13 +86,14 @@ namespace DGT.Treinamentos.Plugins
     //         "rotasEstaduais":  { "SC": "<rota>?inscricao_estadual={ie}" },
     //         "rotasMunicipais": { "SC/FLORIANOPOLIS": "<rota>" },
     //         "rotasTrt":        { "RS": "tribunal/trt4/ceat" },
-    //         "areaSuprimentos": "SUY" }          (sigla da área da 1ª etapa da homologação)
+    //         "areaSuprimentos": "SUY",           (sigla da área da 1ª etapa da homologação)
+    //         "linkPortal": "https://..." }       (link no e-mail "Ficha recebida"; opcional)
     //   rotasTrt (CEAT): TRT da sede do fornecedor, por UF ("RS") ou por
     //   cidade ("SP/CAMPINAS", para UF com mais de um TRT). Padrão: só RS
     //   (TRT4, rota confirmada). UF sem rota: "Sem cobertura".
     //   Rotas estaduais/municipais: o caminho da consulta na Infosimples
     //   (depois de /consultas/), conforme o catálogo contratado. Depois do
-    //   "?" vão parâmetros extras; {cnpj}, {ie} e {im} são trocados pelos
+    //   "?" vão parâmetros extras; {cnpj}, {uf}, {ie} e {im} são trocados pelos
     //   dados do fornecedor. Sem rota: "Sem cobertura" (emissão manual).
     //   Sem a chave de uma fonte, a consulta dela responde "não
     //   configurada" e o resto funciona normalmente.
@@ -125,19 +129,24 @@ namespace DGT.Treinamentos.Plugins
 
         private sealed class Certidao
         {
-            public Certidao(string codigo, string tipo, string nome, string rota)
+            public Certidao(string codigo, string tipo, string nome, string rota, string rotaAlternativa = null)
             {
-                Codigo = codigo; Tipo = tipo; Nome = nome; Rota = rota;
+                Codigo = codigo; Tipo = tipo; Nome = nome; Rota = rota; RotaAlternativa = rotaAlternativa;
             }
             public string Codigo { get; }
             public string Tipo { get; }   // dgt_fornecedorconsulta.dgt_tipo
             public string Nome { get; }
             public string Rota { get; }   // null = estadual/municipal (configurável)
+            // Segunda tentativa, na mesma chamada, quando a 1ª falha por
+            // instabilidade da fonte (CertidoesInfosimples.Transitorio).
+            public string RotaAlternativa { get; }
         }
 
         private static readonly Certidao[] Certidoes =
         {
-            new Certidao("cnd_federal", "CND_FEDERAL", "CND Federal (Receita/PGFN)", "receita-federal/pgfn?preferencia_emissao=2via"),
+            // PGFN oscila (611 "dados incompletos", 615 fora do ar): se a
+            // 2ª via falhar por instabilidade, tenta emitir uma nova.
+            new Certidao("cnd_federal", "CND_FEDERAL", "CND Federal (Receita/PGFN)", "receita-federal/pgfn?preferencia_emissao=2via", "receita-federal/pgfn/nova"),
             new Certidao("fgts", "FGTS", "Certificado de Regularidade do FGTS (CRF)", "caixa/regularidade"),
             new Certidao("cndt", "CNDT", "Certidão Negativa de Débitos Trabalhistas (CNDT)", "tst/cndt"),
             new Certidao("cnd_estadual", "CND_ESTADUAL", "CND Estadual", null),
@@ -165,6 +174,8 @@ namespace DGT.Treinamentos.Plugins
         // Sigla (dgt_area.dgt_sigla) da área que responde a 1ª etapa da
         // homologação (SUP-HOM) — gravada no ciclo aberto pela ficha.
         private readonly string _areaSuprimentos = HomologacaoFornecedor.SiglaSuprimentosPadrao;
+        // Link do portal no aviso "Ficha recebida" (opcional).
+        private readonly string _linkPortal = string.Empty;
         private readonly Dictionary<string, string> _rotasEstaduais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _rotasMunicipais = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _rotasTrt = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -207,6 +218,7 @@ namespace DGT.Treinamentos.Plugins
                     _timeoutInfosimples = Math.Min(100, Math.Max(15, (int?)config["infosimplesTimeout"] ?? _timeoutInfosimples));
                     _diasRenovacaoCertidoes = Math.Max(1, (int?)config["diasRenovacaoCertidoes"] ?? _diasRenovacaoCertidoes);
                     _areaSuprimentos = Texto(config["areaSuprimentos"], _areaSuprimentos).Trim();
+                    _linkPortal = Texto(config["linkPortal"], string.Empty).Trim();
                     LerRotas(config["rotasEstaduais"] as JObject, _rotasEstaduais);
                     LerRotas(config["rotasMunicipais"] as JObject, _rotasMunicipais);
                     LerRotas(config["rotasTrt"] as JObject, _rotasTrt);
@@ -903,42 +915,37 @@ namespace DGT.Treinamentos.Plugins
                 return new JObject { ["ok"] = false, ["semCobertura"] = true, ["mensagem"] = $"Sem cobertura automática para {onde}." };
             }
 
-            var partes = rota.Split(new[] { '?' }, 2);
-            var caminho = partes[0].Trim().Trim('/');
-            var segundos = (int)Math.Max(10, Math.Min(_timeoutInfosimples, (prazo - DateTime.UtcNow).TotalSeconds - 10));
+            JObject resposta;
+            string erro;
+            var chamou = ChamarRotaCertidao(tracing, fornecedor, cnpj, rota, uf, prazo, out resposta, out erro);
+            var codigo = chamou ? ((int?)resposta["code"] ?? 0) : 0;
 
-            var parametros = new List<KeyValuePair<string, string>>
+            // Fonte instável (PGFN oscila): uma segunda tentativa pela rota
+            // alternativa, se ainda houver tempo nesta chamada.
+            if ((!chamou || CertidoesInfosimples.Transitorio(codigo))
+                && !string.IsNullOrWhiteSpace(certidao.RotaAlternativa)
+                && (prazo - DateTime.UtcNow).TotalSeconds >= 40)
             {
-                new KeyValuePair<string, string>("token", _chaveInfosimples),
-                new KeyValuePair<string, string>("timeout", segundos.ToString(CultureInfo.InvariantCulture)),
-                new KeyValuePair<string, string>("cnpj", cnpj)
-            };
-
-            if (partes.Length > 1)
-            {
-                foreach (var par in partes[1].Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries))
+                tracing.Trace("{0}: 1ª tentativa falhou ({1}); tentando a rota alternativa.", certidao.Tipo, chamou ? codigo.ToString(CultureInfo.InvariantCulture) : "rede");
+                JObject resposta2;
+                string erro2;
+                if (ChamarRotaCertidao(tracing, fornecedor, cnpj, certidao.RotaAlternativa, uf, prazo, out resposta2, out erro2))
                 {
-                    var kv = par.Split(new[] { '=' }, 2);
-                    var chave = Uri.UnescapeDataString(kv[0].Trim());
-                    if (chave.Length == 0 || chave == "cnpj" || chave == "token" || chave == "timeout") { continue; }
-                    var valor = kv.Length > 1 ? Uri.UnescapeDataString(kv[1].Trim()) : string.Empty;
-                    valor = valor
-                        .Replace("{cnpj}", cnpj)
-                        .Replace("{ie}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaoestadual") ?? string.Empty, "[^0-9A-Za-z]", string.Empty))
-                        .Replace("{im}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaomunicipal") ?? string.Empty, "[^0-9A-Za-z]", string.Empty));
-                    parametros.Add(new KeyValuePair<string, string>(chave, valor));
+                    var codigo2 = (int?)resposta2["code"] ?? 0;
+                    // Fica com a 2ª resposta se deu certo ou se a 1ª nem chegou a responder.
+                    if (codigo2 == 200 || !chamou)
+                    {
+                        resposta = resposta2; codigo = codigo2; chamou = true; erro = string.Empty;
+                    }
                 }
             }
 
-            JObject resposta;
-            string erro;
-            if (!ChamarInfosimples(tracing, caminho, parametros, prazo, out resposta, out erro))
+            if (!chamou)
             {
                 RegistrarConsulta(sistema, fornecedor.Id, certidao.Tipo, "Erro", erro, Fonte, usuario);
                 return new JObject { ["ok"] = false, ["mensagem"] = erro };
             }
 
-            var codigo = (int?)resposta["code"] ?? 0;
             if (codigo != 200)
             {
                 var mensagem = Mascarar(Texto(resposta["code_message"], "a fonte não devolveu a certidão"));
@@ -946,10 +953,10 @@ namespace DGT.Treinamentos.Plugins
                 {
                     mensagem += " (verifique o token na Configuração segura do passo)";
                 }
-                else if (codigo == 605 || codigo == 615)
+                else if (CertidoesInfosimples.Transitorio(codigo))
                 {
-                    // Site do órgão fora do ar ou lento: não é erro do cadastro.
-                    mensagem += " O site do órgão está indisponível agora: tente de novo mais tarde (o lote diário tenta de novo sozinho).";
+                    // Site do órgão fora do ar, lento ou instável: não é erro do cadastro.
+                    mensagem += " O site do órgão está instável agora: tente de novo mais tarde (o lote diário tenta de novo sozinho).";
                 }
                 erro = Limitar($"Infosimples ({codigo}): {mensagem}", 1000);
                 tracing.Trace("{0}: Infosimples respondeu código {1}.", certidao.Tipo, codigo);
@@ -1023,7 +1030,9 @@ namespace DGT.Treinamentos.Plugins
 
             var certidaoCurta = Texto(d["certidao"], string.Empty);
             if (certidaoCurta.Length > 80) { certidaoCurta = string.Empty; }   // texto integral da certidão
-            a.Situacao = Mascarar(Juntar(" · ", Texto(d["tipo"], string.Empty), Texto(d["situacao"], string.Empty), certidaoCurta));
+            // titulo (prefeituras, ex.: Porto Alegre) e certidao_mensagem (SEFAZ RS).
+            a.Situacao = Mascarar(Juntar(" · ", Texto(d["tipo"], string.Empty), Texto(d["situacao"], string.Empty), certidaoCurta,
+                Texto(d["titulo"], string.Empty), Texto(d["certidao_mensagem"], string.Empty)));
             var chave = SemAcento(a.Situacao).ToUpperInvariant();
 
             var conseguiu = d["conseguiu_emitir_certidao_negativa"];
@@ -1052,8 +1061,10 @@ namespace DGT.Treinamentos.Plugins
             else if (consta != null && consta.Type == JTokenType.Boolean) { a.Regular = !(bool)consta; }
 
             a.Validade = PrimeiraData(d, "validade_data", "validade_fim_data", "normalizado_validade", "validade", "data_validade");
-            a.Emissao = PrimeiraData(d, "emissao_data", "validade_inicio_data", "normalizado_expedicao", "expedicao", "data_emissao", "datahora", "consulta_datahora");
-            a.Codigo = Limitar(Mascarar(Juntar(" ", Texto(d["certidao_codigo"], string.Empty), Texto(d["crf"], string.Empty), Texto(d["codigo_controle"], string.Empty))), 120);
+            a.Emissao = PrimeiraData(d, "emissao_data", "validade_inicio_data", "normalizado_expedicao", "expedicao", "data_emissao",
+                "normalizado_datahora_emissao", "datahora_emissao", "datahora", "consulta_datahora");
+            a.Codigo = Limitar(Mascarar(Juntar(" ", Texto(d["certidao_codigo"], string.Empty), Texto(d["crf"], string.Empty), Texto(d["codigo_controle"], string.Empty),
+                Texto(d["codigo_autenticidade"], string.Empty))), 120);
             a.Mensagem = Limitar(Mascarar(Juntar(" ", Texto(d["mensagem"], string.Empty), Texto(d["observacoes"], string.Empty))), 600);
             return a;
         }
@@ -1107,6 +1118,42 @@ namespace DGT.Treinamentos.Plugins
                 return DateTime.SpecifyKind(data.Date, DateTimeKind.Unspecified);
             }
             return null;
+        }
+
+        // Monta os parâmetros da rota ("caminho?extra=valor") e chama a
+        // Infosimples. {cnpj}, {ie}, {im} e {uf} são trocados pelos dados do
+        // fornecedor. O token vai no corpo, nunca na URL.
+        private bool ChamarRotaCertidao(ITracingService tracing, Entity fornecedor, string cnpj, string rota, string uf, DateTime prazo, out JObject resposta, out string erro)
+        {
+            var partes = rota.Split(new[] { '?' }, 2);
+            var caminho = partes[0].Trim().Trim('/');
+            var segundos = (int)Math.Max(10, Math.Min(_timeoutInfosimples, (prazo - DateTime.UtcNow).TotalSeconds - 10));
+
+            var parametros = new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>("token", _chaveInfosimples),
+                new KeyValuePair<string, string>("timeout", segundos.ToString(CultureInfo.InvariantCulture)),
+                new KeyValuePair<string, string>("cnpj", cnpj)
+            };
+
+            if (partes.Length > 1)
+            {
+                foreach (var par in partes[1].Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var kv = par.Split(new[] { '=' }, 2);
+                    var chave = Uri.UnescapeDataString(kv[0].Trim());
+                    if (chave.Length == 0 || chave == "cnpj" || chave == "token" || chave == "timeout") { continue; }
+                    var valor = kv.Length > 1 ? Uri.UnescapeDataString(kv[1].Trim()) : string.Empty;
+                    valor = valor
+                        .Replace("{cnpj}", cnpj)
+                        .Replace("{uf}", uf)
+                        .Replace("{ie}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaoestadual") ?? string.Empty, "[^0-9A-Za-z]", string.Empty))
+                        .Replace("{im}", Regex.Replace(fornecedor.GetAttributeValue<string>("dgt_inscricaomunicipal") ?? string.Empty, "[^0-9A-Za-z]", string.Empty));
+                    parametros.Add(new KeyValuePair<string, string>(chave, valor));
+                }
+            }
+
+            return ChamarInfosimples(tracing, caminho, parametros, prazo, out resposta, out erro);
         }
 
         private bool ChamarInfosimples(ITracingService tracing, string caminho, List<KeyValuePair<string, string>> parametros, DateTime prazo, out JObject resposta, out string erro)
@@ -1521,7 +1568,8 @@ namespace DGT.Treinamentos.Plugins
             var gravado = sistema.Retrieve(TabelaFornecedor, id, new ColumnSet("dgt_protocolo", "dgt_name", "dgt_categoria"));
             var categoria = gravado.GetAttributeValue<string>("dgt_categoria") ?? string.Empty;
 
-            AbrirCicloSeNecessario(sistema, tracing, id, tipoSolicitacao, gravado.GetAttributeValue<string>("dgt_protocolo") ?? string.Empty, usuario, _areaSuprimentos);
+            AbrirCicloSeNecessario(sistema, tracing, id, tipoSolicitacao, gravado.GetAttributeValue<string>("dgt_protocolo") ?? string.Empty, usuario, _areaSuprimentos,
+                gravado.GetAttributeValue<string>("dgt_name") ?? string.Empty, _linkPortal);
 
             return new JObject
             {
@@ -1647,7 +1695,8 @@ namespace DGT.Treinamentos.Plugins
         // SEM instância, mas já com a etapa e a área Suprimentos
         // (PrepararCicloParaFluxo) para o aviso da 1ª etapa sair. Sem a
         // tabela (script ainda não rodado), só registra no rastreamento.
-        private static void AbrirCicloSeNecessario(IOrganizationService sistema, ITracingService tracing, Guid fornecedorId, string motivo, string protocolo, string usuario, string siglaSuprimentos)
+        private static void AbrirCicloSeNecessario(IOrganizationService sistema, ITracingService tracing, Guid fornecedorId, string motivo, string protocolo, string usuario, string siglaSuprimentos,
+            string razaoSocial, string linkPortal)
         {
             try
             {
@@ -1668,7 +1717,11 @@ namespace DGT.Treinamentos.Plugins
                 ciclo["dgt_resultadohomologacao"] = "Pendente";
                 ciclo["dgt_responsavelnome"] = Limitar(usuario, 200);
                 var cicloId = sistema.Create(ciclo);
-                PrepararCicloParaFluxo(sistema, tracing, cicloId, siglaSuprimentos);
+                var areaId = PrepararCicloParaFluxo(sistema, tracing, cicloId, siglaSuprimentos);
+                if (areaId.HasValue)
+                {
+                    AvisarFichaRecebida(sistema, tracing, cicloId, areaId.Value, razaoSocial, protocolo, motivo, linkPortal);
+                }
 
                 RegistrarHistorico(sistema, fornecedorId, "Homologação: ciclo aberto",
                     $"Ciclo {numero} ({motivo}) aberto na coluna \"Ficha recebida\" pela ficha {protocolo}.", usuario);
@@ -1682,8 +1735,10 @@ namespace DGT.Treinamentos.Plugins
         // Colunas do motor (dgt_etapaatual, dgt_responsaveisetapa). Em
         // separado: sem elas (script não rodado) ou sem a área cadastrada,
         // o ciclo continua aberto e o portal resolve ao abrir.
-        private static void PrepararCicloParaFluxo(IOrganizationService sistema, ITracingService tracing, Guid cicloId, string siglaSuprimentos)
+        // Devolve a área Supply encontrada (para o aviso por e-mail).
+        private static Guid? PrepararCicloParaFluxo(IOrganizationService sistema, ITracingService tracing, Guid cicloId, string siglaSuprimentos)
         {
+            Guid? areaId = null;
             try
             {
                 var sigla = string.IsNullOrWhiteSpace(siglaSuprimentos) ? HomologacaoFornecedor.SiglaSuprimentosPadrao : siglaSuprimentos.Trim();
@@ -1691,10 +1746,19 @@ namespace DGT.Treinamentos.Plugins
                 consulta.Criteria.AddCondition("dgt_sigla", ConditionOperator.Equal, sigla);
                 var area = sistema.RetrieveMultiple(consulta).Entities.FirstOrDefault();
 
+                // Sem as colunas do fluxo (script não rodado): não tenta gravar.
+                // Chamada que falha dentro do plugin desfaz a transação inteira.
+                if (!ColunaExiste(sistema, TabelaCiclo, "dgt_etapaatual") || !ColunaExiste(sistema, TabelaCiclo, "dgt_responsaveisetapa"))
+                {
+                    tracing.Trace("Ficha: colunas do fluxo ainda não existem no ciclo.");
+                    return null;
+                }
+
                 var atualizacao = new Entity(TabelaCiclo, cicloId);
                 atualizacao["dgt_etapaatual"] = HomologacaoFornecedor.EtapaInicial;
                 if (area != null)
                 {
+                    areaId = area.Id;
                     atualizacao["dgt_responsaveisetapa"] = HomologacaoFornecedor.ResponsaveisDaArea(area.Id, sigla, area.GetAttributeValue<string>("dgt_name"));
                 }
                 else
@@ -1707,6 +1771,93 @@ namespace DGT.Treinamentos.Plugins
             {
                 tracing.Trace("Ficha: ciclo aberto sem as colunas do fluxo: {0}", ex.Message);
             }
+            return areaId;
+        }
+
+        // A coluna existe? Consulta de metadados que NÃO falha quando a
+        // tabela ou a coluna não existem (devolve vazio).
+        private static bool ColunaExiste(IOrganizationService sistema, string tabela, string coluna)
+        {
+            var consulta = new EntityQueryExpression
+            {
+                Criteria = new MetadataFilterExpression(LogicalOperator.And),
+                Properties = new MetadataPropertiesExpression("LogicalName", "Attributes"),
+                AttributeQuery = new AttributeQueryExpression
+                {
+                    Criteria = new MetadataFilterExpression(LogicalOperator.And),
+                    Properties = new MetadataPropertiesExpression("LogicalName")
+                }
+            };
+            consulta.Criteria.Conditions.Add(new MetadataConditionExpression("LogicalName", MetadataConditionOperator.Equals, tabela));
+            consulta.AttributeQuery.Criteria.Conditions.Add(new MetadataConditionExpression("LogicalName", MetadataConditionOperator.Equals, coluna));
+            var resposta = (RetrieveMetadataChangesResponse)sistema.Execute(new RetrieveMetadataChangesRequest { Query = consulta });
+            return resposta.EntityMetadata.Any(e => e.Attributes != null && e.Attributes.Any(a => a.LogicalName == coluna));
+        }
+
+        // Aviso "Ficha recebida" a cada membro ativo da área Supply, pela
+        // fila padrão de e-mails do portal (dgt_implemail). Quem envia é o
+        // fluxo central do Power Automate. Falha aqui não impede a ficha.
+        private static void AvisarFichaRecebida(IOrganizationService sistema, ITracingService tracing, Guid cicloId, Guid areaId,
+            string razaoSocial, string protocolo, string motivo, string linkPortal)
+        {
+            try
+            {
+                if (!ColunaExiste(sistema, "dgt_implemail", "dgt_status"))
+                {
+                    tracing.Trace("Ficha: fila de e-mails (dgt_implemail) não existe; aviso não enviado.");
+                    return;
+                }
+                var comRemetente = ColunaExiste(sistema, "dgt_implemail", "dgt_remetente");
+
+                var vinculos = new QueryExpression("dgt_usuarioarea") { ColumnSet = new ColumnSet("dgt_usuario", "dgt_ativo") };
+                vinculos.Criteria.AddCondition("dgt_area", ConditionOperator.Equal, areaId);
+                var usuarios = sistema.RetrieveMultiple(vinculos).Entities
+                    .Where(v => v.GetAttributeValue<bool?>("dgt_ativo") != false)
+                    .Select(v => v.GetAttributeValue<EntityReference>("dgt_usuario"))
+                    .Where(u => u != null)
+                    .Select(u => u.Id)
+                    .Distinct()
+                    .ToList();
+
+                var emails = new List<string>();
+                foreach (var usuarioId in usuarios)
+                {
+                    var u = sistema.Retrieve("dgt_usuario", usuarioId, new ColumnSet("dgt_email", "dgt_ativo"));
+                    var email = (u.GetAttributeValue<string>("dgt_email") ?? string.Empty).Trim();
+                    if (u.GetAttributeValue<bool?>("dgt_ativo") != false && email.Contains("@") && !emails.Contains(email, StringComparer.OrdinalIgnoreCase))
+                    {
+                        emails.Add(email);
+                    }
+                }
+
+                var assunto = HomologacaoFornecedor.AssuntoFichaRecebida(razaoSocial, protocolo);
+                var corpo = HomologacaoFornecedor.CorpoFichaRecebida(razaoSocial, protocolo, motivo, linkPortal);
+
+                foreach (var email in emails)
+                {
+                    var linha = new Entity("dgt_implemail");
+                    linha["dgt_name"] = assunto;
+                    linha["dgt_para"] = Limitar(email, 320);
+                    linha["dgt_corpo"] = corpo;
+                    linha["dgt_tipo"] = HomologacaoFornecedor.TipoEmailFichaRecebida;
+                    linha["dgt_motivo"] = HomologacaoFornecedor.MotivoFichaRecebida(cicloId, email);
+                    linha["dgt_status"] = "Pendente";
+                    if (comRemetente)
+                    {
+                        linha["dgt_remetente"] = HomologacaoFornecedor.RemetenteFornecedores;
+                    }
+                    sistema.Create(linha);
+                }
+
+                if (emails.Count == 0)
+                {
+                    tracing.Trace("Ficha: nenhum membro ativo com e-mail na área Supply; aviso não enviado.");
+                }
+            }
+            catch (Exception ex)
+            {
+                tracing.Trace("Ficha: aviso por e-mail não gravado na fila: {0}", ex.Message);
+            }
         }
 
         // Obrigatórios da categoria que o fornecedor precisa ENVIAR
@@ -1716,6 +1867,15 @@ namespace DGT.Treinamentos.Plugins
             var consulta = new QueryExpression(TabelaTipo) { ColumnSet = new ColumnSet("dgt_name", "dgt_categorias", "dgt_codigoconsulta", "dgt_ordem") };
             consulta.Criteria.AddCondition("dgt_ativo", ConditionOperator.Equal, true);
             consulta.Criteria.AddCondition("dgt_obrigatorio", ConditionOperator.Equal, true);
+            // Tipos de COLABORADOR (dgt_aplicaa) não são documentos da empresa:
+            // ficam fora da lista do e-mail ao fornecedor.
+            if (ColunaExiste(sistema, TabelaTipo, "dgt_aplicaa"))
+            {
+                var empresa = new FilterExpression(LogicalOperator.Or);
+                empresa.AddCondition("dgt_aplicaa", ConditionOperator.Null);
+                empresa.AddCondition("dgt_aplicaa", ConditionOperator.NotEqual, "Colaborador");
+                consulta.Criteria.AddFilter(empresa);
+            }
             consulta.AddOrder("dgt_ordem", OrderType.Ascending);
 
             return sistema.RetrieveMultiple(consulta).Entities

@@ -3,6 +3,10 @@ import {
 } from '../DataverseService';
 
 import {
+  NotificacaoFluxoService
+} from '../notificacoes/NotificacaoFluxoService';
+
+import {
   IContextoAcesso
 } from '../AutorizacaoService';
 
@@ -90,6 +94,18 @@ import {
 // ações "aprovado", "aprovadoRessalvas" e "reprovado" concluem o ciclo
 // com as regras de sempre (validarConclusao / statusPeloResultado).
 //
+// Avisos (fila padrão do portal, dgt_implemail — o portal não envia):
+//   • internos de etapa: aba Notificações das atividades do SUP-HOM e
+//     eventos com carta (motor do Douglas, docs/notificacoes-fluxo.md);
+//     {registro} = razão social (protocolo) — ciclo N, nunca o CNPJ;
+//   • criação TARDIA da instância (ciclo aberto pela ficha, no plugin,
+//     ou anterior ao motor) e a migração para a etapa equivalente NÃO
+//     notificam: usam o motor sem o despachante. O aviso de "nova
+//     ficha" é o do plugin (fila, área Supply). "Abrir ciclo" pelo
+//     botão notifica a 1ª etapa normalmente;
+//   • ao fornecedor (etapa "Documentos pendentes"): Power Automate, pela
+//     caixa monitorada (a resposta precisa cair no Fluxo 2).
+//
 // PILOTO: quem pode agir é conferido no navegador (como em Documentos
 // e Ambientes) até o motor ir para a Custom API.
 // ============================================================
@@ -125,6 +141,23 @@ const prazoEmDiasUteis = (dias: number): string | undefined => {
     }
   }
   return data.toISOString();
+};
+
+// {registro} das notificações e rótulo do ciclo: razão social e
+// protocolo (nunca o CNPJ).
+export const rotuloDoCiclo = (
+  fornecedor: Pick<IFornecedor, 'razaoSocial' | 'protocolo'>,
+  ciclo: Pick<ICicloHomologacao, 'numero' | 'protocolo'>
+): string => {
+  const protocolo = ciclo.protocolo || fornecedor.protocolo;
+  return `${fornecedor.razaoSocial}${protocolo ? ` (${protocolo})` : ''} — ciclo ${ciclo.numero}`;
+};
+
+// Ciclo anterior ao motor parado numa coluna adiante: será migrado para
+// a etapa equivalente (e não notifica).
+const etapaFluxoDaColunaDiferente = (ciclo: ICicloHomologacao): boolean => {
+  const destino = etapaFluxoDaColuna(ciclo.etapa);
+  return !!destino && destino !== ETAPAS_FLUXO_HOMOLOGACAO.fichaRecebida;
 };
 
 // ------------------------------------------------------------
@@ -218,6 +251,8 @@ export class HomologacaoFluxoService {
   private readonly fornecedores: FornecedoresService;
   private readonly repositorio: HomologacaoFluxoRepositorio;
   private readonly fluxo: FluxoService;
+  // Mesmo motor SEM o despachante: início tardio e migração não notificam.
+  private readonly fluxoSemAviso: FluxoService;
   private disponibilidade: IDisponibilidadeHomologacao | undefined;
   private vinculosCache: IUsuarioAreaAdmin[] | undefined;
   private usuariosCache: Array<{ id: string; nome: string }> | undefined;
@@ -227,7 +262,13 @@ export class HomologacaoFluxoService {
     this.fornecedores = fornecedores;
     this.repositorio = new HomologacaoFluxoRepositorio(dataverse);
     const persistencia = obterPersistenciaFluxo(dataverse);
-    this.fluxo = new FluxoService(this.repositorio, persistencia.catalogo, persistencia.metadados);
+    this.fluxo = new FluxoService(
+      this.repositorio,
+      persistencia.catalogo,
+      persistencia.metadados,
+      // Notificações do fluxo (aba Notificações e evento com carta).
+      new NotificacaoFluxoService(dataverse, 'fornecedores'));
+    this.fluxoSemAviso = new FluxoService(this.repositorio, persistencia.catalogo, persistencia.metadados);
   }
 
   // ----------------------------------------------------------
@@ -333,7 +374,8 @@ export class HomologacaoFluxoService {
     return {
       resolverResponsaveis: (responsaveis, valores) =>
         resolverResponsaveis(responsaveis, { valores }, this.vinculosCache),
-      rotuloRevisao: `Homologação ${fornecedor.razaoSocial} — ciclo ${ciclo.numero}`,
+      // {registro} das notificações: razão social e protocolo, nunca o CNPJ.
+      rotuloRevisao: rotuloDoCiclo(fornecedor, ciclo),
       // O SUP-HOM não tem tarefas de sistema: seguem adiante.
       executarAcoesSistema: async () => undefined
     };
@@ -367,11 +409,14 @@ export class HomologacaoFluxoService {
   // Idempotente: ciclo que já tem instância não muda. Ciclo aberto
   // antes do motor numa coluna adiante (ex.: "Aguardando Jurídico")
   // começa na etapa equivalente do fluxo, com registro no histórico.
+  // notificar = true só no "Abrir ciclo" pelo botão; o início tardio
+  // (primeira abertura do card) e a migração não notificam.
   public async iniciar(
     fornecedor: IFornecedor,
     ciclo: ICicloHomologacao,
     contexto: IContextoAcesso,
-    documentosPendentes: string[]
+    documentosPendentes: string[],
+    opcoes: { notificar?: boolean } = {}
   ): Promise<IResultadoAcaoHomologacao> {
 
     if (ciclo.concluidoEm) {
@@ -393,7 +438,8 @@ export class HomologacaoFluxoService {
 
     let resultado;
     try {
-      resultado = await this.fluxo.iniciar(
+      const motor = opcoes.notificar && !etapaFluxoDaColunaDiferente(ciclo) ? this.fluxo : this.fluxoSemAviso;
+      resultado = await motor.iniciar(
         disponibilidade.processo,
         {
           revisaoId: ciclo.id,
@@ -426,7 +472,7 @@ export class HomologacaoFluxoService {
     }
 
     if (estado) {
-      const aviso = await this.sincronizar(ciclo, estado, documentosPendentes);
+      const aviso = await this.sincronizar(fornecedor, ciclo, estado, documentosPendentes);
       if (aviso) {
         avisos.push(aviso);
       }
@@ -553,7 +599,7 @@ export class HomologacaoFluxoService {
     const depois = await this.carregar(ciclo);
 
     if (depois) {
-      const aviso = await this.sincronizar(ciclo, depois, documentosPendentes);
+      const aviso = await this.sincronizar(fornecedor, ciclo, depois, documentosPendentes);
       if (aviso) {
         avisos.push(aviso);
       }
@@ -616,9 +662,10 @@ export class HomologacaoFluxoService {
   // ----------------------------------------------------------
 
   // Grava no ciclo a etapa (id e coluna do kanban), o prazo e os
-  // responsáveis. dgt_etapaatual só vai no corpo quando MUDA: é o
-  // gatilho do aviso (Power Automate D2) e não pode disparar à toa.
+  // responsáveis. dgt_etapaatual só vai no corpo quando MUDA: é o gatilho
+  // do e-mail ao fornecedor (Power Automate, etapa "Documentos pendentes").
   public async sincronizar(
+    _fornecedor: IFornecedor,
     ciclo: ICicloHomologacao,
     estado: IEstadoFluxoCiclo,
     documentosPendentes: string[]

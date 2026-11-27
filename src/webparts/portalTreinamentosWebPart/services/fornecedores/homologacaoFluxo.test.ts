@@ -146,6 +146,24 @@ describe('Homologação no motor de fluxos', () => {
     const acoes = (id: string): string[] => (json.fluxo.elementos.filter(e => e.id === id)[0].acoes || []).map(a => a.resultado);
     expect(acoes('analise-suprimentos').map(resultadoPelaAcao).filter(Boolean)).toEqual([]);
     expect(acoes('analise-juridico').map(resultadoPelaAcao).filter(Boolean)).toEqual(['Aprovado', 'Aprovado com ressalvas', 'Reprovado']);
+
+    // Avisos pela fila padrão (notificações do motor): o Jurídico ao chegar.
+    const notificacoes = (json.fluxo.elementos.filter(e => e.id === 'analise-juridico')[0] as unknown as { notificacoes?: Array<{ momento: string; incluirResponsaveisEtapa: boolean }> }).notificacoes || [];
+    expect(notificacoes.map(n => [n.momento, n.incluirResponsaveisEtapa])).toEqual([['aoChegar', true]]);
+
+    // Notificação "ao começar" em todas as atividades, só e-mail, com o rodapé.
+    json.fluxo.elementos.filter(e => e.tipo === 'tarefaHumana').forEach(e => {
+      const n = ((e as unknown as { notificacoes?: Array<{ canais: string[]; mensagem: string }> }).notificacoes || [])[0];
+      expect(n.canais).toEqual(['email']);
+      expect(n.mensagem).toMatch(/Não responda este e-mail; a ação é feita no portal\.$/);
+    });
+
+    // Evento "Resultado da homologação" antes dos dois fins, para a área Supply (sigla → id).
+    const definicao = resultado.pacote && resultado.pacote.definicao;
+    const evento = definicao ? definicao.elementos.filter(e => e.id === 'evento-homologado')[0] : undefined;
+    expect(evento && evento.tipo).toBe('eventoNotificacao');
+    expect(evento && evento.notificacoes && evento.notificacoes[0].destinatarios[0].referenciaId).toBe('a-sup');
+    expect(definicao && definicao.transicoes.some(t => t.origemId === 'evento-reprovado' && t.destinoId === 'reprovado')).toBe(true);
   });
 });
 

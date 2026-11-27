@@ -9,15 +9,17 @@ import {
   IColaboradorFornecedor,
   IDocumentoColaborador,
   IFornecedor,
-  TIPOS_DOCUMENTO_COLABORADOR,
-  TipoDocumentoColaborador
+  ITipoDocumentoFornecedor,
+  tipoExigeNorma
 } from '../../services/fornecedores/modeloFornecedores';
 
 import {
   formatarCpf,
   IItemColaborador,
   mascararCpf,
-  situacaoColaborador
+  situacaoColaborador,
+  tipoDoDocumento,
+  tiposDeColaborador
 } from '../../services/fornecedores/colaboradores';
 
 import {
@@ -46,18 +48,13 @@ import {
 // Quem atua para a DGT pelo prestador: nome, função, CPF (coluna
 // protegida, perfil "DGT - Fornecedores - CPF de colaboradores") e
 // observações. Sem e-mail e sem telefone.
-// Documentos: ASO (obrigatório, com validade) e "NR aplicável" (texto
-// livre com a norma de cada colaborador, com validade). Nova versão do
-// mesmo documento deixa a anterior como Substituída.
+// Documentos: tipos CADASTRADOS em Tipos de documento › Colaborador,
+// cada um "obrigatório para todos os colaboradores" ou opcional.
+// "NR aplicável" pede a norma (um vigente por norma). Nova versão do
+// mesmo tipo deixa a anterior como Substituída.
 // ============================================================
 
 const NORMAS_COMUNS = ['NR-06', 'NR-10', 'NR-11', 'NR-12', 'NR-18', 'NR-20', 'NR-33', 'NR-35'];
-
-// ASO periódico costuma valer 1 ano (confirmar no documento).
-const DIAS_SUGERIDOS: Record<TipoDocumentoColaborador, number | undefined> = {
-  'ASO': 365,
-  'NR aplicável': undefined
-};
 
 const TOM_ESTADO: Record<EstadoDocumento, TomSelo> = {
   'OK': 'ciano',
@@ -155,12 +152,12 @@ const ColaboradorModal: React.FC<{
 };
 
 // ------------------------------------------------------------
-// ASO / NR aplicável
+// Documento do colaborador (tipo cadastrado)
 // ------------------------------------------------------------
 
 const DocumentoColaboradorModal: React.FC<{
   colaborador: IColaboradorFornecedor;
-  tipo: TipoDocumentoColaborador;
+  tipo: ITipoDocumentoFornecedor;
   normaInicial: string;
   envioDisponivel: boolean;
   fechar: () => void;
@@ -177,8 +174,8 @@ const DocumentoColaboradorModal: React.FC<{
   const [gravando, setGravando] = React.useState(false);
   const [erro, setErro] = React.useState('');
 
-  const definicao = TIPOS_DOCUMENTO_COLABORADOR.filter(t => t.tipo === tipo)[0];
-  const diasSugeridos = DIAS_SUGERIDOS[tipo];
+  const diasSugeridos = tipo.validadeDias;
+  const exigeNorma = tipoExigeNorma(tipo.nome);
 
   const confirmar = async (): Promise<void> => {
     setGravando(true);
@@ -193,8 +190,8 @@ const DocumentoColaboradorModal: React.FC<{
 
   return (
     <Modal
-      titulo={`${tipo} — ${colaborador.nome}`}
-      subtitulo={definicao ? definicao.descricao : undefined}
+      titulo={`${tipo.nome} — ${colaborador.nome}`}
+      subtitulo={tipo.descricao || (tipo.obrigatorio ? 'Obrigatório para todos os colaboradores.' : undefined)}
       aoFechar={() => { if (!gravando) { fechar(); } }}
       largura={600}
       rodape={(
@@ -208,7 +205,7 @@ const DocumentoColaboradorModal: React.FC<{
     >
       {erro && <Aviso tipo="alerta">{erro}</Aviso>}
 
-      {tipo === 'NR aplicável' && (
+      {exigeNorma && (
         <div style={{ marginBottom: '6px' }}>
           <label style={rotulo} htmlFor="docc-norma">Qual NR se aplica a este colaborador</label>
           <input id="docc-norma" style={campo} list="docc-normas" value={norma} onChange={e => setNorma(e.target.value)} placeholder="Ex.: NR-10 (eletricidade), NR-35 (altura)" />
@@ -224,7 +221,7 @@ const DocumentoColaboradorModal: React.FC<{
             onChange={e => { setEmissao(e.target.value); if (!vencimentoManual) { setVencimento(sugerirVencimento(e.target.value, diasSugeridos)); } }} />
         </div>
         <div>
-          <label style={rotulo} htmlFor="docc-validade">Validade</label>
+          <label style={rotulo} htmlFor="docc-validade">Validade{tipo.exigeValidade ? '' : ' (se houver)'}</label>
           <input id="docc-validade" type="date" style={campo} value={vencimento} onChange={e => { setVencimento(e.target.value); setVencimentoManual(true); }} />
           {diasSugeridos && !vencimentoManual && <div style={ajuda}>Sugerida: emissão + {diasSugeridos} dias. Confira no documento.</div>}
         </div>
@@ -261,10 +258,12 @@ const DocumentoColaboradorModal: React.FC<{
 const ColaboradoresFornecedorView: React.FC<{
   servico: FornecedoresService;
   fornecedor: IFornecedor;
+  // Tipos de documento de colaborador cadastrados (Tipos de documento › Colaborador).
+  tiposColaborador: ITipoDocumentoFornecedor[];
   usuarioNome: string;
   voltar: () => void;
   aoAlterar: (aviso?: string) => Promise<void>;
-}> = ({ servico, fornecedor, usuarioNome, voltar, aoAlterar }) => {
+}> = ({ servico, fornecedor, tiposColaborador, usuarioNome, voltar, aoAlterar }) => {
 
   const [colaboradores, setColaboradores] = React.useState<IColaboradorFornecedor[] | undefined>(undefined);
   const [documentos, setDocumentos] = React.useState<IDocumentoColaborador[]>([]);
@@ -275,7 +274,10 @@ const ColaboradoresFornecedorView: React.FC<{
   const [mostrarInativos, setMostrarInativos] = React.useState(false);
   const [aberto, setAberto] = React.useState<string>('');
   const [editando, setEditando] = React.useState<IColaboradorFornecedor | 'novo' | undefined>(undefined);
-  const [registrar, setRegistrar] = React.useState<{ colaborador: IColaboradorFornecedor; tipo: TipoDocumentoColaborador; norma: string } | undefined>(undefined);
+  const [registrar, setRegistrar] = React.useState<{ colaborador: IColaboradorFornecedor; tipo: ITipoDocumentoFornecedor; norma: string } | undefined>(undefined);
+  const [tipoEscolhido, setTipoEscolhido] = React.useState<string>('');
+
+  const tiposAtivos = tiposDeColaborador(tiposColaborador);
 
   const carregar = React.useCallback(async (): Promise<void> => {
     try {
@@ -300,7 +302,7 @@ const ColaboradoresFornecedorView: React.FC<{
 
   const visiveis = (colaboradores || []).filter(c => mostrarInativos || c.ativo);
   const situacoes: Record<string, ReturnType<typeof situacaoColaborador>> = {};
-  (colaboradores || []).forEach(c => { situacoes[c.id] = situacaoColaborador(documentos.filter(d => d.colaboradorId === c.id)); });
+  (colaboradores || []).forEach(c => { situacoes[c.id] = situacaoColaborador(documentos.filter(d => d.colaboradorId === c.id), tiposColaborador); });
   const pendentes = (colaboradores || []).filter(c => c.ativo && situacoes[c.id].pendente).length;
 
   return (
@@ -310,7 +312,7 @@ const ColaboradoresFornecedorView: React.FC<{
         <div style={{ flex: 1, minWidth: '240px' }}>
           <div style={{ fontSize: '19px', fontWeight: 700 }}>Colaboradores</div>
           <div style={{ fontSize: '13px', color: COR.texto2 }}>
-            Quem atua para a DGT por este prestador. ASO obrigatório; NR conforme a atividade de cada um.
+            Quem atua para a DGT por este prestador. Documentos conforme os tipos cadastrados (obrigatórios para todos ou opcionais).
           </div>
         </div>
         {colaboradores && pendentes > 0 && <Selo tom="indigo">{`! ${pendentes} com pendência`}</Selo>}
@@ -326,6 +328,12 @@ const ColaboradoresFornecedorView: React.FC<{
       )}
 
       {disponivel && !colaboradores && !erro && <div style={{ padding: '20px', color: COR.texto2 }}>Carregando colaboradores…</div>}
+
+      {disponivel && colaboradores && tiposAtivos.length === 0 && (
+        <Aviso tipo="info">
+          Nenhum tipo de documento de colaborador cadastrado. O administrador do módulo cadastra em Tipos de documento › Colaborador (ex.: ASO, Integração, NR-35).
+        </Aviso>
+      )}
 
       {disponivel && colaboradores && (
         <>
@@ -348,8 +356,7 @@ const ColaboradoresFornecedorView: React.FC<{
                   <tr>
                     <th style={celulaCabecalho}>Colaborador</th>
                     <th style={celulaCabecalho}>CPF</th>
-                    <th style={celulaCabecalho}>ASO</th>
-                    <th style={celulaCabecalho}>NR aplicável</th>
+                    <th style={celulaCabecalho}>Documentos</th>
                     <th style={celulaCabecalho} />
                   </tr>
                 </thead>
@@ -368,13 +375,12 @@ const ColaboradoresFornecedorView: React.FC<{
                           </td>
                           <td style={celula}>{c.cpf ? (mostrarCpf ? formatarCpf(c.cpf) : mascararCpf(c.cpf)) : <span style={{ color: COR.texto2 }}>—</span>}</td>
                           <td style={celula}>
-                            <Selo tom={TOM_ESTADO[s.aso.estado]}>{textoEstado(s.aso)}</Selo>
-                            {s.aso.documento && <div style={{ fontSize: '12px', color: COR.texto2, marginTop: '2px' }}>validade {dataBr(s.aso.documento.vencimento)}</div>}
-                          </td>
-                          <td style={celula}>
-                            {s.nrs.length === 0
-                              ? <span style={{ color: COR.texto2, fontSize: '13px' }}>nenhuma registrada</span>
-                              : <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{s.nrs.map(n => <Selo key={n.chave} tom={TOM_ESTADO[n.estado]}>{textoEstado(n)}</Selo>)}</div>}
+                            {s.itens.length === 0
+                              ? <span style={{ color: COR.texto2, fontSize: '13px' }}>nenhum registrado</span>
+                              : <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{s.itens.map(n => <Selo key={n.chave} tom={TOM_ESTADO[n.estado]}>{textoEstado(n)}</Selo>)}</div>}
+                            {s.faltandoObrigatorios.length > 0 && (
+                              <div style={{ fontSize: '12px', color: COR.indigo, marginTop: '4px' }}>Faltam (obrigatórios): {s.faltandoObrigatorios.join(', ')}</div>
+                            )}
                           </td>
                           <td style={{ ...celula, textAlign: 'right', whiteSpace: 'nowrap' }}>
                             <button type="button" style={botao('discreto')} onClick={() => setEditando(c)}>Editar</button>
@@ -385,30 +391,44 @@ const ColaboradoresFornecedorView: React.FC<{
                         </tr>
                         {expandido && (
                           <tr>
-                            <td style={{ ...celula, background: COR.fundo }} colSpan={5}>
+                            <td style={{ ...celula, background: COR.fundo }} colSpan={4}>
                               <div style={{ ...painel, padding: '12px 14px' }}>
                                 {c.observacoes && <div style={{ fontSize: '13px', marginBottom: '8px', whiteSpace: 'pre-wrap' }}><strong>Observações:</strong> {c.observacoes}</div>}
                                 <ul style={{ margin: '0 0 10px', paddingLeft: '18px', fontSize: '13.5px', lineHeight: 1.8 }}>
-                                  {[s.aso].concat(s.nrs).map(item => (
-                                    <li key={item.chave}>
-                                      <strong>{item.rotulo}</strong>
-                                      {item.documento
-                                        ? <> — emissão {dataBr(item.documento.emissao)}, validade {dataBr(item.documento.vencimento)}
-                                          {item.documento.arquivoUrl && <> · <a href={item.documento.arquivoUrl} target="_blank" rel="noopener noreferrer" style={{ color: COR.azul }}>abrir</a></>}
-                                          {' '}<button type="button" style={botao('discreto')}
-                                            onClick={() => setRegistrar({ colaborador: c, tipo: item.documento ? item.documento.tipo : 'ASO', norma: item.documento ? item.documento.norma : '' })}>Renovar</button>
-                                        </>
-                                        : ' — não registrado'}
-                                    </li>
-                                  ))}
+                                  {s.itens.map(item => {
+                                    const tipoItem = item.tipo || (item.documento ? tipoDoDocumento(item.documento, tiposColaborador) : undefined);
+                                    return (
+                                      <li key={item.chave}>
+                                        <strong>{item.rotulo}</strong>{item.obrigatorio ? ' (obrigatório)' : ''}
+                                        {item.documento
+                                          ? <> — emissão {dataBr(item.documento.emissao)}, validade {dataBr(item.documento.vencimento)}
+                                            {item.documento.arquivoUrl && <> · <a href={item.documento.arquivoUrl} target="_blank" rel="noopener noreferrer" style={{ color: COR.azul }}>abrir</a></>}
+                                          </>
+                                          : ' — não registrado'}
+                                        {tipoItem && tipoItem.ativo && (
+                                          <>{' '}<button type="button" style={botao('discreto')}
+                                            onClick={() => setRegistrar({ colaborador: c, tipo: tipoItem, norma: item.documento ? item.documento.norma : '' })}>{item.documento ? 'Renovar' : 'Registrar'}</button></>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
                                 </ul>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                  <button type="button" style={botao('secundario')} onClick={() => setRegistrar({ colaborador: c, tipo: 'ASO', norma: '' })}>Registrar ASO</button>
-                                  <button type="button" style={botao('secundario')} onClick={() => setRegistrar({ colaborador: c, tipo: 'NR aplicável', norma: '' })}>Registrar NR aplicável</button>
-                                </div>
+                                {tiposAtivos.length > 0 && (
+                                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <select aria-label="Tipo de documento" style={{ ...campo, width: 'auto', minWidth: '240px' }} value={tipoEscolhido} onChange={e => setTipoEscolhido(e.target.value)}>
+                                      <option value="">Escolha o tipo…</option>
+                                      {tiposAtivos.map(t => <option key={t.id} value={t.id}>{t.nome}{t.obrigatorio ? ' (obrigatório)' : ''}</option>)}
+                                    </select>
+                                    <button type="button" style={botao('secundario', !tipoEscolhido)} disabled={!tipoEscolhido}
+                                      onClick={() => {
+                                        const t = tiposAtivos.filter(x => x.id === tipoEscolhido)[0];
+                                        if (t) { setRegistrar({ colaborador: c, tipo: t, norma: '' }); }
+                                      }}>Registrar documento</button>
+                                  </div>
+                                )}
                                 {anteriores.length > 0 && (
                                   <div style={{ fontSize: '12.5px', color: COR.texto2, marginTop: '10px' }}>
-                                    Versões anteriores: {anteriores.map(d => `${d.norma || d.tipo} (${dataBr(d.emissao)})`).join(' · ')}
+                                    Versões anteriores: {anteriores.map(d => `${d.norma || (tipoDoDocumento(d, tiposColaborador) || { nome: d.tipo }).nome} (${dataBr(d.emissao)})`).join(' · ')}
                                   </div>
                                 )}
                               </div>
@@ -450,9 +470,11 @@ const ColaboradoresFornecedorView: React.FC<{
               registrar.colaborador,
               { ...dados, tipo: registrar.tipo },
               documentos.filter(d => d.colaboradorId === registrar.colaborador.id),
+              tiposColaborador,
               usuarioNome);
             setRegistrar(undefined);
-            await depois(`${registrar.colaborador.nome}: ${registrar.tipo} registrado.`);
+            setTipoEscolhido('');
+            await depois(`${registrar.colaborador.nome}: ${registrar.tipo.nome} registrado.`);
           }}
         />
       )}
